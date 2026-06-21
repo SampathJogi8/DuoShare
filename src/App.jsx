@@ -93,11 +93,10 @@ export default function App() {
   const [transactions, setTransactions] = useState([]);
   const [receipts, setReceipts] = useState([]);
   
-  // Theme option (default light, read from localStorage or system preference)
+  // Theme option (default light, read from localStorage)
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('theme');
-    if (saved) return saved === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return saved === 'dark';
   });
   const [offlineMode, setOfflineMode] = useState(true);
   const [isDbSynced, setIsDbSynced] = useState(false);
