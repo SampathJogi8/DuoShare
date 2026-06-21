@@ -50,6 +50,7 @@ import {
 import { auth, googleProvider, db } from './firebase';
 import { 
   signInWithPopup, 
+  signInWithRedirect,
   signOut, 
   onAuthStateChanged 
 } from 'firebase/auth';
@@ -283,8 +284,13 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
       triggerToast('Signed in successfully!');
     } catch (err) {
-      console.error(err);
-      triggerToast(`Authentication failed: ${err.code || err.message}`);
+      console.warn("Popup sign-in failed/blocked. Trying redirect...", err);
+      try {
+        await signInWithRedirect(auth, googleProvider);
+      } catch (redirectErr) {
+        console.error(redirectErr);
+        triggerToast(`Authentication failed: ${redirectErr.code || redirectErr.message}`);
+      }
     } finally {
       setAuthLoading(false);
     }
