@@ -312,15 +312,20 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
       triggerToast('Signed in successfully!');
     } catch (err) {
-      console.warn("Popup sign-in failed/blocked. Trying redirect...", err);
-      setAuthLoading(true);
-      try {
-        await signInWithRedirect(auth, googleProvider);
-      } catch (redirectErr) {
-        console.error(redirectErr);
-        setAuthError(`Auth Error: ${redirectErr.code || redirectErr.message}`);
-        triggerToast(`Authentication failed: ${redirectErr.code || redirectErr.message}`);
-        setAuthLoading(false);
+      console.warn("Popup sign-in failed/blocked:", err);
+      if (err.code === 'auth/popup-blocked') {
+        setAuthLoading(true);
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectErr) {
+          console.error(redirectErr);
+          setAuthError(`Auth Error: ${redirectErr.code || redirectErr.message}`);
+          triggerToast(`Authentication failed: ${redirectErr.code || redirectErr.message}`);
+          setAuthLoading(false);
+        }
+      } else if (err.code !== 'auth/popup-closed-by-user') {
+        setAuthError(`Auth Error: ${err.code || err.message}`);
+        triggerToast(`Authentication failed: ${err.code || err.message}`);
       }
     }
   };
