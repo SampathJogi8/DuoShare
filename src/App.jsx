@@ -51,6 +51,7 @@ import { auth, googleProvider, db } from './firebase';
 import { 
   signInWithPopup, 
   signInWithRedirect,
+  getRedirectResult,
   signOut, 
   onAuthStateChanged 
 } from 'firebase/auth';
@@ -72,6 +73,7 @@ export default function App() {
   // Authentication state
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   // Onboarding Setup View state
   const [userRoomId, setUserRoomId] = useState(() => localStorage.getItem('userRoomId') || null); 
@@ -144,6 +146,19 @@ export default function App() {
 
   // Handle Google Auth state changes
   useEffect(() => {
+    // Check redirect login results on page load
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          triggerToast('Signed in successfully!');
+        }
+      })
+      .catch((err) => {
+        console.error("Redirect login error:", err);
+        setAuthError(`Redirect Login Error: ${err.code || err.message}`);
+        triggerToast(`Redirect Error: ${err.code || err.message}`);
+      });
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -280,6 +295,7 @@ export default function App() {
   // Login handler
   const handleGoogleLogin = async () => {
     try {
+      setAuthError(null);
       setAuthLoading(true);
       await signInWithPopup(auth, googleProvider);
       triggerToast('Signed in successfully!');
@@ -289,6 +305,7 @@ export default function App() {
         await signInWithRedirect(auth, googleProvider);
       } catch (redirectErr) {
         console.error(redirectErr);
+        setAuthError(`Auth Error: ${redirectErr.code || redirectErr.message}`);
         triggerToast(`Authentication failed: ${redirectErr.code || redirectErr.message}`);
       }
     } finally {
@@ -1137,6 +1154,12 @@ export default function App() {
             </svg>
             <span>Sign in with Google</span>
           </button>
+
+          {authError && (
+            <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-2xl text-[11px] text-red-700 dark:text-red-400 font-bold leading-relaxed text-center break-words select-all animate-fade-in">
+              {authError}
+            </div>
+          )}
         </div>
       </div>
     );
