@@ -192,6 +192,18 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Auth Initialization Timeout Fallback
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (authLoading) {
+        console.warn("Auth initialization timed out.");
+        setAuthError("Duo Room is taking longer than usual to connect. Please check your Google Cloud Console API Key restrictions and allow your Vercel domain.");
+        setAuthLoading(false);
+      }
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [authLoading]);
+
   // Real-time camera QR scanner controller
   useEffect(() => {
     if (!isQrScannerOpen) return;
