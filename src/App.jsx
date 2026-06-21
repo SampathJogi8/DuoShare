@@ -306,22 +306,22 @@ export default function App() {
 
   // Login handler
   const handleGoogleLogin = async () => {
+    setAuthError(null);
     try {
-      setAuthError(null);
-      setAuthLoading(true);
+      // Must be called synchronously within the click event loop to prevent browser popup blocking
       await signInWithPopup(auth, googleProvider);
       triggerToast('Signed in successfully!');
     } catch (err) {
       console.warn("Popup sign-in failed/blocked. Trying redirect...", err);
+      setAuthLoading(true);
       try {
         await signInWithRedirect(auth, googleProvider);
       } catch (redirectErr) {
         console.error(redirectErr);
         setAuthError(`Auth Error: ${redirectErr.code || redirectErr.message}`);
         triggerToast(`Authentication failed: ${redirectErr.code || redirectErr.message}`);
+        setAuthLoading(false);
       }
-    } finally {
-      setAuthLoading(false);
     }
   };
 
