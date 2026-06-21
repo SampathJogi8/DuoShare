@@ -284,7 +284,7 @@ export default function App() {
       triggerToast('Signed in successfully!');
     } catch (err) {
       console.error(err);
-      triggerToast('Authentication failed. Check your pop-up permissions.');
+      triggerToast(`Authentication failed: ${err.code || err.message}`);
     } finally {
       setAuthLoading(false);
     }
