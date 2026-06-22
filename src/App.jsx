@@ -3398,7 +3398,7 @@ export default function App() {
     );
   }
 
-  const openAddPersonalExpense = () => {
+  function openAddPersonalExpense() {
     setEditingTransaction(null);
     setIsAddExpenseOpen(true);
     const currentUid = auth.currentUser?.uid || 'anonymous';
@@ -3407,7 +3407,7 @@ export default function App() {
       newSplits[m.uid] = m.uid === currentUid;
     });
     setSelectedSplitMembers(newSplits);
-  };
+  }
 
   function renderPersonalExpenses() {
     const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport'];
