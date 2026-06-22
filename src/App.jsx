@@ -84,6 +84,44 @@ function QrScannerMount({ onScan, onError, scannerRef }) {
     </div>
   );
 }
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 max-w-xl mx-auto my-10 bg-red-50 border border-red-200 rounded-2xl dark:bg-red-950/20 dark:border-red-900/30 text-red-800 dark:text-red-300 shadow-lg">
+          <h2 className="text-lg font-bold">Something went wrong rendering this view.</h2>
+          <p className="text-sm mt-2 font-mono bg-red-100 dark:bg-red-900/40 p-4 rounded-xl overflow-auto max-h-60">
+            {this.state.error?.toString()}
+          </p>
+          <p className="text-xs mt-2 text-slate-500">
+            Please report this issue. You can click another tab to continue using Tallyin.
+          </p>
+          <button 
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="mt-4 px-4 py-2 bg-[#1A3827] text-white hover:bg-[#255038] rounded-xl text-xs font-bold transition-all"
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 
 export default function App() {
@@ -1972,8 +2010,10 @@ export default function App() {
   const activeTxList = transactions;
   const filteredTransactions = useMemo(() => {
     return activeTxList.filter(t => {
-      const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            t.category.toLowerCase().includes(searchQuery.toLowerCase());
+      const titleStr = t.title || '';
+      const categoryStr = t.category || '';
+      const matchesSearch = titleStr.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            categoryStr.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = categoryFilter === 'All' || t.category === categoryFilter;
       const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
       return matchesSearch && matchesCategory && matchesMonth;
@@ -1984,14 +2024,21 @@ export default function App() {
   const myPersonalExpenses = useMemo(() => {
     const currentUid = auth.currentUser?.uid || 'anonymous';
     return transactions.filter(t => {
-      return t.isShared === false && t.splits && t.splits.length === 1 && t.splits[0].uid === currentUid;
+      return t.isShared === false && 
+             t.splits && 
+             Array.isArray(t.splits) && 
+             t.splits.length === 1 && 
+             t.splits[0] && 
+             t.splits[0].uid === currentUid;
     });
   }, [transactions, auth.currentUser?.uid]);
 
   const filteredPersonalExpenses = useMemo(() => {
     return myPersonalExpenses.filter(t => {
-      const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            t.category.toLowerCase().includes(searchQuery.toLowerCase());
+      const titleStr = t.title || '';
+      const categoryStr = t.category || '';
+      const matchesSearch = titleStr.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            categoryStr.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = categoryFilter === 'All' || t.category === categoryFilter;
       const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
       return matchesSearch && matchesCategory && matchesMonth;
@@ -2764,14 +2811,15 @@ export default function App() {
           </div>
         </header>
 
-        {/* Scrollable View Area */}
         <main className="flex-grow pt-20 px-4 sm:px-8 pb-24 overflow-y-auto">
-          {currentView === 'home' && renderHome()}
-          {currentView === 'ledger' && renderLedger()}
-          {currentView === 'personal-expenses' && renderPersonalExpenses()}
-          {currentView === 'insights' && renderInsights()}
-          {currentView === 'receipts' && renderReceipts()}
-          {currentView === 'settings' && renderSettings()}
+          <ErrorBoundary>
+            {currentView === 'home' && renderHome()}
+            {currentView === 'ledger' && renderLedger()}
+            {currentView === 'personal-expenses' && renderPersonalExpenses()}
+            {currentView === 'insights' && renderInsights()}
+            {currentView === 'receipts' && renderReceipts()}
+            {currentView === 'settings' && renderSettings()}
+          </ErrorBoundary>
         </main>
 
         {/* Floating Action Button (FAB) */}
