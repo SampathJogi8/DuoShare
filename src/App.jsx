@@ -156,14 +156,14 @@ export default function App() {
   
   // Nicknames & Roommates Dynamic State
   const [userNickname, setUserNickname] = useState(() => localStorage.getItem('userNickname') || 'You');
-  const [roomName, setRoomName] = useState(() => localStorage.getItem('roomName') || 'Tallin');
+  const [roomName, setRoomName] = useState(() => localStorage.getItem('roomName') || 'Tallyin');
   const [roommateOnline, setRoommateOnline] = useState(true);
   
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState(() => localStorage.getItem('userNickname') || 'You');
   const [isEditingRoomName, setIsEditingRoomName] = useState(false);
   const [roomNameInput, setRoomNameInput] = useState('');
-  const [settingsRoomNameInput, setSettingsRoomNameInput] = useState(() => localStorage.getItem('roomName') || 'Tallin');
+  const [settingsRoomNameInput, setSettingsRoomNameInput] = useState(() => localStorage.getItem('roomName') || 'Tallyin');
   const [nicknamePromptAction, setNicknamePromptAction] = useState(null); // null | 'create' | 'join'
   const [onboardingStep, setOnboardingStep] = useState('selection'); // 'selection' | 'room-name' | 'room-budget' | 'share-code'
   const [activityLogs, setActivityLogs] = useState([]);
@@ -235,11 +235,13 @@ export default function App() {
       
       if (error) throw error;
       
-      const formatted = (data || []).map(item => ({
-        roomId: item.room_id,
-        roomName: item.rooms?.name || 'Tallin',
-        monthlyBudget: item.rooms?.monthly_budget || 22000
-      }));
+      const formatted = (data || [])
+        .filter(item => item.rooms !== null)
+        .map(item => ({
+          roomId: item.room_id,
+          roomName: item.rooms?.name || 'Tallyin',
+          monthlyBudget: item.rooms?.monthly_budget || 22000
+        }));
       setUserRooms(formatted);
     } catch (err) {
       console.warn("Error fetching user rooms:", err);
@@ -360,7 +362,7 @@ export default function App() {
     const timer = setTimeout(() => {
       if (authLoading) {
         console.warn("Auth initialization timed out.");
-        setAuthError("Tallin is taking longer than usual to connect. Please check your Google Cloud Console API Key restrictions and allow your Vercel domain.");
+        setAuthError("Tallyin is taking longer than usual to connect. Please check your Google Cloud Console API Key restrictions and allow your Vercel domain.");
         setAuthLoading(false);
       }
     }, 6000);
@@ -560,16 +562,39 @@ export default function App() {
         .maybeSingle();
 
       if (error) throw error;
-      if (data) {
-        if (data.monthly_budget) {
-          setMonthlyBudget(Number(data.monthly_budget));
-          localStorage.setItem('monthlyBudget', data.monthly_budget);
+      
+      if (!data) {
+        // Room does not exist anymore (e.g. deleted by someone else or cleanup)! Clear active room.
+        console.warn(`Room ${roomId} does not exist. Clearing active room.`);
+        setUserRoomId(null);
+        setHasConfirmedRoom(false);
+        setTransactions([]);
+        setReceipts([]);
+        setMembers([]);
+        localStorage.removeItem('userRoomId');
+        if (user) {
+          supabase
+            .from('users')
+            .upsert({
+              uid: user.id,
+              room_id: null,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'uid' })
+            .catch(err => console.error(err));
         }
-        if (data.name) {
-          setRoomName(data.name);
-          setSettingsRoomNameInput(data.name);
-          localStorage.setItem('roomName', data.name);
-        }
+        await fetchUserRooms();
+        triggerToast("Active room is no longer available.");
+        return;
+      }
+
+      if (data.monthly_budget) {
+        setMonthlyBudget(Number(data.monthly_budget));
+        localStorage.setItem('monthlyBudget', data.monthly_budget);
+      }
+      if (data.name) {
+        setRoomName(data.name);
+        setSettingsRoomNameInput(data.name);
+        localStorage.setItem('roomName', data.name);
       }
     } catch (err) {
       console.warn("Room settings fetch error:", err);
@@ -696,7 +721,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `tallin_room_backup_${userRoomId}_${new Date().toISOString().split('T')[0]}.json`;
+      link.download = `tallyin_room_backup_${userRoomId}_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -731,6 +756,7 @@ export default function App() {
             }, { onConflict: 'uid' });
         } catch(e) { console.error(e); }
       }
+      await fetchUserRooms();
       triggerToast('Room deleted. Redirected to onboarding.');
     } catch (err) {
       console.error('Delete room error:', err);
@@ -741,6 +767,7 @@ export default function App() {
       setReceipts([]);
       setMembers([]);
       localStorage.removeItem('userRoomId');
+      await fetchUserRooms();
     }
   };
 
@@ -895,16 +922,17 @@ export default function App() {
           created_by: user ? user.id : 'anonymous',
           created_at: new Date().toISOString(),
           monthly_budget: monthlyBudget,
-          name: roomNameInput.trim() || 'Tallin'
+          name: roomNameInput.trim() || 'Tallyin'
         });
 
       if (roomError) throw roomError;
       
       // Register as member
       await addMemberToRoom(uniqueCode, userNickname);
+      await fetchUserRooms();
       
       // 2. Set active room locally
-      const finalRoomName = roomNameInput.trim() || 'Tallin';
+      const finalRoomName = roomNameInput.trim() || 'Tallyin';
       setRoomName(finalRoomName);
       setSettingsRoomNameInput(finalRoomName);
       localStorage.setItem('roomName', finalRoomName);
@@ -961,6 +989,7 @@ export default function App() {
 
       // Add user to the members of this room
       await addMemberToRoom(cleanId, userNickname);
+      await fetchUserRooms();
 
       setUserRoomId(cleanId);
       localStorage.setItem('userRoomId', cleanId);
@@ -1129,7 +1158,7 @@ export default function App() {
     
     const formattedAmount = `₹${transaction.amount.toLocaleString("en-IN")}`;
     const roomDisplayName = userRoomId || 'TL-ROOM';
-    const messageText = `Tallin Alert: A new expense "${transaction.title}" of ${formattedAmount} was added by ${transaction.paidBy} in Room ${roomDisplayName}.`;
+    const messageText = `Tallyin Alert: A new expense "${transaction.title}" of ${formattedAmount} was added by ${transaction.paidBy} in Room ${roomDisplayName}.`;
     
     // Automatically include all other room members' emails
     const emailList = [...new Set([
@@ -1141,7 +1170,7 @@ export default function App() {
 
     const htmlBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background-color: #F6F8F6; color: #1A3827; border-radius: 16px; border: 1px solid #E3E8E3; max-width: 500px; margin: 20px auto; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
-        <h2 style="color: #1A3827; margin: 0 0 4px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">Tallin Expense</h2>
+        <h2 style="color: #1A3827; margin: 0 0 4px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">Tallyin Expense</h2>
         <p style="font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #5C6E5C; margin: 0 0 16px 0; font-weight: bold;">Real-time Billing Sync</p>
         <div style="background-color: white; padding: 20px; border-radius: 12px; border: 1px solid #E3E8E3; margin-bottom: 16px;">
           <p style="margin: 0 0 10px 0; font-size: 14px; color: #5C6E5C;">Hi Roommate,</p>
@@ -1168,7 +1197,7 @@ export default function App() {
             </tr>
           </table>
         </div>
-        <p style="font-size: 11px; color: #5C6E5C; text-align: center; margin: 0;">Open your Tallin dashboard to view the full ledger or settle balances.</p>
+        <p style="font-size: 11px; color: #5C6E5C; text-align: center; margin: 0;">Open your Tallyin dashboard to view the full ledger or settle balances.</p>
       </div>
     `;
 
@@ -1183,7 +1212,7 @@ export default function App() {
             },
             body: JSON.stringify({
               to: email,
-              subject: `Tallin Expense: ${transaction.title} (${formattedAmount})`,
+              subject: `Tallyin Expense: ${transaction.title} (${formattedAmount})`,
               htmlBody: htmlBody,
               textBody: messageText
             })
@@ -1629,9 +1658,9 @@ export default function App() {
   const handleInviteTrigger = async () => {
     const currentRoom = userRoomId || 'TL-7729-XM';
     const shareData = {
-      title: 'Tallin Shared Space',
-      text: `Join my roommate shared space on Tallin! Use Code: ${currentRoom}`,
-      url: `https://tallin.app/invite/${currentRoom}`
+      title: 'Tallyin Shared Space',
+      text: `Join my roommate shared space on Tallyin! Use Code: ${currentRoom}`,
+      url: `https://tallyin.app/invite/${currentRoom}`
     };
 
     if (navigator.share) {
@@ -1705,7 +1734,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `tallin_room_${userRoomId || 'export'}_${new Date().toISOString().split('T')[0]}.csv`;
+      link.download = `tallyin_room_${userRoomId || 'export'}_${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1758,7 +1787,7 @@ export default function App() {
         </head>
         <body>
           <div class="header-info">
-            <span class="header-title">YouthFirst Tallin Financial Ledger Report</span><br/>
+            <span class="header-title">YouthFirst Tallyin Financial Ledger Report</span><br/>
             <b>Room Workspace:</b> ${userRoomId || 'N/A'}<br/>
             <b>Room Name:</b> ${roomName}<br/>
             <b>Exported by:</b> ${userNickname} (${user?.email || 'N/A'})<br/>
@@ -1800,7 +1829,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `tallin_ledger_export_${userRoomId || 'room'}.xls`;
+      link.download = `tallyin_ledger_export_${userRoomId || 'room'}.xls`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1836,7 +1865,7 @@ export default function App() {
         <!DOCTYPE html>
         <html>
         <head>
-          <title>YouthFirst Tallin Ledger - Statement of Account</title>
+          <title>YouthFirst Tallyin Ledger - Statement of Account</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1880,7 +1909,7 @@ export default function App() {
           <div class="header-banner">
             <div class="logo-title">
               <div class="logo-icon">T</div>
-              <div class="logo-text">YouthFirst Tallin</div>
+              <div class="logo-text">YouthFirst Tallyin</div>
             </div>
             <div class="doc-info">
               <b>Room Statement</b><br/>
@@ -1950,7 +1979,7 @@ export default function App() {
           </table>
           
           <div class="footer">
-            YouthFirst Tallin roommate expense statement. Generated securely by YouthFirst Tallin.
+            YouthFirst Tallyin roommate expense statement. Generated securely by YouthFirst Tallyin.
           </div>
           
           <script>
@@ -2036,7 +2065,7 @@ export default function App() {
           <div className="w-12 h-12 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/10 dark:border-slate-800 flex items-center justify-center">
             <RefreshCw className="w-6 h-6 text-[#1A3827] dark:text-[#A3E635] animate-spin" />
           </div>
-          <p className="text-sm font-bold text-[#1A3827]/80 dark:text-slate-200">Loading Tallin secure credentials...</p>
+          <p className="text-sm font-bold text-[#1A3827]/80 dark:text-slate-200">Loading Tallyin secure credentials...</p>
         </div>
       </div>
     );
@@ -2070,7 +2099,7 @@ export default function App() {
             </div>
             
             <div className="space-y-1">
-              <h1 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">Tallin</h1>
+              <h1 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">Tallyin</h1>
               <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold uppercase tracking-wider">YouthFirst Roommate Expense Tracker</p>
             </div>
             
@@ -2157,7 +2186,7 @@ export default function App() {
             
             <div className="space-y-1">
               <h1 className="text-xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Set up your shared space</h1>
-              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-bold uppercase tracking-wider">YouthFirst Tallin Onboarding</p>
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-bold uppercase tracking-wider">YouthFirst Tallyin Onboarding</p>
             </div>
           </div>
 
@@ -2224,6 +2253,66 @@ export default function App() {
                   <span>Join Room</span>
                 </button>
               </div>
+
+              {userRooms.length > 0 && (
+                <div className="space-y-2 text-left pt-3 border-t border-[#E3E8E3]/50 dark:border-slate-800/50">
+                  <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest block font-sans">
+                    Or choose one of your spaces ({userRooms.length})
+                  </label>
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {userRooms.map(r => {
+                      const isActive = r.roomId === userRoomId;
+                      return (
+                        <div 
+                          key={r.roomId}
+                          onClick={async () => {
+                            if (!nicknameInput.trim() || nicknameInput === 'You') {
+                              triggerToast('Please enter your display name first.');
+                              return;
+                            }
+                            setUserRoomId(r.roomId);
+                            localStorage.setItem('userRoomId', r.roomId);
+                            setRoomName(r.roomName);
+                            localStorage.setItem('roomName', r.roomName);
+                            setMonthlyBudget(r.monthlyBudget);
+                            localStorage.setItem('monthlyBudget', r.monthlyBudget);
+                            setHasConfirmedRoom(true);
+                            triggerToast(`Entered room: ${r.roomName}`);
+                            
+                            if (user) {
+                              await supabase
+                                .from('users')
+                                .upsert({
+                                  uid: user.id,
+                                  room_id: r.roomId,
+                                  updated_at: new Date().toISOString()
+                                }, { onConflict: 'uid' });
+                            }
+                          }}
+                          className={`flex items-center justify-between p-3 rounded-2xl border text-xs cursor-pointer transition-all ${
+                            isActive 
+                              ? 'border-[#1A3827] dark:border-[#A3E635] bg-[#EAF0EC]/20 dark:bg-[#A3E635]/5 font-bold' 
+                              : 'border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6]/40 dark:hover:bg-slate-800/20'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-base shrink-0">🏠</span>
+                            <div className="min-w-0">
+                              <p className="font-bold text-[#1A3827] dark:text-slate-100 truncate">{r.roomName}</p>
+                              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-mono truncate">{r.roomId}</p>
+                            </div>
+                          </div>
+                          {isActive ? (
+                            <span className="text-[9px] bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-955 px-2 py-0.5 rounded-full font-bold">Active</span>
+                          ) : (
+                            <span className="text-[9px] text-[#5C6E5C] dark:text-slate-400">Enter</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2306,7 +2395,7 @@ export default function App() {
                 <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Your Room Code</p>
                 <p className="font-mono font-black text-2xl text-[#1A3827] dark:text-[#A3E635] tracking-widest select-all">{userRoomId}</p>
                 <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                  Share this code with your roommate. They open Tallin → Join Room → enter code.
+                  Share this code with your roommate. They open Tallyin → Join Room → enter code.
                 </p>
               </div>
               
@@ -2434,7 +2523,7 @@ export default function App() {
                 T
               </div>
               <div>
-                <h1 className="font-black text-[#1A3827] dark:text-slate-100 tracking-tight">Tallin</h1>
+                <h1 className="font-black text-[#1A3827] dark:text-slate-100 tracking-tight">Tallyin</h1>
                 <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 font-bold uppercase tracking-wider">YouthFirst</p>
               </div>
             </div>
@@ -2666,7 +2755,7 @@ export default function App() {
             </button>
             
             <button 
-              onClick={() => triggerToast('Tallin Diamond is active! VIP benefits enabled.')}
+              onClick={() => triggerToast('Tallyin Diamond is active! VIP benefits enabled.')}
               className="p-2 text-[#5C6E5C] dark:text-slate-400 hover:text-amber-500 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl transition-all"
               title="Diamond Membership Status"
             >
@@ -4252,7 +4341,7 @@ export default function App() {
         <div>
           <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">YOUR SPACE</p>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Settings</h1>
-          <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Make Tallin work the way you do.</p>
+          <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Make Tallyin work the way you do.</p>
         </div>
 
         {/* Stacked Cards */}
@@ -4374,7 +4463,7 @@ export default function App() {
                     </button>
                     <button 
                       onClick={async () => {
-                        const newRoomName = settingsRoomNameInput.trim() || 'Tallin';
+                        const newRoomName = settingsRoomNameInput.trim() || 'Tallyin';
                         setRoomName(newRoomName);
                         localStorage.setItem('roomName', newRoomName);
                         setIsEditingRoomName(false);
@@ -4718,7 +4807,7 @@ export default function App() {
             <div className="flex justify-between items-center py-2 border-t border-[#F6F8F6] dark:border-slate-800">
               <div>
                 <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Sign out</p>
-                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Sign out of your Tallin profile on this browser.</p>
+                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Sign out of your Tallyin profile on this browser.</p>
               </div>
               <button 
                 onClick={handleSignOut}
@@ -4820,7 +4909,7 @@ export default function App() {
                   <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Your Room Code</p>
                   <p className="font-mono font-black text-3xl text-[#1A3827] dark:text-[#A3E635] tracking-widest select-all">{currentRoom}</p>
                   <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                    Share this code with your roommate. They open Tallin → Join Room → enter code.
+                    Share this code with your roommate. They open Tallyin → Join Room → enter code.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -4900,9 +4989,9 @@ export default function App() {
                   </button>
                   <button
                     onClick={async () => {
-                      const text = `Join my Tallin room!\n\nClick this link to join instantly:\n${inviteLink}\n\nOr enter room code: ${currentRoom}`;
+                      const text = `Join my Tallyin room!\n\nClick this link to join instantly:\n${inviteLink}\n\nOr enter room code: ${currentRoom}`;
                       if (navigator.share) {
-                        try { await navigator.share({ title: 'Join my Tallin room', text, url: inviteLink }); }
+                        try { await navigator.share({ title: 'Join my Tallyin room', text, url: inviteLink }); }
                         catch { navigator.clipboard.writeText(text); triggerToast('Invite message copied!'); }
                       } else {
                         navigator.clipboard.writeText(text);
