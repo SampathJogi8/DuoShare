@@ -289,17 +289,25 @@ export default function App() {
     const targetRoom = roomId || userRoomId;
     if (!user || !targetRoom) return;
     try {
-      await supabase
+      const { error } = await supabase
         .from('activity_logs')
         .insert({
           room_id: targetRoom,
           user_id: user.id,
           user_name: userNickname,
           action: action,
-          details: details
+          details: details,
+          created_at: new Date().toISOString()
         });
+      if (error) {
+        // RLS (Row Level Security) may be blocking the insert.
+        // Fix: In Supabase Dashboard → Authentication → Policies → activity_logs
+        // Add INSERT policy: (auth.uid() = user_id)
+        // Also ensure SELECT policy exists for reading logs.
+        console.warn('[Tallyin] Activity log insert blocked:', error.code, error.message);
+      }
     } catch (err) {
-      console.warn("Failed to insert log activity:", err);
+      console.warn('[Tallyin] Failed to insert log activity:', err);
     }
   };
 
@@ -1820,7 +1828,7 @@ export default function App() {
         </head>
         <body>
           <div class="header-info">
-            <span class="header-title">YouthFirst Tallyin Financial Ledger Report</span><br/>
+            <span class="header-title">Tallyin Financial Ledger Report</span><br/>
             <b>Room Workspace:</b> ${userRoomId || 'N/A'}<br/>
             <b>Room Name:</b> ${roomName}<br/>
             <b>Exported by:</b> ${userNickname} (${user?.email || 'N/A'})<br/>
@@ -1886,6 +1894,7 @@ export default function App() {
 
       const totalSpend = dataList.reduce((s, t) => s + (Number(t.amount) || 0), 0);
       const sharedSpend = dataList.filter(t => t.isShared).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+      const personalSpend = totalSpend - sharedSpend;
       const myBalance = computedStats.currentUserBalance;
       const statusText = myBalance === 0
         ? 'All settled up'
@@ -1898,7 +1907,7 @@ export default function App() {
         <!DOCTYPE html>
         <html>
         <head>
-          <title>YouthFirst Tallyin Ledger - Statement of Account</title>
+          <title>Tallyin Ledger - Statement of Account</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1942,7 +1951,7 @@ export default function App() {
           <div class="header-banner">
             <div class="logo-title">
               <div class="logo-icon">T</div>
-              <div class="logo-text">YouthFirst Tallyin</div>
+              <div class="logo-text">Tallyin</div>
             </div>
             <div class="doc-info">
               <b>Room Statement</b><br/>
@@ -1959,25 +1968,59 @@ export default function App() {
             <div class="summary-card">
               <p class="card-label">Total Spent</p>
               <p class="card-value">${formatINR(totalSpend)}</p>
+              <p style="font-size:10px;color:#5C6E5C;margin-top:4px">Shared + Personal</p>
             </div>
-            <div class="summary-card">
-              <p class="card-label">Total Shared Bills</p>
-              <p class="card-value">${formatINR(sharedSpend)}</p>
+            <div class="summary-card" style="border-color:#d1fae5;background-color:#f0fdf4">
+              <p class="card-label" style="color:#065f46">Shared Bills</p>
+              <p class="card-value" style="color:#065f46">${formatINR(sharedSpend)}</p>
+              <p style="font-size:10px;color:#6b7280;margin-top:4px">Counted in balance</p>
             </div>
-            <div class="summary-card">
-              <p class="card-label">Transactions</p>
-              <p class="card-value">${dataList.length}</p>
+            <div class="summary-card" style="border-color:#e5e7eb;background-color:#f9fafb">
+              <p class="card-label" style="color:#6b7280">Personal (Excluded)</p>
+              <p class="card-value" style="color:#374151">${formatINR(personalSpend)}</p>
+              <p style="font-size:10px;color:#9ca3af;margin-top:4px">Excluded from balance</p>
             </div>
-            <div class="summary-card">
-              <p class="card-label">Balance Status</p>
-              <p class="card-value">${statusText}</p>
+            <div class="summary-card" style="border-color:${myBalance >= 0 ? '#d1fae5' : '#fee2e2'};background-color:${myBalance >= 0 ? '#ecfdf5' : '#fff1f2'}">
+              <p class="card-label" style="color:${myBalance >= 0 ? '#065f46' : '#be123c'}">Your Balance</p>
+              <p class="card-value" style="color:${myBalance >= 0 ? '#059669' : '#e11d48'}">${statusText}</p>
+              <p style="font-size:10px;color:#9ca3af;margin-top:4px">Based on shared bills</p>
             </div>
           </div>
-          
+
           <div class="status-banner">
             <div class="status-dot"></div>
-            <span>${statusText} • Calculated from ${dataList.length} transaction records.</span>
+            <span><b>Balance note:</b> ${statusText} — based on shared bills only (${formatINR(sharedSpend)}). Personal expenses of ${formatINR(personalSpend)} are tracked for reference and are <b>excluded</b> from roommate settlements.</span>
           </div>
+
+          <h4 class="summary-title" style="margin-top:24px;margin-bottom:12px">Per-Member Payment Breakdown</h4>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:12px">
+            <thead>
+              <tr>
+                <th style="background:#1A3827;color:white;padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Member</th>
+                <th style="background:#1A3827;color:white;padding:10px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Total Paid</th>
+                <th style="background:#1A3827;color:white;padding:10px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Shared Paid</th>
+                <th style="background:#1A3827;color:white;padding:10px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Personal Paid</th>
+                <th style="background:#1A3827;color:white;padding:10px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Net Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${members.map(m => {
+                const mTotalPaid = dataList.filter(t => t.paidByUid === m.uid || (!t.paidByUid && t.paidBy === m.nickname)).reduce((s,t)=>s+(Number(t.amount)||0),0);
+                const mSharedPaid = dataList.filter(t => t.isShared && (t.paidByUid === m.uid || (!t.paidByUid && t.paidBy === m.nickname))).reduce((s,t)=>s+(Number(t.amount)||0),0);
+                const mPersonalPaid = mTotalPaid - mSharedPaid;
+                const mBal = computedStats.balances?.[m.uid] || 0;
+                const balColor = mBal >= 0 ? '#059669' : '#e11d48';
+                const balText = mBal > 0 ? `+${formatINR(mBal)} (owed)` : mBal < 0 ? `${formatINR(Math.abs(mBal))} (owes)` : 'Settled';
+                return `<tr>
+                  <td style="padding:10px 14px;border-bottom:1px solid #E3E8E3;font-weight:700">${m.nickname}</td>
+                  <td style="padding:10px 14px;border-bottom:1px solid #E3E8E3;text-align:right">${formatINR(mTotalPaid)}</td>
+                  <td style="padding:10px 14px;border-bottom:1px solid #E3E8E3;text-align:right;color:#065f46">${formatINR(mSharedPaid)}</td>
+                  <td style="padding:10px 14px;border-bottom:1px solid #E3E8E3;text-align:right;color:#6b7280">${formatINR(mPersonalPaid)}</td>
+                  <td style="padding:10px 14px;border-bottom:1px solid #E3E8E3;text-align:right;font-weight:700;color:${balColor}">${balText}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
           
           <h4 class="summary-title" style="margin-bottom: 16px;">Ledger Details</h4>
           <table>
@@ -2012,7 +2055,7 @@ export default function App() {
           </table>
           
           <div class="footer">
-            YouthFirst Tallyin roommate expense statement. Generated securely by YouthFirst Tallyin.
+            Tallyin roommate expense statement. Generated securely by Tallyin.
           </div>
           
           <script>
@@ -4152,6 +4195,60 @@ export default function App() {
           </div>
         </div>
 
+        {/* Spending Breakdown Explainer — clarity card */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm transition-colors duration-300">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-base">💡</span>
+            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight">How your spending is calculated</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Total Spent */}
+            <div className="bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl p-4 border border-[#E3E8E3] dark:border-slate-800">
+              <p className="text-[9px] font-extrabold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest mb-1">Total Spent</p>
+              <p className="text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(computedStats.totalSpend)}</p>
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-1.5 leading-relaxed">All transactions in this room — shared bills <em>and</em> personal expenses combined.</p>
+            </div>
+            {/* Shared Bills */}
+            <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/30">
+              <p className="text-[9px] font-extrabold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-1">Shared Bills</p>
+              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400">{formatINR(computedStats.sharedSpend)}</p>
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-1.5 leading-relaxed">Expenses split among roommates. These <strong>are counted</strong> in the balance &amp; settlement calculation.</p>
+            </div>
+            {/* Personal */}
+            <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-4 border border-slate-200 dark:border-slate-800">
+              <p className="text-[9px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Personal (Excluded)</p>
+              <p className="text-2xl font-black text-slate-600 dark:text-slate-300">{formatINR(computedStats.personalSpend)}</p>
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-1.5 leading-relaxed">Your personal expenses logged for tracking only. These are <strong>excluded</strong> from any roommate balance or settlement.</p>
+            </div>
+          </div>
+          {/* Per-member paid row */}
+          {members.length > 0 && (
+            <div className="mt-4 border-t border-[#F6F8F6] dark:border-slate-800 pt-4">
+              <p className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest mb-3">Who Paid What (shared bills only)</p>
+              <div className="flex flex-wrap gap-3">
+                {members.map(m => {
+                  const memberSharedPaid = transactions
+                    .filter(t => t.isShared && (t.paidByUid === m.uid || (!t.paidByUid && t.paidBy === m.nickname)))
+                    .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+                  const bal = computedStats.balances?.[m.uid] || 0;
+                  return (
+                    <div key={m.uid} className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0 ${
+                        auth.currentUser && m.uid === auth.currentUser.uid ? 'bg-[#1A3827]' : 'bg-pink-400'
+                      }`}>{m.nickname?.charAt(0).toUpperCase()}</div>
+                      <div>
+                        <p className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200">{m.nickname}</p>
+                        <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Paid {formatINR(memberSharedPaid)} • <span className={bal >= 0 ? 'text-emerald-600' : 'text-rose-500'}>{bal >= 0 ? `owed ${formatINR(bal)}` : `owes ${formatINR(Math.abs(bal))}`}</span></p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[9px] text-[#5C6E5C] dark:text-slate-500 mt-2">ℹ Personal expenses are fully excluded from balance calculations above.</p>
+            </div>
+          )}
+        </div>
+
         {/* Charts area - 2 columns */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
 
@@ -4341,7 +4438,7 @@ export default function App() {
                   className={`bg-white text-slate-800 p-3 sm:p-4 border border-slate-200/50 shadow-sm mx-auto w-full aspect-[4/5] flex flex-col justify-between transform transition-all duration-300 hover:rotate-0 hover:scale-102 ${r.rotation}`}
                 >
                   <div className="text-center font-mono">
-                    <p className="text-[8px] sm:text-[10px] font-black text-slate-500 tracking-wider">DUO ROOM REC</p>
+                    <p className="text-[8px] sm:text-[10px] font-black text-slate-500 tracking-wider">TALLYIN REC</p>
                     <p className="text-[10px] sm:text-xs font-black tracking-tight mt-2 uppercase truncate">{r.title}</p>
                     
                     <div className="border-t border-dashed border-slate-300 my-1.5"></div>
