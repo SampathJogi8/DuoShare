@@ -154,13 +154,14 @@ export default function App() {
   
   // Nicknames & Roommates Dynamic State
   const [userNickname, setUserNickname] = useState(() => localStorage.getItem('userNickname') || 'You');
-  const [roommateName, setRoommateName] = useState(() => localStorage.getItem('roommateName') || 'Roommate');
+  const [roomName, setRoomName] = useState(() => localStorage.getItem('roomName') || 'Duo Room');
   const [roommateOnline, setRoommateOnline] = useState(true);
   
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState(() => localStorage.getItem('userNickname') || 'You');
-  const [isEditingRoommate, setIsEditingRoommate] = useState(false);
-  const [roommateInput, setRoommateInput] = useState(() => localStorage.getItem('roommateName') || 'Roommate');
+  const [isEditingRoomName, setIsEditingRoomName] = useState(false);
+  const [roomNameInput, setRoomNameInput] = useState('');
+  const [settingsRoomNameInput, setSettingsRoomNameInput] = useState(() => localStorage.getItem('roomName') || 'Duo Room');
   const [nicknamePromptAction, setNicknamePromptAction] = useState(null); // null | 'create' | 'join'
 
   // Notification Config States
@@ -443,14 +444,21 @@ export default function App() {
     try {
       const { data, error } = await supabase
         .from('rooms')
-        .select('monthly_budget')
+        .select('monthly_budget, name')
         .eq('id', roomId)
         .maybeSingle();
 
       if (error) throw error;
-      if (data && data.monthly_budget) {
-        setMonthlyBudget(Number(data.monthly_budget));
-        localStorage.setItem('monthlyBudget', data.monthly_budget);
+      if (data) {
+        if (data.monthly_budget) {
+          setMonthlyBudget(Number(data.monthly_budget));
+          localStorage.setItem('monthlyBudget', data.monthly_budget);
+        }
+        if (data.name) {
+          setRoomName(data.name);
+          setSettingsRoomNameInput(data.name);
+          localStorage.setItem('roomName', data.name);
+        }
       }
     } catch (err) {
       console.warn("Room settings fetch error:", err);
@@ -709,7 +717,8 @@ export default function App() {
           id: uniqueCode,
           created_by: user ? user.id : 'anonymous',
           created_at: new Date().toISOString(),
-          monthly_budget: monthlyBudget
+          monthly_budget: monthlyBudget,
+          name: roomNameInput.trim() || 'Duo Room'
         });
 
       if (roomError) throw roomError;
@@ -718,6 +727,11 @@ export default function App() {
       await addMemberToRoom(uniqueCode, userNickname);
       
       // 2. Set active room locally
+      const finalRoomName = roomNameInput.trim() || 'Duo Room';
+      setRoomName(finalRoomName);
+      setSettingsRoomNameInput(finalRoomName);
+      localStorage.setItem('roomName', finalRoomName);
+      
       setUserRoomId(uniqueCode);
       localStorage.setItem('userRoomId', uniqueCode);
       setHasConfirmedRoom(true);
@@ -1957,11 +1971,24 @@ export default function App() {
 
             {/* Create Room Option */}
             <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-5 hover:border-[#1A3827]/20 dark:hover:border-slate-700 hover:bg-[#F6F8F6]/20 dark:hover:bg-slate-800/10 transition-all flex flex-col justify-between space-y-4 text-left">
-              <div className="space-y-1">
-                <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Create new room</h3>
-                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                  {userRoomId ? "Generate a fresh room code and discard/switch from your current room." : "Generate a new unique room code and invite your roommate."}
-                </p>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Create new room</h3>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                    {userRoomId ? "Generate a fresh room code and discard/switch from your current room." : "Generate a new unique room code and invite your roommate."}
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Room name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Cozy Flat, Room 402…"
+                    value={roomNameInput}
+                    onChange={(e) => setRoomNameInput(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                  />
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Give your shared space a name.</p>
+                </div>
               </div>
               <button
                 onClick={() => {
@@ -2224,7 +2251,7 @@ export default function App() {
                 <HouseIcon className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
               </div>
               <div>
-                <h2 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 leading-tight">{userNickname.split(' ')[0]} & {roommateName}'s Room</h2>
+                <h2 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 leading-tight">{roomName}</h2>
                 <div className="flex items-center gap-1">
                   <span className={`w-1.5 h-1.5 rounded-full ${isDbSynced ? 'bg-[#A3E635]' : 'bg-amber-500 animate-pulse'}`}></span>
                   <span className="text-[8px] sm:text-[9px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">
@@ -3600,39 +3627,53 @@ export default function App() {
               </div>
             </div>
 
-            {/* Roommate Nickname */}
+            {/* Room Name */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2 border-t border-[#F6F8F6] dark:border-slate-800">
               <div className="flex-1 w-full">
-                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Roommate's nickname</p>
-                {isEditingRoommate ? (
+                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Room name</p>
+                {isEditingRoomName ? (
                   <input 
                     type="text"
-                    value={roommateInput}
-                    onChange={(e) => setRoommateInput(e.target.value)}
+                    value={settingsRoomNameInput}
+                    onChange={(e) => setSettingsRoomNameInput(e.target.value)}
                     className="mt-1 px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-xs focus:outline-none text-[#1A3827] dark:text-white font-semibold w-full max-w-xs bg-white dark:bg-slate-900"
                   />
                 ) : (
-                  <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">{roommateName}</p>
+                  <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">{roomName}</p>
                 )}
               </div>
               <div className="w-full sm:w-auto text-left sm:text-right">
-                {isEditingRoommate ? (
+                {isEditingRoomName ? (
                   <div className="flex gap-2 justify-start sm:justify-end">
                     <button 
                       onClick={() => {
-                        setIsEditingRoommate(false);
-                        setRoommateInput(roommateName);
+                        setIsEditingRoomName(false);
+                        setSettingsRoomNameInput(roomName);
                       }}
                       className="px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-xs font-bold hover:bg-[#F6F8F6] dark:hover:bg-slate-800"
                     >
                       Cancel
                     </button>
                     <button 
-                      onClick={() => {
-                        setRoommateName(roommateInput);
-                        localStorage.setItem('roommateName', roommateInput);
-                        setIsEditingRoommate(false);
-                        triggerToast('Roommate name updated!');
+                      onClick={async () => {
+                        const newRoomName = settingsRoomNameInput.trim() || 'Duo Room';
+                        setRoomName(newRoomName);
+                        localStorage.setItem('roomName', newRoomName);
+                        setIsEditingRoomName(false);
+                        if (userRoomId) {
+                          try {
+                            const { error: updateError } = await supabase
+                              .from('rooms')
+                              .update({ name: newRoomName })
+                              .eq('id', userRoomId);
+                            if (updateError) throw updateError;
+                            triggerToast('Room name updated!');
+                          } catch (e) {
+                            triggerToast('Saved locally. Failed to sync to cloud.');
+                          }
+                        } else {
+                          triggerToast('Room name updated!');
+                        }
                       }}
                       className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-900 rounded-lg text-xs font-bold hover:bg-[#255038] dark:hover:bg-slate-200"
                     >
@@ -3641,7 +3682,7 @@ export default function App() {
                   </div>
                 ) : (
                   <button 
-                    onClick={() => setIsEditingRoommate(true)}
+                    onClick={() => setIsEditingRoomName(true)}
                     className="px-4 py-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-xs rounded-xl transition-all w-full sm:w-auto"
                   >
                     Rename
