@@ -46,27 +46,42 @@ import {
   Mail
 } from 'lucide-react';
 
-// Firebase imports
-import { auth, googleProvider, db } from './firebase';
-import { 
-  signInWithPopup, 
-  signInWithRedirect,
-  getRedirectResult,
-  signOut, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  collection, 
-  addDoc, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  limit,
-  doc,
-  getDoc,
-  setDoc
-} from 'firebase/firestore';
+import { supabase } from './supabase';
 
+// ── QR Scanner Component (wraps html5-qrcode) ───────────────────────────────
+function QrScannerMount({ onScan, onError, scannerRef }) {
+  const mountId = 'qr-scanner-viewport';
+  useEffect(() => {
+    const scanner = new Html5Qrcode(mountId);
+    scannerRef.current = scanner;
+    scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 220, height: 220 } },
+      (decodedText) => { onScan(decodedText); },
+      (errorMsg) => { if (onError) onError(errorMsg); }
+    ).catch((err) => {
+      console.error('QR scanner start error:', err);
+      if (onError) onError(err);
+    });
+    return () => {
+      scanner.stop().catch(() => {});
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="relative w-64 h-64 mx-auto rounded-2xl border-2 border-[#1A3827] dark:border-[#A3E635] overflow-hidden bg-slate-950">
+      <div id={mountId} className="absolute inset-0 w-full h-full" />
+      {/* Corner brackets */}
+      <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-[#A3E635] z-10 pointer-events-none" />
+      <div className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-[#A3E635] z-10 pointer-events-none" />
+      <div className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-[#A3E635] z-10 pointer-events-none" />
+      <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-[#A3E635] z-10 pointer-events-none" />
+      {/* Scan line */}
+      <div className="absolute left-0 right-0 h-0.5 bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-scan z-10 pointer-events-none" />
+    </div>
+  );
+}
 
 
 export default function App() {
@@ -75,10 +90,40 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
+  const auth = {
+    get currentUser() {
+      return user ? {
+        id: user.id,
+        uid: user.id,
+        photoURL: user.user_metadata?.avatar_url || '',
+        displayName: user.user_metadata?.full_name || user.user_metadata?.name || 'You'
+      } : null;
+    }
+  };
+
+  // Room members & settings
+  const [members, setMembers] = useState([]);
+  const [monthlyBudget, setMonthlyBudget] = useState(() => Number(localStorage.getItem('monthlyBudget')) || 22000);
+
+  // Add Expense Split States
+  const [formPaidBy, setFormPaidBy] = useState('');
+  const [splitType, setSplitType] = useState('equal');
+  const [selectedSplitMembers, setSelectedSplitMembers] = useState({});
+  const [customSplitValues, setCustomSplitValues] = useState({});
+
+  // Settle Up Modal States
+  const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
+  const [settlePayer, setSettlePayer] = useState('');
+  const [settleReceiver, setSettleReceiver] = useState('');
+  const [settleAmount, setSettleAmount] = useState('');
+
   // Onboarding Setup View state
   const [userRoomId, setUserRoomId] = useState(() => localStorage.getItem('userRoomId') || null); 
   const [joinInput, setJoinInput] = useState('');
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+  const [inviteTab, setInviteTab] = useState('code'); // 'code' | 'qr' | 'link'
+  const [deepLinkRoomCode, setDeepLinkRoomCode] = useState(null); // set when ?join= param detected
+  const qrScannerRef = useRef(null);
 
   // Responsive drawer menu
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -87,6 +132,8 @@ export default function App() {
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isManageRoomOpen, setIsManageRoomOpen] = useState(false);
+  const [isSettleModalOpen2, setIsSettleModalOpen2] = useState(false);
 
   // Navigation State
   const [currentView, setCurrentView] = useState('home');
@@ -114,6 +161,7 @@ export default function App() {
   const [nicknameInput, setNicknameInput] = useState(() => localStorage.getItem('userNickname') || 'You');
   const [isEditingRoommate, setIsEditingRoommate] = useState(false);
   const [roommateInput, setRoommateInput] = useState(() => localStorage.getItem('roommateName') || 'Roommate');
+  const [nicknamePromptAction, setNicknamePromptAction] = useState(null); // null | 'create' | 'join'
 
   // Notification Config States
   const [notificationMethod, setNotificationMethod] = useState(() => localStorage.getItem('notificationMethod') || 'none');
@@ -131,6 +179,12 @@ export default function App() {
 
   // Toast / notification
   const [toastMessage, setToastMessage] = useState(null);
+  const triggerToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(prev => prev === msg ? null : prev);
+    }, 3000);
+  };
 
   // New Transaction Form State
   const [formFor, setFormFor] = useState('');
@@ -144,52 +198,104 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
 
-  // Handle Google Auth state changes
-  useEffect(() => {
-    // Check redirect login results on page load
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result) {
-          triggerToast('Signed in successfully!');
-        }
-      })
-      .catch((err) => {
-        console.error("Redirect login error:", err);
-        setAuthError(`Redirect Login Error: ${err.code || err.message}`);
-        triggerToast(`Redirect Error: ${err.code || err.message}`);
-      });
+  // Helper to add member to room in Supabase
+  const addMemberToRoom = async (roomId, nickname, currentUserObj = null) => {
+    const activeUser = currentUserObj || user;
+    if (!activeUser) return;
+    try {
+      const avatarUrl = activeUser.user_metadata?.avatar_url || '';
+      const { error } = await supabase
+        .from('members')
+        .upsert({
+          room_id: roomId,
+          uid: activeUser.id,
+          nickname: nickname,
+          photo_url: avatarUrl,
+          joined_at: new Date().toISOString()
+        }, { onConflict: 'room_id,uid' });
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error('Failed to add member to room in Supabase:', err);
+    }
+  };
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+  const handleAuthUser = async (currentUser) => {
+    const cachedNickname = localStorage.getItem('userNickname');
+    const displayName = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name;
+    const finalNickname = cachedNickname && cachedNickname !== 'You' ? cachedNickname : (displayName || 'You');
+    setUserNickname(finalNickname);
+    setNicknameInput(finalNickname);
+    localStorage.setItem('userNickname', finalNickname);
+
+    // Load room ID from localStorage if available, otherwise fetch from Supabase
+    const localRoomId = localStorage.getItem('userRoomId');
+    if (localRoomId) {
+      setUserRoomId(localRoomId);
+      addMemberToRoom(localRoomId, finalNickname, currentUser);
+    } else {
+      try {
+        const { data: userProfile, error } = await supabase
+          .from('users')
+          .select('room_id')
+          .eq('uid', currentUser.id)
+          .maybeSingle();
+
+        if (!error && userProfile?.room_id) {
+          const rId = userProfile.room_id;
+          setUserRoomId(rId);
+          localStorage.setItem('userRoomId', rId);
+          addMemberToRoom(rId, finalNickname, currentUser);
+        }
+      } catch (e) {
+        console.error('Error fetching user room ID:', e);
+      }
+    }
+    setAuthLoading(false);
+  };
+
+  // Handle Supabase Auth state changes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const currentUser = session?.user || null;
       setUser(currentUser);
       if (currentUser) {
-        setUserNickname(currentUser.displayName || 'You');
-        setNicknameInput(currentUser.displayName || 'You');
-        
-        // Load room ID from localStorage if available, otherwise fetch from Firestore
-        const localRoomId = localStorage.getItem('userRoomId');
-        if (localRoomId) {
-          setUserRoomId(localRoomId);
-        } else {
-          try {
-            const userDocRef = doc(db, 'users', currentUser.uid);
-            const userDocSnapshot = await getDoc(userDocRef);
-            if (userDocSnapshot.exists() && userDocSnapshot.data().roomId) {
-              const rId = userDocSnapshot.data().roomId;
-              setUserRoomId(rId);
-              localStorage.setItem('userRoomId', rId);
-            }
-          } catch (e) {
-            console.error('Error fetching user room ID:', e);
-          }
-        }
+        handleAuthUser(currentUser);
+      } else {
+        setAuthLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const currentUser = session?.user || null;
+      setUser(currentUser);
+      if (currentUser) {
+        handleAuthUser(currentUser);
       } else {
         setUserRoomId(null);
         localStorage.removeItem('userRoomId');
         setHasConfirmedRoom(false);
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Deep-link invite handler: parse ?join=ROOM-CODE from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const joinCode = params.get('join');
+    if (joinCode && joinCode.trim()) {
+      const code = joinCode.trim().toUpperCase();
+      setJoinInput(code);
+      setDeepLinkRoomCode(code);
+      // Clean the URL so the param doesn't persist on refresh
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+    }
   }, []);
 
   // Auth Initialization Timeout Fallback
@@ -249,6 +355,36 @@ export default function App() {
     };
   }, [isQrScannerOpen]);
 
+  // Initialize and reset Add Expense Form when opened
+  useEffect(() => {
+    if (isAddExpenseOpen) {
+      // Set default paid by to current user's UID or the first member
+      const currentUid = auth.currentUser?.uid || 'anonymous';
+      if (members.some(m => m.uid === currentUid)) {
+        setFormPaidBy(currentUid);
+      } else if (members.length > 0) {
+        setFormPaidBy(members[0].uid);
+      } else {
+        setFormPaidBy(currentUid);
+      }
+      
+      // Initialize selectedSplitMembers to all true
+      const initialSplits = {};
+      members.forEach(m => {
+        initialSplits[m.uid] = true;
+      });
+      setSelectedSplitMembers(initialSplits);
+      
+      // Reset other form fields
+      setFormFor('');
+      setFormAmount('');
+      setFormCategory('Food');
+      setFormDate(new Date().toISOString().split('T')[0]);
+      setSplitType('equal');
+      setCustomSplitValues({});
+    }
+  }, [isAddExpenseOpen, members]);
+
   // Sync with dark mode class on document element and body
   useEffect(() => {
     if (isDarkMode) {
@@ -262,78 +398,247 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Firebase Real-time Firestore Sync (runs when user and roomId are active)
+  const fetchTransactions = async (roomId) => {
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+      setTransactions(data || []);
+      setIsDbSynced(true);
+    } catch (err) {
+      console.error("Error fetching transactions:", err);
+      setIsDbSynced(false);
+    }
+  };
+
+  const fetchReceipts = async (roomId) => {
+    try {
+      const { data, error } = await supabase
+        .from('receipts')
+        .select('*')
+        .eq('room_id', roomId);
+
+      if (error) throw error;
+      const mappedReceipts = (data || []).map(r => ({
+        id: r.id,
+        title: r.title,
+        amount: r.amount,
+        category: r.category,
+        date: r.date,
+        bgClass: r.bg_class,
+        rotation: r.rotation
+      }));
+      setReceipts(mappedReceipts);
+    } catch (err) {
+      console.error("Error fetching receipts:", err);
+    }
+  };
+
+  const fetchRoomSettings = async (roomId) => {
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('monthly_budget')
+        .eq('id', roomId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data && data.monthly_budget) {
+        setMonthlyBudget(Number(data.monthly_budget));
+        localStorage.setItem('monthlyBudget', data.monthly_budget);
+      }
+    } catch (err) {
+      console.warn("Room settings fetch error:", err);
+    }
+  };
+
+  const fetchMembers = async (roomId) => {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .eq('room_id', roomId);
+
+      if (error) throw error;
+      
+      const mappedMembers = (data || []).map(m => ({
+        uid: m.uid,
+        nickname: m.nickname,
+        photoURL: m.photo_url || '',
+        joinedAt: m.joined_at
+      }));
+      
+      // Check if we are still a member of the room
+      if (user && mappedMembers.length > 0 && !mappedMembers.some(m => m.uid === user.id)) {
+        setUserRoomId(null);
+        localStorage.removeItem('userRoomId');
+        setHasConfirmedRoom(false);
+        triggerToast("You have been removed from this room.");
+        return;
+      }
+
+      setMembers(mappedMembers);
+    } catch (err) {
+      console.warn("Members fetch error:", err);
+    }
+  };
+
+  // Supabase Real-time Sync
   useEffect(() => {
     if (!user || !userRoomId) return;
 
-      // Sync Transactions dynamically based on userRoomId
-      const txQuery = query(collection(db, `rooms/${userRoomId}/transactions`), orderBy('date', 'desc'));
-      const unsubscribeTx = onSnapshot(txQuery, (snapshot) => {
-        // Monitor connection health
-        setIsDbSynced(!snapshot.metadata.fromCache);
-  
-        const txData = [];
-        snapshot.forEach((doc) => {
-          txData.push({ id: doc.id, ...doc.data() });
-        });
-  
-        setTransactions(txData);
-      }, (error) => {
-        console.error(error);
-        setIsDbSynced(false);
-        triggerToast("Offline Cache active. Syncing locally.");
-        setTransactions([]);
-      });
+    fetchTransactions(userRoomId);
+    fetchReceipts(userRoomId);
+    fetchRoomSettings(userRoomId);
+    fetchMembers(userRoomId);
 
-      // Sync Receipts dynamically based on userRoomId
-      const receiptQuery = query(collection(db, `rooms/${userRoomId}/receipts`));
-      const unsubscribeReceipts = onSnapshot(receiptQuery, (snapshot) => {
-        const rData = [];
-        snapshot.forEach((doc) => {
-          rData.push({ id: doc.id, ...doc.data() });
-        });
-  
-        setReceipts(rData);
-      }, (error) => {
-        setReceipts([]);
-      });
+    const channel = supabase
+      .channel(`room:${userRoomId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'transactions', filter: `room_id=eq.${userRoomId}` },
+        () => { fetchTransactions(userRoomId); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'receipts', filter: `room_id=eq.${userRoomId}` },
+        () => { fetchReceipts(userRoomId); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'members', filter: `room_id=eq.${userRoomId}` },
+        () => { fetchMembers(userRoomId); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${userRoomId}` },
+        () => { fetchRoomSettings(userRoomId); }
+      )
+      .subscribe();
 
     return () => {
-      unsubscribeTx();
-      unsubscribeReceipts();
+      supabase.removeChannel(channel);
     };
   }, [user, userRoomId]);
 
   // Login handler
   const handleGoogleLogin = async () => {
     setAuthError(null);
+    setAuthLoading(true);
     try {
-      // Must be called synchronously within the click event loop to prevent browser popup blocking
-      await signInWithPopup(auth, googleProvider);
-      triggerToast('Signed in successfully!');
-    } catch (err) {
-      console.warn("Popup sign-in failed/blocked:", err);
-      if (err.code === 'auth/popup-blocked') {
-        setAuthLoading(true);
-        try {
-          await signInWithRedirect(auth, googleProvider);
-        } catch (redirectErr) {
-          console.error(redirectErr);
-          setAuthError(`Auth Error: ${redirectErr.code || redirectErr.message}`);
-          triggerToast(`Authentication failed: ${redirectErr.code || redirectErr.message}`);
-          setAuthLoading(false);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
         }
-      } else if (err.code !== 'auth/popup-closed-by-user') {
-        setAuthError(`Auth Error: ${err.code || err.message}`);
-        triggerToast(`Authentication failed: ${err.code || err.message}`);
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error("Supabase login error:", err);
+      setAuthError(`Auth Error: ${err.message}`);
+      triggerToast(`Authentication failed: ${err.message}. (Please verify Supabase URL & Anon Key config)`);
+      setAuthLoading(false);
+    }
+  };
+
+  // Delete Room handler
+  const handleDeleteRoom = async () => {
+    if (!userRoomId) return;
+    const confirmed = window.confirm(`Delete room ${userRoomId} permanently? All transactions and data will be lost. This cannot be undone.`);
+    if (!confirmed) return;
+    try {
+      // Delete room from rooms table (will cascade delete members, transactions, receipts)
+      const { error: deleteError } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('id', userRoomId);
+
+      if (deleteError) throw deleteError;
+
+      // Clear local state first
+      setUserRoomId(null);
+      setHasConfirmedRoom(false);
+      setTransactions([]);
+      setReceipts([]);
+      setMembers([]);
+      localStorage.removeItem('userRoomId');
+      
+      // Reset user room binding
+      if (user) {
+        try {
+          await supabase
+            .from('users')
+            .upsert({
+              uid: user.id,
+              room_id: null,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'uid' });
+        } catch(e) { console.error(e); }
       }
+      triggerToast('Room deleted. Redirected to onboarding.');
+    } catch (err) {
+      console.error('Delete room error:', err);
+      triggerToast('Failed to fully delete room data from server, cleared locally.');
+      setUserRoomId(null);
+      setHasConfirmedRoom(false);
+      setTransactions([]);
+      setReceipts([]);
+      setMembers([]);
+      localStorage.removeItem('userRoomId');
+    }
+  };
+
+  // Remove member from room
+  const handleRemoveMember = async (memberUid) => {
+    if (!userRoomId) return;
+    const member = members.find(m => m.uid === memberUid);
+    if (!member) return;
+    const confirmed = window.confirm(`Remove ${member.nickname} from this room?`);
+    if (!confirmed) return;
+    try {
+      const { error: deleteError } = await supabase
+        .from('members')
+        .delete()
+        .eq('room_id', userRoomId)
+        .eq('uid', memberUid);
+
+      if (deleteError) throw deleteError;
+
+      // If the removed member is the current user, clear their active room
+      if (user && memberUid === user.id) {
+        setUserRoomId(null);
+        setHasConfirmedRoom(false);
+        setTransactions([]);
+        setReceipts([]);
+        setMembers([]);
+        localStorage.removeItem('userRoomId');
+        try {
+          await supabase
+            .from('users')
+            .upsert({
+              uid: user.id,
+              room_id: null,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'uid' });
+        } catch(e) { console.error(e); }
+      }
+
+      triggerToast(`Removed ${member.nickname} from room.`);
+    } catch (err) {
+      console.error('Remove member error:', err);
+      triggerToast('Failed to remove member.');
     }
   };
 
   // Sign out handler
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
       setTransactions([]);
       setReceipts([]);
       setUserRoomId(null);
@@ -342,6 +647,7 @@ export default function App() {
       triggerToast('Signed out successfully.');
     } catch (err) {
       console.error(err);
+      triggerToast(`Sign out failed: ${err.message}`);
     }
   };
 
@@ -356,8 +662,13 @@ export default function App() {
     return `DUO-${letters}-${digits}`;
   };
 
-  // Create Room handler with Firestore uniqueness check
+  // Create Room handler with Supabase uniqueness check
   const handleCreateRoom = async () => {
+    if (userNickname === 'You' || !userNickname.trim()) {
+      triggerToast('Please set your nickname first.');
+      return;
+    }
+
     let uniqueCode = '';
     let exists = true;
     let attempts = 0;
@@ -368,14 +679,19 @@ export default function App() {
       attempts++;
       
       try {
-        const roomDocRef = doc(db, 'rooms', uniqueCode);
-        const roomSnapshot = await getDoc(roomDocRef);
-        if (!roomSnapshot.exists()) {
+        const { data: room, error } = await supabase
+          .from('rooms')
+          .select('id')
+          .eq('id', uniqueCode)
+          .maybeSingle();
+        
+        if (error) throw error;
+        if (!room) {
           exists = false;
         }
       } catch (err) {
         console.warn("Uniqueness check query error:", err);
-        exists = false; // Fall back to proceed on offline/network errors
+        exists = false; 
       }
     }
 
@@ -385,96 +701,206 @@ export default function App() {
     
     try {
       // 1. Create a metadata document for the room to claim it
-      const roomDocRef = doc(db, 'rooms', uniqueCode);
-      await setDoc(roomDocRef, {
-        createdBy: auth.currentUser ? auth.currentUser.uid : 'anonymous',
-        createdAt: new Date().toISOString(),
-        roomCode: uniqueCode
-      });
+      const { error: roomError } = await supabase
+        .from('rooms')
+        .insert({
+          id: uniqueCode,
+          created_by: user ? user.id : 'anonymous',
+          created_at: new Date().toISOString(),
+          monthly_budget: monthlyBudget
+        });
+
+      if (roomError) throw roomError;
+      
+      // Register as member
+      await addMemberToRoom(uniqueCode, userNickname);
       
       // 2. Set active room locally
       setUserRoomId(uniqueCode);
       localStorage.setItem('userRoomId', uniqueCode);
       setHasConfirmedRoom(true);
       triggerToast(`Room ${uniqueCode} created!`);
+      setIsInviteModalOpen(true); // Auto-open invite modal to show room details
       
-      // 3. Write to Firestore users profile to bind user session
-      if (auth.currentUser) {
-        await setDoc(doc(db, 'users', auth.currentUser.uid), { roomId: uniqueCode }, { merge: true });
+      // 3. Write to users profile to bind user session
+      if (user) {
+        const { error: userError } = await supabase
+          .from('users')
+          .upsert({
+            uid: user.id,
+            room_id: uniqueCode,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'uid' });
+        
+        if (userError) throw userError;
       }
     } catch (err) {
-      console.error('Failed to save room creation to Firestore:', err);
-      // Local fallback to keep it working in offline environments
-      setUserRoomId(uniqueCode);
-      localStorage.setItem('userRoomId', uniqueCode);
-      setHasConfirmedRoom(true);
-      triggerToast(`Room ${uniqueCode} initialized locally (Offline Mode).`);
+      console.error('Failed to save room creation to Supabase:', err);
+      triggerToast(`Failed to create room: ${err.message || 'Supabase error'}. (Please check your connection and database status)`);
     }
   };
 
   // Join Room handler
   const handleJoinRoom = async () => {
+    if (userNickname === 'You' || !userNickname.trim()) {
+      triggerToast('Please set your nickname first.');
+      return;
+    }
     if (!joinInput || joinInput.trim() === '') {
       triggerToast('Please enter a valid room ID.');
       return;
     }
     const cleanId = joinInput.trim();
-    setUserRoomId(cleanId);
-    localStorage.setItem('userRoomId', cleanId);
-    setHasConfirmedRoom(true);
-    triggerToast(`Joined room: ${cleanId}`);
     
-    // Write to Firestore users profile
-    if (auth.currentUser) {
-      try {
-        await setDoc(doc(db, 'users', auth.currentUser.uid), { roomId: cleanId }, { merge: true });
-      } catch (err) {
-        console.error('Failed to save room joining to Firestore:', err);
+    try {
+      // Verify room exists in Supabase
+      const { data: room, error: roomError } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', cleanId)
+        .maybeSingle();
+
+      if (roomError) throw roomError;
+      
+      if (!room) {
+        triggerToast(`Room ${cleanId} does not exist. Please check the code.`);
+        return;
       }
+
+      // Add user to the members of this room
+      await addMemberToRoom(cleanId, userNickname);
+
+      setUserRoomId(cleanId);
+      localStorage.setItem('userRoomId', cleanId);
+      setHasConfirmedRoom(true);
+      triggerToast(`Joined room: ${cleanId}`);
+      
+      // Write to users profile
+      if (user) {
+        const { error: userError } = await supabase
+          .from('users')
+          .upsert({
+            uid: user.id,
+            room_id: cleanId,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'uid' });
+        
+        if (userError) throw userError;
+      }
+    } catch (err) {
+      console.error('Failed to save room joining to Supabase:', err);
+      triggerToast(`Failed to join room: ${err.message || 'Supabase error'}. (Please check your connection and database status)`);
     }
   };
 
   // Dynamically calculated values based on synced transactions state
   const computedStats = useMemo(() => {
-    let youPaidShared = 0;
-    let samPaidShared = 0;
-    let personalPaidAlex = 0;
-    let sharedTransactionsCount = 0;
-
     const data = transactions;
+    const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
+
+    // Calculate totals
+    let totalSpend = 0;
+    let personalSpend = 0;
+    let sharedSpend = 0;
+    
+    // Map of member uid to net balance: paid - share
+    const roomBalances = {};
+    
+    // Initialize balances for all current members
+    members.forEach(m => {
+      roomBalances[m.uid] = 0;
+    });
+    
+    // Default fallback if members list is empty
+    if (members.length === 0) {
+      roomBalances[currentUid] = 0;
+      roomBalances['roommate'] = 0;
+    }
 
     data.forEach(t => {
-      if (t.isShared) {
-        sharedTransactionsCount++;
-        const isSelf = t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || (user && t.paidBy === user.displayName) || (user && t.paidBy === user.email);
-        if (isSelf) {
-          youPaidShared += t.amount;
-        } else {
-          samPaidShared += t.amount;
-        }
+      const amount = Number(t.amount) || 0;
+      totalSpend += amount;
+
+      // Determine payer UID
+      let payerUid = t.paidByUid;
+      if (!payerUid) {
+        const isSelf = t.paidBy === userNickname;
+        payerUid = isSelf ? currentUid : 'roommate';
+      }
+
+      // Add paid amount to payer's balance
+      if (roomBalances[payerUid] !== undefined) {
+        roomBalances[payerUid] += amount;
       } else {
-        const isSelf = t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || (user && t.paidBy === user.displayName) || (user && t.paidBy === user.email);
-        if (isSelf) {
-          personalPaidAlex += t.amount;
+        roomBalances[payerUid] = amount;
+      }
+
+      // Subtract split shares from everyone
+      if (t.splits && Array.isArray(t.splits)) {
+        t.splits.forEach(split => {
+          let splitUid = split.uid;
+          if (!splitUid) {
+            const isSelf = split.nickname === userNickname || split.nickname === 'Alex';
+            splitUid = isSelf ? currentUid : 'roommate';
+          }
+          
+          if (roomBalances[splitUid] !== undefined) {
+            roomBalances[splitUid] -= Number(split.amount) || 0;
+          } else {
+            roomBalances[splitUid] = -(Number(split.amount) || 0);
+          }
+        });
+        sharedSpend += amount;
+      } else {
+        // Legacy splits fallback (50/50 shared vs 100% personal)
+        if (t.isShared) {
+          sharedSpend += amount;
+          const halfShare = amount / 2;
+          roomBalances[currentUid] -= halfShare;
+          const roommateUid = members.find(m => m.uid !== currentUid)?.uid || 'roommate';
+          if (roomBalances[roommateUid] !== undefined) {
+            roomBalances[roommateUid] -= halfShare;
+          } else {
+            roomBalances[roommateUid] = -halfShare;
+          }
+        } else {
+          personalSpend += amount;
+          roomBalances[payerUid] -= amount;
         }
       }
     });
 
-    const totalShared = youPaidShared + samPaidShared;
-    const alexShare = totalShared / 2;
-    const balanceOwedToAlex = youPaidShared - alexShare;
+    const currentUserBalance = roomBalances[currentUid] || 0;
 
     return {
-      youPaidShared,
-      samPaidShared,
-      totalShared,
-      personalPaidAlex,
-      juneSpend: totalShared + personalPaidAlex,
-      balance: balanceOwedToAlex,
-      sharedCount: sharedTransactionsCount,
-      totalCount: data.length
+      totalSpend,
+      sharedSpend,
+      personalSpend,
+      balances: roomBalances,
+      currentUserBalance,
+      totalCount: data.length,
+      juneSpend: totalSpend,
+      totalShared: sharedSpend,
+      personalPaidAlex: personalSpend
     };
-  }, [transactions, user]);
+  }, [transactions, members, userNickname]);
+
+  // Subtitle helper for ledger displays
+  const getTransactionSubtitle = (t) => {
+    const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
+    const payerName = t.paidByUid === currentUid ? 'You' : t.paidBy;
+    
+    let splitText = '';
+    if (t.splitType) {
+      if (t.splitType === 'equal') splitText = 'split equally';
+      else if (t.splitType === 'percentage') splitText = 'split by %';
+      else if (t.splitType === 'amount') splitText = 'split by amount';
+    } else {
+      splitText = t.isShared ? 'split equally' : 'personal';
+    }
+    
+    return `${payerName} paid • ${splitText}`;
+  };
 
   // Copy Room Code Helper
   const handleCopyCode = () => {
@@ -598,20 +1024,111 @@ export default function App() {
       return;
     }
 
+    // Calculate splits array
+    let splitsArray = [];
+    const checkedUids = Object.keys(selectedSplitMembers).filter(uid => selectedSplitMembers[uid]);
+    
+    if (checkedUids.length === 0) {
+      triggerToast('Please select at least one roommate to split with.');
+      return;
+    }
+    
+    if (splitType === 'equal') {
+      const shareAmount = amountNum / checkedUids.length;
+      splitsArray = checkedUids.map(uid => {
+        const mem = members.find(m => m.uid === uid) || { nickname: uid === (auth.currentUser?.uid || 'anonymous') ? userNickname : 'Unknown' };
+        return {
+          uid,
+          nickname: mem.nickname,
+          amount: shareAmount
+        };
+      });
+    } else if (splitType === 'percentage') {
+      let totalPct = 0;
+      checkedUids.forEach(uid => {
+        totalPct += parseFloat(customSplitValues[uid]) || 0;
+      });
+      
+      if (Math.abs(totalPct - 100) > 0.01) {
+        triggerToast(`Total split percentages must sum to 100%. Current total: ${totalPct}%`);
+        return;
+      }
+      
+      splitsArray = checkedUids.map(uid => {
+        const pct = parseFloat(customSplitValues[uid]) || 0;
+        const mem = members.find(m => m.uid === uid) || { nickname: uid === (auth.currentUser?.uid || 'anonymous') ? userNickname : 'Unknown' };
+        return {
+          uid,
+          nickname: mem.nickname,
+          amount: amountNum * (pct / 100)
+        };
+      });
+    } else if (splitType === 'amount') {
+      let totalAmt = 0;
+      checkedUids.forEach(uid => {
+        totalAmt += parseFloat(customSplitValues[uid]) || 0;
+      });
+      
+      if (Math.abs(totalAmt - amountNum) > 0.1) {
+        triggerToast(`Total split amounts must equal the expense amount (₹${amountNum}). Current total: ₹${totalAmt}`);
+        return;
+      }
+      
+      splitsArray = checkedUids.map(uid => {
+        const amt = parseFloat(customSplitValues[uid]) || 0;
+        const mem = members.find(m => m.uid === uid) || { nickname: uid === (auth.currentUser?.uid || 'anonymous') ? userNickname : 'Unknown' };
+        return {
+          uid,
+          nickname: mem.nickname,
+          amount: amt
+        };
+      });
+    }
+
     const currentRoom = userRoomId || 'DUO-7729-XM';
+    const payerMember = members.find(m => m.uid === formPaidBy) || { nickname: userNickname };
+    
+    // Determine split label text
+    let splitLabel = 'Shared';
+    if (splitsArray.length === 1 && splitsArray[0].uid === formPaidBy) {
+      splitLabel = 'Personal';
+    } else {
+      splitLabel = splitType === 'equal' ? 'Shared (Equal)' : `Shared (${splitType})`;
+    }
+
     const newPayload = {
       title: formFor,
       amount: amountNum,
       category: formCategory,
       date: formDate,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      paidBy: user ? user.displayName : 'Sampath Jogi Pusala',
-      isShared: formWho === 'Shared',
-      split: formWho === 'Shared' ? 'Shared (50/50)' : 'Personal'
+      paidBy: payerMember.nickname,
+      paidByUid: formPaidBy,
+      isShared: splitLabel !== 'Personal',
+      splitType,
+      split: splitLabel,
+      splits: splitsArray
     };
 
     try {
-      await addDoc(collection(db, `rooms/${currentRoom}/transactions`), newPayload);
+      const { error: txError } = await supabase
+        .from('transactions')
+        .insert({
+          room_id: currentRoom,
+          title: newPayload.title,
+          amount: newPayload.amount,
+          category: newPayload.category,
+          date: newPayload.date,
+          time: newPayload.time,
+          paid_by: newPayload.paidBy,
+          paid_by_uid: newPayload.paidByUid,
+          is_shared: newPayload.isShared,
+          split_type: newPayload.splitType,
+          split: newPayload.split,
+          splits: newPayload.splits
+        });
+
+      if (txError) throw txError;
 
       if (formWho === 'Shared') {
         const bgColors = [
@@ -624,14 +1141,19 @@ export default function App() {
         const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
         const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
         
-        await addDoc(collection(db, `rooms/${currentRoom}/receipts`), {
-          title: formFor,
-          amount: amountNum,
-          category: formCategory,
-          date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
-          bgClass: randomBg,
-          rotation: randomRot
-        });
+        const { error: receiptError } = await supabase
+          .from('receipts')
+          .insert({
+            room_id: currentRoom,
+            title: formFor,
+            amount: amountNum,
+            category: formCategory,
+            date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
+            bg_class: randomBg,
+            rotation: randomRot
+          });
+        
+        if (receiptError) throw receiptError;
       }
 
       // Send client-side email notifications if configured
@@ -645,9 +1167,9 @@ export default function App() {
       console.error(error);
       setTransactions([{ id: Date.now().toString(), ...newPayload }, ...transactions]);
       if (notificationMethod !== 'none' && recipientEmails) {
-        triggerToast(`Saved locally (Offline). 📧 Notification queued.`);
+        triggerToast(`Failed to save: ${error.message || 'database error'}. 📧 Notification queued.`);
       } else {
-        triggerToast(`Saved locally (Offline).`);
+        triggerToast(`Failed to save: ${error.message || 'database error'}.`);
       }
     }
 
@@ -704,42 +1226,136 @@ export default function App() {
 
     const currentRoom = userRoomId || 'DUO-7729-XM';
     try {
-      await addDoc(collection(db, `rooms/${currentRoom}/receipts`), newReceipt);
+      const { error: uploadError } = await supabase
+        .from('receipts')
+        .insert({
+          room_id: currentRoom,
+          title: newReceipt.title,
+          amount: newReceipt.amount,
+          category: newReceipt.category,
+          date: newReceipt.date,
+          bg_class: newReceipt.bgClass,
+          rotation: newReceipt.rotation
+        });
+
+      if (uploadError) throw uploadError;
       triggerToast(`Receipt uploaded! 📧 Notification sent to roommates.`);
     } catch (err) {
       console.error(err);
       setReceipts([newReceipt, ...receipts]);
-      triggerToast("Saved receipt details locally.");
+      triggerToast(`Failed to upload: ${err.message || 'database error'}`);
     }
   };
 
   // Settle Up handler
-  const handleSettleUp = async () => {
-    if (computedStats.balance <= 0) {
-      triggerToast('All settled up! No balance to settle.');
+  const handleSettleUp = () => {
+    if (members.length < 2) {
+      triggerToast('You need at least two roommates in the room to settle up.');
       return;
     }
     
-    const settlementAmount = Math.abs(computedStats.balance);
-    const newPayload = {
-      title: 'Settle Up - Room Balance Cleared',
-      amount: settlementAmount * 2, 
-      category: 'Rent',
-      date: '2026-06-21',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      paidBy: roommateName,
-      isShared: true,
-      split: 'Settle Up'
-    };
+    const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
+    const myBalance = computedStats.currentUserBalance;
+    
+    if (myBalance < 0) {
+      // Current user owes money.
+      setSettlePayer(currentUid);
+      // Find the member with the highest positive balance (is owed the most)
+      let bestReceiver = '';
+      let maxOwed = -Infinity;
+      members.forEach(m => {
+        if (m.uid !== currentUid) {
+          const bal = computedStats.balances[m.uid] || 0;
+          if (bal > maxOwed) {
+            maxOwed = bal;
+            bestReceiver = m.uid;
+          }
+        }
+      });
+      setSettleReceiver(bestReceiver || members.find(m => m.uid !== currentUid)?.uid || '');
+      setSettleAmount(Math.abs(myBalance).toFixed(2));
+    } else {
+      // Current user is owed money (or balance is 0).
+      // Find the member who owes the most (most negative balance)
+      let bestPayer = '';
+      let maxOwes = Infinity;
+      members.forEach(m => {
+        if (m.uid !== currentUid) {
+          const bal = computedStats.balances[m.uid] || 0;
+          if (bal < maxOwes) {
+            maxOwes = bal;
+            bestPayer = m.uid;
+          }
+        }
+      });
+      const payerUid = bestPayer || members.find(m => m.uid !== currentUid)?.uid || '';
+      setSettlePayer(payerUid);
+      setSettleReceiver(currentUid);
+      const payerBal = computedStats.balances[payerUid] || 0;
+      setSettleAmount(Math.abs(payerBal).toFixed(2));
+    }
+    
+    setIsSettleModalOpen(true);
+  };
+
+  // Record custom settle payment handler
+  const handleRecordPayment = async (e) => {
+    e.preventDefault();
+    const amountNum = parseFloat(settleAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      triggerToast('Please enter a valid amount.');
+      return;
+    }
+    if (settlePayer === settleReceiver) {
+      triggerToast('Payer and receiver cannot be the same roommate.');
+      return;
+    }
+
+    const payer = members.find(m => m.uid === settlePayer);
+    const receiver = members.find(m => m.uid === settleReceiver);
+    if (!payer || !receiver) return;
 
     const currentRoom = userRoomId || 'DUO-7729-XM';
+    const newPayload = {
+      title: `Payment: ${payer.nickname} to ${receiver.nickname}`,
+      amount: amountNum,
+      category: 'Payment',
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      paidBy: payer.nickname,
+      paidByUid: settlePayer,
+      isShared: true,
+      splitType: 'amount',
+      splits: [
+        { uid: settlePayer, nickname: payer.nickname, amount: 0 },
+        { uid: settleReceiver, nickname: receiver.nickname, amount: amountNum }
+      ]
+    };
+
     try {
-      await addDoc(collection(db, `rooms/${currentRoom}/transactions`), newPayload);
-      triggerToast(`Room Settle Up completed! 📱 SMS notifications dispatched.`);
-    } catch (error) {
-      console.error(error);
-      setTransactions([{ id: Date.now().toString(), ...newPayload }, ...transactions]);
-      triggerToast('Settled locally (Offline Mode).');
+      const { error: txError } = await supabase
+        .from('transactions')
+        .insert({
+          room_id: currentRoom,
+          title: newPayload.title,
+          amount: newPayload.amount,
+          category: newPayload.category,
+          date: newPayload.date,
+          time: newPayload.time,
+          paid_by: newPayload.paidBy,
+          paid_by_uid: newPayload.paidByUid,
+          is_shared: newPayload.isShared,
+          split_type: newPayload.splitType,
+          split: newPayload.split,
+          splits: newPayload.splits
+        });
+
+      if (txError) throw txError;
+      triggerToast(`Recorded payment of ${formatINR(amountNum)} from ${payer.nickname} to ${receiver.nickname}!`);
+      setIsSettleModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      triggerToast(`Failed to record payment: ${err.message}`);
     }
   };
 
@@ -769,14 +1385,25 @@ export default function App() {
     switch (category) {
       case 'Food':
       case 'Dining':
-      case 'Groceries':
         return <Coffee className="w-4 h-4 text-amber-600 dark:text-amber-400" />;
+      case 'Groceries':
+        return <ShoppingCart className="w-4 h-4 text-green-600 dark:text-green-400" />;
       case 'Utilities':
         return <Lightbulb className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
       case 'Rent':
         return <HouseIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
       case 'Shopping':
         return <ShoppingCart className="w-4 h-4 text-rose-600 dark:text-rose-400" />;
+      case 'Fuel':
+        return <span className="text-sm">⛽</span>;
+      case 'Entertainment':
+        return <span className="text-sm">🎬</span>;
+      case 'Medical':
+        return <span className="text-sm">🏥</span>;
+      case 'Transport':
+        return <span className="text-sm">🚌</span>;
+      case 'Payment':
+        return <span className="text-sm">💸</span>;
       default:
         return <CategoryIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />;
     }
@@ -792,36 +1419,35 @@ export default function App() {
     try {
       const dataList = transactions;
       if (dataList.length === 0) {
-        triggerToast("No transaction records to export.");
+        triggerToast('No transaction records to export.');
         return;
       }
-      
-      const csvHeaders = ["Date", "Time", "Description/Merchant", "Amount (INR)", "Category", "Paid By", "Split Type"];
-      const csvRows = [
-        csvHeaders.join(','),
-        ...dataList.map(t => [
-          `"${t.date}"`,
-          `"${t.time}"`,
-          `"${t.title.replace(/"/g, '""')}"`,
-          t.amount,
-          `"${t.category}"`,
-          `"${t.paidBy}"`,
-          `"${t.split}"`
-        ].join(','))
-      ];
-      
-      const csvContent = "data:text/csv;charset=utf-8," + csvRows.map(e => encodeURIComponent(e)).join("%0A");
-      const link = document.createElement("a");
-      link.setAttribute("href", csvContent);
-      link.setAttribute("download", `duo_room_ledger_export_${userRoomId || 'room'}.csv`);
+
+      const headers = ['Date', 'Time', 'Description', 'Amount (INR)', 'Category', 'Paid By', 'Split Type'];
+      const rows = dataList.map(t => [
+        `"${t.date || ''}"`  ,
+        `"${t.time || ''}"`,
+        `"${(t.title || '').replace(/"/g, '""')}"`,
+        t.amount,
+        `"${t.category || ''}"`,
+        `"${t.paidBy || ''}"`,
+        `"${t.split || (t.isShared ? 'Shared' : 'Personal')}"`
+      ].join(','));
+
+      const csvText = [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `duo_room_${userRoomId || 'export'}_${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      triggerToast("CSV file downloaded successfully!");
-    } catch (error) {
-      console.error(error);
-      triggerToast("Failed to export CSV. Please try again.");
+      URL.revokeObjectURL(url);
+      triggerToast('CSV downloaded successfully!');
+    } catch (err) {
+      console.error(err);
+      triggerToast('Failed to export CSV.');
     }
   };
 
@@ -830,10 +1456,13 @@ export default function App() {
     try {
       const dataList = transactions;
       if (dataList.length === 0) {
-        triggerToast("No transaction records to export.");
+        triggerToast('No transaction records to export.');
         return;
       }
-      
+
+      const totalSpend = dataList.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+      const memberNames = members.map(m => m.nickname).join(' & ') || userNickname;
+
       const excelTemplate = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
         <head>
@@ -864,10 +1493,10 @@ export default function App() {
         <body>
           <div class="header-info">
             <span class="header-title">Duo Room Financial Ledger Report</span><br/>
-            <b>Room Workspace:</b> ${userRoomId || 'DUO-7729-XM'}<br/>
+            <b>Room Workspace:</b> ${userRoomId || 'N/A'}<br/>
             <b>Exported on:</b> ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}<br/>
-            <b>Total Room Spend:</b> ${formatINR(computedStats.juneSpend)}<br/>
-            <b>Roommate Nicknames:</b> ${userNickname} & ${roommateName}
+            <b>Total Room Spend:</b> ${formatINR(totalSpend)}<br/>
+            <b>Members:</b> ${memberNames}
           </div>
           <table>
             <thead>
@@ -916,28 +1545,25 @@ export default function App() {
     }
   };
 
-  // PDF Export Handler (Print styled statement)
+  // PDF Export Handler — opens styled print page in new tab
   const exportToPDF = () => {
     try {
       const dataList = transactions;
       if (dataList.length === 0) {
-        triggerToast("No transaction records to export.");
+        triggerToast('No transaction records to export.');
         return;
       }
-      
-      const printWindow = window.open('', '_blank', 'width=900,height=800');
-      if (!printWindow) {
-        triggerToast("Pop-up blocked. Please allow popups for print statements.");
-        return;
-      }
-      
-      const balanceVal = computedStats.balance;
-      const statusText = balanceVal === 0 
-        ? "All settled up" 
-        : balanceVal > 0 
-          ? `You are owed ${formatINR(balanceVal)}` 
-          : `${roommateName} is owed ${formatINR(Math.abs(balanceVal))}`;
-      
+
+      const totalSpend = dataList.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+      const sharedSpend = dataList.filter(t => t.isShared).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+      const myBalance = computedStats.currentUserBalance;
+      const statusText = myBalance === 0
+        ? 'All settled up'
+        : myBalance > 0
+          ? `You are owed ${formatINR(myBalance)}`
+          : `You owe ${formatINR(Math.abs(myBalance))}`;
+      const memberNames = members.map(m => m.nickname).join(', ') || userNickname;
+
       const htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -990,9 +1616,9 @@ export default function App() {
             </div>
             <div class="doc-info">
               <b>Room Statement</b><br/>
-              <b>Workspace ID:</b> ${userRoomId || 'DUO-7729-XM'}<br/>
+              <b>Workspace ID:</b> ${userRoomId || 'N/A'}<br/>
               <b>Generated on:</b> ${new Date().toLocaleDateString()}<br/>
-              <b>Database connection:</b> Synced
+              <b>Members:</b> ${memberNames}
             </div>
           </div>
           
@@ -1000,19 +1626,19 @@ export default function App() {
           <div class="cards-grid">
             <div class="summary-card">
               <p class="card-label">Total Room Spend</p>
-              <p class="card-value">${formatINR(computedStats.juneSpend)}</p>
+              <p class="card-value">${formatINR(totalSpend)}</p>
             </div>
             <div class="summary-card">
               <p class="card-label">Total Shared Bills</p>
-              <p class="card-value">${formatINR(computedStats.totalShared)}</p>
+              <p class="card-value">${formatINR(sharedSpend)}</p>
             </div>
             <div class="summary-card">
-              <p class="card-label">You Paid (Shared)</p>
-              <p class="card-value">${formatINR(computedStats.youPaidShared)}</p>
+              <p class="card-label">Transactions</p>
+              <p class="card-value">${dataList.length}</p>
             </div>
             <div class="summary-card">
-              <p class="card-label">${roommateName} Paid (Shared)</p>
-              <p class="card-value">${formatINR(computedStats.samPaidShared)}</p>
+              <p class="card-label">Balance</p>
+              <p class="card-value">${statusText}</p>
             </div>
           </div>
           
@@ -1069,13 +1695,22 @@ export default function App() {
         </html>
       `;
       
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-      
-      triggerToast("PDF statement generation complete.");
+      // Use Blob + URL.createObjectURL to open in new tab (avoids popup blockers)
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      // Revoke after a short delay to allow the tab to load
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      triggerToast('PDF statement opened in a new tab. Use browser Print (Ctrl+P) to save as PDF.');
     } catch (error) {
       console.error(error);
-      triggerToast("Failed to compile print layout.");
+      triggerToast('Failed to generate PDF statement.');
     }
   };
 
@@ -1178,6 +1813,14 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/* Toast Alert */}
+        {toastMessage && (
+          <div className="fixed top-6 right-6 z-50 bg-[#1A3827] dark:bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 border border-[#BEF264]/20 animate-bounce text-xs font-semibold max-w-sm">
+            <Check className="w-4 h-4 text-[#A3E635] shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -1241,6 +1884,43 @@ export default function App() {
               </div>
             )}
 
+            {/* Nickname + Budget (always visible first) */}
+            <div className="col-span-1 md:col-span-2 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-5 space-y-4 text-left bg-[#F6F8F6]/50 dark:bg-slate-800/20">
+              <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Your Profile</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Your display name *</label>
+                  <input
+                    type="text"
+                    value={nicknameInput}
+                    onChange={(e) => {
+                      setNicknameInput(e.target.value);
+                      setUserNickname(e.target.value);
+                      localStorage.setItem('userNickname', e.target.value);
+                    }}
+                    placeholder="e.g. Sampath, Alex…"
+                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                  />
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">This is how you'll appear to roommates.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Monthly budget cap (₹)</label>
+                  <input
+                    type="number"
+                    min="1000"
+                    value={monthlyBudget}
+                    onChange={(e) => {
+                      setMonthlyBudget(Number(e.target.value));
+                      localStorage.setItem('monthlyBudget', e.target.value);
+                    }}
+                    placeholder="e.g. 25000"
+                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                  />
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Set a shared spending limit for your room.</p>
+                </div>
+              </div>
+            </div>
+
             {/* Create Room Option */}
             <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-5 hover:border-[#1A3827]/20 dark:hover:border-slate-700 hover:bg-[#F6F8F6]/20 dark:hover:bg-slate-800/10 transition-all flex flex-col justify-between space-y-4 text-left">
               <div className="space-y-1">
@@ -1249,8 +1929,14 @@ export default function App() {
                   {userRoomId ? "Generate a fresh room code and discard/switch from your current room." : "Generate a new unique room code and invite your roommate."}
                 </p>
               </div>
-              <button 
-                onClick={handleCreateRoom}
+              <button
+                onClick={() => {
+                  if (userNickname === 'You' || !userNickname.trim()) {
+                    setNicknamePromptAction('create');
+                  } else {
+                    handleCreateRoom();
+                  }
+                }}
                 className="w-full bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-955 hover:bg-[#255038] dark:hover:bg-slate-200 py-2.5 px-4 rounded-xl font-bold text-xs transition-all shadow-sm text-center"
               >
                 Create Room
@@ -1264,32 +1950,28 @@ export default function App() {
                   {userRoomId ? "Join different room" : "Join existing room"}
                 </h3>
                 <div className="space-y-1.5">
-                  <input 
-                    type="text" 
-                    placeholder="Enter ID (e.g. DUO-7729-XM)"
+                  <input
+                    type="text"
+                    placeholder="Enter room code (e.g. DUO-7729-XM)"
                     value={joinInput}
                     onChange={(e) => setJoinInput(e.target.value.toUpperCase())}
                     className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
                   />
                 </div>
               </div>
-              
-              <div className="space-y-2">
-                <button 
-                  onClick={handleJoinRoom}
-                  className="w-full bg-[#1A3827] dark:bg-slate-800 text-white hover:bg-[#255038] dark:hover:bg-slate-700 py-2 px-4 rounded-xl font-bold text-[11px] transition-all shadow-sm text-center"
-                >
-                  Join via Code
-                </button>
-                
-                <button 
-                  onClick={() => setIsQrScannerOpen(true)}
-                  className="w-full border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 py-2 px-4 rounded-xl font-bold text-[11px] text-[#5C6E5C] dark:text-slate-350 transition-all flex items-center justify-center gap-1.5"
-                >
-                  <QrCode className="w-3.5 h-3.5 text-[#1A3827] dark:text-[#A3E635]" />
-                  <span>Scan Room QR</span>
-                </button>
-              </div>
+
+              <button
+                onClick={() => {
+                  if (userNickname === 'You' || !userNickname.trim()) {
+                    setNicknamePromptAction('join');
+                  } else {
+                    handleJoinRoom();
+                  }
+                }}
+                className="w-full bg-[#1A3827] dark:bg-slate-800 text-white hover:bg-[#255038] dark:hover:bg-slate-700 py-2 px-4 rounded-xl font-bold text-[11px] transition-all shadow-sm text-center"
+              >
+                Join via Code
+              </button>
             </div>
           </div>
 
@@ -1306,6 +1988,15 @@ export default function App() {
 
         {/* QR Scanner Simulator Overlay */}
         {isQrScannerOpen && renderQrScanner()}
+        {nicknamePromptAction && renderNicknamePromptModal()}
+
+        {/* Toast Alert */}
+        {toastMessage && (
+          <div className="fixed top-6 right-6 z-50 bg-[#1A3827] dark:bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 border border-[#BEF264]/20 animate-bounce text-xs font-semibold max-w-sm">
+            <Check className="w-4 h-4 text-[#A3E635] shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -1440,35 +2131,44 @@ export default function App() {
           </nav>
         </div>
 
-        {/* Sidebar Roommate Profile */}
-        <div className="p-6 border-t border-[#E3E8E3] dark:border-slate-800">
-          <button 
-            onClick={() => { setCurrentView('settings'); setIsMobileMenuOpen(false); }}
-            className="w-full flex items-center gap-2 mb-4 px-2 py-1.5 rounded-lg text-xs text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200 transition-all"
-          >
-            <SettingsIcon className="w-3.5 h-3.5" />
-            <span>Room settings</span>
-          </button>
-          
-          <div className="bg-[#1A3827] dark:bg-slate-950 text-white p-4 rounded-2xl shadow-sm relative overflow-hidden border dark:border-slate-800">
-            <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-[#A3E635] opacity-20 blur-xl rounded-full"></div>
-            
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-pink-400 text-white flex items-center justify-center font-bold text-sm shadow-inner shrink-0">
-                {roommateName.charAt(0)}
-              </div>
-              <div className="min-w-0">
-                <h4 className="font-semibold text-sm truncate">{roommateName}</h4>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${roommateOnline ? 'bg-[#A3E635] animate-ping' : 'bg-gray-400'}`}></span>
-                  <span className={`w-1.5 h-1.5 rounded-full absolute ${roommateOnline ? 'bg-[#A3E635]' : 'bg-gray-400'}`}></span>
-                  <span className={`text-[10px] font-medium tracking-wide ${roommateOnline ? 'text-[#A3E635]' : 'text-gray-400'}`}>
-                    {roommateOnline ? 'Online now' : 'Away'}
-                  </span>
-                </div>
-              </div>
-            </div>
+        {/* Sidebar Room Members Panel */}
+        <div className="p-4 border-t border-[#E3E8E3] dark:border-slate-800">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Room Members</p>
+            <button
+              onClick={() => setIsManageRoomOpen(true)}
+              className="text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline"
+            >
+              Manage
+            </button>
           </div>
+          <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+            {members.length === 0 ? (
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 italic px-1">No members yet. Invite roommates!</p>
+            ) : (
+              members.map(m => {
+                const isSelf = auth.currentUser && m.uid === auth.currentUser.uid;
+                return (
+                  <div key={m.uid} className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-800/40">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] text-white shrink-0 ${isSelf ? 'bg-[#1A3827]' : 'bg-pink-400'}`}>
+                      {m.nickname ? m.nickname.charAt(0).toUpperCase() : '?'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-bold text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}{isSelf ? ' (You)' : ''}</p>
+                    </div>
+                    {isSelf && <span className="text-[8px] font-bold text-[#1A3827] dark:text-[#A3E635] bg-[#EAF0EC] dark:bg-slate-700 px-1.5 py-0.5 rounded-full">Host</span>}
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <button
+            onClick={() => setIsInviteModalOpen(true)}
+            className="w-full mt-3 flex items-center justify-center gap-1.5 py-2 border border-dashed border-[#1A3827]/30 dark:border-slate-700 rounded-xl text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all"
+          >
+            <UserCheck className="w-3 h-3" />
+            <span>Invite Roommate</span>
+          </button>
         </div>
       </aside>
 
@@ -1595,6 +2295,13 @@ export default function App() {
         
         {/* Custom Invite Roommate Share Modal */}
         {isInviteModalOpen && renderInviteModal()}
+
+        {/* Settle Up Modal */}
+        {isSettleModalOpen && renderSettleModal()}
+
+        {/* Manage Room Modal */}
+        {isManageRoomOpen && renderManageRoomModal()}
+        {nicknamePromptAction && renderNicknamePromptModal()}
       </div>
     </div>
   );
@@ -1603,11 +2310,9 @@ export default function App() {
   // PAGE 1: HOME (DASHBOARD)
   // ==========================================
   function renderHome() {
-    const totalSharedPaid = computedStats.youPaidShared + computedStats.samPaidShared;
-    const youPercent = totalSharedPaid > 0 ? Math.round((computedStats.youPaidShared / totalSharedPaid) * 100) : 50;
-    const samPercent = 100 - youPercent;
-
     const dataList = transactions;
+    const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
+    const myBalance = computedStats.currentUserBalance;
 
     return (
       <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
@@ -1620,7 +2325,7 @@ export default function App() {
           </div>
           <button 
             onClick={() => setIsAddExpenseOpen(true)}
-            className="flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
+            className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all flex items-center justify-center gap-2 active:scale-98 self-start sm:self-auto shadow-sm"
           >
             <Plus className="w-4 h-4" />
             <span>Add expense</span>
@@ -1634,18 +2339,20 @@ export default function App() {
           <div className="space-y-4 max-w-md z-10">
             <div>
               <p className="text-[10px] tracking-widest font-bold uppercase text-[#A3E635]/80">CURRENT BALANCE</p>
-              <h3 className="text-xs text-white/70 mt-0.5">You are owed</h3>
+              <h3 className="text-xs text-white/70 mt-0.5">
+                {myBalance > 0 ? 'You are owed' : myBalance < 0 ? 'You owe' : 'All settled up'}
+              </h3>
               <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1">
-                {formatINR(Math.abs(computedStats.balance))}
+                {formatINR(Math.abs(myBalance))}
               </h2>
             </div>
             
             <p className="text-xs sm:text-sm text-[#EAF0EC]/80 dark:text-slate-300 font-medium">
-              {computedStats.balance > 0 
-                ? `${roommateName} owes you after all shared expenses.`
-                : computedStats.balance < 0 
-                  ? `You owe ${roommateName} after all shared expenses.`
-                  : 'You are completely settled up!'}
+              {myBalance > 0 
+                ? "You have paid more than your share of the room expenses."
+                : myBalance < 0 
+                  ? "You owe money to your roommates for shared expenses."
+                  : "You are completely settled up with everyone!"}
             </p>
 
             <button 
@@ -1657,29 +2364,26 @@ export default function App() {
             </button>
           </div>
 
-          {/* Right side stats */}
-          <div className="border-t md:border-t-0 md:border-l border-white/10 dark:border-slate-800 pt-5 md:pt-0 md:pl-10 space-y-4 sm:space-y-5 flex-1 max-w-sm z-10">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] font-bold text-white/50 dark:text-slate-400 tracking-wider uppercase">YOU PAID</p>
-                <p className="text-lg sm:text-xl font-bold text-white">{formatINR(computedStats.youPaidShared)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-white/50 dark:text-slate-400 tracking-wider uppercase">{roommateName.toUpperCase()} PAID</p>
-                <p className="text-lg sm:text-xl font-bold text-white">{formatINR(computedStats.samPaidShared)}</p>
-              </div>
-            </div>
-
-            {/* Split Bar */}
-            <div className="space-y-1.5">
-              <div className="w-full bg-white/10 dark:bg-slate-800 h-2 rounded-full overflow-hidden flex">
-                <div className="bg-[#A3E635] h-full transition-all duration-500" style={{ width: `${youPercent}%` }}></div>
-                <div className="bg-[#84CC16] h-full transition-all duration-500 opacity-40" style={{ width: `${samPercent}%` }}></div>
-              </div>
-              <div className="flex justify-between text-[9px] sm:text-[10px] font-bold text-white/60 dark:text-slate-400 tracking-wider uppercase">
-                <span>{youPercent}% YOU</span>
-                <span>{samPercent}% {roommateName.toUpperCase()}</span>
-              </div>
+          {/* Right side roommate balance sheet */}
+          <div className="border-t md:border-t-0 md:border-l border-white/10 dark:border-slate-800 pt-5 md:pt-0 md:pl-10 space-y-4 flex-1 max-w-sm z-10 text-left">
+            <p className="text-[10px] font-bold text-white/50 dark:text-slate-400 tracking-wider uppercase">Roommate Balance Sheet</p>
+            <div className="space-y-2 max-h-32 overflow-y-auto pr-1">
+              {members.length > 1 ? (
+                members.map(m => {
+                  if (m.uid === currentUid) return null;
+                  const bal = computedStats.balances[m.uid] || 0;
+                  return (
+                    <div key={m.uid} className="flex justify-between items-center text-xs font-semibold py-1 border-b border-white/5 last:border-b-0">
+                      <span className="text-white/80">{m.nickname}</span>
+                      <span className={bal > 0 ? 'text-[#A3E635] font-bold' : bal < 0 ? 'text-rose-400 font-bold' : 'text-white/40'}>
+                        {bal > 0 ? `is owed ${formatINR(bal)}` : bal < 0 ? `owes ${formatINR(Math.abs(bal))}` : 'settled up'}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-[11px] text-white/40 italic">Invite roommates to view balance sheet.</p>
+              )}
             </div>
           </div>
         </div>
@@ -1718,14 +2422,18 @@ export default function App() {
                       <div className="min-w-0">
                         <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">{t.title}</h4>
                         <p className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5 truncate">
-                          {t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? 'You' : roommateName} paid • {t.isShared ? 'split equally' : 'personal'}
+                          {getTransactionSubtitle(t)}
                         </p>
                       </div>
                     </div>
                     
                     <div className="text-right ml-2 shrink-0">
-                      <p className={`font-bold text-xs sm:text-sm ${t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? 'text-[#1A3827] dark:text-[#A3E635]' : 'text-gray-500 dark:text-slate-400'}`}>
-                        {t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? '-' : '+'}{formatINR(t.amount)}
+                      <p className={`font-bold text-xs sm:text-sm ${
+                        (t.paidByUid && t.paidByUid === currentUid) || (!t.paidByUid && t.paidBy === userNickname)
+                          ? 'text-[#1A3827] dark:text-[#A3E635]'
+                          : 'text-gray-500 dark:text-slate-400'
+                      }`}>
+                        {(t.paidByUid && t.paidByUid === currentUid) || (!t.paidByUid && t.paidBy === userNickname) ? '-' : '+'}{formatINR(t.amount)}
                       </p>
                       <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">{t.date}</p>
                     </div>
@@ -1746,32 +2454,54 @@ export default function App() {
           {/* Right Column (Stacked Cards) */}
           <div className="lg:col-span-5 space-y-6">
             
-            {/* Top: June Budget */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
-              <div className="flex justify-between items-center">
-                <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight">June budget</h3>
-                <span className="text-[10px] sm:text-xs font-bold text-[#5C6E5C] dark:text-slate-400 bg-[#F6F8F6] dark:bg-slate-950 px-2.5 py-1 rounded-lg">18 days remaining</span>
-              </div>
+            {/* Top: Monthly Budget (Dynamic) */}
+            {(() => {
+              const budgetPct = Math.min(100, Math.round((computedStats.totalSpend / monthlyBudget) * 100)) || 0;
+              const remaining = Math.max(0, monthlyBudget - computedStats.totalSpend);
+              const today = new Date();
+              const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+              const daysLeft = daysInMonth - today.getDate();
+              const dailyLimit = daysLeft > 0 ? Math.round(remaining / daysLeft) : 0;
+              const monthName = today.toLocaleString('default', { month: 'long' });
+              const isOver = budgetPct >= 100;
+              return (
+                <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight">{monthName} budget</h3>
+                    <span className="text-[10px] sm:text-xs font-bold text-[#5C6E5C] dark:text-slate-400 bg-[#F6F8F6] dark:bg-slate-950 px-2.5 py-1 rounded-lg">{daysLeft} days left</span>
+                  </div>
 
-              <div>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(computedStats.juneSpend)}</span>
-                  <span className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 font-semibold">of {formatINR(22000)}</span>
-                </div>
-                
-                <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-3 rounded-full overflow-hidden mt-3">
-                  <div className="bg-[#1A3827] dark:bg-[#A3E635] h-full rounded-full transition-all duration-300" style={{ width: '71%' }}></div>
-                </div>
-              </div>
+                  <div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(computedStats.totalSpend)}</span>
+                      <span className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 font-semibold">of {formatINR(monthlyBudget)}</span>
+                    </div>
+                    <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-3 rounded-full overflow-hidden mt-3">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${isOver ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`}
+                        style={{ width: `${budgetPct}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex justify-between mt-1.5">
+                      <span className="text-[10px] font-semibold text-[#5C6E5C] dark:text-slate-400">{budgetPct}% used</span>
+                      <span className="text-[10px] font-semibold text-[#5C6E5C] dark:text-slate-400">{formatINR(remaining)} left</span>
+                    </div>
+                  </div>
 
-              <div className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/10 dark:border-slate-800 p-3.5 rounded-2xl flex items-start gap-3">
-                <Sparkles className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635] mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">You're on track</p>
-                  <p className="text-[10px] sm:text-[11px] text-[#255038] dark:text-slate-400 mt-0.5">Keep daily spending under ₹352 to hit savings target.</p>
+                  <div className={`border p-3.5 rounded-2xl flex items-start gap-3 ${isOver ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/30' : 'bg-[#EAF0EC] dark:bg-slate-950 border-[#1A3827]/10 dark:border-slate-800'}`}>
+                    <Sparkles className={`w-4 h-4 mt-0.5 shrink-0 ${isOver ? 'text-rose-600' : 'text-[#1A3827] dark:text-[#A3E635]'}`} />
+                    <div>
+                      <p className={`text-xs font-bold ${isOver ? 'text-rose-700 dark:text-rose-400' : 'text-[#1A3827] dark:text-slate-200'}`}>
+                        {isOver ? 'Over budget!' : "You're on track"}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-[#255038] dark:text-slate-400 mt-0.5">
+                        {isOver ? `Exceeded by ${formatINR(computedStats.totalSpend - monthlyBudget)}.` : `Keep daily spend under ${formatINR(dailyLimit)} to stay on budget.`}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Bottom: Quick Actions */}
             <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
@@ -1989,7 +2719,7 @@ export default function App() {
                           {t.category}
                         </span>
                         <span className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold truncate">
-                          {t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? 'Paid by You' : `Paid by ${roommateName}`} • {t.split}
+                          {getTransactionSubtitle(t)}
                         </span>
                       </div>
                     </div>
@@ -2072,11 +2802,16 @@ export default function App() {
                   onChange={(e) => setFormCategory(e.target.value)}
                   className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs sm:text-sm bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] cursor-pointer"
                 >
-                  <option value="Food">Food</option>
-                  <option value="Utilities">Utilities</option>
-                  <option value="Rent">Rent</option>
-                  <option value="Shopping">Shopping</option>
-                  <option value="Transport">Transport</option>
+                  <option value="Food">🍽️ Food & Dining</option>
+                  <option value="Groceries">🛒 Groceries</option>
+                  <option value="Utilities">💡 Utilities</option>
+                  <option value="Rent">🏠 Rent</option>
+                  <option value="Shopping">🛍️ Shopping</option>
+                  <option value="Transport">🚌 Transport</option>
+                  <option value="Fuel">⛽ Fuel</option>
+                  <option value="Entertainment">🎬 Entertainment</option>
+                  <option value="Medical">🏥 Medical</option>
+                  <option value="Other">📦 Other</option>
                 </select>
               </div>
             </div>
@@ -2092,65 +2827,104 @@ export default function App() {
               />
             </div>
 
+            {/* Paid By */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Paid by</label>
+              <select
+                value={formPaidBy}
+                onChange={(e) => setFormPaidBy(e.target.value)}
+                className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs sm:text-sm bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] cursor-pointer"
+              >
+                {members.length > 0 ? (
+                  members.map(m => (
+                    <option key={m.uid} value={m.uid}>
+                      {m.uid === (auth.currentUser?.uid) ? `${m.nickname} (You)` : m.nickname}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">{userNickname} (You)</option>
+                )}
+              </select>
+            </div>
+
+            {/* Split Type Tabs */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Who is it for?</label>
-              <div className="bg-[#F6F8F6] dark:bg-slate-950 p-1 rounded-xl flex border border-[#E3E8E3]/50 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setFormWho('Shared')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all duration-150 ${
-                    formWho === 'Shared' 
-                      ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 shadow-sm' 
-                      : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827]'
-                  }`}
-                >
-                  Shared
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormWho('Personal')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all duration-150 ${
-                    formWho === 'Personal' 
-                      ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 shadow-sm' 
-                      : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827]'
-                  }`}
-                >
-                  Personal
-                </button>
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Split type</label>
+              <div className="bg-[#F6F8F6] dark:bg-slate-950 p-1 rounded-xl flex gap-1 border border-[#E3E8E3]/50 dark:border-slate-800">
+                {['equal', 'percentage', 'amount'].map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setSplitType(type)}
+                    className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all duration-150 capitalize ${
+                      splitType === type
+                        ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 shadow-sm'
+                        : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827]'
+                    }`}
+                  >
+                    {type === 'equal' ? 'Equally' : type === 'percentage' ? 'By %' : 'By ₹'}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Split Display Box */}
-            <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/30 dark:bg-slate-900/20">
-              <p className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase mb-2">Split break down</p>
-              
-              {formWho === 'Shared' ? (
-                <div className="space-y-2 text-[11px] sm:text-xs">
-                  <div className="flex justify-between items-center py-1 border-b border-[#E3E8E3]/50 dark:border-slate-800">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-[9px]">A</span>
-                      <span>You</span>
-                    </span>
-                    <span className="font-bold">50% ({formatINR((parseFloat(formAmount) || 0) / 2)})</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-pink-400 text-white flex items-center justify-center font-bold text-[9px]">{roommateName.charAt(0)}</span>
-                      <span>{roommateName}</span>
-                    </span>
-                    <span className="font-bold">50% ({formatINR((parseFloat(formAmount) || 0) / 2)})</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex justify-between items-center text-[11px] sm:text-xs py-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-[9px]">A</span>
-                    <span>You</span>
-                  </span>
-                  <span className="font-bold">100% ({formatINR(parseFloat(formAmount) || 0)})</span>
-                </div>
-              )}
-            </div>
+            {/* Split Members & Values */}
+            {members.length > 0 && (
+              <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/30 dark:bg-slate-900/20 space-y-2">
+                <p className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">Split breakdown</p>
+                {members.map(m => {
+                  const isChecked = selectedSplitMembers[m.uid] !== false;
+                  const amountNum = parseFloat(formAmount) || 0;
+                  const checkedCount = members.filter(mm => selectedSplitMembers[mm.uid] !== false).length || 1;
+                  const equalShare = amountNum / checkedCount;
+                  return (
+                    <div key={m.uid} className="flex items-center gap-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => setSelectedSplitMembers(prev => ({ ...prev, [m.uid]: e.target.checked }))}
+                        className="w-3.5 h-3.5 accent-[#1A3827] shrink-0"
+                      />
+                      <div className="w-6 h-6 rounded-full bg-[#1A3827] text-white flex items-center justify-center font-bold text-[9px] shrink-0">
+                        {m.nickname?.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="text-[11px] font-semibold text-[#1A3827] dark:text-slate-200 flex-1 truncate">
+                        {m.uid === auth.currentUser?.uid ? `${m.nickname} (You)` : m.nickname}
+                      </span>
+                      {splitType === 'equal' && isChecked && (
+                        <span className="text-[11px] font-bold text-[#1A3827] dark:text-[#A3E635]">{formatINR(equalShare)}</span>
+                      )}
+                      {splitType === 'percentage' && isChecked && (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0" max="100"
+                            value={customSplitValues[m.uid] || ''}
+                            onChange={e => setCustomSplitValues(prev => ({...prev, [m.uid]: e.target.value}))}
+                            placeholder="%"
+                            className="w-14 px-2 py-1 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[10px] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 focus:outline-none"
+                          />
+                          <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400">%</span>
+                        </div>
+                      )}
+                      {splitType === 'amount' && isChecked && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-[#5C6E5C]">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={customSplitValues[m.uid] || ''}
+                            onChange={e => setCustomSplitValues(prev => ({...prev, [m.uid]: e.target.value}))}
+                            placeholder="0"
+                            className="w-16 px-2 py-1 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[10px] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <label className="flex items-center gap-2.5 cursor-pointer py-1">
               <input 
@@ -2187,209 +2961,417 @@ export default function App() {
   }
 
   // ==========================================
+  // SETTLE UP MODAL
+  // ==========================================
+  function renderSettleModal() {
+    const currentUid = auth.currentUser?.uid || 'anonymous';
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-xl border border-[#E3E8E3] dark:border-slate-800 overflow-hidden transition-colors duration-300">
+          <div className="px-6 py-4 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center">
+            <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Settle Up</h3>
+            <button onClick={() => setIsSettleModalOpen(false)} className="p-1 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"><X className="w-5 h-5" /></button>
+          </div>
+          <form onSubmit={handleRecordPayment} className="p-6 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Who paid?</label>
+              <select
+                value={settlePayer}
+                onChange={e => {
+                  const val = e.target.value;
+                  setSettlePayer(val);
+                  if (settleReceiver === val) {
+                    const firstOther = members.find(m => m.uid !== val);
+                    setSettleReceiver(firstOther ? firstOther.uid : '');
+                  }
+                }}
+                className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none"
+              >
+                {members.map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Paid to (receiving money)</label>
+              <select
+                value={settleReceiver}
+                onChange={e => setSettleReceiver(e.target.value)}
+                className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none"
+              >
+                {members.filter(m => m.uid !== settlePayer).map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Amount (₹)</label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold">₹</span>
+                <input
+                  type="number" min="1" required
+                  placeholder="0.00"
+                  value={settleAmount}
+                  onChange={e => setSettleAmount(e.target.value)}
+                  className="w-full pl-7 pr-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => setIsSettleModalOpen(false)} className="flex-1 py-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800">Cancel</button>
+              <button type="submit" className="flex-1 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] shadow-sm">Record Payment</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // MANAGE ROOM MODAL
+  // ==========================================
+  function renderManageRoomModal() {
+    const currentUid = auth.currentUser?.uid || 'anonymous';
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-xl border border-[#E3E8E3] dark:border-slate-800 overflow-hidden max-h-[90vh] flex flex-col transition-colors duration-300">
+          <div className="px-6 py-4 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center shrink-0">
+            <div>
+              <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Manage Room</h3>
+              <p className="text-[10px] font-mono text-[#5C6E5C] dark:text-slate-400 mt-0.5">{userRoomId}</p>
+            </div>
+            <button onClick={() => setIsManageRoomOpen(false)} className="p-1 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"><X className="w-5 h-5" /></button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            {/* Room Code & Invite */}
+            <div className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/10 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+              <p className="text-[10px] font-black text-[#1A3827] dark:text-[#A3E635] uppercase tracking-widest">Room Code</p>
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-black text-sm text-[#1A3827] dark:text-slate-100 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-800 flex-1 text-center tracking-widest">{userRoomId}</span>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(userRoomId); triggerToast('Room code copied!'); }}
+                  className="p-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-lg hover:opacity-90"
+                ><Copy className="w-4 h-4" /></button>
+              </div>
+              <button
+                onClick={() => { setIsManageRoomOpen(false); setIsInviteModalOpen(true); }}
+                className="w-full py-2 border border-dashed border-[#1A3827]/40 dark:border-slate-700 rounded-xl text-xs font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC]/80 dark:hover:bg-slate-800 transition-all flex items-center justify-center gap-1.5"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                Share invite link
+              </button>
+            </div>
+
+            {/* Members List */}
+            <div>
+              <p className="text-xs font-black text-[#1A3827] dark:text-slate-200 mb-3">Members ({members.length})</p>
+              <div className="space-y-2">
+                {members.length === 0 ? (
+                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400 italic text-center py-4">No members yet.</p>
+                ) : (
+                  members.map(m => {
+                    const isSelf = m.uid === currentUid;
+                    return (
+                      <div key={m.uid} className="flex items-center gap-3 p-3 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm text-white shrink-0 ${isSelf ? 'bg-[#1A3827]' : 'bg-pink-400'}`}>
+                          {m.nickname?.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-sm text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}</p>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-mono truncate">{isSelf ? 'You' : m.uid?.substring(0,8) + '...'}</p>
+                        </div>
+                        {isSelf ? (
+                          <span className="text-[9px] font-black text-[#1A3827] dark:text-[#A3E635] bg-[#EAF0EC] dark:bg-slate-700 px-2 py-1 rounded-full uppercase">You</span>
+                        ) : (
+                          <button
+                            onClick={() => handleRemoveMember(m.uid)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-all"
+                            title={`Remove ${m.nickname}`}
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Budget Setting */}
+            <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-2">
+              <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Monthly Budget Cap</p>
+              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Set a shared monthly spending limit for the room.</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#5C6E5C] font-semibold">₹</span>
+                <input
+                  type="number"
+                  min="1000"
+                  value={monthlyBudget}
+                  onChange={e => setMonthlyBudget(Number(e.target.value))}
+                  className="flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
+                />
+                <button
+                  onClick={async () => {
+                    localStorage.setItem('monthlyBudget', monthlyBudget);
+                    if (userRoomId) {
+                      try {
+                        const { error: updateError } = await supabase
+                          .from('rooms')
+                          .update({ monthly_budget: monthlyBudget })
+                          .eq('id', userRoomId);
+                        if (updateError) throw updateError;
+                        triggerToast('Budget updated for all room members!');
+                      } catch(e) {
+                        triggerToast('Budget saved locally.');
+                      }
+                    } else {
+                      triggerToast('Budget saved locally.');
+                    }
+                  }}
+                  className="px-3 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 shrink-0"
+                >Save</button>
+              </div>
+            </div>
+
+            {/* Danger Zone */}
+            <div className="border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/10 rounded-2xl p-4 space-y-2">
+              <p className="text-xs font-black text-rose-700 dark:text-rose-400">Danger Zone</p>
+              <p className="text-[11px] text-rose-600/80 dark:text-rose-400/70">Deleting the room will permanently remove all transactions, members, and data. This cannot be undone.</p>
+              <button
+                onClick={() => { setIsManageRoomOpen(false); handleDeleteRoom(); }}
+                className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
+              >
+                Delete Room Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
   // PAGE 4: SPENDING INSIGHTS
   // ==========================================
   function renderInsights() {
+    // Compute real category breakdown from actual transactions
+    const CATEGORY_COLORS = {
+      'Rent': '#1A3827', 'Food': '#FBBF24', 'Groceries': '#22C55E',
+      'Utilities': '#3B82F6', 'Shopping': '#F43F5E', 'Transport': '#8B5CF6',
+      'Fuel': '#F97316', 'Entertainment': '#EC4899', 'Medical': '#14B8A6',
+      'Payment': '#6366F1', 'Other': '#94A3B8'
+    };
+    const catMap = {};
+    transactions.forEach(t => {
+      const cat = t.category || 'Other';
+      catMap[cat] = (catMap[cat] || 0) + (Number(t.amount) || 0);
+    });
+    const rawTotal = computedStats.totalSpend;          // real total, may be 0
+    const total = rawTotal > 0 ? rawTotal : 1;           // safe divisor for percentages only
+    const catArr = Object.entries(catMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+    const circumference = 2 * Math.PI * 40; // 251.3
+    let cumulativePct = 0;
+    const today = new Date();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const daysPassed = today.getDate();
+    const dailyAvg = rawTotal > 0 && daysPassed > 0 ? Math.round(rawTotal / daysPassed) : 0;
+    const budgetRemaining = Math.max(0, monthlyBudget - rawTotal);
+    const daysLeft = daysInMonth - daysPassed;
+    const safeDailyLimit = daysLeft > 0 ? Math.round(budgetRemaining / daysLeft) : 0;
+    const myShare = Math.abs(computedStats.currentUserBalance);
+    const totalSpendForDisplay = rawTotal;
+
     return (
       <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
-        
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
             <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">ROOM INTELLIGENCE</p>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Spending insights</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">A clearer view of where your money goes.</p>
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">A clearer view of where your money goes — powered by real data.</p>
           </div>
-
-          <select 
-            className="border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-bold shadow-sm cursor-pointer w-full sm:w-auto"
-          >
-            <option>This month</option>
-            <option>Last month</option>
-            <option>Last 3 months</option>
-          </select>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 px-3 py-1.5 rounded-xl">
+              {transactions.length} transactions
+            </span>
+            <span className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/10 dark:border-slate-800 px-3 py-1.5 rounded-xl">
+              {today.toLocaleString('default', { month: 'long', year: 'numeric' })}
+            </span>
+          </div>
         </div>
 
         {/* Top Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-5 sm:p-6 rounded-3xl shadow-sm transition-colors duration-300">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">TOTAL SPEND</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(computedStats.juneSpend)}</span>
-              <span className="text-[10px] sm:text-xs font-bold text-red-600 dark:text-rose-500 flex items-center">
-                ↓ 8.4%
-              </span>
-            </div>
-            <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">from May (₹17,080)</p>
+          <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">{formatINR(rawTotal)}</p>
+            <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">{transactions.length} transactions</p>
           </div>
-
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-5 sm:p-6 rounded-3xl shadow-sm space-y-2 transition-colors duration-300">
-            <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">DAILY AVERAGE</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(782)}</span>
-            </div>
-            <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">₹352 recommended daily cap</p>
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm transition-colors duration-300">
+            <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">DAILY AVG</p>
+            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">{formatINR(dailyAvg)}</p>
+            <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">Safe limit: {formatINR(safeDailyLimit)}/day</p>
           </div>
-
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-5 sm:p-6 rounded-3xl shadow-sm space-y-2 transition-colors duration-300">
-            <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">SAVINGS GOAL</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(3200)}</span>
-              <span className="text-[10px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold">of {formatINR(5000)}</span>
-            </div>
-            <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden mt-1">
-              <div className="bg-[#A3E635] h-full rounded-full transition-all duration-300" style={{ width: '64%' }}></div>
-            </div>
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm transition-colors duration-300">
+            <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">SHARED BILLS</p>
+            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">{formatINR(computedStats.sharedSpend)}</p>
+            <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">of total room spend</p>
+          </div>
+          <div className={`border p-4 sm:p-5 rounded-3xl shadow-sm transition-colors duration-300 ${
+            computedStats.currentUserBalance >= 0
+              ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30'
+              : 'bg-rose-50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-900/30'
+          }`}>
+            <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">YOUR BALANCE</p>
+            <p className={`text-xl sm:text-2xl font-black mt-1 ${
+              computedStats.currentUserBalance >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+            }`}>{formatINR(myShare)}</p>
+            <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">
+              {computedStats.currentUserBalance > 0 ? 'you are owed' : computedStats.currentUserBalance < 0 ? 'you owe' : 'all settled'}
+            </p>
           </div>
         </div>
 
         {/* Charts area - 2 columns */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
-          
-          {/* Left: Spend by category (Donut Chart) */}
+
+          {/* Left: Spend by category (Dynamic Donut Chart) */}
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-6 transition-colors duration-300">
             <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight">Spend by category</h3>
-            
-            <div className="flex flex-col sm:flex-row items-center justify-around gap-6 py-2">
-              
-              <div className="relative w-36 h-36 sm:w-40 sm:h-40 flex items-center justify-center">
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                  <circle 
-                    cx="50" cy="50" r="40" 
-                    fill="transparent" 
-                    stroke="#1A3827" 
-                    strokeWidth="10"
-                    strokeDasharray="128.2 251.3"
-                    strokeDashoffset="0"
-                    className="transition-all duration-500 hover:stroke-[12] cursor-pointer"
-                  />
-                  <circle 
-                    cx="50" cy="50" r="40" 
-                    fill="transparent" 
-                    stroke="#FBBF24" 
-                    strokeWidth="10"
-                    strokeDasharray="55.3 251.3"
-                    strokeDashoffset="-128.2"
-                    className="transition-all duration-500 hover:stroke-[12] cursor-pointer"
-                  />
-                  <circle 
-                    cx="50" cy="50" r="40" 
-                    fill="transparent" 
-                    stroke="#3B82F6" 
-                    strokeWidth="10"
-                    strokeDasharray="35.2 251.3"
-                    strokeDashoffset="-183.5"
-                    className="transition-all duration-500 hover:stroke-[12] cursor-pointer"
-                  />
-                  <circle 
-                    cx="50" cy="50" r="40" 
-                    fill="transparent" 
-                    stroke="#F43F5E" 
-                    strokeWidth="10"
-                    strokeDasharray="32.6 251.3"
-                    strokeDashoffset="-218.7"
-                    className="transition-all duration-500 hover:stroke-[12] cursor-pointer"
-                  />
-                </svg>
-                
-                <div className="absolute text-center">
-                  <p className="text-base sm:text-lg font-black text-[#1A3827] dark:text-slate-100">₹15.6k</p>
-                  <p className="text-[8px] sm:text-[9px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">TOTAL</p>
+            {transactions.length === 0 ? (
+              <div className="text-center py-12 text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold">
+                <p>No transactions yet.</p>
+                <p className="text-[10px] mt-1">Add expenses to see your category breakdown.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-center justify-around gap-6 py-2">
+                {/* Dynamic SVG donut */}
+                <div className="relative w-36 h-36 sm:w-40 sm:h-40 flex items-center justify-center shrink-0">
+                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                    {catArr.length === 0 ? (
+                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#E3E8E3" strokeWidth="10" />
+                    ) : (
+                      catArr.map(([cat, amt], i) => {
+                        const pct = amt / total;
+                        const dash = pct * circumference;
+                        const offset = -cumulativePct * circumference;
+                        cumulativePct += pct;
+                        return (
+                          <circle
+                            key={cat}
+                            cx="50" cy="50" r="40"
+                            fill="transparent"
+                            stroke={CATEGORY_COLORS[cat] || '#94A3B8'}
+                            strokeWidth="10"
+                            strokeDasharray={`${dash} ${circumference}`}
+                            strokeDashoffset={offset}
+                            className="transition-all duration-500 hover:stroke-[12] cursor-pointer"
+                          />
+                        );
+                      })
+                    )}
+                  </svg>
+                  <div className="absolute text-center">
+                    <p className="text-sm font-black text-[#1A3827] dark:text-slate-100">{rawTotal > 0 ? formatINR(rawTotal) : '—'}</p>
+                    <p className="text-[8px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">TOTAL</p>
+                  </div>
+                </div>
+                {/* Legend */}
+                <div className="space-y-2 w-full sm:w-auto">
+                  {catArr.map(([cat, amt]) => (
+                    <div key={cat} className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[cat] || '#94A3B8' }}></span>
+                        <span className="text-xs font-semibold text-[#5C6E5C] dark:text-slate-300 w-20 truncate">{cat}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{formatINR(amt)}</span>
+                        <span className="text-[9px] text-gray-400 font-bold">{rawTotal > 0 ? Math.round((amt / rawTotal) * 100) : 0}%</span>
+                      </div>
+                    </div>
+                  ))}
+                  {catArr.length === 0 && <p className="text-xs text-[#5C6E5C]">No data</p>}
                 </div>
               </div>
-
-              {/* Legend details */}
-              <div className="space-y-2.5 sm:space-y-3 shrink-0 w-full sm:w-auto">
-                <div className="flex items-center justify-between sm:justify-start gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#1A3827]"></span>
-                    <span className="text-xs font-semibold text-[#5C6E5C] dark:text-slate-300 w-14 sm:w-16">Rent</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{formatINR(8000)}</span>
-                    <span className="text-[9px] sm:text-[10px] text-gray-400 font-bold">51%</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between sm:justify-start gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#FBBF24]"></span>
-                    <span className="text-xs font-semibold text-[#5C6E5C] dark:text-slate-300 w-14 sm:w-16">Food</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{formatINR(3450)}</span>
-                    <span className="text-[9px] sm:text-[10px] text-gray-400 font-bold">22%</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between sm:justify-start gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6]"></span>
-                    <span className="text-xs font-semibold text-[#5C6E5C] dark:text-slate-300 w-14 sm:w-16">Utilities</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{formatINR(2100)}</span>
-                    <span className="text-[9px] sm:text-[10px] text-gray-400 font-bold">14%</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between sm:justify-start gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#F43F5E]"></span>
-                    <span className="text-xs font-semibold text-[#5C6E5C] dark:text-slate-300 w-14 sm:w-16">Shopping</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{formatINR(2100)}</span>
-                    <span className="text-[9px] sm:text-[10px] text-gray-400 font-bold">13%</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
+            )}
           </div>
 
-          {/* Right: Smart budget caps */}
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col justify-between space-y-6 transition-colors duration-300">
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight">Smart budget caps</h3>
-                <span className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/10 dark:border-slate-800 text-[#1A3827] dark:text-[#A3E635] text-[8px] sm:text-[9px] font-black tracking-widest px-2.5 py-1 rounded-full uppercase flex items-center gap-1">
-                  <Sparkles className="w-2.5 h-2.5 text-[#1A3827]" />
-                  <span>AI Suggested</span>
-                </span>
-              </div>
+          {/* Right: Per-member breakdown + budget progress */}
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-5 transition-colors duration-300">
+            <div className="flex justify-between items-center">
+              <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight">Per-member spend</h3>
+              <span className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/10 dark:border-slate-800 text-[#1A3827] dark:text-[#A3E635] text-[8px] sm:text-[9px] font-black tracking-widest px-2.5 py-1 rounded-full uppercase">Live</span>
+            </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold text-[#1A3827] dark:text-slate-200">
-                  <span>Food & dining</span>
-                  <span>{formatINR(3450)} / {formatINR(5000)}</span>
-                </div>
-                <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-3 rounded-full relative">
-                  <div className="bg-amber-400 h-full rounded-full" style={{ width: '69%' }}></div>
-                  <div className="absolute top-0 bottom-0 left-[80%] w-0.5 bg-rose-500/50"></div>
-                  <span className="absolute -top-4 left-[80%] text-[8px] font-bold text-rose-600/70 uppercase">Cap</span>
-                </div>
+            {members.length === 0 ? (
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 italic">No members yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {members.map(m => {
+                  const memberPaid = transactions
+                    .filter(t => t.paidByUid === m.uid || (!t.paidByUid && t.paidBy === m.nickname))
+                    .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+                  const memberPct = rawTotal > 0 ? Math.round((memberPaid / rawTotal) * 100) : 0;
+                  const memberBal = computedStats.balances?.[m.uid] || 0;
+                  return (
+                    <div key={m.uid} className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] text-white ${
+                            auth.currentUser && m.uid === auth.currentUser.uid ? 'bg-[#1A3827]' : 'bg-pink-400'
+                          }`}>{m.nickname?.charAt(0).toUpperCase()}</div>
+                          <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200 truncate max-w-[80px]">{m.nickname}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{formatINR(memberPaid)}</p>
+                          <p className={`text-[9px] font-semibold ${memberBal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {memberBal >= 0 ? `+${formatINR(memberBal)} owed` : `${formatINR(Math.abs(memberBal))} owes`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500 bg-[#1A3827] dark:bg-[#A3E635]"
+                          style={{ width: `${memberPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+            )}
 
-              <div className="space-y-2 pt-2">
-                <div className="flex justify-between text-xs font-bold text-[#1A3827] dark:text-slate-200">
-                  <span>Utilities</span>
-                  <span>{formatINR(2100)} / {formatINR(3000)}</span>
-                </div>
-                <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-3 rounded-full relative">
-                  <div className="bg-blue-400 h-full rounded-full" style={{ width: '70%' }}></div>
-                  <div className="absolute top-0 bottom-0 left-[75%] w-0.5 bg-rose-500/50"></div>
-                  <span className="absolute -top-4 left-[75%] text-[8px] font-bold text-rose-600/70 uppercase">Cap</span>
-                </div>
+            {/* Budget progress */}
+            <div className="border-t border-[#F6F8F6] dark:border-slate-800 pt-4 space-y-2">
+              <div className="flex justify-between text-xs font-bold text-[#1A3827] dark:text-slate-200">
+                <span>Monthly budget</span>
+              <span>{formatINR(rawTotal)} / {formatINR(monthlyBudget)}</span>
+              </div>
+              <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-3 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${rawTotal >= monthlyBudget ? 'bg-rose-500' : 'bg-[#A3E635]'}`}
+                  style={{ width: `${Math.min(100, Math.round((rawTotal / monthlyBudget) * 100))}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
+                <span>{Math.min(100, Math.round((rawTotal / monthlyBudget) * 100))}% used</span>
+                <span>{formatINR(budgetRemaining)} remaining</span>
               </div>
             </div>
 
-            {/* Bottom green tip card */}
-            <div className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/10 dark:border-slate-800 p-4 rounded-2xl flex items-start gap-3">
+            {/* Tip card */}
+            <div className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/10 dark:border-slate-800 p-3.5 rounded-2xl flex items-start gap-3">
               <Sparkles className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635] mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">A small win:</p>
-                <p className="text-[10px] sm:text-[11px] text-[#255038] dark:text-slate-400 mt-0.5">✦ You spent 18% less on eating out than last month. Keep it up!</p>
-              </div>
+              <p className="text-[10px] sm:text-[11px] text-[#255038] dark:text-slate-400">
+                {rawTotal === 0
+                  ? '✦ No expenses logged yet. Add your first expense to start tracking!'
+                  : rawTotal >= monthlyBudget
+                    ? `⚠ Budget exceeded by ${formatINR(rawTotal - monthlyBudget)}. Consider adjusting your limit in Manage Room.`
+                    : `✦ Keep daily spend under ${formatINR(safeDailyLimit)} to stay within your ${formatINR(monthlyBudget)} budget.`
+                }
+              </p>
             </div>
-
           </div>
 
         </div>
@@ -2497,11 +3479,19 @@ export default function App() {
         {/* Stacked Cards */}
         <div className="space-y-6">
           
-          {/* Room & roommate */}
+          {/* Room & Members */}
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
-            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
-              Room & roommate
-            </h3>
+            <div className="flex justify-between items-center pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
+              <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">
+                Room & Members
+              </h3>
+              <button
+                onClick={() => setIsManageRoomOpen(true)}
+                className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all"
+              >
+                Manage Room
+              </button>
+            </div>
 
             {/* Room code */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2">
@@ -2551,9 +3541,12 @@ export default function App() {
                       Cancel
                     </button>
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         setUserNickname(nicknameInput);
                         localStorage.setItem('userNickname', nicknameInput);
+                        if (userRoomId && user) {
+                          await addMemberToRoom(userRoomId, nicknameInput);
+                        }
                         setIsEditingNickname(false);
                         triggerToast('Nickname updated!');
                       }}
@@ -2623,25 +3616,77 @@ export default function App() {
               </div>
             </div>
 
-            {/* Roommate Status */}
+            {/* Monthly Budget Cap */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2 border-t border-[#F6F8F6] dark:border-slate-800">
-              <div>
-                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Roommate status</p>
-                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Toggle roommate visibility simulation.</p>
+              <div className="flex-1 w-full">
+                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Monthly budget cap</p>
+                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Set the shared monthly budget cap for the room.</p>
               </div>
-              <button 
-                onClick={() => {
-                  setRoommateOnline(!roommateOnline);
-                  triggerToast(`${roommateName} is now ${!roommateOnline ? 'Online' : 'Offline'}`);
-                }}
-                className={`flex items-center gap-1.5 border px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                  roommateOnline 
-                    ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-[#A3E635] border-emerald-100 dark:border-emerald-900/30' 
-                    : 'bg-gray-50 dark:bg-slate-950 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-800'
-                }`}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#5C6E5C] font-semibold">₹</span>
+                <input
+                  type="number"
+                  min="1000"
+                  value={monthlyBudget}
+                  onChange={e => setMonthlyBudget(Number(e.target.value))}
+                  className="w-24 px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                />
+                <button
+                  onClick={async () => {
+                    localStorage.setItem('monthlyBudget', monthlyBudget);
+                    if (userRoomId) {
+                      try {
+                        const { error: updateError } = await supabase
+                          .from('rooms')
+                          .update({ monthly_budget: monthlyBudget })
+                          .eq('id', userRoomId);
+                        if (updateError) throw updateError;
+                        triggerToast('Budget updated for all room members!');
+                      } catch(e) {
+                        triggerToast('Budget saved locally.');
+                      }
+                    } else {
+                      triggerToast('Budget saved locally.');
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 shrink-0"
+                >Save</button>
+              </div>
+            </div>
+
+            {/* Current Members List */}
+            <div className="flex flex-col gap-3 py-2 border-t border-[#F6F8F6] dark:border-slate-800">
+              <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Current members ({members.length})</p>
+              <div className="space-y-2">
+                {members.length === 0 ? (
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 italic">No members yet. Invite roommates to join.</p>
+                ) : (
+                  members.map(m => {
+                    const isSelf = auth.currentUser && m.uid === auth.currentUser.uid;
+                    return (
+                      <div key={m.uid} className="flex items-center gap-3 p-3 bg-[#F6F8F6] dark:bg-slate-950 rounded-xl">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 ${isSelf ? 'bg-[#1A3827]' : 'bg-pink-400'}`}>
+                          {m.nickname?.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}{isSelf ? ' (You)' : ''}</p>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Joined {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : 'recently'}</p>
+                        </div>
+                        {!isSelf && (
+                          <button onClick={() => handleRemoveMember(m.uid)} className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-all" title="Remove member">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <button
+                onClick={() => setIsInviteModalOpen(true)}
+                className="w-full py-2 border border-dashed border-[#1A3827]/30 dark:border-slate-700 rounded-xl text-xs font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all"
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${roommateOnline ? 'bg-[#A3E635]' : 'bg-gray-400'}`}></span>
-                <span>{roommateOnline ? 'Online now' : 'Offline / Away'}</span>
+                + Invite Another Roommate
               </button>
             </div>
           </div>
@@ -2735,200 +3780,107 @@ export default function App() {
             </div>
           </div>
 
-          {/* Email Notification Settings */}
+          {/* Email Notifications */}
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
-            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight pb-2 border-b border-[#F6F8F6] dark:border-slate-800 flex items-center gap-2">
-              <Bell className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
-              <span>Email Notification settings</span>
+            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
+              Email Notifications
             </h3>
-
-            {/* Provider Select */}
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2">
-              <div>
-                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Notification provider</p>
-                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Select how email alerts are sent when expenses are added.</p>
+            
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Notification Method</label>
+                <select
+                  value={notificationMethod}
+                  onChange={(e) => {
+                    setNotificationMethod(e.target.value);
+                    localStorage.setItem('notificationMethod', e.target.value);
+                  }}
+                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none"
+                >
+                  <option value="none">None (Disabled)</option>
+                  <option value="emailjs">EmailJS Service</option>
+                  <option value="google-script">Google Script Webhook</option>
+                </select>
               </div>
-              <select 
-                value={notificationMethod}
-                onChange={(e) => {
-                  setNotificationMethod(e.target.value);
-                  localStorage.setItem('notificationMethod', e.target.value);
-                  triggerToast(`Notification method set to ${e.target.value === 'none' ? 'Disabled' : e.target.value === 'google-script' ? 'Google Script' : 'EmailJS'}`);
-                }}
-                className="px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white font-semibold bg-white dark:bg-slate-950 min-w-[200px]"
-              >
-                <option value="none">Disabled (No Emails)</option>
-                <option value="google-script">Google Apps Script (Free, 100% Google-backed)</option>
-                <option value="emailjs">EmailJS Service (Free tier, template-based)</option>
-              </select>
-            </div>
 
-            {notificationMethod !== 'none' && (
-              <>
-                {/* Recipient Emails */}
-                <div className="flex flex-col gap-1 py-2 border-t border-[#F6F8F6] dark:border-slate-800">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Roommate email addresses</label>
-                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mb-1">Comma-separated list of emails to notify (e.g. room1@example.com, room2@example.com).</p>
-                  <input 
-                    type="text"
-                    value={recipientEmails}
-                    onChange={(e) => {
-                      setRecipientEmails(e.target.value);
-                      localStorage.setItem('recipientEmails', e.target.value);
-                    }}
-                    placeholder="roommate1@example.com, roommate2@example.com"
-                    className="px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white font-semibold bg-white dark:bg-slate-950 w-full"
-                  />
-                </div>
-
-                {notificationMethod === 'google-script' && (
-                  <div className="space-y-3 py-2 border-t border-[#F6F8F6] dark:border-slate-800">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Google Apps Script Web App URL</label>
-                      <input 
-                        type="url"
-                        value={googleScriptUrl}
-                        onChange={(e) => {
-                          setGoogleScriptUrl(e.target.value);
-                          localStorage.setItem('googleScriptUrl', e.target.value);
-                        }}
-                        placeholder="https://script.google.com/macros/s/.../exec"
-                        className="px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white font-semibold bg-white dark:bg-slate-950 w-full"
-                      />
-                    </div>
-
-                    {/* Collapsible Setup Instructions */}
-                    <details className="group border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden transition-all duration-300">
-                      <summary className="flex justify-between items-center p-3 text-xs font-bold text-[#1A3827] dark:text-slate-200 cursor-pointer hover:bg-[#F6F8F6] dark:hover:bg-slate-800 list-none">
-                        <span>How to set up your free Google Apps Script</span>
-                        <ChevronDown className="w-3.5 h-3.5 text-[#5C6E5C] transition-transform group-open:rotate-180" />
-                      </summary>
-                      <div className="p-4 bg-[#F6F8F6] dark:bg-slate-950 border-t border-[#E3E8E3] dark:border-slate-800 text-[11px] text-[#5C6E5C] dark:text-slate-400 space-y-2.5 leading-relaxed">
-                        <p>Follow these 3 simple steps to get email notifications working for free:</p>
-                        <ol className="list-decimal list-inside space-y-1">
-                          <li>Go to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="text-emerald-700 dark:text-[#A3E635] underline font-semibold">script.google.com</a> and sign in with your Google account.</li>
-                          <li>Click <strong>New Project</strong>, delete any placeholder code, and paste the code block below.</li>
-                          <li>Click <strong>Deploy &gt; New Deployment</strong>. Choose <strong>Web app</strong>. Set <i>Execute as:</i> <strong>Me</strong>, and <i>Who has access:</i> <strong>Anyone</strong>. Click deploy, authorize permissions, and copy the Web App URL into the field above!</li>
-                        </ol>
-                        
-                        <div className="relative mt-2">
-                          <pre className="p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl overflow-x-auto text-[10px] font-mono text-[#1A3827] dark:text-slate-300 leading-normal max-h-48">
-{`function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    MailApp.sendEmail({
-      to: data.to,
-      subject: data.subject,
-      htmlBody: data.htmlBody,
-      body: data.textBody
-    });
-    return ContentService.createTextOutput(JSON.stringify({status: "success"}))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({status: "error", message: error.toString()}))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}`}
-                          </pre>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(`function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    MailApp.sendEmail({
-      to: data.to,
-      subject: data.subject,
-      htmlBody: data.htmlBody,
-      body: data.textBody
-    });
-    return ContentService.createTextOutput(JSON.stringify({status: "success"}))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({status: "error", message: error.toString()}))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}`);
-                              triggerToast('Apps Script code copied!');
-                            }}
-                            className="absolute top-2 right-2 px-2 py-1 bg-[#1A3827] hover:bg-[#255038] text-white font-bold text-[9px] rounded-lg shadow transition-all"
-                          >
-                            Copy Script
-                          </button>
-                        </div>
-                      </div>
-                    </details>
+              {notificationMethod !== 'none' && (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Recipient Emails (comma-separated)</label>
+                    <input
+                      type="text"
+                      placeholder="email1@example.com, email2@example.com"
+                      value={recipientEmails}
+                      onChange={(e) => {
+                        setRecipientEmails(e.target.value);
+                        localStorage.setItem('recipientEmails', e.target.value);
+                      }}
+                      className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                    />
                   </div>
-                )}
 
-                {notificationMethod === 'emailjs' && (
-                  <div className="space-y-3 py-2 border-t border-[#F6F8F6] dark:border-slate-800">
+                  {notificationMethod === 'emailjs' && (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200">EmailJS Service ID</label>
-                        <input 
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Service ID</label>
+                        <input
                           type="text"
+                          placeholder="service_xxx"
                           value={emailJsServiceId}
                           onChange={(e) => {
                             setEmailJsServiceId(e.target.value);
                             localStorage.setItem('emailJsServiceId', e.target.value);
                           }}
-                          placeholder="service_xxxxx"
-                          className="px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white font-semibold bg-white dark:bg-slate-950 w-full"
+                          className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
                         />
                       </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200">EmailJS Template ID</label>
-                        <input 
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Template ID</label>
+                        <input
                           type="text"
+                          placeholder="template_xxx"
                           value={emailJsTemplateId}
                           onChange={(e) => {
                             setEmailJsTemplateId(e.target.value);
                             localStorage.setItem('emailJsTemplateId', e.target.value);
                           }}
-                          placeholder="template_xxxxx"
-                          className="px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white font-semibold bg-white dark:bg-slate-950 w-full"
+                          className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
                         />
                       </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200">EmailJS Public Key</label>
-                        <input 
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Public Key</label>
+                        <input
                           type="text"
+                          placeholder="public_key_xxx"
                           value={emailJsPublicKey}
                           onChange={(e) => {
                             setEmailJsPublicKey(e.target.value);
                             localStorage.setItem('emailJsPublicKey', e.target.value);
                           }}
-                          placeholder="user_xxxxxx / pk_xxxxx"
-                          className="px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white font-semibold bg-white dark:bg-slate-950 w-full"
+                          className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
                         />
                       </div>
                     </div>
+                  )}
 
-                    {/* Collapsible Setup Instructions */}
-                    <details className="group border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden transition-all duration-300">
-                      <summary className="flex justify-between items-center p-3 text-xs font-bold text-[#1A3827] dark:text-slate-200 cursor-pointer hover:bg-[#F6F8F6] dark:hover:bg-slate-800 list-none">
-                        <span>How to set up your free EmailJS integration</span>
-                        <ChevronDown className="w-3.5 h-3.5 text-[#5C6E5C] transition-transform group-open:rotate-180" />
-                      </summary>
-                      <div className="p-4 bg-[#F6F8F6] dark:bg-slate-950 border-t border-[#E3E8E3] dark:border-slate-800 text-[11px] text-[#5C6E5C] dark:text-slate-400 space-y-2 leading-relaxed">
-                        <p>1. Register a free account at <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" className="text-emerald-700 dark:text-[#A3E635] underline font-semibold">emailjs.com</a>.</p>
-                        <p>2. Connect an Email Service (like Gmail or Outlook) and copy your **Service ID**.</p>
-                        <p>3. Create an Email Template. You can design it as you like, and use the following template variables to print the expense details:</p>
-                        <ul className="list-disc list-inside pl-2 space-y-0.5">
-                          <li><code>{"{{to_email}}"}</code>: Recipient's email address</li>
-                          <li><code>{"{{title}}"}</code>: Expense description / item</li>
-                          <li><code>{"{{amount}}"}</code>: Formatted expense cost (e.g. ₹450)</li>
-                          <li><code>{"{{paid_by}}"}</code>: Roommate who paid</li>
-                          <li><code>{"{{split_type}}"}</code>: Split details (e.g. Shared (50/50))</li>
-                          <li><code>{"{{room_id}}"}</code>: Room workspace code</li>
-                        </ul>
-                        <p className="mt-2">4. Copy the **Template ID** and your account **Public Key** (from Account &gt; API Keys) into the fields above!</p>
-                      </div>
-                    </details>
-                  </div>
-                )}
-              </>
-            )}
+                  {notificationMethod === 'google-script' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Google Script URL</label>
+                      <input
+                        type="url"
+                        placeholder="https://script.google.com/macros/s/..."
+                        value={googleScriptUrl}
+                        onChange={(e) => {
+                          setGoogleScriptUrl(e.target.value);
+                          localStorage.setItem('googleScriptUrl', e.target.value);
+                        }}
+                        className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           {/* Account & Danger zone */}
@@ -2941,7 +3893,7 @@ export default function App() {
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2">
               <div>
                 <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Leave room workspace</p>
-                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Disconnect from this room. Room data remains safe in Firestore.</p>
+                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Disconnect from this room. Room data remains safe in Supabase.</p>
               </div>
               <button 
                 onClick={() => {
@@ -2951,8 +3903,14 @@ export default function App() {
                     setTransactions([]);
                     setReceipts([]);
                     localStorage.removeItem('userRoomId');
-                    if (auth.currentUser) {
-                      setDoc(doc(db, 'users', auth.currentUser.uid), { roomId: null }, { merge: true })
+                    if (user) {
+                      supabase
+                        .from('users')
+                        .upsert({
+                          uid: user.id,
+                          room_id: null,
+                          updated_at: new Date().toISOString()
+                        }, { onConflict: 'uid' })
                         .catch(err => console.error(err));
                     }
                     triggerToast("Left room workspace.");
@@ -2988,101 +3946,274 @@ export default function App() {
   // ==========================================
   // CUSTOM INVITE MODAL
   // ==========================================
+  // ==========================================
+  // INVITE MODAL (real QR + link + code)
+  // ==========================================
   function renderInviteModal() {
-    const currentRoom = userRoomId || roomCode;
+    const currentRoom = userRoomId || 'NO-ROOM';
+    const baseUrl = window.location.origin + window.location.pathname;
+    const inviteLink = `${baseUrl}?join=${currentRoom}`;
+    const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(inviteLink)}&bgcolor=FFFFFF&color=1A3827&margin=12&qzone=2`;
+
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-        <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-xl overflow-hidden border border-[#E3E8E3] dark:border-slate-800 p-6 space-y-5 transition-colors duration-300">
-          
-          <div className="flex justify-between items-center">
-            <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Invite Roommate</h3>
+        <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-xl overflow-hidden border border-[#E3E8E3] dark:border-slate-800 transition-colors duration-300">
+
+          {/* Header */}
+          <div className="flex justify-between items-center px-6 pt-6 pb-4">
+            <div>
+              <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Invite Roommate</h3>
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Choose how to share your room</p>
+            </div>
             <button 
               onClick={() => setIsInviteModalOpen(false)}
-              className="p-1 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"
+              className="p-1.5 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="space-y-4 text-center">
-            <div className="w-40 h-40 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl flex flex-col items-center justify-center mx-auto border border-[#E3E8E3] dark:border-slate-800 p-4">
-              <QrCode className="w-24 h-24 text-[#1A3827] dark:text-[#A3E635] stroke-[1.5]" />
-              <span className="text-[9px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest mt-2">Scan to join room</span>
+          {/* Tab switcher */}
+          <div className="flex mx-6 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl p-1 gap-1">
+            {[['code', '🔑 Code'], ['qr', '📷 QR Code'], ['link', '🔗 Link']].map(([tab, label]) => (
+              <button
+                key={tab}
+                onClick={() => setInviteTab(tab)}
+                className={`flex-1 py-2 rounded-xl text-[10px] font-black tracking-wide transition-all ${
+                  inviteTab === tab
+                    ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shadow-sm'
+                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="px-6 pb-6 pt-4 space-y-4">
+
+            {/* ── TAB: CODE ── */}
+            {inviteTab === 'code' && (
+              <>
+                <div className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/15 dark:border-slate-800 rounded-2xl p-5 text-center space-y-2">
+                  <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Your Room Code</p>
+                  <p className="font-mono font-black text-3xl text-[#1A3827] dark:text-[#A3E635] tracking-widest select-all">{currentRoom}</p>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                    Share this code with your roommate. They open DuoShare → Join Room → enter code.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={currentRoom}
+                    className="flex-1 px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-sm font-mono font-black text-[#1A3827] dark:text-[#A3E635] dark:bg-slate-950 text-center tracking-widest"
+                  />
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(currentRoom); triggerToast('Room code copied!'); }}
+                    className="p-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl hover:opacity-90 transition-all"
+                    title="Copy room code"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ── TAB: QR CODE ── */}
+            {inviteTab === 'qr' && (
+              <>
+                <div className="flex flex-col items-center gap-4">
+                  <div className="bg-white border-2 border-[#E3E8E3] dark:border-slate-700 rounded-2xl p-3 shadow-sm">
+                    <img
+                      src={qrImgUrl}
+                      alt={`QR code for room ${currentRoom}`}
+                      className="w-48 h-48 rounded-xl"
+                      onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
+                    />
+                    <div className="w-48 h-48 hidden items-center justify-center text-xs text-[#5C6E5C] text-center p-4 rounded-xl bg-[#F6F8F6]">
+                      QR not loaded. Ensure you are online.
+                    </div>
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Scan to join room <span className="font-mono text-[#A3E635] bg-[#1A3827] dark:bg-slate-800 px-2 py-0.5 rounded-lg">{currentRoom}</span></p>
+                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Your roommate scans this with their phone camera or the in-app scanner.</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = qrImgUrl;
+                      a.download = `duoshare-invite-${currentRoom}.png`;
+                      a.target = '_blank';
+                      a.click();
+                      triggerToast('QR code downloading…');
+                    }}
+                    className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download QR Image
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ── TAB: LINK ── */}
+            {inviteTab === 'link' && (
+              <>
+                <div className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/15 dark:border-slate-800 rounded-2xl p-4 space-y-2">
+                  <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Invite Link</p>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                    Anyone who opens this link will be taken directly to the join screen with your room code pre-filled.
+                  </p>
+                  <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2 text-[10px] font-mono text-[#1A3827] dark:text-slate-300 break-all select-all">
+                    {inviteLink}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(inviteLink); triggerToast('Invite link copied!'); }}
+                    className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copy invite link
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const text = `Join my DuoShare room!\n\nClick this link to join instantly:\n${inviteLink}\n\nOr enter room code: ${currentRoom}`;
+                      if (navigator.share) {
+                        try { await navigator.share({ title: 'Join my DuoShare room', text, url: inviteLink }); }
+                        catch { navigator.clipboard.writeText(text); triggerToast('Invite message copied!'); }
+                      } else {
+                        navigator.clipboard.writeText(text);
+                        triggerToast('Invite message copied to clipboard!');
+                      }
+                    }}
+                    className="w-full py-2.5 border border-[#1A3827]/30 dark:border-slate-700 text-[#1A3827] dark:text-[#A3E635] font-bold text-xs rounded-xl hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    Share via app
+                  </button>
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end pt-1 border-t border-[#F6F8F6] dark:border-slate-800">
+              <button
+                onClick={() => setIsInviteModalOpen(false)}
+                className="px-5 py-2 bg-[#1A3827] dark:bg-slate-800 text-white rounded-xl text-xs font-bold hover:opacity-90"
+              >
+                Done
+              </button>
             </div>
-
-            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-              Your roommate can scan the QR code above or use the share link below to synchronize bills instantly.
-            </p>
           </div>
-
-          <div className="flex items-center gap-2">
-            <input 
-              type="text" 
-              readOnly 
-              value={`https://duoroom.app/invite/${currentRoom}`}
-              className="flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-mono text-[#5C6E5C] dark:text-slate-300 dark:bg-slate-950"
-            />
-            <button 
-              onClick={() => {
-                navigator.clipboard.writeText(`https://duoroom.app/invite/${currentRoom}`);
-                triggerToast('Copied share link!');
-              }}
-              className="p-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl hover:opacity-90 transition-all"
-              title="Copy link"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="flex justify-end pt-2 border-t border-[#F6F8F6] dark:border-slate-800">
-            <button 
-              onClick={() => setIsInviteModalOpen(false)}
-              className="px-5 py-2 bg-[#1A3827] dark:bg-slate-800 text-white rounded-xl text-xs font-bold hover:opacity-90"
-            >
-              Done
-            </button>
-          </div>
-
         </div>
       </div>
     );
   }
 
   // ==========================================
-  // QR SCANNER SIMULATOR
+  // QR SCANNER (html5-qrcode powered)
   // ==========================================
   function renderQrScanner() {
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
         <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-xl overflow-hidden border border-[#E3E8E3] dark:border-slate-800 p-6 space-y-4 transition-colors duration-300 text-center">
           <div className="flex justify-between items-center pb-2 border-b border-[#E3E8E3] dark:border-slate-800">
-            <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Scan QR Code</h3>
-            <button 
-              onClick={() => setIsQrScannerOpen(false)} 
+            <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Scan Room QR</h3>
+            <button
+              onClick={() => {
+                if (qrScannerRef.current) {
+                  qrScannerRef.current.stop().catch(() => {});
+                  qrScannerRef.current = null;
+                }
+                setIsQrScannerOpen(false);
+              }}
               className="p-1 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Scanner view */}
-          <div className="relative w-64 h-64 mx-auto rounded-2xl border-2 border-[#1A3827] dark:border-[#A3E635] overflow-hidden flex items-center justify-center bg-slate-950">
-            {/* The real camera scanner renders here */}
-            <div id="reader" className="absolute inset-0 w-full h-full"></div>
-            
-            {/* Corner brackets overlay */}
-            <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-[#A3E635] z-10 pointer-events-none"></div>
-            <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-[#A3E635] z-10 pointer-events-none"></div>
-            <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-[#A3E635] z-10 pointer-events-none"></div>
-            <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-[#A3E635] z-10 pointer-events-none"></div>
-            
-            {/* Scanning line overlay */}
-            <div className="absolute left-0 right-0 h-0.5 bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-scan z-10 pointer-events-none"></div>
-          </div>
+          {/* Scanner viewport */}
+          <QrScannerMount
+            onScan={(code) => {
+              // Extract room code from link or use raw code
+              let roomCode = code;
+              try {
+                const url = new URL(code);
+                const joinParam = url.searchParams.get('join');
+                if (joinParam) roomCode = joinParam.trim().toUpperCase();
+              } catch {}
+              if (qrScannerRef.current) {
+                qrScannerRef.current.stop().catch(() => {});
+                qrScannerRef.current = null;
+              }
+              setIsQrScannerOpen(false);
+              setJoinInput(roomCode);
+              triggerToast(`Room code scanned: ${roomCode}`);
+            }}
+            onError={(err) => console.warn('QR scan error:', err)}
+            scannerRef={qrScannerRef}
+          />
 
           <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed max-w-[240px] mx-auto">
-            Point your device camera at your roommate's room QR code. Make sure you are using secure HTTPS.
+            Point your camera at the room QR code. Camera access required.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // NICKNAME PROMPT MODAL
+  // ==========================================
+  function renderNicknamePromptModal() {
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-xl overflow-hidden border border-[#E3E8E3] dark:border-slate-800 p-6 space-y-4 text-left transition-colors duration-300">
+          <div className="space-y-1">
+            <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Set Display Name</h3>
+            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Please choose a nickname so your roommates know who you are.</p>
+          </div>
+          <div className="space-y-1.5">
+            <input
+              type="text"
+              placeholder="Your nickname (e.g. Sampath)"
+              value={nicknameInput === 'You' ? '' : nicknameInput}
+              onChange={(e) => {
+                setNicknameInput(e.target.value);
+                setUserNickname(e.target.value);
+                localStorage.setItem('userNickname', e.target.value);
+              }}
+              className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setNicknamePromptAction(null)}
+              className="flex-1 py-2 rounded-xl border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!nicknameInput.trim() || nicknameInput === 'You') {
+                  triggerToast('Please enter a valid display name.');
+                  return;
+                }
+                const action = nicknamePromptAction;
+                setNicknamePromptAction(null);
+                if (action === 'create') {
+                  await handleCreateRoom();
+                } else if (action === 'join') {
+                  await handleJoinRoom();
+                }
+              }}
+              className="flex-1 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all shadow-sm text-center"
+            >
+              Continue
+            </button>
+          </div>
         </div>
       </div>
     );
