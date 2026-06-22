@@ -96,26 +96,21 @@ function QrScannerMount({ onScan, onError, scannerRef }) {
   useEffect(() => {
     const scanner = new Html5Qrcode(mountId);
     scannerRef.current = scanner;
-    let isRunning = false;
+
     scanner.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 220, height: 220 } },
       (decodedText) => { onScan(decodedText); },
-      () => {} // suppress per-frame scan errors (not critical)
-    ).then(() => {
-      isRunning = true;
-    }).catch((err) => {
+      () => {} // suppress per-frame non-match noise
+    ).catch((err) => {
       console.warn('QR scanner could not start:', err?.message || err);
       if (onError) onError(err);
     });
+
     return () => {
-      if (isRunning) {
-        scanner.stop().catch(() => {});
-      } else {
-        // Scanner never started — safely clear any DOM residue
-        try { scanner.clear(); } catch (_) {}
-      }
-      isRunning = false;
+      // html5-qrcode throws SYNCHRONOUSLY if not running — must use try/catch
+      try { scanner.stop().catch(() => {}); } catch (_) {}
+      try { scanner.clear(); } catch (_) {}
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -123,12 +118,10 @@ function QrScannerMount({ onScan, onError, scannerRef }) {
   return (
     <div className="relative w-64 h-64 mx-auto rounded-2xl border-2 border-[#1A3827] dark:border-[#A3E635] overflow-hidden bg-slate-950">
       <div id={mountId} className="absolute inset-0 w-full h-full" />
-      {/* Corner brackets */}
       <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-[#A3E635] z-10 pointer-events-none" />
       <div className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-[#A3E635] z-10 pointer-events-none" />
       <div className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-[#A3E635] z-10 pointer-events-none" />
       <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-[#A3E635] z-10 pointer-events-none" />
-      {/* Scan line */}
       <div className="absolute left-0 right-0 h-0.5 bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-scan z-10 pointer-events-none" />
     </div>
   );
