@@ -851,8 +851,17 @@ export default function App() {
           } else {
             roomBalances[splitUid] = -(Number(split.amount) || 0);
           }
+
+          // Accumulate spend categories for the current logged-in user based on their share:
+          if (splitUid === currentUid) {
+            const shareAmt = Number(split.amount) || 0;
+            if (t.isShared) {
+              sharedSpend += shareAmt;
+            } else {
+              personalSpend += shareAmt;
+            }
+          }
         });
-        sharedSpend += amount;
       } else {
         // Legacy splits fallback (50/50 shared vs 100% personal)
         if (t.isShared) {
@@ -866,7 +875,9 @@ export default function App() {
             roomBalances[roommateUid] = -halfShare;
           }
         } else {
-          personalSpend += amount;
+          if (payerUid === currentUid) {
+            personalSpend += amount;
+          }
           roomBalances[payerUid] -= amount;
         }
       }
@@ -893,10 +904,20 @@ export default function App() {
     const payerName = t.paidByUid === currentUid ? 'You' : t.paidBy;
     
     let splitText = '';
-    if (t.splitType) {
+    if (!t.isShared) {
+      // Find who the personal expense is for
+      const splitTarget = t.splits?.[0];
+      if (splitTarget) {
+        const targetName = splitTarget.uid === currentUid ? 'You' : splitTarget.nickname;
+        splitText = `personal (for ${targetName})`;
+      } else {
+        splitText = 'personal';
+      }
+    } else if (t.splitType) {
       if (t.splitType === 'equal') splitText = 'split equally';
       else if (t.splitType === 'percentage') splitText = 'split by %';
       else if (t.splitType === 'amount') splitText = 'split by amount';
+      else splitText = 'shared';
     } else {
       splitText = t.isShared ? 'split equally' : 'personal';
     }
@@ -1095,10 +1116,16 @@ export default function App() {
     const currentRoom = userRoomId || 'DUO-7729-XM';
     const payerMember = members.find(m => m.uid === formPaidBy) || { nickname: userNickname };
     
-    // Determine split label text
+    // Determine split label text and classification
     let splitLabel = 'Shared';
-    if (splitsArray.length === 1 && splitsArray[0].uid === formPaidBy) {
-      splitLabel = 'Personal';
+    let isSharedExpense = true;
+    if (splitsArray.length === 1) {
+      isSharedExpense = false;
+      if (splitsArray[0].uid === formPaidBy) {
+        splitLabel = 'Personal';
+      } else {
+        splitLabel = `Personal (${splitsArray[0].nickname})`;
+      }
     } else {
       splitLabel = splitType === 'equal' ? 'Shared (Equal)' : `Shared (${splitType})`;
     }
@@ -1111,7 +1138,7 @@ export default function App() {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       paidBy: payerMember.nickname,
       paidByUid: formPaidBy,
-      isShared: splitLabel !== 'Personal',
+      isShared: isSharedExpense,
       splitType,
       split: splitLabel,
       splits: splitsArray
