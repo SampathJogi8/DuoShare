@@ -2260,7 +2260,7 @@ export default function App() {
             
             <div className="space-y-1">
               <h1 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">Tallyin</h1>
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold uppercase tracking-wider">YouthFirst Roommate Expense Tracker</p>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold uppercase tracking-wider">Tallyin</p>
             </div>
             
             <p className="text-sm text-[#5C6E5C] dark:text-slate-400 max-w-xs mx-auto leading-relaxed pt-2">
