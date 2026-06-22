@@ -10,7 +10,47 @@ body {
 }
 
 body.dark {
-  @apply bg-slate-950 text-slate-100;
+  @apply bg-black text-slate-100;
+}
+
+/* Pitch black overrides for slate dark classes */
+.dark .dark\:bg-slate-950 {
+  background-color: #000000 !important;
+}
+.dark .dark\:bg-slate-900 {
+  background-color: #0d0d0d !important;
+}
+.dark .dark\:bg-slate-800 {
+  background-color: #181818 !important;
+}
+.dark .dark\:bg-slate-800\/20 {
+  background-color: rgba(24, 24, 24, 0.2) !important;
+}
+.dark .dark\:bg-slate-800\/40 {
+  background-color: rgba(24, 24, 24, 0.4) !important;
+}
+.dark .dark\:border-slate-800 {
+  border-color: #262626 !important;
+}
+.dark .dark\:bg-slate-950\/20 {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+}
+.dark .dark\:bg-slate-950\/10 {
+  background-color: rgba(0, 0, 0, 0.1) !important;
+}
+.dark .dark\:bg-slate-950\/40 {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Custom Red alert toast styles override */
+.toast-red {
+  background-color: #dc2626 !important; /* bg-red-600 */
+  border-color: rgba(239, 68, 68, 0.3) !important; /* border-red-500/30 */
+  color: #ffffff !important;
+}
+.dark .toast-red {
+  background-color: #7f1d1d !important; /* bg-red-950 */
+  border-color: rgba(239, 68, 68, 0.2) !important;
 }
 
 /* Custom scrollbars for scrollable views */

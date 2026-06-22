@@ -43,7 +43,9 @@ import {
   Share2,
   ScanLine,
   Bell,
-  Mail
+  Mail,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 
 import { supabase } from './supabase';
@@ -95,7 +97,7 @@ export default function App() {
       return user ? {
         id: user.id,
         uid: user.id,
-        photoURL: user.user_metadata?.avatar_url || '',
+        photoURL: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
         displayName: user.user_metadata?.full_name || user.user_metadata?.name || 'You'
       } : null;
     }
@@ -148,21 +150,26 @@ export default function App() {
     const saved = localStorage.getItem('theme');
     return saved === 'dark';
   });
-  const [offlineMode, setOfflineMode] = useState(true);
+  const [offlineMode, setOfflineMode] = useState(false);
   const [isDbSynced, setIsDbSynced] = useState(false);
   const [hasConfirmedRoom, setHasConfirmedRoom] = useState(false);
   
   // Nicknames & Roommates Dynamic State
   const [userNickname, setUserNickname] = useState(() => localStorage.getItem('userNickname') || 'You');
-  const [roomName, setRoomName] = useState(() => localStorage.getItem('roomName') || 'Duo Room');
+  const [roomName, setRoomName] = useState(() => localStorage.getItem('roomName') || 'Tallin');
   const [roommateOnline, setRoommateOnline] = useState(true);
   
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState(() => localStorage.getItem('userNickname') || 'You');
   const [isEditingRoomName, setIsEditingRoomName] = useState(false);
   const [roomNameInput, setRoomNameInput] = useState('');
-  const [settingsRoomNameInput, setSettingsRoomNameInput] = useState(() => localStorage.getItem('roomName') || 'Duo Room');
+  const [settingsRoomNameInput, setSettingsRoomNameInput] = useState(() => localStorage.getItem('roomName') || 'Tallin');
   const [nicknamePromptAction, setNicknamePromptAction] = useState(null); // null | 'create' | 'join'
+  const [onboardingStep, setOnboardingStep] = useState('selection'); // 'selection' | 'room-name' | 'room-budget' | 'share-code'
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [editingTransaction, setEditingTransaction] = useState(null);
+  const [userRooms, setUserRooms] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().substring(0, 7));
 
   // Notification Config States
   const [notificationMethod, setNotificationMethod] = useState(() => localStorage.getItem('notificationMethod') || 'none');
@@ -198,6 +205,54 @@ export default function App() {
   // Search & Filter State (Ledger)
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
+
+  // Helper to log user actions in activity_logs table
+  const logActivity = async (action, details, roomId = null) => {
+    const targetRoom = roomId || userRoomId;
+    if (!user || !targetRoom) return;
+    try {
+      await supabase
+        .from('activity_logs')
+        .insert({
+          room_id: targetRoom,
+          user_id: user.id,
+          user_name: userNickname,
+          action: action,
+          details: details
+        });
+    } catch (err) {
+      console.warn("Failed to insert log activity:", err);
+    }
+  };
+
+  const fetchUserRooms = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('room_id, rooms:rooms(name, monthly_budget)')
+        .eq('uid', user.id);
+      
+      if (error) throw error;
+      
+      const formatted = (data || []).map(item => ({
+        roomId: item.room_id,
+        roomName: item.rooms?.name || 'Tallin',
+        monthlyBudget: item.rooms?.monthly_budget || 22000
+      }));
+      setUserRooms(formatted);
+    } catch (err) {
+      console.warn("Error fetching user rooms:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchUserRooms();
+    } else {
+      setUserRooms([]);
+    }
+  }, [user, userRoomId]);
 
   // Helper to add member to room in Supabase
   const addMemberToRoom = async (roomId, nickname, currentUserObj = null) => {
@@ -305,7 +360,7 @@ export default function App() {
     const timer = setTimeout(() => {
       if (authLoading) {
         console.warn("Auth initialization timed out.");
-        setAuthError("Duo Room is taking longer than usual to connect. Please check your Google Cloud Console API Key restrictions and allow your Vercel domain.");
+        setAuthError("Tallin is taking longer than usual to connect. Please check your Google Cloud Console API Key restrictions and allow your Vercel domain.");
         setAuthLoading(false);
       }
     }, 6000);
@@ -360,32 +415,56 @@ export default function App() {
   // Initialize and reset Add Expense Form when opened
   useEffect(() => {
     if (isAddExpenseOpen) {
-      // Set default paid by to current user's UID or the first member
-      const currentUid = auth.currentUser?.uid || 'anonymous';
-      if (members.some(m => m.uid === currentUid)) {
-        setFormPaidBy(currentUid);
-      } else if (members.length > 0) {
-        setFormPaidBy(members[0].uid);
+      if (editingTransaction) {
+        // Populating for edit mode
+        setFormFor(editingTransaction.title);
+        setFormAmount(editingTransaction.amount.toString());
+        setFormCategory(editingTransaction.category);
+        setFormDate(editingTransaction.date);
+        setFormPaidBy(editingTransaction.paidByUid || (auth.currentUser?.uid || 'anonymous'));
+        setSplitType(editingTransaction.splitType || 'equal');
+        
+        // Populate selected splits and custom values
+        const initialSplits = {};
+        const initialCustomValues = {};
+        if (editingTransaction.splits && Array.isArray(editingTransaction.splits)) {
+          members.forEach(m => {
+            initialSplits[m.uid] = editingTransaction.splits.some(s => s.uid === m.uid);
+          });
+          editingTransaction.splits.forEach(s => {
+            initialCustomValues[s.uid] = s.amount;
+          });
+        } else {
+          members.forEach(m => {
+            initialSplits[m.uid] = true;
+          });
+        }
+        setSelectedSplitMembers(initialSplits);
+        setCustomSplitValues(initialCustomValues);
       } else {
-        setFormPaidBy(currentUid);
+        // Initialize default paid by if not set
+        if (!formPaidBy) {
+          const currentUid = auth.currentUser?.uid || 'anonymous';
+          if (members.some(m => m.uid === currentUid)) {
+            setFormPaidBy(currentUid);
+          } else if (members.length > 0) {
+            setFormPaidBy(members[0].uid);
+          } else {
+            setFormPaidBy(currentUid);
+          }
+        }
+        
+        // Initialize splits to true if they are empty
+        if (Object.keys(selectedSplitMembers).length === 0) {
+          const initialSplits = {};
+          members.forEach(m => {
+            initialSplits[m.uid] = true;
+          });
+          setSelectedSplitMembers(initialSplits);
+        }
       }
-      
-      // Initialize selectedSplitMembers to all true
-      const initialSplits = {};
-      members.forEach(m => {
-        initialSplits[m.uid] = true;
-      });
-      setSelectedSplitMembers(initialSplits);
-      
-      // Reset other form fields
-      setFormFor('');
-      setFormAmount('');
-      setFormCategory('Food');
-      setFormDate(new Date().toISOString().split('T')[0]);
-      setSplitType('equal');
-      setCustomSplitValues({});
     }
-  }, [isAddExpenseOpen, members]);
+  }, [isAddExpenseOpen, members, editingTransaction]);
 
   // Sync with dark mode class on document element and body
   useEffect(() => {
@@ -409,11 +488,43 @@ export default function App() {
         .order('date', { ascending: false });
 
       if (error) throw error;
-      setTransactions(data || []);
+      const mapped = (data || []).map(t => ({
+        id: t.id,
+        roomId: t.room_id,
+        title: t.title,
+        amount: Number(t.amount) || 0,
+        category: t.category,
+        date: t.date,
+        time: t.time,
+        paidBy: t.paid_by,
+        paidByUid: t.paid_by_uid,
+        isShared: t.is_shared,
+        splitType: t.split_type,
+        split: t.split,
+        splits: t.splits,
+        createdBy: t.created_by
+      }));
+      setTransactions(mapped);
       setIsDbSynced(true);
     } catch (err) {
       console.error("Error fetching transactions:", err);
       setIsDbSynced(false);
+    }
+  };
+
+  const fetchActivityLogs = async (roomId) => {
+    try {
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      if (error) throw error;
+      setActivityLogs(data || []);
+    } catch (err) {
+      console.warn("Error fetching activity logs:", err);
     }
   };
 
@@ -505,6 +616,7 @@ export default function App() {
     fetchReceipts(userRoomId);
     fetchRoomSettings(userRoomId);
     fetchMembers(userRoomId);
+    fetchActivityLogs(userRoomId);
 
     const channel = supabase
       .channel(`room:${userRoomId}`)
@@ -527,6 +639,11 @@ export default function App() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${userRoomId}` },
         () => { fetchRoomSettings(userRoomId); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'activity_logs', filter: `room_id=eq.${userRoomId}` },
+        () => { fetchActivityLogs(userRoomId); }
       )
       .subscribe();
 
@@ -561,7 +678,32 @@ export default function App() {
     const confirmed = window.confirm(`Delete room ${userRoomId} permanently? All transactions and data will be lost. This cannot be undone.`);
     if (!confirmed) return;
     try {
-      // Delete room from rooms table (will cascade delete members, transactions, receipts)
+      // 1. Generate and download JSON backup
+      const backupData = {
+        roomId: userRoomId,
+        roomName: roomName,
+        monthlyBudget: monthlyBudget,
+        exportedAt: new Date().toISOString(),
+        exportedBy: userNickname,
+        members: members,
+        transactions: transactions,
+        receipts: receipts,
+        activityLogs: activityLogs
+      };
+
+      const backupStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([backupStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `tallin_room_backup_${userRoomId}_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      triggerToast('Room backup JSON downloaded successfully!');
+
+      // 2. Delete room from rooms table (will cascade delete members, transactions, receipts)
       const { error: deleteError } = await supabase
         .from('rooms')
         .delete()
@@ -661,6 +803,41 @@ export default function App() {
     }
   };
 
+  const handleEditTransaction = (tx) => {
+    const canEdit = !tx.createdBy || tx.createdBy === 'anonymous' || tx.createdBy === user?.id;
+    if (!canEdit) {
+      triggerToast('You are not authorized to edit this expense. Only the creator can edit it.');
+      return;
+    }
+    setEditingTransaction(tx);
+    setIsAddExpenseOpen(true);
+  };
+
+  const handleDeleteTransaction = async (tx) => {
+    const canDelete = !tx.createdBy || tx.createdBy === 'anonymous' || tx.createdBy === user?.id;
+    if (!canDelete) {
+      triggerToast('You are not authorized to delete this expense. Only the creator can delete it.');
+      return;
+    }
+    const confirmed = window.confirm(`Delete expense "${tx.title}" of ${formatINR(tx.amount)}?`);
+    if (!confirmed) return;
+    
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', tx.id);
+      
+      if (error) throw error;
+      
+      await logActivity('delete', `${userNickname} deleted expense "${tx.title}" (₹${tx.amount})`);
+      triggerToast('Expense deleted successfully.');
+    } catch (err) {
+      console.error("Error deleting transaction:", err);
+      triggerToast(`Failed to delete: ${err.message}`);
+    }
+  };
+
   // Helper to generate a room code with high entropy (4.1 Billion combinations)
   const generateUniqueRoomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -669,7 +846,7 @@ export default function App() {
       letters += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     const digits = Math.floor(1000 + Math.random() * 9000);
-    return `DUO-${letters}-${digits}`;
+    return `TL-${letters}-${digits}`;
   };
 
   // Create Room handler with Supabase uniqueness check
@@ -718,7 +895,7 @@ export default function App() {
           created_by: user ? user.id : 'anonymous',
           created_at: new Date().toISOString(),
           monthly_budget: monthlyBudget,
-          name: roomNameInput.trim() || 'Duo Room'
+          name: roomNameInput.trim() || 'Tallin'
         });
 
       if (roomError) throw roomError;
@@ -727,16 +904,15 @@ export default function App() {
       await addMemberToRoom(uniqueCode, userNickname);
       
       // 2. Set active room locally
-      const finalRoomName = roomNameInput.trim() || 'Duo Room';
+      const finalRoomName = roomNameInput.trim() || 'Tallin';
       setRoomName(finalRoomName);
       setSettingsRoomNameInput(finalRoomName);
       localStorage.setItem('roomName', finalRoomName);
       
       setUserRoomId(uniqueCode);
       localStorage.setItem('userRoomId', uniqueCode);
-      setHasConfirmedRoom(true);
+      setOnboardingStep('share-code');
       triggerToast(`Room ${uniqueCode} created!`);
-      setIsInviteModalOpen(true); // Auto-open invite modal to show room details
       
       // 3. Write to users profile to bind user session
       if (user) {
@@ -952,8 +1128,8 @@ export default function App() {
     if (!notificationMethod || notificationMethod === 'none') return;
     
     const formattedAmount = `₹${transaction.amount.toLocaleString("en-IN")}`;
-    const roomDisplayName = userRoomId || 'DUO-ROOM';
-    const messageText = `Duo Room Alert: A new expense "${transaction.title}" of ${formattedAmount} was added by ${transaction.paidBy} in Room ${roomDisplayName}.`;
+    const roomDisplayName = userRoomId || 'TL-ROOM';
+    const messageText = `Tallin Alert: A new expense "${transaction.title}" of ${formattedAmount} was added by ${transaction.paidBy} in Room ${roomDisplayName}.`;
     
     // Automatically include all other room members' emails
     const emailList = [...new Set([
@@ -965,7 +1141,7 @@ export default function App() {
 
     const htmlBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background-color: #F6F8F6; color: #1A3827; border-radius: 16px; border: 1px solid #E3E8E3; max-width: 500px; margin: 20px auto; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
-        <h2 style="color: #1A3827; margin: 0 0 4px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">Duo Room Expense</h2>
+        <h2 style="color: #1A3827; margin: 0 0 4px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">Tallin Expense</h2>
         <p style="font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #5C6E5C; margin: 0 0 16px 0; font-weight: bold;">Real-time Billing Sync</p>
         <div style="background-color: white; padding: 20px; border-radius: 12px; border: 1px solid #E3E8E3; margin-bottom: 16px;">
           <p style="margin: 0 0 10px 0; font-size: 14px; color: #5C6E5C;">Hi Roommate,</p>
@@ -992,7 +1168,7 @@ export default function App() {
             </tr>
           </table>
         </div>
-        <p style="font-size: 11px; color: #5C6E5C; text-align: center; margin: 0;">Open your Duo Room dashboard to view the full ledger or settle balances.</p>
+        <p style="font-size: 11px; color: #5C6E5C; text-align: center; margin: 0;">Open your Tallin dashboard to view the full ledger or settle balances.</p>
       </div>
     `;
 
@@ -1007,7 +1183,7 @@ export default function App() {
             },
             body: JSON.stringify({
               to: email,
-              subject: `Duo Room Expense: ${transaction.title} (${formattedAmount})`,
+              subject: `Tallin Expense: ${transaction.title} (${formattedAmount})`,
               htmlBody: htmlBody,
               textBody: messageText
             })
@@ -1127,7 +1303,7 @@ export default function App() {
       });
     }
 
-    const currentRoom = userRoomId || 'DUO-7729-XM';
+    const currentRoom = userRoomId || 'TL-7729-XM';
     const payerMember = members.find(m => m.uid === formPaidBy) || { nickname: userNickname };
     
     // Determine split label text and classification
@@ -1158,77 +1334,119 @@ export default function App() {
       splits: splitsArray
     };
 
-    try {
-      const { error: txError } = await supabase
-        .from('transactions')
-        .insert({
-          room_id: currentRoom,
-          title: newPayload.title,
-          amount: newPayload.amount,
-          category: newPayload.category,
-          date: newPayload.date,
-          time: newPayload.time,
-          paid_by: newPayload.paidBy,
-          paid_by_uid: newPayload.paidByUid,
-          is_shared: newPayload.isShared,
-          split_type: newPayload.splitType,
-          split: newPayload.split,
-          splits: newPayload.splits
-        });
+    if (editingTransaction) {
+      try {
+        const { error: txError } = await supabase
+          .from('transactions')
+          .update({
+            title: newPayload.title,
+            amount: newPayload.amount,
+            category: newPayload.category,
+            date: newPayload.date,
+            paid_by: newPayload.paidBy,
+            paid_by_uid: newPayload.paidByUid,
+            is_shared: newPayload.isShared,
+            split_type: newPayload.splitType,
+            split: newPayload.split,
+            splits: newPayload.splits
+          })
+          .eq('id', editingTransaction.id);
 
-      if (txError) throw txError;
-
-      if (formWho === 'Shared') {
-        const bgColors = [
-          'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
-          'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
-          'bg-amber-50 border-amber-100 text-amber-800 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-400',
-          'bg-rose-50 border-rose-100 text-rose-800 dark:bg-rose-950/20 dark:border-rose-900/30 dark:text-rose-400'
-        ];
-        const rotations = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2'];
-        const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
-        const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
+        if (txError) throw txError;
         
-        const { error: receiptError } = await supabase
-          .from('receipts')
+        await logActivity('edit', `${userNickname} edited expense "${newPayload.title}" to ₹${newPayload.amount}`);
+        triggerToast("Expense updated successfully!");
+        
+        // Reset Form
+        setFormFor('');
+        setFormAmount('');
+        setFormCategory('Food');
+        setFormDate(new Date().toISOString().split('T')[0]);
+        setFormWho('Shared');
+        setFormRepeat(false);
+        setEditingTransaction(null);
+        setIsAddExpenseOpen(false);
+      } catch (error) {
+        console.error("Error updating transaction:", error);
+        triggerToast(`Failed to update: ${error.message}`);
+      }
+    } else {
+      try {
+        const { error: txError } = await supabase
+          .from('transactions')
           .insert({
             room_id: currentRoom,
-            title: formFor,
-            amount: amountNum,
-            category: formCategory,
-            date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
-            bg_class: randomBg,
-            rotation: randomRot
+            title: newPayload.title,
+            amount: newPayload.amount,
+            category: newPayload.category,
+            date: newPayload.date,
+            time: newPayload.time,
+            paid_by: newPayload.paidBy,
+            paid_by_uid: newPayload.paidByUid,
+            is_shared: newPayload.isShared,
+            split_type: newPayload.splitType,
+            split: newPayload.split,
+            splits: newPayload.splits,
+            created_by: user ? user.id : 'anonymous'
           });
-        
-        if (receiptError) throw receiptError;
-      }
 
-      // Send client-side email notifications if configured
-      if (notificationMethod !== 'none' && recipientEmails) {
-        sendEmailNotification(newPayload);
-        triggerToast(`Added expense! 📧 Email notification sent.`);
-      } else {
-        triggerToast("Added expense!");
-      }
-    } catch (error) {
-      console.error(error);
-      setTransactions([{ id: Date.now().toString(), ...newPayload }, ...transactions]);
-      if (notificationMethod !== 'none' && recipientEmails) {
-        triggerToast(`Failed to save: ${error.message || 'database error'}. 📧 Notification queued.`);
-      } else {
-        triggerToast(`Failed to save: ${error.message || 'database error'}.`);
+        if (txError) throw txError;
+
+        await logActivity('create', `${userNickname} added expense "${newPayload.title}" (₹${newPayload.amount})`);
+
+        if (formWho === 'Shared') {
+          const bgColors = [
+            'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
+            'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
+            'bg-amber-50 border-amber-100 text-amber-800 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-400',
+            'bg-rose-50 border-rose-100 text-rose-800 dark:bg-rose-950/20 dark:border-rose-900/30 dark:text-rose-400'
+          ];
+          const rotations = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2'];
+          const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
+          const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
+          
+          const { error: receiptError } = await supabase
+            .from('receipts')
+            .insert({
+              room_id: currentRoom,
+              title: formFor,
+              amount: amountNum,
+              category: formCategory,
+              date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
+              bg_class: randomBg,
+              rotation: randomRot
+            });
+          
+          if (receiptError) throw receiptError;
+        }
+
+        // Send client-side email notifications if configured
+        if (notificationMethod !== 'none' && recipientEmails) {
+          sendEmailNotification(newPayload);
+          triggerToast(`Added expense! 📧 Email notification sent.`);
+        } else {
+          triggerToast("Added expense!");
+        }
+
+        // Reset Form
+        setFormFor('');
+        setFormAmount('');
+        setFormCategory('Food');
+        setFormDate(new Date().toISOString().split('T')[0]);
+        setFormWho('Shared');
+        setFormRepeat(false);
+        setEditingTransaction(null);
+        setIsAddExpenseOpen(false);
+      } catch (error) {
+        console.error(error);
+        setTransactions([{ id: Date.now().toString(), ...newPayload }, ...transactions]);
+        if (notificationMethod !== 'none' && recipientEmails) {
+          triggerToast(`Failed to save: ${error.message || 'database error'}. 📧 Notification queued.`);
+        } else {
+          triggerToast(`Failed to save: ${error.message || 'database error'}.`);
+        }
       }
     }
-
-    // Reset Form
-    setFormFor('');
-    setFormAmount('');
-    setFormCategory('Food');
-    setFormDate('2026-06-21');
-    setFormWho('Shared');
-    setFormRepeat(false);
-    setIsAddExpenseOpen(false);
   };
 
   // Upload Receipt trigger
@@ -1272,7 +1490,7 @@ export default function App() {
       rotation: randomRot
     };
 
-    const currentRoom = userRoomId || 'DUO-7729-XM';
+    const currentRoom = userRoomId || 'TL-7729-XM';
     try {
       const { error: uploadError } = await supabase
         .from('receipts')
@@ -1363,7 +1581,7 @@ export default function App() {
     const receiver = members.find(m => m.uid === settleReceiver);
     if (!payer || !receiver) return;
 
-    const currentRoom = userRoomId || 'DUO-7729-XM';
+    const currentRoom = userRoomId || 'TL-7729-XM';
     const newPayload = {
       title: `Payment: ${payer.nickname} to ${receiver.nickname}`,
       amount: amountNum,
@@ -1409,11 +1627,11 @@ export default function App() {
 
   // Invite trigger
   const handleInviteTrigger = async () => {
-    const currentRoom = userRoomId || 'DUO-7729-XM';
+    const currentRoom = userRoomId || 'TL-7729-XM';
     const shareData = {
-      title: 'Duo Room Shared Space',
-      text: `Join my roommate shared space on Duo Room! Use Code: ${currentRoom}`,
-      url: `https://duoroom.app/invite/${currentRoom}`
+      title: 'Tallin Shared Space',
+      text: `Join my roommate shared space on Tallin! Use Code: ${currentRoom}`,
+      url: `https://tallin.app/invite/${currentRoom}`
     };
 
     if (navigator.share) {
@@ -1463,9 +1681,9 @@ export default function App() {
   };
 
   // CSV Export Handler
-  const exportToCSV = () => {
+  const exportToCSV = (list = null) => {
     try {
-      const dataList = transactions;
+      const dataList = list || filteredTransactions;
       if (dataList.length === 0) {
         triggerToast('No transaction records to export.');
         return;
@@ -1473,7 +1691,7 @@ export default function App() {
 
       const headers = ['Date', 'Time', 'Description', 'Amount (INR)', 'Category', 'Paid By', 'Split Type'];
       const rows = dataList.map(t => [
-        `"${t.date || ''}"`  ,
+        `"${t.date || ''}"`,
         `"${t.time || ''}"`,
         `"${(t.title || '').replace(/"/g, '""')}"`,
         t.amount,
@@ -1487,7 +1705,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `duo_room_${userRoomId || 'export'}_${new Date().toISOString().split('T')[0]}.csv`;
+      link.download = `tallin_room_${userRoomId || 'export'}_${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1500,9 +1718,9 @@ export default function App() {
   };
 
   // Excel Export Handler (styled XLS format)
-  const exportToExcel = () => {
+  const exportToExcel = (list = null) => {
     try {
-      const dataList = transactions;
+      const dataList = list || filteredTransactions;
       if (dataList.length === 0) {
         triggerToast('No transaction records to export.');
         return;
@@ -1540,10 +1758,12 @@ export default function App() {
         </head>
         <body>
           <div class="header-info">
-            <span class="header-title">Duo Room Financial Ledger Report</span><br/>
+            <span class="header-title">YouthFirst Tallin Financial Ledger Report</span><br/>
             <b>Room Workspace:</b> ${userRoomId || 'N/A'}<br/>
+            <b>Room Name:</b> ${roomName}<br/>
+            <b>Exported by:</b> ${userNickname} (${user?.email || 'N/A'})<br/>
             <b>Exported on:</b> ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}<br/>
-            <b>Total Room Spend:</b> ${formatINR(totalSpend)}<br/>
+            <b>Total Selected Spend:</b> ${formatINR(totalSpend)}<br/>
             <b>Members:</b> ${memberNames}
           </div>
           <table>
@@ -1580,7 +1800,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `duo_room_ledger_export_${userRoomId || 'room'}.xls`;
+      link.download = `tallin_ledger_export_${userRoomId || 'room'}.xls`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1594,9 +1814,9 @@ export default function App() {
   };
 
   // PDF Export Handler — opens styled print page in new tab
-  const exportToPDF = () => {
+  const exportToPDF = (list = null) => {
     try {
-      const dataList = transactions;
+      const dataList = list || filteredTransactions;
       if (dataList.length === 0) {
         triggerToast('No transaction records to export.');
         return;
@@ -1616,7 +1836,7 @@ export default function App() {
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Duo Room Ledger - Statement of Account</title>
+          <title>YouthFirst Tallin Ledger - Statement of Account</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1659,12 +1879,14 @@ export default function App() {
         <body>
           <div class="header-banner">
             <div class="logo-title">
-              <div class="logo-icon">D</div>
-              <div class="logo-text">Duo Room</div>
+              <div class="logo-icon">T</div>
+              <div class="logo-text">YouthFirst Tallin</div>
             </div>
             <div class="doc-info">
               <b>Room Statement</b><br/>
+              <b>Room Name:</b> ${roomName}<br/>
               <b>Workspace ID:</b> ${userRoomId || 'N/A'}<br/>
+              <b>Exported by:</b> ${userNickname} (${user?.email || 'N/A'})<br/>
               <b>Generated on:</b> ${new Date().toLocaleDateString()}<br/>
               <b>Members:</b> ${memberNames}
             </div>
@@ -1673,7 +1895,7 @@ export default function App() {
           <h4 class="summary-title">Financial Summary</h4>
           <div class="cards-grid">
             <div class="summary-card">
-              <p class="card-label">Total Room Spend</p>
+              <p class="card-label">Total Spent</p>
               <p class="card-value">${formatINR(totalSpend)}</p>
             </div>
             <div class="summary-card">
@@ -1685,7 +1907,7 @@ export default function App() {
               <p class="card-value">${dataList.length}</p>
             </div>
             <div class="summary-card">
-              <p class="card-label">Balance</p>
+              <p class="card-label">Balance Status</p>
               <p class="card-value">${statusText}</p>
             </div>
           </div>
@@ -1728,7 +1950,7 @@ export default function App() {
           </table>
           
           <div class="footer">
-            Duo Room roommate expense statement. Generated by pairing with Firestore Cloud database.
+            YouthFirst Tallin roommate expense statement. Generated securely by YouthFirst Tallin.
           </div>
           
           <script>
@@ -1769,19 +1991,52 @@ export default function App() {
       const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             t.category.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = categoryFilter === 'All' || t.category === categoryFilter;
-      return matchesSearch && matchesCategory;
+      const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
+      return matchesSearch && matchesCategory && matchesMonth;
     });
-  }, [activeTxList, searchQuery, categoryFilter]);
+  }, [activeTxList, searchQuery, categoryFilter, selectedMonth]);
+
+  // Personal expenses memo (isShared is false, split only with self)
+  const myPersonalExpenses = useMemo(() => {
+    const currentUid = auth.currentUser?.uid || 'anonymous';
+    return transactions.filter(t => {
+      return t.isShared === false && t.splits && t.splits.length === 1 && t.splits[0].uid === currentUid;
+    });
+  }, [transactions, auth.currentUser?.uid]);
+
+  const filteredPersonalExpenses = useMemo(() => {
+    return myPersonalExpenses.filter(t => {
+      const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            t.category.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = categoryFilter === 'All' || t.category === categoryFilter;
+      const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
+      return matchesSearch && matchesCategory && matchesMonth;
+    });
+  }, [myPersonalExpenses, searchQuery, categoryFilter, selectedMonth]);
+
+  // Available unique months from all transactions
+  const availableMonths = useMemo(() => {
+    const months = new Set();
+    transactions.forEach(t => {
+      if (t.date && t.date.length >= 7) {
+        months.add(t.date.substring(0, 7)); // "YYYY-MM"
+      }
+    });
+    // Ensure current month is always available
+    const current = new Date().toISOString().substring(0, 7);
+    months.add(current);
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }, [transactions]);
 
   // LOADING STATE
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#F6F8F6] dark:bg-slate-950 flex flex-col items-center justify-center transition-colors duration-300">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/10 dark:border-slate-800 flex items-center justify-center animate-spin">
-            <RefreshCw className="w-6 h-6 text-[#1A3827] dark:text-[#A3E635]" />
+          <div className="w-12 h-12 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/10 dark:border-slate-800 flex items-center justify-center">
+            <RefreshCw className="w-6 h-6 text-[#1A3827] dark:text-[#A3E635] animate-spin" />
           </div>
-          <p className="text-sm font-bold text-[#1A3827]/80 dark:text-slate-200">Loading Duo Room secure credentials...</p>
+          <p className="text-sm font-bold text-[#1A3827]/80 dark:text-slate-200">Loading Tallin secure credentials...</p>
         </div>
       </div>
     );
@@ -1811,12 +2066,12 @@ export default function App() {
         <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-8 shadow-sm flex flex-col justify-between space-y-6">
           <div className="text-center space-y-3">
             <div className="w-14 h-14 bg-[#EAF0EC] dark:bg-slate-800 border border-[#1A3827]/10 dark:border-slate-700 rounded-2xl flex items-center justify-center font-black text-2xl text-[#1A3827] dark:text-[#A3E635] mx-auto shadow-sm">
-              D
+              T
             </div>
             
             <div className="space-y-1">
-              <h1 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">Duo Room</h1>
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold uppercase tracking-wider">Roommate Expense Tracker</p>
+              <h1 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">Tallin</h1>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold uppercase tracking-wider">YouthFirst Roommate Expense Tracker</p>
             </div>
             
             <p className="text-sm text-[#5C6E5C] dark:text-slate-400 max-w-xs mx-auto leading-relaxed pt-2">
@@ -1894,147 +2149,224 @@ export default function App() {
         <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-emerald-100 dark:bg-emerald-950/10 rounded-full blur-3xl opacity-40 -z-10"></div>
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-lime-100 dark:bg-lime-950/10 rounded-full blur-3xl opacity-40 -z-10"></div>
 
-        <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col justify-between space-y-6">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col justify-between space-y-6">
           <div className="text-center space-y-3">
             <div className="w-12 h-12 bg-[#EAF0EC] dark:bg-slate-800 border border-[#1A3827]/10 dark:border-slate-700 rounded-xl flex items-center justify-center font-black text-xl text-[#1A3827] dark:text-[#A3E635] mx-auto shadow-sm">
-              D
+              T
             </div>
             
             <div className="space-y-1">
               <h1 className="text-xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Set up your shared space</h1>
-              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-bold uppercase tracking-wider">Duo Room Onboarding</p>
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-bold uppercase tracking-wider">YouthFirst Tallin Onboarding</p>
             </div>
-            
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
-              Create a new digital room to log bills, or enter a roommate's room code to synchronize existing balances.
-            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            {/* Continue to Active Room Option (shown if user has already joined a room) */}
-            {userRoomId && (
-              <div className="col-span-1 md:col-span-2 border-2 border-[#1A3827] dark:border-[#A3E635] bg-[#EAF0EC]/20 dark:bg-[#A3E635]/5 rounded-2xl p-5 hover:bg-[#EAF0EC]/30 dark:hover:bg-[#A3E635]/15 transition-all flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 text-left shadow-sm">
-                <div className="space-y-1">
-                  <span className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    Active Room
-                  </span>
-                  <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100 mt-1">Continue to Room</h3>
-                  <p className="font-mono text-xs font-bold text-[#5C6E5C] dark:text-slate-350">
-                    Room Code: <span className="text-[#1A3827] dark:text-[#A3E635] font-black">{userRoomId}</span>
-                  </p>
+          {/* Wizard step: selection */}
+          {onboardingStep === 'selection' && (
+            <div className="space-y-5">
+              {/* Nickname input */}
+              <div className="space-y-1.5 text-left">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Your display name *</label>
+                <input
+                  type="text"
+                  value={nicknameInput === 'You' ? '' : nicknameInput}
+                  onChange={(e) => {
+                    setNicknameInput(e.target.value);
+                    setUserNickname(e.target.value);
+                    localStorage.setItem('userNickname', e.target.value);
+                  }}
+                  placeholder="e.g. Sampath, Alex…"
+                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                />
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">This is how you'll appear to roommates.</p>
+              </div>
+
+              {userRoomId && (
+                <div className="border border-[#1A3827] dark:border-[#A3E635] bg-[#EAF0EC]/20 dark:bg-[#A3E635]/5 rounded-2xl p-4 flex justify-between items-center text-left">
+                  <div className="space-y-0.5">
+                    <span className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Active Room</span>
+                    <p className="font-mono text-xs font-bold text-[#1A3827] dark:text-slate-100 mt-1">Code: {userRoomId}</p>
+                  </div>
+                  <button 
+                    onClick={() => setHasConfirmedRoom(true)}
+                    className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-955 px-4 py-2 rounded-xl font-bold text-xs hover:opacity-90"
+                  >
+                    Enter Room
+                  </button>
                 </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    if (!nicknameInput.trim() || nicknameInput === 'You') {
+                      triggerToast('Please enter your display name first.');
+                      return;
+                    }
+                    setOnboardingStep('room-name');
+                  }}
+                  className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 hover:border-[#1A3827]/25 dark:hover:border-slate-700 hover:bg-[#F6F8F6]/20 dark:hover:bg-slate-800/10 transition-all flex flex-col items-center justify-center gap-2 text-center text-xs font-bold text-[#1A3827] dark:text-slate-200"
+                >
+                  <Plus className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635]" />
+                  <span>Create Room</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (!nicknameInput.trim() || nicknameInput === 'You') {
+                      triggerToast('Please enter your display name first.');
+                      return;
+                    }
+                    setOnboardingStep('join-room');
+                  }}
+                  className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 hover:border-[#1A3827]/25 dark:hover:border-slate-700 hover:bg-[#F6F8F6]/20 dark:hover:bg-slate-800/10 transition-all flex flex-col items-center justify-center gap-2 text-center text-xs font-bold text-[#1A3827] dark:text-slate-200"
+                >
+                  <UserCheck className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635]" />
+                  <span>Join Room</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Wizard step: room-name */}
+          {onboardingStep === 'room-name' && (
+            <div className="space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Room name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Cozy Flat, Room 402…"
+                  value={roomNameInput}
+                  onChange={(e) => setRoomNameInput(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                />
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Give your shared space a name.</p>
+              </div>
+              <div className="flex gap-2.5 pt-2">
+                <button 
+                  onClick={() => setOnboardingStep('selection')}
+                  className="flex-1 border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 py-2.5 rounded-xl font-bold text-xs"
+                >
+                  Back
+                </button>
+                <button 
+                  onClick={() => {
+                    if (!roomNameInput.trim()) {
+                      triggerToast('Please enter a room name.');
+                      return;
+                    }
+                    setOnboardingStep('room-budget');
+                  }}
+                  className="flex-1 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 py-2.5 rounded-xl font-bold text-xs"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Wizard step: room-budget */}
+          {onboardingStep === 'room-budget' && (
+            <div className="space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Monthly budget cap (₹)</label>
+                <input
+                  type="number"
+                  min="1000"
+                  value={monthlyBudget}
+                  onChange={(e) => {
+                    setMonthlyBudget(Number(e.target.value));
+                    localStorage.setItem('monthlyBudget', e.target.value);
+                  }}
+                  placeholder="e.g. 25000"
+                  className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                />
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Set a shared spending limit for your room.</p>
+              </div>
+              <div className="flex gap-2.5 pt-2">
+                <button 
+                  onClick={() => setOnboardingStep('room-name')}
+                  className="flex-1 border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 py-2.5 rounded-xl font-bold text-xs"
+                >
+                  Back
+                </button>
+                <button 
+                  onClick={handleCreateRoom}
+                  className="flex-1 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 py-2.5 rounded-xl font-bold text-xs"
+                >
+                  Create Room
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Wizard step: share-code */}
+          {onboardingStep === 'share-code' && (
+            <div className="space-y-4 text-left">
+              <div className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/15 dark:border-slate-800 rounded-2xl p-5 text-center space-y-2">
+                <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Your Room Code</p>
+                <p className="font-mono font-black text-2xl text-[#1A3827] dark:text-[#A3E635] tracking-widest select-all">{userRoomId}</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                  Share this code with your roommate. They open Tallin → Join Room → enter code.
+                </p>
+              </div>
+              
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => { navigator.clipboard.writeText(userRoomId); triggerToast('Room code copied!'); }}
+                  className="flex-1 border border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-slate-200 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Code</span>
+                </button>
                 <button 
                   onClick={() => setHasConfirmedRoom(true)}
-                  className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 hover:bg-[#255038] dark:hover:bg-slate-200 py-2.5 px-6 rounded-xl font-bold text-xs transition-all shadow-sm shrink-0 text-center"
+                  className="flex-1 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 py-2.5 rounded-xl font-bold text-xs text-center"
                 >
                   Enter Room
                 </button>
               </div>
-            )}
-
-            {/* Nickname + Budget (always visible first) */}
-            <div className="col-span-1 md:col-span-2 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-5 space-y-4 text-left bg-[#F6F8F6]/50 dark:bg-slate-800/20">
-              <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Your Profile</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Your display name *</label>
-                  <input
-                    type="text"
-                    value={nicknameInput}
-                    onChange={(e) => {
-                      setNicknameInput(e.target.value);
-                      setUserNickname(e.target.value);
-                      localStorage.setItem('userNickname', e.target.value);
-                    }}
-                    placeholder="e.g. Sampath, Alex…"
-                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
-                  />
-                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">This is how you'll appear to roommates.</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Monthly budget cap (₹)</label>
-                  <input
-                    type="number"
-                    min="1000"
-                    value={monthlyBudget}
-                    onChange={(e) => {
-                      setMonthlyBudget(Number(e.target.value));
-                      localStorage.setItem('monthlyBudget', e.target.value);
-                    }}
-                    placeholder="e.g. 25000"
-                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
-                  />
-                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Set a shared spending limit for your room.</p>
-                </div>
-              </div>
             </div>
+          )}
 
-            {/* Create Room Option */}
-            <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-5 hover:border-[#1A3827]/20 dark:hover:border-slate-700 hover:bg-[#F6F8F6]/20 dark:hover:bg-slate-800/10 transition-all flex flex-col justify-between space-y-4 text-left">
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Create new room</h3>
-                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                    {userRoomId ? "Generate a fresh room code and discard/switch from your current room." : "Generate a new unique room code and invite your roommate."}
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Room name</label>
+          {/* Wizard step: join-room */}
+          {onboardingStep === 'join-room' && (
+            <div className="space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Room code</label>
+                <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    placeholder="e.g. Cozy Flat, Room 402…"
-                    value={roomNameInput}
-                    onChange={(e) => setRoomNameInput(e.target.value)}
-                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
-                  />
-                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Give your shared space a name.</p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  if (userNickname === 'You' || !userNickname.trim()) {
-                    setNicknamePromptAction('create');
-                  } else {
-                    handleCreateRoom();
-                  }
-                }}
-                className="w-full bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-955 hover:bg-[#255038] dark:hover:bg-slate-200 py-2.5 px-4 rounded-xl font-bold text-xs transition-all shadow-sm text-center"
-              >
-                Create Room
-              </button>
-            </div>
-
-            {/* Join Room Option */}
-            <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-5 hover:border-[#1A3827]/20 dark:hover:border-slate-700 hover:bg-[#F6F8F6]/20 dark:hover:bg-slate-800/10 transition-all flex flex-col justify-between space-y-4 text-left">
-              <div className="space-y-2">
-                <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">
-                  {userRoomId ? "Join different room" : "Join existing room"}
-                </h3>
-                <div className="space-y-1.5">
-                  <input
-                    type="text"
-                    placeholder="Enter room code (e.g. DUO-7729-XM)"
+                    placeholder="Enter room code (e.g. TL-7729-XM)"
                     value={joinInput}
                     onChange={(e) => setJoinInput(e.target.value.toUpperCase())}
-                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
+                    className="flex-1 px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-955 font-semibold"
                   />
+                  <button
+                    onClick={() => setIsQrScannerOpen(true)}
+                    className="p-2.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl text-[#5C6E5C] dark:text-slate-400 transition-all shrink-0"
+                    title="Scan Room QR Code"
+                  >
+                    <ScanLine className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
+                  </button>
                 </div>
               </div>
-
-              <button
-                onClick={() => {
-                  if (userNickname === 'You' || !userNickname.trim()) {
-                    setNicknamePromptAction('join');
-                  } else {
-                    handleJoinRoom();
-                  }
-                }}
-                className="w-full bg-[#1A3827] dark:bg-slate-800 text-white hover:bg-[#255038] dark:hover:bg-slate-700 py-2 px-4 rounded-xl font-bold text-[11px] transition-all shadow-sm text-center"
-              >
-                Join via Code
-              </button>
+              
+              <div className="flex gap-2.5 pt-2">
+                <button 
+                  onClick={() => setOnboardingStep('selection')}
+                  className="flex-1 border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 py-2.5 rounded-xl font-bold text-xs"
+                >
+                  Back
+                </button>
+                <button 
+                  onClick={handleJoinRoom}
+                  className="flex-1 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 py-2.5 rounded-xl font-bold text-xs"
+                >
+                  Join Room
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="pt-4 border-t border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center text-xs">
             <span className="text-[#5C6E5C] dark:text-slate-400">Signed in as {user.email}</span>
@@ -2096,14 +2428,14 @@ export default function App() {
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       }`}>
         <div className="p-6">
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#EAF0EC] dark:bg-slate-800 border border-[#1A3827]/10 dark:border-slate-700 rounded-xl flex items-center justify-center font-bold text-xl text-[#1A3827] dark:text-[#A3E635]">
-                D
+              <div className="w-10 h-10 bg-[#EAF0EC] dark:bg-slate-800 border border-[#1A3827]/10 dark:border-slate-700 rounded-xl flex items-center justify-center font-black text-xl text-[#1A3827] dark:text-[#A3E635]">
+                T
               </div>
               <div>
-                <h1 className="font-bold text-[#1A3827] dark:text-slate-100 tracking-tight">Duo Room</h1>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold tracking-wider uppercase">Shared Spaces</p>
+                <h1 className="font-black text-[#1A3827] dark:text-slate-100 tracking-tight">Tallin</h1>
+                <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 font-bold uppercase tracking-wider">YouthFirst</p>
               </div>
             </div>
             
@@ -2114,6 +2446,47 @@ export default function App() {
               <X className="w-5 h-5" />
             </button>
           </div>
+
+          {/* Room Switcher Dropdown */}
+          {user && userRooms.length > 0 && (
+            <div className="mb-6 space-y-1">
+              <label className="text-[9px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest block font-sans">Active Workspace</label>
+              <select
+                value={userRoomId || ''}
+                onChange={async (e) => {
+                  const selectedRoomId = e.target.value;
+                  const selectedRoom = userRooms.find(r => r.roomId === selectedRoomId);
+                  if (selectedRoom) {
+                    setUserRoomId(selectedRoomId);
+                    localStorage.setItem('userRoomId', selectedRoomId);
+                    setRoomName(selectedRoom.roomName);
+                    localStorage.setItem('roomName', selectedRoom.roomName);
+                    setMonthlyBudget(selectedRoom.monthlyBudget);
+                    localStorage.setItem('monthlyBudget', selectedRoom.monthlyBudget);
+                    setHasConfirmedRoom(true);
+                    triggerToast(`Switched to room: ${selectedRoom.roomName}`);
+                    
+                    if (user) {
+                      await supabase
+                        .from('users')
+                        .upsert({
+                          uid: user.id,
+                          room_id: selectedRoomId,
+                          updated_at: new Date().toISOString()
+                        }, { onConflict: 'uid' });
+                    }
+                  }
+                }}
+                className="w-full bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-slate-100 rounded-xl px-3 py-2.5 text-xs font-bold focus:outline-none cursor-pointer hover:border-[#1A3827]/25 dark:hover:border-slate-700 transition-all font-sans"
+              >
+                {userRooms.map(r => (
+                  <option key={r.roomId} value={r.roomId}>
+                    🏠 {r.roomName} ({r.roomId})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Navigation Links */}
           <nav className="space-y-1">
@@ -2145,6 +2518,23 @@ export default function App() {
               </div>
               <span className="px-2 py-0.5 text-xs font-bold bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full">
                 {computedStats.totalCount}
+              </span>
+            </button>
+
+            <button 
+              onClick={() => { setCurrentView('personal-expenses'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm ${
+                currentView === 'personal-expenses' 
+                  ? 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 font-bold' 
+                  : 'text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <User className="w-4 h-4" />
+                <span>Personal Expenses</span>
+              </div>
+              <span className="px-2 py-0.5 text-xs font-bold bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full">
+                {myPersonalExpenses.length}
               </span>
             </button>
 
@@ -2276,7 +2666,7 @@ export default function App() {
             </button>
             
             <button 
-              onClick={() => triggerToast('Duo Room Diamond is active! VIP benefits enabled.')}
+              onClick={() => triggerToast('Tallin Diamond is active! VIP benefits enabled.')}
               className="p-2 text-[#5C6E5C] dark:text-slate-400 hover:text-amber-500 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl transition-all"
               title="Diamond Membership Status"
             >
@@ -2334,6 +2724,7 @@ export default function App() {
         <main className="flex-grow pt-20 px-4 sm:px-8 pb-24 overflow-y-auto">
           {currentView === 'home' && renderHome()}
           {currentView === 'ledger' && renderLedger()}
+          {currentView === 'personal-expenses' && renderPersonalExpenses()}
           {currentView === 'insights' && renderInsights()}
           {currentView === 'receipts' && renderReceipts()}
           {currentView === 'settings' && renderSettings()}
@@ -2616,6 +3007,18 @@ export default function App() {
   // ==========================================
   function renderLedger() {
     const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport'];
+    
+    const totalFilteredSpend = filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalFilteredShared = filteredTransactions.filter(t => t.isShared).reduce((sum, t) => sum + t.amount, 0);
+    const totalFilteredPersonal = filteredTransactions.filter(t => !t.isShared).reduce((sum, t) => sum + t.amount, 0);
+
+    const activeMonthLabel = selectedMonth === 'All' 
+      ? 'TOTAL' 
+      : (() => {
+          const [year, month] = selectedMonth.split('-');
+          const dateObj = new Date(Number(year), Number(month) - 1, 1);
+          return dateObj.toLocaleString('default', { month: 'long' }).toUpperCase();
+        })();
 
     return (
       <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
@@ -2644,21 +3047,21 @@ export default function App() {
                   <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
                   <div className="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
                     <button 
-                      onClick={() => { exportToCSV(); setIsExportDropdownOpen(false); }}
+                      onClick={() => { exportToCSV(filteredTransactions); setIsExportDropdownOpen(false); }}
                       className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
                     >
                       <FileText className="w-4 h-4 text-emerald-700" />
                       <span>Export to CSV</span>
                     </button>
                     <button 
-                      onClick={() => { exportToExcel(); setIsExportDropdownOpen(false); }}
+                      onClick={() => { exportToExcel(filteredTransactions); setIsExportDropdownOpen(false); }}
                       className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
                     >
                       <Sliders className="w-4 h-4 text-blue-600" />
                       <span>Export to Excel</span>
                     </button>
                     <button 
-                      onClick={() => { exportToPDF(); setIsExportDropdownOpen(false); }}
+                      onClick={() => { exportToPDF(filteredTransactions); setIsExportDropdownOpen(false); }}
                       className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
                     >
                       <Sparkles className="w-4 h-4 text-amber-500" />
@@ -2670,7 +3073,7 @@ export default function App() {
             </div>
 
             <button 
-              onClick={() => setIsAddExpenseOpen(true)}
+              onClick={() => { setEditingTransaction(null); setIsAddExpenseOpen(true); }}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
             >
               <Plus className="w-4 h-4" />
@@ -2688,7 +3091,7 @@ export default function App() {
               placeholder="Search merchant, title or category..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
+              className="w-full pl-10 pr-4 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-955"
             />
           </div>
 
@@ -2703,10 +3106,29 @@ export default function App() {
               ))}
             </select>
 
+            <select 
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="flex-1 md:flex-none border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-semibold cursor-pointer"
+            >
+              <option value="All">All months</option>
+              {availableMonths.map((m) => {
+                const [year, month] = m.split('-');
+                const dateObj = new Date(Number(year), Number(month) - 1, 1);
+                const monthName = dateObj.toLocaleString('default', { month: 'long' });
+                return (
+                  <option key={m} value={m}>
+                    📅 {monthName} {year}
+                  </option>
+                );
+              })}
+            </select>
+
             <button 
               onClick={() => {
                 setSearchQuery('');
                 setCategoryFilter('All');
+                setSelectedMonth(new Date().toISOString().substring(0, 7));
                 triggerToast('Search filter reset.');
               }}
               className="bg-[#1A3827] dark:bg-slate-800 text-white px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all"
@@ -2719,16 +3141,16 @@ export default function App() {
         {/* Summary Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
-            <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">JUNE SPEND</p>
-            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">{formatINR(computedStats.juneSpend)}</p>
+            <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">{activeMonthLabel} SPEND</p>
+            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">{formatINR(totalFilteredSpend)}</p>
           </div>
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">SHARED</p>
-            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">{formatINR(computedStats.totalShared)}</p>
+            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">{formatINR(totalFilteredShared)}</p>
           </div>
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">PERSONAL</p>
-            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">{formatINR(computedStats.personalPaidAlex)}</p>
+            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">{formatINR(totalFilteredPersonal)}</p>
           </div>
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">TRANSACTIONS</p>
@@ -2739,7 +3161,13 @@ export default function App() {
         {/* Transaction list panel */}
         <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-colors duration-300">
           <div className="px-6 py-5 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center bg-[#F6F8F6]/30 dark:bg-slate-950/20">
-            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">June 2026</h3>
+            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">
+              {selectedMonth === 'All' ? 'All Transactions' : (() => {
+                const [year, month] = selectedMonth.split('-');
+                const dateObj = new Date(Number(year), Number(month) - 1, 1);
+                return dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+              })()}
+            </h3>
             <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">
               {filteredTransactions.length === transactions.length 
                 ? `${filteredTransactions.length} transactions` 
@@ -2760,6 +3188,7 @@ export default function App() {
                   onClick={() => {
                     setSearchQuery('');
                     setCategoryFilter('All');
+                    setSelectedMonth('All');
                   }} 
                   className="text-xs font-bold text-[#1A3827] dark:text-[#A3E635] underline mt-1"
                 >
@@ -2767,36 +3196,325 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              filteredTransactions.map((t) => (
-                <div key={t.id} className="px-4 sm:px-6 py-4 flex items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100">
-                  <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 flex items-center justify-center border border-[#E3E8E3]/20 shrink-0">
-                      {getCategoryIcon(t.category)}
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">{t.title}</h4>
-                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1">
-                        <span className="text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
-                          {t.category}
-                        </span>
-                        <span className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold truncate">
-                          {getTransactionSubtitle(t)}
-                        </span>
+              filteredTransactions.map((t) => {
+                const isCreator = !t.createdBy || t.createdBy === 'anonymous' || t.createdBy === auth.currentUser?.uid;
+                return (
+                  <div key={t.id} className="px-4 sm:px-6 py-4 flex items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 flex items-center justify-center border border-[#E3E8E3]/20 shrink-0">
+                        {getCategoryIcon(t.category)}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">{t.title}</h4>
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1">
+                          <span className="text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                            {t.category}
+                          </span>
+                          <span className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold truncate">
+                            {getTransactionSubtitle(t)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="text-right ml-3 shrink-0">
-                    <p className={`font-black text-xs sm:text-sm ${t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? 'text-red-700 dark:text-rose-500' : 'text-[#1A3827] dark:text-[#A3E635]'}`}>
-                      {t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? '-' : '+'}{formatINR(t.amount)}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-1 justify-end text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
-                      <Calendar className="w-3 h-3 hidden sm:block" />
-                      <span>{t.date}</span>
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="text-right">
+                        <p className={`font-black text-xs sm:text-sm ${t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? 'text-red-700 dark:text-rose-500' : 'text-[#1A3827] dark:text-[#A3E635]'}`}>
+                          {t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? '-' : '+'}{formatINR(t.amount)}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-1 justify-end text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
+                          <Calendar className="w-3 h-3 hidden sm:block" />
+                          <span>{t.date}</span>
+                        </div>
+                      </div>
+
+                      {isCreator && (
+                        <div className="flex items-center gap-1.5 border-l border-slate-150 dark:border-slate-800 pl-3">
+                          <button 
+                            onClick={() => handleEditTransaction(t)}
+                            className="p-1.5 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                            title="Edit transaction"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteTransaction(t)}
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
+                            title="Delete transaction"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
+            )}
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
+  const openAddPersonalExpense = () => {
+    setEditingTransaction(null);
+    setIsAddExpenseOpen(true);
+    const currentUid = auth.currentUser?.uid || 'anonymous';
+    const newSplits = {};
+    members.forEach(m => {
+      newSplits[m.uid] = m.uid === currentUid;
+    });
+    setSelectedSplitMembers(newSplits);
+  };
+
+  function renderPersonalExpenses() {
+    const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport'];
+    const activeMonth = selectedMonth === 'All' ? new Date().toISOString().substring(0, 7) : selectedMonth;
+    const monthlyPersonalTotal = myPersonalExpenses
+      .filter(t => t.date && t.date.startsWith(activeMonth))
+      .reduce((sum, t) => sum + t.amount, 0);
+    const personalCap = 10000;
+    const personalPercentage = Math.min((monthlyPersonalTotal / personalCap) * 100, 100);
+
+    return (
+      <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
+        
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Personal expenses</h1>
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Your private ledger, separate from room bills.</p>
+          </div>
+          
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            {/* Export Dropdown */}
+            <div className="relative flex-1 sm:flex-none">
+              <button 
+                onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                className="w-full flex items-center justify-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export</span>
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+              
+              {isExportDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+                    <button 
+                      onClick={() => { exportToCSV(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                    >
+                      <FileText className="w-4 h-4 text-emerald-700" />
+                      <span>Export to CSV</span>
+                    </button>
+                    <button 
+                      onClick={() => { exportToExcel(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                    >
+                      <Sliders className="w-4 h-4 text-blue-600" />
+                      <span>Export to Excel</span>
+                    </button>
+                    <button 
+                      onClick={() => { exportToPDF(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      <span>Download PDF</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button 
+              onClick={openAddPersonalExpense}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add personal expense</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Expense Meter */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4 transition-colors duration-300">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">
+                Expense Meter ({selectedMonth === 'All' ? 'All Time' : (() => {
+                  const [year, month] = activeMonth.split('-');
+                  const dateObj = new Date(Number(year), Number(month) - 1, 1);
+                  return dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+                })()} Limit: ₹10,000)
+              </p>
+              <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">
+                {formatINR(monthlyPersonalTotal)} / {formatINR(personalCap)}
+              </p>
+            </div>
+            <span className={`text-xs font-black px-2.5 py-1 rounded-full ${
+              personalPercentage >= 90 ? 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-rose-500' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'
+            }`}>
+              {personalPercentage.toFixed(0)}% Used
+            </span>
+          </div>
+          
+          <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 rounded-full h-3 overflow-hidden border border-[#E3E8E3]/50 dark:border-slate-800">
+            <div 
+              className={`h-full rounded-full transition-all duration-300 ${
+                personalPercentage >= 90 ? 'bg-red-600' : 'bg-[#1A3827] dark:bg-[#A3E635]'
+              }`}
+              style={{ width: `${personalPercentage}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+            {personalPercentage >= 100 
+              ? "⚠️ You have reached your monthly personal spending limit!" 
+              : `You have ${formatINR(personalCap - monthlyPersonalTotal)} remaining before reaching your limit.`}
+          </p>
+        </div>
+
+        {/* Search & Filter Bar */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center gap-3 justify-between transition-colors duration-300">
+          <div className="flex-1 relative">
+            <Search className="w-4 h-4 text-[#5C6E5C] absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input 
+              type="text" 
+              placeholder="Search personal expenses..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-955"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 w-full md:w-auto">
+            <select 
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="flex-1 md:flex-none border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-semibold cursor-pointer"
+            >
+              {categories.map((c) => (
+                <option key={c} value={c}>{c === 'All' ? 'All categories' : c}</option>
+              ))}
+            </select>
+
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="flex-1 md:flex-none border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-semibold cursor-pointer"
+            >
+              <option value="All">All months</option>
+              {availableMonths.map((m) => {
+                const [year, month] = m.split('-');
+                const dateObj = new Date(Number(year), Number(month) - 1, 1);
+                const monthName = dateObj.toLocaleString('default', { month: 'long' });
+                return (
+                  <option key={m} value={m}>
+                    📅 {monthName} {year}
+                  </option>
+                );
+              })}
+            </select>
+
+            <button 
+              onClick={() => {
+                setSearchQuery('');
+                setCategoryFilter('All');
+                setSelectedMonth(new Date().toISOString().substring(0, 7));
+                triggerToast('Search filter reset.');
+              }}
+              className="bg-[#1A3827] dark:bg-slate-800 text-white px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Transaction list panel */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-colors duration-300">
+          <div className="px-6 py-5 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center bg-[#F6F8F6]/30 dark:bg-slate-950/20">
+            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">
+              {selectedMonth === 'All' ? 'All Personal Expenses' : (() => {
+                const [year, month] = activeMonth.split('-');
+                const dateObj = new Date(Number(year), Number(month) - 1, 1);
+                return dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+              })()}
+            </h3>
+            <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">
+              {filteredPersonalExpenses.length === myPersonalExpenses.length 
+                ? `${filteredPersonalExpenses.length} transactions` 
+                : `Filtered ${filteredPersonalExpenses.length} of ${myPersonalExpenses.length}`}
+            </span>
+          </div>
+
+          <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800">
+            {myPersonalExpenses.length === 0 ? (
+              <div className="text-center py-12 text-[#5C6E5C] dark:text-slate-400">
+                <p className="text-xs sm:text-sm font-semibold">No personal expenses logged yet.</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-505 mt-1">Add a bill split with only yourself to track it here.</p>
+              </div>
+            ) : filteredPersonalExpenses.length === 0 ? (
+              <div className="text-center py-12 text-[#5C6E5C] dark:text-slate-400">
+                <p className="text-xs sm:text-sm font-semibold">No personal transactions match your filters.</p>
+              </div>
+            ) : (
+              filteredPersonalExpenses.map((t) => {
+                const isCreator = !t.createdBy || t.createdBy === 'anonymous' || t.createdBy === auth.currentUser?.uid;
+                return (
+                  <div key={t.id} className="px-4 sm:px-6 py-4 flex items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 flex items-center justify-center border border-[#E3E8E3]/20 shrink-0">
+                        {getCategoryIcon(t.category)}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">{t.title}</h4>
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1">
+                          <span className="text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                            {t.category}
+                          </span>
+                          <span className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold truncate">
+                            Paid by {t.paidByUid === auth.currentUser?.uid ? 'You' : t.paidBy}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="text-right">
+                        <p className="font-black text-xs sm:text-sm text-red-700 dark:text-rose-500">
+                          -{formatINR(t.amount)}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-1 justify-end text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
+                          <Calendar className="w-3 h-3 hidden sm:block" />
+                          <span>{t.date}</span>
+                        </div>
+                      </div>
+
+                      {isCreator && (
+                        <div className="flex items-center gap-1.5 border-l border-slate-150 dark:border-slate-800 pl-3">
+                          <button 
+                            onClick={() => handleEditTransaction(t)}
+                            className="p-1.5 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                            title="Edit transaction"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteTransaction(t)}
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
+                            title="Delete transaction"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -3534,7 +4252,7 @@ export default function App() {
         <div>
           <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">YOUR SPACE</p>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Settings</h1>
-          <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Make Duo Room work the way you do.</p>
+          <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Make Tallin work the way you do.</p>
         </div>
 
         {/* Stacked Cards */}
@@ -3656,7 +4374,7 @@ export default function App() {
                     </button>
                     <button 
                       onClick={async () => {
-                        const newRoomName = settingsRoomNameInput.trim() || 'Duo Room';
+                        const newRoomName = settingsRoomNameInput.trim() || 'Tallin';
                         setRoomName(newRoomName);
                         localStorage.setItem('roomName', newRoomName);
                         setIsEditingRoomName(false);
@@ -4000,7 +4718,7 @@ export default function App() {
             <div className="flex justify-between items-center py-2 border-t border-[#F6F8F6] dark:border-slate-800">
               <div>
                 <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Sign out</p>
-                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Sign out of your Duo Room profile on this browser.</p>
+                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Sign out of your Tallin profile on this browser.</p>
               </div>
               <button 
                 onClick={handleSignOut}
@@ -4009,6 +4727,34 @@ export default function App() {
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Sign out</span>
               </button>
+            </div>
+          </div>
+
+          {/* Activity Logs */}
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
+            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
+              Activity Logs
+            </h3>
+            
+            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+              {activityLogs.length === 0 ? (
+                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 italic">No activity logs recorded yet.</p>
+              ) : (
+                activityLogs.map((log) => (
+                  <div key={log.id} className="flex justify-between items-start gap-2 text-xs border-b border-[#F6F8F6] dark:border-slate-800/50 pb-2 last:border-b-0 last:pb-0">
+                    <div className="space-y-0.5">
+                      <p className="font-semibold text-[#1A3827] dark:text-slate-200">{log.details}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">By {log.user_name || 'System'}</p>
+                    </div>
+                    <div className="flex items-center gap-1 text-[9px] text-[#5C6E5C] dark:text-slate-500 whitespace-nowrap">
+                      <Clock className="w-2.5 h-2.5" />
+                      <span>
+                        {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -4074,7 +4820,7 @@ export default function App() {
                   <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Your Room Code</p>
                   <p className="font-mono font-black text-3xl text-[#1A3827] dark:text-[#A3E635] tracking-widest select-all">{currentRoom}</p>
                   <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                    Share this code with your roommate. They open DuoShare → Join Room → enter code.
+                    Share this code with your roommate. They open Tallin → Join Room → enter code.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -4154,9 +4900,9 @@ export default function App() {
                   </button>
                   <button
                     onClick={async () => {
-                      const text = `Join my DuoShare room!\n\nClick this link to join instantly:\n${inviteLink}\n\nOr enter room code: ${currentRoom}`;
+                      const text = `Join my Tallin room!\n\nClick this link to join instantly:\n${inviteLink}\n\nOr enter room code: ${currentRoom}`;
                       if (navigator.share) {
-                        try { await navigator.share({ title: 'Join my DuoShare room', text, url: inviteLink }); }
+                        try { await navigator.share({ title: 'Join my Tallin room', text, url: inviteLink }); }
                         catch { navigator.clipboard.writeText(text); triggerToast('Invite message copied!'); }
                       } else {
                         navigator.clipboard.writeText(text);
