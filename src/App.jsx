@@ -50,6 +50,46 @@ import {
 
 import { supabase } from './supabase';
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    console.error("Global uncaught error intercepted:", event.error);
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'global-error-overlay';
+    errorDiv.style.position = 'fixed';
+    errorDiv.style.inset = '0';
+    errorDiv.style.backgroundColor = '#7f1d1d';
+    errorDiv.style.color = '#fef2f2';
+    errorDiv.style.padding = '24px';
+    errorDiv.style.zIndex = '999999';
+    errorDiv.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+    errorDiv.style.whiteSpace = 'pre-wrap';
+    errorDiv.style.overflow = 'auto';
+    errorDiv.style.fontSize = '14px';
+    errorDiv.style.lineHeight = '1.5';
+    errorDiv.innerText = `🚨 Uncaught Runtime Error:\n\nMessage: ${event.message}\nSource: ${event.filename}:${event.lineno}:${event.colno}\n\nStack Trace:\n${event.error ? event.error.stack : 'No stack trace available'}`;
+    document.body.appendChild(errorDiv);
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error("Global unhandled rejection intercepted:", event.reason);
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'global-rejection-overlay';
+    errorDiv.style.position = 'fixed';
+    errorDiv.style.inset = '0';
+    errorDiv.style.backgroundColor = '#7f1d1d';
+    errorDiv.style.color = '#fef2f2';
+    errorDiv.style.padding = '24px';
+    errorDiv.style.zIndex = '999999';
+    errorDiv.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+    errorDiv.style.whiteSpace = 'pre-wrap';
+    errorDiv.style.overflow = 'auto';
+    errorDiv.style.fontSize = '14px';
+    errorDiv.style.lineHeight = '1.5';
+    errorDiv.innerText = `🚨 Unhandled Promise Rejection:\n\nReason: ${event.reason}\n\nStack Trace:\n${event.reason && event.reason.stack ? event.reason.stack : 'No stack trace available'}`;
+    document.body.appendChild(errorDiv);
+  });
+}
+
 // ── QR Scanner Component (wraps html5-qrcode) ───────────────────────────────
 function QrScannerMount({ onScan, onError, scannerRef }) {
   const mountId = 'qr-scanner-viewport';
@@ -2485,6 +2525,14 @@ export default function App() {
     );
   }
 
+  // Helper Components for ErrorBoundary to catch rendering exceptions
+  const HomeView = () => renderHome();
+  const LedgerView = () => renderLedger();
+  const PersonalExpensesView = () => renderPersonalExpenses();
+  const InsightsView = () => renderInsights();
+  const ReceiptsView = () => renderReceipts();
+  const SettingsView = () => renderSettings();
+
   // MAIN RUNNING APP
   return (
     <div className={`min-h-screen flex bg-[#F6F8F6] dark:bg-slate-950 transition-colors duration-300 ${isDarkMode ? 'dark text-slate-100' : 'text-[#1A3827]'}`}>
@@ -2813,12 +2861,12 @@ export default function App() {
 
         <main className="flex-grow pt-20 px-4 sm:px-8 pb-24 overflow-y-auto">
           <ErrorBoundary>
-            {currentView === 'home' && renderHome()}
-            {currentView === 'ledger' && renderLedger()}
-            {currentView === 'personal-expenses' && renderPersonalExpenses()}
-            {currentView === 'insights' && renderInsights()}
-            {currentView === 'receipts' && renderReceipts()}
-            {currentView === 'settings' && renderSettings()}
+            {currentView === 'home' && <HomeView />}
+            {currentView === 'ledger' && <LedgerView />}
+            {currentView === 'personal-expenses' && <PersonalExpensesView />}
+            {currentView === 'insights' && <InsightsView />}
+            {currentView === 'receipts' && <ReceiptsView />}
+            {currentView === 'settings' && <SettingsView />}
           </ErrorBoundary>
         </main>
 
