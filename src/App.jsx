@@ -184,6 +184,9 @@ export default function App() {
   // Room members & settings
   const [members, setMembers] = useState([]);
   const [monthlyBudget, setMonthlyBudget] = useState(() => Number(localStorage.getItem('monthlyBudget')) || 22000);
+  const [personalCap, setPersonalCap] = useState(() => Number(localStorage.getItem('personalCap')) || 10000);
+  const [isEditingPersonalCap, setIsEditingPersonalCap] = useState(false);
+  const [personalCapInput, setPersonalCapInput] = useState('');
 
   // Add Expense Split States
   const [formPaidBy, setFormPaidBy] = useState('');
@@ -3458,7 +3461,6 @@ export default function App() {
     const monthlyPersonalTotal = myPersonalExpenses
       .filter(t => t.date && t.date.startsWith(activeMonth))
       .reduce((sum, t) => sum + t.amount, 0);
-    const personalCap = 10000;
     const personalPercentage = Math.min((monthlyPersonalTotal / personalCap) * 100, 100);
 
     return (
@@ -3525,25 +3527,70 @@ export default function App() {
 
         {/* Expense Meter */}
         <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4 transition-colors duration-300">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-start">
             <div>
               <p className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">
-                Expense Meter ({selectedMonth === 'All' ? 'All Time' : (() => {
+                Expense Meter — {selectedMonth === 'All' ? 'All Time' : (() => {
                   const [year, month] = activeMonth.split('-');
                   const dateObj = new Date(Number(year), Number(month) - 1, 1);
                   return dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
-                })()} Limit: ₹10,000)
+                })()}
               </p>
               <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1">
                 {formatINR(monthlyPersonalTotal)} / {formatINR(personalCap)}
               </p>
             </div>
-            <span className={`text-xs font-black px-2.5 py-1 rounded-full ${
-              personalPercentage >= 90 ? 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-rose-500' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'
-            }`}>
-              {personalPercentage.toFixed(0)}% Used
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-black px-2.5 py-1 rounded-full ${
+                personalPercentage >= 90 ? 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-rose-500' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'
+              }`}>
+                {personalPercentage.toFixed(0)}% Used
+              </span>
+              {/* Edit limit button */}
+              <button
+                onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }}
+                className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all"
+                title="Edit personal spending limit"
+              >
+                <Pencil className="w-3.5 h-3.5 text-[#5C6E5C] dark:text-slate-400" />
+              </button>
+            </div>
           </div>
+
+          {/* Inline limit editor */}
+          {isEditingPersonalCap && (
+            <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
+              <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">Set limit (₹)</span>
+              <input
+                type="number"
+                min="0"
+                value={personalCapInput}
+                onChange={e => setPersonalCapInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const val = Number(personalCapInput);
+                    if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); }
+                    setIsEditingPersonalCap(false);
+                  }
+                  if (e.key === 'Escape') setIsEditingPersonalCap(false);
+                }}
+                className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0"
+                autoFocus
+              />
+              <button
+                onClick={() => {
+                  const val = Number(personalCapInput);
+                  if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); }
+                  setIsEditingPersonalCap(false);
+                }}
+                className="text-[10px] font-black bg-[#1A3827] text-white px-3 py-1 rounded-lg hover:bg-[#255038] transition-all"
+              >Save</button>
+              <button
+                onClick={() => setIsEditingPersonalCap(false)}
+                className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 transition-all"
+              >Cancel</button>
+            </div>
+          )}
           
           <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 rounded-full h-3 overflow-hidden border border-[#E3E8E3]/50 dark:border-slate-800">
             <div 
@@ -3556,7 +3603,7 @@ export default function App() {
           <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
             {personalPercentage >= 100 
               ? "⚠️ You have reached your monthly personal spending limit!" 
-              : `You have ${formatINR(personalCap - monthlyPersonalTotal)} remaining before reaching your limit.`}
+              : `You have ${formatINR(personalCap - monthlyPersonalTotal)} remaining before reaching your ${formatINR(personalCap)} limit.`}
           </p>
         </div>
 
