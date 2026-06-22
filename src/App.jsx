@@ -211,6 +211,7 @@ export default function App() {
           uid: activeUser.id,
           nickname: nickname,
           photo_url: avatarUrl,
+          email: activeUser.email || '',
           joined_at: new Date().toISOString()
         }, { onConflict: 'room_id,uid' });
       
@@ -469,6 +470,7 @@ export default function App() {
         uid: m.uid,
         nickname: m.nickname,
         photoURL: m.photo_url || '',
+        email: m.email || '',
         joinedAt: m.joined_at
       }));
       
@@ -918,7 +920,12 @@ export default function App() {
     const roomDisplayName = userRoomId || 'DUO-ROOM';
     const messageText = `Duo Room Alert: A new expense "${transaction.title}" of ${formattedAmount} was added by ${transaction.paidBy} in Room ${roomDisplayName}.`;
     
-    const emailList = recipientEmails.split(',').map(e => e.trim()).filter(e => e !== '');
+    // Automatically include all other room members' emails
+    const emailList = [...new Set([
+      ...recipientEmails.split(',').map(e => e.trim()).filter(Boolean),
+      ...members.filter(m => m.uid !== user?.id && m.email).map(m => m.email)
+    ])];
+    
     if (emailList.length === 0) return;
 
     const htmlBody = `
