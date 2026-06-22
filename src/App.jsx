@@ -369,51 +369,6 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [authLoading]);
 
-  // Real-time camera QR scanner controller
-  useEffect(() => {
-    if (!isQrScannerOpen) return;
-    
-    const timer = setTimeout(() => {
-      const html5QrCode = new Html5Qrcode("reader");
-      
-      const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-        const cleanCode = decodedText.trim();
-        setJoinInput(cleanCode);
-        setIsQrScannerOpen(false);
-        setUserRoomId(cleanCode);
-        setHasConfirmedRoom(true);
-        triggerToast(`Scanned room code: ${cleanCode}`);
-        
-        if (html5QrCode.isScanning) {
-          html5QrCode.stop().catch(err => console.error("Error stopping scanner:", err));
-        }
-      };
-      
-      const config = { fps: 10, qrbox: { width: 220, height: 220 } };
-      
-      html5QrCode.start(
-        { facingMode: "environment" },
-        config,
-        qrCodeSuccessCallback
-      ).catch(err => {
-        console.warn("Camera scan failed to start (may need HTTPS or permissions):", err);
-      });
-
-      window.activeQrScanner = html5QrCode;
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-      if (window.activeQrScanner && window.activeQrScanner.isScanning) {
-        window.activeQrScanner.stop()
-          .then(() => {
-            window.activeQrScanner = null;
-          })
-          .catch(err => console.error("Error stopping scanner on cleanup:", err));
-      }
-    };
-  }, [isQrScannerOpen]);
-
   // Initialize and reset Add Expense Form when opened
   useEffect(() => {
     if (isAddExpenseOpen) {
