@@ -96,17 +96,26 @@ function QrScannerMount({ onScan, onError, scannerRef }) {
   useEffect(() => {
     const scanner = new Html5Qrcode(mountId);
     scannerRef.current = scanner;
+    let isRunning = false;
     scanner.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 220, height: 220 } },
       (decodedText) => { onScan(decodedText); },
-      (errorMsg) => { if (onError) onError(errorMsg); }
-    ).catch((err) => {
-      console.error('QR scanner start error:', err);
+      () => {} // suppress per-frame scan errors (not critical)
+    ).then(() => {
+      isRunning = true;
+    }).catch((err) => {
+      console.warn('QR scanner could not start:', err?.message || err);
       if (onError) onError(err);
     });
     return () => {
-      scanner.stop().catch(() => {});
+      if (isRunning) {
+        scanner.stop().catch(() => {});
+      } else {
+        // Scanner never started — safely clear any DOM residue
+        try { scanner.clear(); } catch (_) {}
+      }
+      isRunning = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
