@@ -282,6 +282,62 @@ export default function App() {
   const [formDate, setFormDate] = useState('2026-06-21');
   const [formWho, setFormWho] = useState('Shared'); 
   const [formRepeat, setFormRepeat] = useState(false);
+  const [suggestedCategory, setSuggestedCategory] = useState(null);
+
+  // Smart category keyword map
+  const CATEGORY_KEYWORDS = {
+    Groceries: [
+      'egg','eggs','milk','bread','butter','cheese','vegetable','vegetables','fruit','fruits',
+      'rice','dal','flour','sugar','salt','oil','grocery','groceries','supermarket','bigbasket',
+      'blinkit','zepto','dmart','reliance fresh','more store','chicken','mutton','fish','meat',
+      'paneer','curd','yogurt','onion','tomato','potato','atta','maida','pulses','lentils'
+    ],
+    Food: [
+      'restaurant','cafe','hotel','food','lunch','dinner','breakfast','snack','pizza','burger',
+      'biryani','dosa','idli','noodles','pasta','sushi','coffee','tea','chai','juice','swiggy',
+      'zomato','eatery','canteen','mess','tiffin','dhaba','mcdonalds','kfc','dominos','subway',
+      'thali','rolls','sandwich','shawarma','wrap','ice cream','dessert','cake','bakery'
+    ],
+    Transport: [
+      'uber','ola','auto','cab','taxi','bus','metro','train','rickshaw','rapido','bike taxi',
+      'transport','travel','commute','parking','toll','irctc','redbus','flight ticket'
+    ],
+    Fuel: [
+      'fuel','petrol','diesel','cng','gas','hp','iocl','bpcl','shell','pump','refuel','filling'
+    ],
+    Utilities: [
+      'electricity','electric','bill','water bill','gas bill','internet','wifi','broadband',
+      'airtel','jio','bsnl','vodafone','vi','recharge','dth','tata sky','dish tv','cable','maintenance'
+    ],
+    Rent: [
+      'rent','landlord','pg','hostel','accommodation','lease','flat rent','house rent','deposit'
+    ],
+    Shopping: [
+      'amazon','flipkart','myntra','ajio','meesho','shopping','clothes','shirt','jeans','shoes',
+      'sneakers','dress','saree','kurti','jacket','bag','wallet','watch','electronics','mobile',
+      'laptop','gadget','earphones','headphones','charger','cable','cosmetics','beauty','salon'
+    ],
+    Entertainment: [
+      'movie','cinema','netflix','hotstar','prime','spotify','youtube','concert','event',
+      'show','ticket','bookmyshow','game','gaming','sport','gym','subscription','ott'
+    ],
+    Medical: [
+      'medicine','medical','hospital','clinic','doctor','pharmacy','chemist','apollo','health',
+      'tablet','capsule','syrup','injection','lab test','pathology','diagnostic','dentist'
+    ],
+    Payment: [
+      'payment','transfer','upi','gpay','paytm','phonepe','neft','settlement','repay','paid back'
+    ]
+  };
+
+  const smartDetectCategory = (title) => {
+    const lower = title.toLowerCase().trim();
+    if (!lower) return null;
+    for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+      if (keywords.some(kw => lower.includes(kw))) return cat;
+    }
+    return null;
+  };
 
   // Search & Filter State (Ledger)
   const [searchQuery, setSearchQuery] = useState('');
@@ -1437,6 +1493,7 @@ export default function App() {
         setFormDate(new Date().toISOString().split('T')[0]);
         setFormWho('Shared');
         setFormRepeat(false);
+        setSuggestedCategory(null);
         setEditingTransaction(null);
         setIsAddExpenseOpen(false);
       } catch (error) {
@@ -1508,6 +1565,7 @@ export default function App() {
         setFormDate(new Date().toISOString().split('T')[0]);
         setFormWho('Shared');
         setFormRepeat(false);
+        setSuggestedCategory(null);
         setEditingTransaction(null);
         setIsAddExpenseOpen(false);
       } catch (error) {
@@ -2093,7 +2151,19 @@ export default function App() {
   };
 
   // Filtered transactions for the ledger
-  const activeTxList = transactions;
+  // Ledger shows: shared expenses + personal expenses added by OTHER users.
+  // Current user's own personal expenses are hidden here — they live in the Personal Expenses tab.
+  const currentUid = auth.currentUser?.uid || 'anonymous';
+  const activeTxList = transactions.filter(t => {
+    if (t.isShared) return true; // always show shared bills
+    // For personal expenses: hide if the expense belongs solely to the current user
+    const isMineOnly =
+      t.splits &&
+      Array.isArray(t.splits) &&
+      t.splits.length === 1 &&
+      t.splits[0]?.uid === currentUid;
+    return !isMineOnly; // show only if it's someone else's personal expense
+  });
   const filteredTransactions = useMemo(() => {
     return activeTxList.filter(t => {
       const titleStr = t.title || '';
@@ -3783,9 +3853,28 @@ export default function App() {
                 placeholder="e.g. Weekly groceries"
                 required
                 value={formFor}
-                onChange={(e) => setFormFor(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormFor(val);
+                  const detected = smartDetectCategory(val);
+                  setSuggestedCategory(detected);
+                  if (detected) setFormCategory(detected);
+                }}
                 className="w-full px-4 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
               />
+              {suggestedCategory && (
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">✦ Smart pick:</span>
+                  <span className="text-[10px] font-black bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] px-2 py-0.5 rounded-full border border-[#1A3827]/10 dark:border-slate-700">
+                    {suggestedCategory}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSuggestedCategory(null)}
+                    className="text-[9px] text-[#5C6E5C] dark:text-slate-500 hover:text-rose-500 transition-colors"
+                  >✕ dismiss</button>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
