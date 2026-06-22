@@ -2549,11 +2549,22 @@ export default function App() {
           {/* Wizard step: share-code */}
           {onboardingStep === 'share-code' && (
             <div className="space-y-4 text-left">
-              <div className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/15 dark:border-slate-800 rounded-2xl p-5 text-center space-y-2">
+              <div className="bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/15 dark:border-slate-800 rounded-2xl p-5 text-center space-y-3">
                 <p className="text-[10px] font-black text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">Your Room Code</p>
                 <p className="font-mono font-black text-2xl text-[#1A3827] dark:text-[#A3E635] tracking-widest select-all">{userRoomId}</p>
+                <div className="flex justify-center mt-1">
+                  <div className="bg-white p-3 rounded-2xl border border-[#E3E8E3] shadow-sm inline-block">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(userRoomId)}&color=1A3827&bgcolor=ffffff&margin=2`}
+                      alt={`QR code for room ${userRoomId}`}
+                      width={160}
+                      height={160}
+                      className="rounded-lg"
+                    />
+                  </div>
+                </div>
                 <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                  Share this code with your roommate. They open Tallyin → Join Room → enter code.
+                  Roommate can <strong>scan this QR</strong> or type the code above in Tallyin → Join Room.
                 </p>
               </div>
               
@@ -2564,6 +2575,22 @@ export default function App() {
                 >
                   <Copy className="w-3.5 h-3.5" />
                   <span>Copy Code</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(userRoomId)}&color=1A3827&bgcolor=ffffff&margin=4`;
+                    link.download = `tallyin-room-${userRoomId}.png`;
+                    link.target = '_blank';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    triggerToast('QR code downloaded!');
+                  }}
+                  className="flex-1 border border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-slate-200 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Save QR</span>
                 </button>
                 <button 
                   onClick={() => setHasConfirmedRoom(true)}
