@@ -252,6 +252,7 @@ export default function App() {
   const [activityLogs, setActivityLogs] = useState([]);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [userRooms, setUserRooms] = useState([]);
+  const [roomCreatedBy, setRoomCreatedBy] = useState(null); // uid of room creator (host)
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().substring(0, 7));
 
   // Notification Config States
@@ -349,6 +350,17 @@ export default function App() {
   const logActivity = async (action, details, roomId = null) => {
     const targetRoom = roomId || userRoomId;
     if (!user || !targetRoom) return;
+    // Optimistic update — add to local state immediately for zero-latency logs
+    const optimisticLog = {
+      id: `optimistic-${Date.now()}`,
+      room_id: targetRoom,
+      user_id: user.id,
+      user_name: userNickname,
+      action,
+      details,
+      created_at: new Date().toISOString()
+    };
+    setActivityLogs(prev => [optimisticLog, ...prev].slice(0, 100));
     try {
       const { error } = await supabase
         .from('activity_logs')
@@ -435,29 +447,29 @@ export default function App() {
     localStorage.setItem('userNickname', finalNickname);
 
     // Load room ID from localStorage if available, otherwise fetch from Supabase
+    // Fire-and-forget addMemberToRoom — don't await it to avoid login latency
     const localRoomId = localStorage.getItem('userRoomId');
     if (localRoomId) {
       setUserRoomId(localRoomId);
-      addMemberToRoom(localRoomId, finalNickname, currentUser);
+      addMemberToRoom(localRoomId, finalNickname, currentUser); // intentionally not awaited
     } else {
-      try {
-        const { data: userProfile, error } = await supabase
-          .from('users')
-          .select('room_id')
-          .eq('uid', currentUser.id)
-          .maybeSingle();
-
-        if (!error && userProfile?.room_id) {
-          const rId = userProfile.room_id;
-          setUserRoomId(rId);
-          localStorage.setItem('userRoomId', rId);
-          addMemberToRoom(rId, finalNickname, currentUser);
-        }
-      } catch (e) {
-        console.error('Error fetching user room ID:', e);
-      }
+      // Fetch in parallel without blocking auth
+      supabase
+        .from('users')
+        .select('room_id')
+        .eq('uid', currentUser.id)
+        .maybeSingle()
+        .then(({ data: userProfile, error }) => {
+          if (!error && userProfile?.room_id) {
+            const rId = userProfile.room_id;
+            setUserRoomId(rId);
+            localStorage.setItem('userRoomId', rId);
+            addMemberToRoom(rId, finalNickname, currentUser); // intentionally not awaited
+          }
+        })
+        .catch(e => console.error('Error fetching user room ID:', e));
     }
-    setAuthLoading(false);
+    setAuthLoading(false); // Show app immediately — don't wait for DB ops
   };
 
   // Handle Supabase Auth state changes
@@ -608,6 +620,7 @@ export default function App() {
         splits: t.splits,
         createdBy: t.created_by
       }));
+      // Replace state: real DB rows supercede any optimistic entries
       setTransactions(mapped);
       setIsDbSynced(true);
     } catch (err) {
@@ -623,10 +636,17 @@ export default function App() {
         .select('*')
         .eq('room_id', roomId)
         .order('created_at', { ascending: false })
-        .limit(30);
+        .limit(100);
 
       if (error) throw error;
-      setActivityLogs(data || []);
+      // Merge with any optimistic logs that haven't been confirmed yet
+      setActivityLogs(prev => {
+        const serverIds = new Set((data || []).map(l => l.id));
+        const pendingOptimistic = prev.filter(l => 
+          String(l.id).startsWith('optimistic-') && !serverIds.has(l.id)
+        );
+        return [...pendingOptimistic, ...(data || [])].slice(0, 100);
+      });
     } catch (err) {
       console.warn("Error fetching activity logs:", err);
     }
@@ -659,7 +679,7 @@ export default function App() {
     try {
       const { data, error } = await supabase
         .from('rooms')
-        .select('monthly_budget, name')
+        .select('monthly_budget, name, created_by')
         .eq('id', roomId)
         .maybeSingle();
 
@@ -673,6 +693,7 @@ export default function App() {
         setTransactions([]);
         setReceipts([]);
         setMembers([]);
+        setRoomCreatedBy(null);
         localStorage.removeItem('userRoomId');
         if (user) {
           supabase
@@ -689,7 +710,8 @@ export default function App() {
         return;
       }
 
-      if (data.monthly_budget) {
+      // Always update from DB — never trust stale cache
+      if (data.monthly_budget !== undefined && data.monthly_budget !== null) {
         setMonthlyBudget(Number(data.monthly_budget));
         localStorage.setItem('monthlyBudget', data.monthly_budget);
       }
@@ -697,6 +719,10 @@ export default function App() {
         setRoomName(data.name);
         setSettingsRoomNameInput(data.name);
         localStorage.setItem('roomName', data.name);
+      }
+      // Track host (creator) for permission checks
+      if (data.created_by) {
+        setRoomCreatedBy(data.created_by);
       }
     } catch (err) {
       console.warn("Room settings fetch error:", err);
@@ -799,9 +825,14 @@ export default function App() {
     }
   };
 
-  // Delete Room handler
+  // Delete Room handler — HOST ONLY
   const handleDeleteRoom = async () => {
     if (!userRoomId) return;
+    // Permission check
+    if (user && roomCreatedBy && roomCreatedBy !== user.id) {
+      triggerToast('Only the room host can delete the room.');
+      return;
+    }
     const confirmed = window.confirm(`Delete room ${userRoomId} permanently? All transactions and data will be lost. This cannot be undone.`);
     if (!confirmed) return;
     try {
@@ -844,6 +875,7 @@ export default function App() {
       setTransactions([]);
       setReceipts([]);
       setMembers([]);
+      setRoomCreatedBy(null);
       localStorage.removeItem('userRoomId');
       
       // Reset user room binding
@@ -868,14 +900,71 @@ export default function App() {
       setTransactions([]);
       setReceipts([]);
       setMembers([]);
+      setRoomCreatedBy(null);
       localStorage.removeItem('userRoomId');
       await fetchUserRooms();
     }
   };
 
-  // Remove member from room
+  // Leave Room handler — for NON-HOST members to voluntarily leave
+  const handleLeaveRoom = async () => {
+    if (!userRoomId || !user) return;
+    const confirmed = window.confirm('Leave this room? Your past expenses will remain in the room, but you will no longer be a member.');
+    if (!confirmed) return;
+    try {
+      const { error: deleteError } = await supabase
+        .from('members')
+        .delete()
+        .eq('room_id', userRoomId)
+        .eq('uid', user.id);
+
+      if (deleteError) throw deleteError;
+
+      // Log the leave action before clearing state
+      await supabase
+        .from('activity_logs')
+        .insert({
+          room_id: userRoomId,
+          user_id: user.id,
+          user_name: userNickname,
+          action: 'leave',
+          details: `${userNickname} left the room.`,
+          created_at: new Date().toISOString()
+        }).catch(() => {});
+
+      // Clear user's room binding in users table
+      await supabase
+        .from('users')
+        .upsert({
+          uid: user.id,
+          room_id: null,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'uid' })
+        .catch(e => console.error(e));
+
+      setUserRoomId(null);
+      setHasConfirmedRoom(false);
+      setTransactions([]);
+      setReceipts([]);
+      setMembers([]);
+      setRoomCreatedBy(null);
+      localStorage.removeItem('userRoomId');
+      await fetchUserRooms();
+      triggerToast('You have left the room.');
+    } catch (err) {
+      console.error('Leave room error:', err);
+      triggerToast(`Failed to leave room: ${err.message}`);
+    }
+  };
+
+  // Remove member from room — HOST ONLY
   const handleRemoveMember = async (memberUid) => {
     if (!userRoomId) return;
+    // Permission check
+    if (user && roomCreatedBy && roomCreatedBy !== user.id) {
+      triggerToast('Only the room host can remove members.');
+      return;
+    }
     const member = members.find(m => m.uid === memberUid);
     if (!member) return;
     const confirmed = window.confirm(`Remove ${member.nickname} from this room?`);
@@ -896,6 +985,7 @@ export default function App() {
         setTransactions([]);
         setReceipts([]);
         setMembers([]);
+        setRoomCreatedBy(null);
         localStorage.removeItem('userRoomId');
         try {
           await supabase
@@ -908,6 +998,7 @@ export default function App() {
         } catch(e) { console.error(e); }
       }
 
+      await logActivity('remove', `${userNickname} removed ${member.nickname} from the room.`);
       triggerToast(`Removed ${member.nickname} from room.`);
     } catch (err) {
       console.error('Remove member error:', err);
@@ -1115,6 +1206,9 @@ export default function App() {
       triggerToast(`Failed to join room: ${err.message || 'Supabase error'}. (Please check your connection and database status)`);
     }
   };
+
+  // Computed permission: true if current user is the room's creator (host)
+  const isHost = !!(user && roomCreatedBy && roomCreatedBy === user.id);
 
   // Dynamically calculated values based on synced transactions state
   const computedStats = useMemo(() => {
@@ -1484,6 +1578,13 @@ export default function App() {
           .eq('id', editingTransaction.id);
 
         if (txError) throw txError;
+
+        // Optimistic UI update — update in local state immediately
+        setTransactions(prev => prev.map(t => 
+          t.id === editingTransaction.id
+            ? { ...t, ...newPayload }
+            : t
+        ));
         
         await logActivity('edit', `${userNickname} edited expense "${newPayload.title}" to ₹${newPayload.amount}`);
         triggerToast("Expense updated successfully!");
@@ -1503,8 +1604,29 @@ export default function App() {
         triggerToast(`Failed to update: ${error.message}`);
       }
     } else {
+      // Optimistic UI — close modal and add to local state immediately
+      const optimisticId = `optimistic-${Date.now()}`;
+      const optimisticTx = {
+        id: optimisticId,
+        ...newPayload,
+        createdBy: user ? user.id : 'anonymous',
+        room_id: currentRoom
+      };
+      setTransactions(prev => [optimisticTx, ...prev]);
+      setIsAddExpenseOpen(false);
+      
+      // Reset Form right away for fast UX
+      setFormFor('');
+      setFormAmount('');
+      setFormCategory('Food');
+      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormWho('Shared');
+      setFormRepeat(false);
+      setSuggestedCategory(null);
+      setEditingTransaction(null);
+
       try {
-        const { error: txError } = await supabase
+        const { data: insertedTx, error: txError } = await supabase
           .from('transactions')
           .insert({
             room_id: currentRoom,
@@ -1520,13 +1642,24 @@ export default function App() {
             split: newPayload.split,
             splits: newPayload.splits,
             created_by: user ? user.id : 'anonymous'
-          });
+          })
+          .select()
+          .single();
 
         if (txError) throw txError;
 
+        // Replace optimistic entry with real DB row (has real id)
+        if (insertedTx) {
+          setTransactions(prev => prev.map(t =>
+            t.id === optimisticId
+              ? { ...newPayload, id: insertedTx.id, createdBy: insertedTx.created_by, room_id: insertedTx.room_id }
+              : t
+          ));
+        }
+
         await logActivity('create', `${userNickname} added expense "${newPayload.title}" (₹${newPayload.amount})`);
 
-        if (formWho === 'Shared') {
+        if (newPayload.isShared) {
           const bgColors = [
             'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
             'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
@@ -1537,7 +1670,7 @@ export default function App() {
           const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
           const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
           
-          const { error: receiptError } = await supabase
+          supabase
             .from('receipts')
             .insert({
               room_id: currentRoom,
@@ -1547,37 +1680,23 @@ export default function App() {
               date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
               bg_class: randomBg,
               rotation: randomRot
+            })
+            .then(({ error: receiptError }) => {
+              if (receiptError) console.warn('Receipt insert error:', receiptError);
             });
-          
-          if (receiptError) throw receiptError;
         }
 
         // Send client-side email notifications if configured
         if (notificationMethod !== 'none' && recipientEmails) {
           sendEmailNotification(newPayload);
-          triggerToast(`Added expense! 📧 Email notification sent.`);
+          triggerToast(`Added! 📧 Email notification sent.`);
         } else {
-          triggerToast("Added expense!");
+          triggerToast("Expense added!");
         }
-
-        // Reset Form
-        setFormFor('');
-        setFormAmount('');
-        setFormCategory('Food');
-        setFormDate(new Date().toISOString().split('T')[0]);
-        setFormWho('Shared');
-        setFormRepeat(false);
-        setSuggestedCategory(null);
-        setEditingTransaction(null);
-        setIsAddExpenseOpen(false);
       } catch (error) {
         console.error(error);
-        setTransactions([{ id: Date.now().toString(), ...newPayload }, ...transactions]);
-        if (notificationMethod !== 'none' && recipientEmails) {
-          triggerToast(`Failed to save: ${error.message || 'database error'}. 📧 Notification queued.`);
-        } else {
-          triggerToast(`Failed to save: ${error.message || 'database error'}.`);
-        }
+        // Optimistic entry already in state — just show error toast
+        triggerToast(`Saved locally (DB sync failed: ${error.message || 'database error'}).`);
       }
     }
   };
@@ -2432,21 +2551,24 @@ export default function App() {
                             }
                             setUserRoomId(r.roomId);
                             localStorage.setItem('userRoomId', r.roomId);
-                            setRoomName(r.roomName);
-                            localStorage.setItem('roomName', r.roomName);
-                            setMonthlyBudget(r.monthlyBudget);
-                            localStorage.setItem('monthlyBudget', r.monthlyBudget);
+                            // Optimistically use cached name while we fetch fresh settings
+                            if (r.roomName) {
+                              setRoomName(r.roomName);
+                              localStorage.setItem('roomName', r.roomName);
+                            }
                             setHasConfirmedRoom(true);
-                            triggerToast(`Entered room: ${r.roomName}`);
-                            
+                            triggerToast(`Entering room: ${r.roomName}...`);
+                            // Always fetch fresh budget and created_by from DB
+                            await fetchRoomSettings(r.roomId);
                             if (user) {
-                              await supabase
+                              supabase
                                 .from('users')
                                 .upsert({
                                   uid: user.id,
                                   room_id: r.roomId,
                                   updated_at: new Date().toISOString()
-                                }, { onConflict: 'uid' });
+                                }, { onConflict: 'uid' })
+                                .catch(e => console.error(e));
                             }
                           }}
                           className={`flex items-center justify-between p-3 rounded-2xl border text-xs cursor-pointer transition-all ${
@@ -2733,31 +2855,35 @@ export default function App() {
 
           {/* Room Switcher Dropdown */}
           {user && userRooms.length > 0 && (
-            <div className="mb-6 space-y-1">
+            <div className="mb-4 space-y-1">
               <label className="text-[9px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest block font-sans">Active Workspace</label>
               <select
                 value={userRoomId || ''}
                 onChange={async (e) => {
                   const selectedRoomId = e.target.value;
-                  const selectedRoom = userRooms.find(r => r.roomId === selectedRoomId);
-                  if (selectedRoom) {
+                  if (selectedRoomId && selectedRoomId !== userRoomId) {
+                    // Optimistically set name from cache, but immediately fetch fresh settings
+                    const cachedRoom = userRooms.find(r => r.roomId === selectedRoomId);
                     setUserRoomId(selectedRoomId);
                     localStorage.setItem('userRoomId', selectedRoomId);
-                    setRoomName(selectedRoom.roomName);
-                    localStorage.setItem('roomName', selectedRoom.roomName);
-                    setMonthlyBudget(selectedRoom.monthlyBudget);
-                    localStorage.setItem('monthlyBudget', selectedRoom.monthlyBudget);
+                    if (cachedRoom?.roomName) {
+                      setRoomName(cachedRoom.roomName);
+                    }
                     setHasConfirmedRoom(true);
-                    triggerToast(`Switched to room: ${selectedRoom.roomName}`);
+                    triggerToast(`Switching to: ${cachedRoom?.roomName || selectedRoomId}...`);
+
+                    // Always fetch fresh budget, name, and created_by from DB
+                    await fetchRoomSettings(selectedRoomId);
                     
                     if (user) {
-                      await supabase
+                      supabase
                         .from('users')
                         .upsert({
                           uid: user.id,
                           room_id: selectedRoomId,
                           updated_at: new Date().toISOString()
-                        }, { onConflict: 'uid' });
+                        }, { onConflict: 'uid' })
+                        .catch(e => console.error(e));
                     }
                   }
                 }}
@@ -2769,6 +2895,27 @@ export default function App() {
                   </option>
                 ))}
               </select>
+              {/* Quick room action buttons */}
+              <div className="flex gap-1.5 pt-1">
+                <button
+                  onClick={() => {
+                    setHasConfirmedRoom(false);
+                    setOnboardingStep('room-name');
+                  }}
+                  className="flex-1 py-1.5 rounded-lg border border-dashed border-[#1A3827]/30 dark:border-slate-700 text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all text-center"
+                >
+                  + New Room
+                </button>
+                <button
+                  onClick={() => {
+                    setHasConfirmedRoom(false);
+                    setOnboardingStep('join-room');
+                  }}
+                  className="flex-1 py-1.5 rounded-lg border border-dashed border-[#1A3827]/30 dark:border-slate-700 text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all text-center"
+                >
+                  Join Room
+                </button>
+              </div>
             </div>
           )}
 
@@ -2891,7 +3038,8 @@ export default function App() {
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-bold text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}{isSelf ? ' (You)' : ''}</p>
                     </div>
-                    {isSelf && <span className="text-[8px] font-bold text-[#1A3827] dark:text-[#A3E635] bg-[#EAF0EC] dark:bg-slate-700 px-1.5 py-0.5 rounded-full">Host</span>}
+                    {/* Show 'Host' badge next to the actual host (creator), not just the current user */}
+                    {m.uid === roomCreatedBy && <span className="text-[8px] font-bold text-[#1A3827] dark:text-[#A3E635] bg-[#EAF0EC] dark:bg-slate-700 px-1.5 py-0.5 rounded-full">Host</span>}
                   </div>
                 );
               })
@@ -4154,13 +4302,17 @@ export default function App() {
   // MANAGE ROOM MODAL
   // ==========================================
   function renderManageRoomModal() {
-    const currentUid = auth.currentUser?.uid || 'anonymous';
+    const currentUid = user?.id || 'anonymous';
+    const isHost = roomCreatedBy && user && roomCreatedBy === user.id;
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
         <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-xl border border-[#E3E8E3] dark:border-slate-800 overflow-hidden max-h-[90vh] flex flex-col transition-colors duration-300">
           <div className="px-6 py-4 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center shrink-0">
             <div>
-              <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Manage Room</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Manage Room</h3>
+                {isHost && <span className="text-[9px] font-black text-white bg-[#1A3827] dark:bg-[#A3E635] dark:text-slate-950 px-2 py-0.5 rounded-full uppercase tracking-wide">Host</span>}
+              </div>
               <p className="text-[10px] font-mono text-[#5C6E5C] dark:text-slate-400 mt-0.5">{userRoomId}</p>
             </div>
             <button onClick={() => setIsManageRoomOpen(false)} className="p-1 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"><X className="w-5 h-5" /></button>
@@ -4195,25 +4347,44 @@ export default function App() {
                 ) : (
                   members.map(m => {
                     const isSelf = m.uid === currentUid;
+                    const isThisHost = m.uid === roomCreatedBy;
                     return (
                       <div key={m.uid} className="flex items-center gap-3 p-3 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm text-white shrink-0 ${isSelf ? 'bg-[#1A3827]' : 'bg-pink-400'}`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm text-white shrink-0 ${isThisHost ? 'bg-[#1A3827]' : 'bg-pink-400'}`}>
                           {m.nickname?.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-bold text-sm text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}</p>
+                            {isThisHost && <span className="text-[8px] font-black text-white bg-[#1A3827] dark:bg-[#A3E635] dark:text-slate-950 px-1.5 py-0.5 rounded-full">Host</span>}
+                          </div>
                           <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-mono truncate">{isSelf ? 'You' : m.uid?.substring(0,8) + '...'}</p>
                         </div>
                         {isSelf ? (
-                          <span className="text-[9px] font-black text-[#1A3827] dark:text-[#A3E635] bg-[#EAF0EC] dark:bg-slate-700 px-2 py-1 rounded-full uppercase">You</span>
+                          // Self: show "You" tag. If not host, also show leave button
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-[#1A3827] dark:text-[#A3E635] bg-[#EAF0EC] dark:bg-slate-700 px-2 py-1 rounded-full uppercase">You</span>
+                            {!isHost && (
+                              <button
+                                onClick={() => { setIsManageRoomOpen(false); handleLeaveRoom(); }}
+                                className="text-[9px] font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 border border-rose-200 dark:border-rose-900 px-2 py-1 rounded-lg transition-all"
+                                title="Leave this room"
+                              >
+                                Leave
+                              </button>
+                            )}
+                          </div>
                         ) : (
-                          <button
-                            onClick={() => handleRemoveMember(m.uid)}
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-all"
-                            title={`Remove ${m.nickname}`}
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          // Others: host can remove, member sees nothing
+                          isHost && (
+                            <button
+                              onClick={() => handleRemoveMember(m.uid)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-all"
+                              title={`Remove ${m.nickname}`}
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )
                         )}
                       </div>
                     );
@@ -4222,7 +4393,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Budget Setting */}
+            {/* Budget Setting — host only editable */}
             <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-2">
               <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Monthly Budget Cap</p>
               <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Set a shared monthly spending limit for the room.</p>
@@ -4233,42 +4404,84 @@ export default function App() {
                   min="1000"
                   value={monthlyBudget}
                   onChange={e => setMonthlyBudget(Number(e.target.value))}
-                  className="flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
+                  disabled={!isHost}
+                  className={`flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 ${!isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
                 />
-                <button
-                  onClick={async () => {
-                    localStorage.setItem('monthlyBudget', monthlyBudget);
-                    if (userRoomId) {
-                      try {
-                        const { error: updateError } = await supabase
-                          .from('rooms')
-                          .update({ monthly_budget: monthlyBudget })
-                          .eq('id', userRoomId);
-                        if (updateError) throw updateError;
-                        triggerToast('Budget updated for all room members!');
-                      } catch(e) {
+                {isHost && (
+                  <button
+                    onClick={async () => {
+                      localStorage.setItem('monthlyBudget', monthlyBudget);
+                      if (userRoomId) {
+                        try {
+                          const { error: updateError } = await supabase
+                            .from('rooms')
+                            .update({ monthly_budget: monthlyBudget })
+                            .eq('id', userRoomId);
+                          if (updateError) throw updateError;
+                          await logActivity('settings', `${userNickname} updated the monthly budget to ₹${monthlyBudget}`);
+                          triggerToast('Budget updated for all room members!');
+                        } catch(e) {
+                          triggerToast('Budget saved locally.');
+                        }
+                      } else {
                         triggerToast('Budget saved locally.');
                       }
-                    } else {
-                      triggerToast('Budget saved locally.');
-                    }
-                  }}
-                  className="px-3 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 shrink-0"
-                >Save</button>
+                    }}
+                    className="px-3 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 shrink-0"
+                  >Save</button>
+                )}
+                {!isHost && (
+                  <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold px-1">Host only</span>
+                )}
               </div>
             </div>
 
-            {/* Danger Zone */}
-            <div className="border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/10 rounded-2xl p-4 space-y-2">
-              <p className="text-xs font-black text-rose-700 dark:text-rose-400">Danger Zone</p>
-              <p className="text-[11px] text-rose-600/80 dark:text-rose-400/70">Deleting the room will permanently remove all transactions, members, and data. This cannot be undone.</p>
-              <button
-                onClick={() => { setIsManageRoomOpen(false); handleDeleteRoom(); }}
-                className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
-              >
-                Delete Room Permanently
-              </button>
+            {/* Room Log — visible to all members */}
+            <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-2">
+              <p className="text-xs font-black text-[#1A3827] dark:text-slate-200">Room Activity Log</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {activityLogs.length === 0 ? (
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 italic">No activity yet.</p>
+                ) : (
+                  activityLogs.map(log => (
+                    <div key={log.id} className="flex justify-between items-start gap-2 text-xs pb-2 border-b border-[#F6F8F6] dark:border-slate-800/50 last:border-0 last:pb-0">
+                      <div className="space-y-0.5">
+                        <p className="font-semibold text-[#1A3827] dark:text-slate-200 text-[11px] leading-snug">{log.details}</p>
+                        <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400">by {log.user_name || 'System'}</p>
+                      </div>
+                      <span className="text-[9px] text-[#5C6E5C] dark:text-slate-500 whitespace-nowrap shrink-0">
+                        {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
+
+            {/* Danger Zone — host only */}
+            {isHost ? (
+              <div className="border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/10 rounded-2xl p-4 space-y-2">
+                <p className="text-xs font-black text-rose-700 dark:text-rose-400">Danger Zone</p>
+                <p className="text-[11px] text-rose-600/80 dark:text-rose-400/70">Deleting the room will permanently remove all transactions, members, and data. This cannot be undone.</p>
+                <button
+                  onClick={() => { setIsManageRoomOpen(false); handleDeleteRoom(); }}
+                  className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
+                >
+                  Delete Room Permanently
+                </button>
+              </div>
+            ) : (
+              <div className="border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/10 rounded-2xl p-4 space-y-2">
+                <p className="text-xs font-black text-amber-700 dark:text-amber-400">Leave Room</p>
+                <p className="text-[11px] text-amber-600/80 dark:text-amber-400/70">You can leave this room at any time. Your past expenses will remain in the room ledger.</p>
+                <button
+                  onClick={() => { setIsManageRoomOpen(false); handleLeaveRoom(); }}
+                  className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-all"
+                >
+                  Leave Room
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -4857,19 +5070,30 @@ export default function App() {
                   <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 italic">No members yet. Invite roommates to join.</p>
                 ) : (
                   members.map(m => {
-                    const isSelf = auth.currentUser && m.uid === auth.currentUser.uid;
+                    const isSelf = user && m.uid === user.id;
+                    const isThisHost = m.uid === roomCreatedBy;
+                    const currentUserIsHost = user && roomCreatedBy === user.id;
                     return (
                       <div key={m.uid} className="flex items-center gap-3 p-3 bg-[#F6F8F6] dark:bg-slate-950 rounded-xl">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 ${isSelf ? 'bg-[#1A3827]' : 'bg-pink-400'}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 ${isThisHost ? 'bg-[#1A3827]' : 'bg-pink-400'}`}>
                           {m.nickname?.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}{isSelf ? ' (You)' : ''}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}{isSelf ? ' (You)' : ''}</p>
+                            {isThisHost && <span className="text-[8px] font-black text-white bg-[#1A3827] dark:bg-[#A3E635] dark:text-slate-950 px-1.5 py-0.5 rounded-full">Host</span>}
+                          </div>
                           <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Joined {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : 'recently'}</p>
                         </div>
-                        {!isSelf && (
+                        {/* Host can remove others. Non-host can leave (themselves). */}
+                        {!isSelf && currentUserIsHost && (
                           <button onClick={() => handleRemoveMember(m.uid)} className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-all" title="Remove member">
                             <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {isSelf && !currentUserIsHost && (
+                          <button onClick={handleLeaveRoom} className="text-[9px] font-bold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 border border-amber-200 dark:border-amber-900 px-2 py-1 rounded-lg transition-all" title="Leave room">
+                            Leave
                           </button>
                         )}
                       </div>
