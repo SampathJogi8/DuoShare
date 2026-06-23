@@ -1969,7 +1969,7 @@ export default function App() {
   // CSV Export Handler
   const exportToCSV = (list = null) => {
     try {
-      const dataList = list || filteredTransactions;
+      const dataList = Array.isArray(list) ? list : filteredTransactions;
       if (dataList.length === 0) {
         triggerToast('No transaction records to export.');
         return;
@@ -2006,7 +2006,7 @@ export default function App() {
   // Excel Export Handler (styled XLS format)
   const exportToExcel = (list = null) => {
     try {
-      const dataList = list || filteredTransactions;
+      const dataList = Array.isArray(list) ? list : filteredTransactions;
       if (dataList.length === 0) {
         triggerToast('No transaction records to export.');
         return;
@@ -2102,7 +2102,7 @@ export default function App() {
   // PDF Export Handler — opens styled print page in new tab
   const exportToPDF = (list = null) => {
     try {
-      const dataList = list || filteredTransactions;
+      const dataList = Array.isArray(list) ? list : filteredTransactions;
       if (dataList.length === 0) {
         triggerToast('No transaction records to export.');
         return;
@@ -5219,21 +5219,21 @@ export default function App() {
               </div>
               <div className="flex gap-2">
                 <button 
-                  onClick={exportToCSV}
+                  onClick={() => exportToCSV()}
                   className="px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-[10px] rounded-lg transition-all"
                   title="Export detailed CSV file"
                 >
                   CSV
                 </button>
                 <button 
-                  onClick={exportToExcel}
+                  onClick={() => exportToExcel()}
                   className="px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-[10px] rounded-lg transition-all"
                   title="Export styled Excel spreadsheet"
                 >
                   Excel
                 </button>
                 <button 
-                  onClick={exportToPDF}
+                  onClick={() => exportToPDF()}
                   className="px-3 py-1.5 bg-[#1A3827] dark:bg-slate-800 text-white dark:text-slate-100 font-bold text-[10px] rounded-lg transition-all hover:opacity-90"
                   title="Open styled print PDF statement"
                 >
