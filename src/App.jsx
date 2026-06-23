@@ -921,26 +921,31 @@ export default function App() {
       if (deleteError) throw deleteError;
 
       // Log the leave action before clearing state
-      await supabase
-        .from('activity_logs')
-        .insert({
-          room_id: userRoomId,
-          user_id: user.id,
-          user_name: userNickname,
-          action: 'leave',
-          details: `${userNickname} left the room.`,
-          created_at: new Date().toISOString()
-        }).catch(() => {});
+      try {
+        await supabase
+          .from('activity_logs')
+          .insert({
+            room_id: userRoomId,
+            user_id: user.id,
+            user_name: userNickname,
+            action: 'leave',
+            details: `${userNickname} left the room.`,
+            created_at: new Date().toISOString()
+          });
+      } catch (_) {}
 
       // Clear user's room binding in users table
-      await supabase
-        .from('users')
-        .upsert({
-          uid: user.id,
-          room_id: null,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'uid' })
-        .catch(e => console.error(e));
+      (async () => {
+        try {
+          await supabase
+            .from('users')
+            .upsert({
+              uid: user.id,
+              room_id: null,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'uid' });
+        } catch (e) { console.error(e); }
+      })();
 
       setUserRoomId(null);
       setHasConfirmedRoom(false);
@@ -2561,14 +2566,17 @@ export default function App() {
                             // Always fetch fresh budget and created_by from DB
                             await fetchRoomSettings(r.roomId);
                             if (user) {
-                              supabase
-                                .from('users')
-                                .upsert({
-                                  uid: user.id,
-                                  room_id: r.roomId,
-                                  updated_at: new Date().toISOString()
-                                }, { onConflict: 'uid' })
-                                .catch(e => console.error(e));
+                              (async () => {
+                                try {
+                                  await supabase
+                                    .from('users')
+                                    .upsert({
+                                      uid: user.id,
+                                      room_id: r.roomId,
+                                      updated_at: new Date().toISOString()
+                                    }, { onConflict: 'uid' });
+                                } catch (e) { console.error(e); }
+                              })();
                             }
                           }}
                           className={`flex items-center justify-between p-3 rounded-2xl border text-xs cursor-pointer transition-all ${
@@ -2876,14 +2884,17 @@ export default function App() {
                     await fetchRoomSettings(selectedRoomId);
                     
                     if (user) {
-                      supabase
-                        .from('users')
-                        .upsert({
-                          uid: user.id,
-                          room_id: selectedRoomId,
-                          updated_at: new Date().toISOString()
-                        }, { onConflict: 'uid' })
-                        .catch(e => console.error(e));
+                      (async () => {
+                        try {
+                          await supabase
+                            .from('users')
+                            .upsert({
+                              uid: user.id,
+                              room_id: selectedRoomId,
+                              updated_at: new Date().toISOString()
+                            }, { onConflict: 'uid' });
+                        } catch (e) { console.error(e); }
+                      })();
                     }
                   }
                 }}
