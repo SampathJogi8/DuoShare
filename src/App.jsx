@@ -528,7 +528,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [authLoading]);
 
-  // Initialize and reset Add Expense Form when opened
+  // Initialize and reset Add Expense Form when opened or closed
   useEffect(() => {
     if (isAddExpenseOpen) {
       if (editingTransaction) {
@@ -578,6 +578,35 @@ export default function App() {
           });
           setSelectedSplitMembers(initialSplits);
         }
+      }
+    } else {
+      // Modal closed, clean up everything
+      setFormFor('');
+      setFormAmount('');
+      setFormCategory('Food');
+      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormWho('Shared');
+      setFormRepeat(false);
+      setSuggestedCategory(null);
+      setEditingTransaction(null);
+      
+      // Also reset split states to defaults
+      setSplitType('equal');
+      const initialSplits = {};
+      members.forEach(m => {
+        initialSplits[m.uid] = true;
+      });
+      setSelectedSplitMembers(initialSplits);
+      setCustomSplitValues({});
+      
+      // Reset formPaidBy to current user/first member
+      const currentUid = auth.currentUser?.uid || 'anonymous';
+      if (members.some(m => m.uid === currentUid)) {
+        setFormPaidBy(currentUid);
+      } else if (members.length > 0) {
+        setFormPaidBy(members[0].uid);
+      } else {
+        setFormPaidBy('');
       }
     }
   }, [isAddExpenseOpen, members, editingTransaction]);
@@ -4021,8 +4050,12 @@ export default function App() {
           
           <div className="px-6 py-4 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center bg-[#F6F8F6]/30 dark:bg-slate-950/20 shrink-0">
             <div>
-              <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">NEW TRANSACTION</p>
-              <h2 className="font-extrabold text-lg sm:text-xl text-[#1A3827] dark:text-slate-100 mt-0.5">Add an expense</h2>
+              <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">
+                {editingTransaction ? 'EDIT TRANSACTION' : 'NEW TRANSACTION'}
+              </p>
+              <h2 className="font-extrabold text-lg sm:text-xl text-[#1A3827] dark:text-slate-100 mt-0.5">
+                {editingTransaction ? 'Edit expense' : 'Add an expense'}
+              </h2>
             </div>
             <button 
               onClick={() => setIsAddExpenseOpen(false)}
@@ -4236,7 +4269,7 @@ export default function App() {
                 type="submit"
                 className="px-4 sm:px-5 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all shadow-sm"
               >
-                Add expense
+                {editingTransaction ? 'Save changes' : 'Add expense'}
               </button>
             </div>
 
