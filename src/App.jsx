@@ -959,7 +959,10 @@ export default function App() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo: window.location.origin,
+          queryParams: {
+            prompt: 'select_account consent',
+          },
         }
       });
       if (error) throw error;
@@ -1192,6 +1195,12 @@ export default function App() {
       await supabase.from('members').delete().eq('uid', user.id);
       await supabase.from('users').delete().eq('uid', user.id);
       
+      // Verify if deletion actually worked (RLS might silently fail by returning 0 rows affected)
+      const { data: memberCheck } = await supabase.from('members').select('uid').eq('uid', user.id).limit(1);
+      if (memberCheck && memberCheck.length > 0) {
+        throw new Error("Database security policies (RLS) prevented deletion. Please ensure your Supabase 'members' and 'users' tables have a DELETE policy allowing users to delete their own rows.");
+      }
+
       localStorage.clear();
       await supabase.auth.signOut();
       
