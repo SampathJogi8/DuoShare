@@ -1037,6 +1037,7 @@ export default function App() {
         } catch(e) { console.error(e); }
       }
       await fetchUserRooms();
+      setOnboardingStep('selection');
       triggerToast('Room deleted. Redirected to onboarding.');
     } catch (err) {
       console.error('Delete room error:', err);
@@ -1049,6 +1050,7 @@ export default function App() {
       setRoomCreatedBy(null);
       localStorage.removeItem('userRoomId');
       await fetchUserRooms();
+      setOnboardingStep('selection');
     }
   };
 
@@ -1103,6 +1105,7 @@ export default function App() {
       setRoomCreatedBy(null);
       localStorage.removeItem('userRoomId');
       await fetchUserRooms();
+      setOnboardingStep('selection');
       triggerToast('You have left the room.');
     } catch (err) {
       console.error('Leave room error:', err);
@@ -1169,6 +1172,7 @@ export default function App() {
       setUserRoomId(null);
       localStorage.removeItem('userRoomId');
       setHasConfirmedRoom(false);
+      setOnboardingStep('selection');
       triggerToast('Signed out successfully.');
     } catch (err) {
       console.error(err);
@@ -1199,6 +1203,7 @@ export default function App() {
       setNicknameInput('You');
       setIsNicknameFixed(false);
       setUserRooms([]);
+      setOnboardingStep('selection');
       triggerToast('Account data deleted successfully.');
     } catch (err) {
       console.error("Error deleting account:", err);
