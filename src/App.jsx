@@ -568,7 +568,7 @@ export default function App() {
     setUserNickname(finalNickname);
     setNicknameInput(finalNickname);
     localStorage.setItem('userNickname', finalNickname);
-    if (finalNickname && finalNickname !== 'You' && finalNickname.trim() !== '') {
+    if (cachedNickname && cachedNickname !== 'You' && cachedNickname.trim() !== '') {
       setIsNicknameFixed(true);
     }
 
