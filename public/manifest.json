@@ -1,0 +1,21 @@
+{
+  "short_name": "Tallyin",
+  "name": "Tallyin - Shared Expense Manager",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "type": "image/png",
+      "sizes": "239x239"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "type": "image/png",
+      "sizes": "239x239"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#1A3827",
+  "display": "standalone",
+  "orientation": "portrait"
+}
