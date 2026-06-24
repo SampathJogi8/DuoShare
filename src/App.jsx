@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { 
   Home as HomeIcon, 
@@ -8,8 +8,6 @@ import {
   Settings as SettingsIcon, 
   Plus, 
   Search, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
   Calendar, 
   Check, 
   Copy, 
@@ -22,11 +20,7 @@ import {
   Moon, 
   Sun, 
   ChevronDown, 
-  ChevronRight, 
-  Info,
-  DollarSign,
   AlertCircle,
-  HelpCircle,
   Clock,
   ArrowRight,
   User,
@@ -39,18 +33,14 @@ import {
   UserCheck,
   Menu,
   ShieldCheck,
-  QrCode,
   Share2,
   ScanLine,
-  Bell,
-  Mail,
   Pencil,
   Trash2
 } from 'lucide-react';
 
 import { supabase } from './supabase';
 import logoIcon from './assets/logo_icon.png';
-import logoFull from './assets/logo_full.png';
 
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
@@ -92,6 +82,11 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// Stable ViewRenderer component helper to safely wrap child view renderers
+const ViewRenderer = ({ render }) => {
+  return render();
+};
+
 // ── QR Scanner Component (wraps html5-qrcode) ───────────────────────────────
 function QrScannerMount({ onScan, onError, scannerRef }) {
   const mountId = 'qr-scanner-viewport';
@@ -111,8 +106,16 @@ function QrScannerMount({ onScan, onError, scannerRef }) {
 
     return () => {
       // html5-qrcode throws SYNCHRONOUSLY if not running — must use try/catch
-      try { scanner.stop().catch(() => {}); } catch (_) {}
-      try { scanner.clear(); } catch (_) {}
+      try { 
+        scanner.stop().catch((e) => console.warn('Scanner stop failed:', e)); 
+      } catch (err) { 
+        console.warn('Scanner stop error:', err); 
+      }
+      try { 
+        scanner.clear(); 
+      } catch (err) { 
+        console.warn('Scanner clear error:', err); 
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -174,16 +177,14 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  const auth = {
-    get currentUser() {
-      return user ? {
-        id: user.id,
-        uid: user.id,
-        photoURL: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
-        displayName: user.user_metadata?.full_name || user.user_metadata?.name || 'You'
-      } : null;
-    }
-  };
+  const auth = useMemo(() => ({
+    currentUser: user ? {
+      id: user.id,
+      uid: user.id,
+      photoURL: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
+      displayName: user.user_metadata?.full_name || user.user_metadata?.name || 'You'
+    } : null
+  }), [user]);
 
   // Room members & settings
   const [members, setMembers] = useState([]);
@@ -206,10 +207,16 @@ export default function App() {
 
   // Onboarding Setup View state
   const [userRoomId, setUserRoomId] = useState(() => localStorage.getItem('userRoomId') || null); 
-  const [joinInput, setJoinInput] = useState('');
+  const [joinInput, setJoinInput] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('join');
+      return code ? code.trim().toUpperCase() : '';
+    }
+    return '';
+  });
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [inviteTab, setInviteTab] = useState('code'); // 'code' | 'qr' | 'link'
-  const [deepLinkRoomCode, setDeepLinkRoomCode] = useState(null); // set when ?join= param detected
   const qrScannerRef = useRef(null);
 
   // Responsive drawer menu
@@ -220,7 +227,6 @@ export default function App() {
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isManageRoomOpen, setIsManageRoomOpen] = useState(false);
-  const [isSettleModalOpen2, setIsSettleModalOpen2] = useState(false);
   const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
   const [activeReceiptZoom, setActiveReceiptZoom] = useState(null);
 
@@ -245,10 +251,13 @@ export default function App() {
   // Nicknames & Roommates Dynamic State
   const [userNickname, setUserNickname] = useState(() => localStorage.getItem('userNickname') || 'You');
   const [roomName, setRoomName] = useState(() => localStorage.getItem('roomName') || 'Tallyin');
-  const [roommateOnline, setRoommateOnline] = useState(true);
   
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState(() => localStorage.getItem('userNickname') || 'You');
+  const [isNicknameFixed, setIsNicknameFixed] = useState(() => {
+    const cached = localStorage.getItem('userNickname');
+    return !!(cached && cached !== 'You' && cached.trim() !== '');
+  });
   const [isEditingRoomName, setIsEditingRoomName] = useState(false);
   const [roomNameInput, setRoomNameInput] = useState('');
   const [settingsRoomNameInput, setSettingsRoomNameInput] = useState(() => localStorage.getItem('roomName') || 'Tallyin');
@@ -282,11 +291,90 @@ export default function App() {
 
   // Toast / notification
   const [toastMessage, setToastMessage] = useState(null);
-  const triggerToast = (msg) => {
+  const triggerToast = useCallback((msg) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(prev => prev === msg ? null : prev);
     }, 3000);
+  }, []);
+
+  const openAddExpenseModal = (tx = null) => {
+    if (tx) {
+      setEditingTransaction(tx);
+      setFormFor(tx.title);
+      setFormAmount(tx.amount.toString());
+      setFormCategory(tx.category);
+      setFormDate(tx.date);
+      setFormPaidBy(tx.paidByUid || (auth.currentUser?.uid || 'anonymous'));
+      setSplitType(tx.splitType || 'equal');
+      
+      const initialSplits = {};
+      const initialCustomValues = {};
+      if (tx.splits && Array.isArray(tx.splits)) {
+        members.forEach(m => {
+          initialSplits[m.uid] = tx.splits.some(s => s.uid === m.uid);
+        });
+        tx.splits.forEach(s => {
+          initialCustomValues[s.uid] = s.amount;
+        });
+      } else {
+        members.forEach(m => {
+          initialSplits[m.uid] = true;
+        });
+      }
+      setSelectedSplitMembers(initialSplits);
+      setCustomSplitValues(initialCustomValues);
+    } else {
+      setEditingTransaction(null);
+      setFormFor('');
+      setFormAmount('');
+      setFormCategory('Food');
+      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormRepeat(false);
+      setSuggestedCategory(null);
+      setSplitType('equal');
+      const initialSplits = {};
+      members.forEach(m => {
+        initialSplits[m.uid] = true;
+      });
+      setSelectedSplitMembers(initialSplits);
+      setCustomSplitValues({});
+      const currentUid = auth.currentUser?.uid || 'anonymous';
+      if (members.some(m => m.uid === currentUid)) {
+        setFormPaidBy(currentUid);
+      } else if (members.length > 0) {
+        setFormPaidBy(members[0].uid);
+      } else {
+        setFormPaidBy(currentUid);
+      }
+    }
+    setIsAddExpenseOpen(true);
+  };
+
+  const closeAddExpenseModal = () => {
+    setIsAddExpenseOpen(false);
+    setEditingTransaction(null);
+    setFormFor('');
+    setFormAmount('');
+    setFormCategory('Food');
+    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormRepeat(false);
+    setSuggestedCategory(null);
+    setSplitType('equal');
+    const initialSplits = {};
+    members.forEach(m => {
+      initialSplits[m.uid] = true;
+    });
+    setSelectedSplitMembers(initialSplits);
+    setCustomSplitValues({});
+    const currentUid = auth.currentUser?.uid || 'anonymous';
+    if (members.some(m => m.uid === currentUid)) {
+      setFormPaidBy(currentUid);
+    } else if (members.length > 0) {
+      setFormPaidBy(members[0].uid);
+    } else {
+      setFormPaidBy('');
+    }
   };
 
   // New Transaction Form State
@@ -294,7 +382,6 @@ export default function App() {
   const [formAmount, setFormAmount] = useState('');
   const [formCategory, setFormCategory] = useState('Food');
   const [formDate, setFormDate] = useState('2026-06-21');
-  const [formWho, setFormWho] = useState('Shared'); 
   const [formRepeat, setFormRepeat] = useState(false);
   const [suggestedCategory, setSuggestedCategory] = useState(null);
 
@@ -395,7 +482,7 @@ export default function App() {
     }
   };
 
-  const fetchUserRooms = async () => {
+  const fetchUserRooms = useCallback(async () => {
     if (!user) return;
     try {
       const { data, error } = await supabase
@@ -416,18 +503,19 @@ export default function App() {
     } catch (err) {
       console.warn("Error fetching user rooms:", err);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (user) {
+      // eslint-disable-next-line
       fetchUserRooms();
     } else {
       setUserRooms([]);
     }
-  }, [user, userRoomId]);
+  }, [user, userRoomId, fetchUserRooms]);
 
   // Helper to add member to room in Supabase
-  const addMemberToRoom = async (roomId, nickname, currentUserObj = null) => {
+  const addMemberToRoom = useCallback(async (roomId, nickname, currentUserObj = null) => {
     const activeUser = currentUserObj || user;
     if (!activeUser) return;
     try {
@@ -447,15 +535,18 @@ export default function App() {
     } catch (err) {
       console.error('Failed to add member to room in Supabase:', err);
     }
-  };
+  }, [user]);
 
-  const handleAuthUser = async (currentUser) => {
+  const handleAuthUser = useCallback(async (currentUser) => {
     const cachedNickname = localStorage.getItem('userNickname');
     const displayName = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name;
     const finalNickname = cachedNickname && cachedNickname !== 'You' ? cachedNickname : (displayName || 'You');
     setUserNickname(finalNickname);
     setNicknameInput(finalNickname);
     localStorage.setItem('userNickname', finalNickname);
+    if (finalNickname && finalNickname !== 'You' && finalNickname.trim() !== '') {
+      setIsNicknameFixed(true);
+    }
 
     // Load room ID from localStorage if available, otherwise fetch from Supabase
     // Fire-and-forget addMemberToRoom — don't await it to avoid login latency
@@ -481,7 +572,7 @@ export default function App() {
         .catch(e => console.error('Error fetching user room ID:', e));
     }
     setAuthLoading(false); // Show app immediately — don't wait for DB ops
-  };
+  }, [addMemberToRoom]);
 
   // Handle Supabase Auth state changes
   useEffect(() => {
@@ -503,6 +594,10 @@ export default function App() {
       } else {
         setUserRoomId(null);
         localStorage.removeItem('userRoomId');
+        localStorage.removeItem('userNickname');
+        setUserNickname('You');
+        setNicknameInput('You');
+        setIsNicknameFixed(false);
         setHasConfirmedRoom(false);
         setAuthLoading(false);
       }
@@ -511,16 +606,13 @@ export default function App() {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [handleAuthUser]);
 
   // Deep-link invite handler: parse ?join=ROOM-CODE from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const joinCode = params.get('join');
     if (joinCode && joinCode.trim()) {
-      const code = joinCode.trim().toUpperCase();
-      setJoinInput(code);
-      setDeepLinkRoomCode(code);
       // Clean the URL so the param doesn't persist on refresh
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, '', cleanUrl);
@@ -539,88 +631,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [authLoading]);
 
-  // Initialize and reset Add Expense Form when opened or closed
-  useEffect(() => {
-    if (isAddExpenseOpen) {
-      if (editingTransaction) {
-        // Populating for edit mode
-        setFormFor(editingTransaction.title);
-        setFormAmount(editingTransaction.amount.toString());
-        setFormCategory(editingTransaction.category);
-        setFormDate(editingTransaction.date);
-        setFormPaidBy(editingTransaction.paidByUid || (auth.currentUser?.uid || 'anonymous'));
-        setSplitType(editingTransaction.splitType || 'equal');
-        
-        // Populate selected splits and custom values
-        const initialSplits = {};
-        const initialCustomValues = {};
-        if (editingTransaction.splits && Array.isArray(editingTransaction.splits)) {
-          members.forEach(m => {
-            initialSplits[m.uid] = editingTransaction.splits.some(s => s.uid === m.uid);
-          });
-          editingTransaction.splits.forEach(s => {
-            initialCustomValues[s.uid] = s.amount;
-          });
-        } else {
-          members.forEach(m => {
-            initialSplits[m.uid] = true;
-          });
-        }
-        setSelectedSplitMembers(initialSplits);
-        setCustomSplitValues(initialCustomValues);
-      } else {
-        // Initialize default paid by if not set
-        if (!formPaidBy) {
-          const currentUid = auth.currentUser?.uid || 'anonymous';
-          if (members.some(m => m.uid === currentUid)) {
-            setFormPaidBy(currentUid);
-          } else if (members.length > 0) {
-            setFormPaidBy(members[0].uid);
-          } else {
-            setFormPaidBy(currentUid);
-          }
-        }
-        
-        // Initialize splits to true if they are empty
-        if (Object.keys(selectedSplitMembers).length === 0) {
-          const initialSplits = {};
-          members.forEach(m => {
-            initialSplits[m.uid] = true;
-          });
-          setSelectedSplitMembers(initialSplits);
-        }
-      }
-    } else {
-      // Modal closed, clean up everything
-      setFormFor('');
-      setFormAmount('');
-      setFormCategory('Food');
-      setFormDate(new Date().toISOString().split('T')[0]);
-      setFormWho('Shared');
-      setFormRepeat(false);
-      setSuggestedCategory(null);
-      setEditingTransaction(null);
-      
-      // Also reset split states to defaults
-      setSplitType('equal');
-      const initialSplits = {};
-      members.forEach(m => {
-        initialSplits[m.uid] = true;
-      });
-      setSelectedSplitMembers(initialSplits);
-      setCustomSplitValues({});
-      
-      // Reset formPaidBy to current user/first member
-      const currentUid = auth.currentUser?.uid || 'anonymous';
-      if (members.some(m => m.uid === currentUid)) {
-        setFormPaidBy(currentUid);
-      } else if (members.length > 0) {
-        setFormPaidBy(members[0].uid);
-      } else {
-        setFormPaidBy('');
-      }
-    }
-  }, [isAddExpenseOpen, members, editingTransaction]);
+
 
   // Sync with dark mode class on document element and body
   useEffect(() => {
@@ -635,7 +646,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const fetchTransactions = async (roomId) => {
+  const fetchTransactions = useCallback(async (roomId) => {
     try {
       const { data, error } = await supabase
         .from('transactions')
@@ -667,9 +678,9 @@ export default function App() {
       console.error("Error fetching transactions:", err);
       setIsDbSynced(false);
     }
-  };
+  }, []);
 
-  const fetchActivityLogs = async (roomId) => {
+  const fetchActivityLogs = useCallback(async (roomId) => {
     try {
       const { data, error } = await supabase
         .from('activity_logs')
@@ -690,7 +701,7 @@ export default function App() {
     } catch (err) {
       console.warn("Error fetching activity logs:", err);
     }
-  };
+  }, []);
 
   const downloadLogsAsCSV = (logs, fileName) => {
     const headers = ['Timestamp', 'User', 'Details', 'Action Type'];
@@ -758,7 +769,7 @@ export default function App() {
     }
   };
 
-  const fetchReceipts = async (roomId) => {
+  const fetchReceipts = useCallback(async (roomId) => {
     try {
       const { data, error } = await supabase
         .from('receipts')
@@ -780,9 +791,9 @@ export default function App() {
     } catch (err) {
       console.error("Error fetching receipts:", err);
     }
-  };
+  }, []);
 
-  const fetchRoomSettings = async (roomId) => {
+  const fetchRoomSettings = useCallback(async (roomId) => {
     try {
       const { data, error } = await supabase
         .from('rooms')
@@ -834,9 +845,9 @@ export default function App() {
     } catch (err) {
       console.warn("Room settings fetch error:", err);
     }
-  };
+  }, [user, fetchUserRooms, triggerToast]);
 
-  const fetchMembers = async (roomId) => {
+  const fetchMembers = useCallback(async (roomId) => {
     try {
       const { data, error } = await supabase
         .from('members')
@@ -866,17 +877,19 @@ export default function App() {
     } catch (err) {
       console.warn("Members fetch error:", err);
     }
-  };
+  }, [user, triggerToast]);
 
   // Supabase Real-time Sync
   useEffect(() => {
     if (!user || !userRoomId) return;
 
-    fetchTransactions(userRoomId);
-    fetchReceipts(userRoomId);
-    fetchRoomSettings(userRoomId);
-    fetchMembers(userRoomId);
-    fetchActivityLogs(userRoomId);
+    const timer = setTimeout(() => {
+      fetchTransactions(userRoomId);
+      fetchReceipts(userRoomId);
+      fetchRoomSettings(userRoomId);
+      fetchMembers(userRoomId);
+      fetchActivityLogs(userRoomId);
+    }, 0);
 
     const channel = supabase
       .channel(`room:${userRoomId}`)
@@ -908,9 +921,10 @@ export default function App() {
       .subscribe();
 
     return () => {
+      clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [user, userRoomId]);
+  }, [user, userRoomId, fetchTransactions, fetchReceipts, fetchRoomSettings, fetchMembers, fetchActivityLogs]);
 
   // Login handler
   const handleGoogleLogin = async () => {
@@ -1039,7 +1053,9 @@ export default function App() {
             details: `${userNickname} left the room.`,
             created_at: new Date().toISOString()
           });
-      } catch (_) {}
+      } catch (err) {
+        console.warn("Failed to log leave activity:", err);
+      }
 
       // Clear user's room binding in users table
       (async () => {
@@ -1141,8 +1157,7 @@ export default function App() {
       triggerToast('You are not authorized to edit this expense. Only the creator can edit it.');
       return;
     }
-    setEditingTransaction(tx);
-    setIsAddExpenseOpen(true);
+    openAddExpenseModal(tx);
   };
 
   const handleDeleteTransaction = async (tx) => {
@@ -1319,8 +1334,7 @@ export default function App() {
     }
   };
 
-  // Computed permission: true if current user is the room's creator (host)
-  const isHost = !!(user && roomCreatedBy && roomCreatedBy === user.id);
+
 
   // Dynamically calculated values based on synced transactions state
   const computedStats = useMemo(() => {
@@ -1423,14 +1437,14 @@ export default function App() {
       totalShared: sharedSpend,
       personalPaidAlex: personalSpend
     };
-  }, [transactions, members, userNickname]);
+  }, [transactions, members, userNickname, auth.currentUser]);
 
   // Subtitle helper for ledger displays
   const getTransactionSubtitle = (t) => {
     const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
     const payerName = t.paidByUid === currentUid ? 'You' : t.paidBy;
     
-    let splitText = '';
+    let splitText;
     if (!t.isShared) {
       // Find who the personal expense is for
       const splitTarget = t.splits?.[0];
@@ -1454,7 +1468,7 @@ export default function App() {
 
   // Copy Room Code Helper
   const handleCopyCode = () => {
-    navigator.clipboard.writeText(userRoomId || roomCode);
+    navigator.clipboard.writeText(userRoomId || '');
     setRoomCodeCopied(true);
     triggerToast('Room code copied to clipboard!');
     setTimeout(() => setRoomCodeCopied(false), 2000);
@@ -1644,7 +1658,7 @@ export default function App() {
     const payerMember = members.find(m => m.uid === formPaidBy) || { nickname: userNickname };
     
     // Determine split label text and classification
-    let splitLabel = 'Shared';
+    let splitLabel;
     let isSharedExpense = true;
     if (splitsArray.length === 1) {
       isSharedExpense = false;
@@ -1701,16 +1715,7 @@ export default function App() {
         await logActivity('edit', `${userNickname} edited expense "${newPayload.title}" to ₹${newPayload.amount}`);
         triggerToast("Expense updated successfully!");
         
-        // Reset Form
-        setFormFor('');
-        setFormAmount('');
-        setFormCategory('Food');
-        setFormDate(new Date().toISOString().split('T')[0]);
-        setFormWho('Shared');
-        setFormRepeat(false);
-        setSuggestedCategory(null);
-        setEditingTransaction(null);
-        setIsAddExpenseOpen(false);
+        closeAddExpenseModal();
       } catch (error) {
         console.error("Error updating transaction:", error);
         triggerToast(`Failed to update: ${error.message}`);
@@ -1725,17 +1730,7 @@ export default function App() {
         room_id: currentRoom
       };
       setTransactions(prev => [optimisticTx, ...prev]);
-      setIsAddExpenseOpen(false);
-      
-      // Reset Form right away for fast UX
-      setFormFor('');
-      setFormAmount('');
-      setFormCategory('Food');
-      setFormDate(new Date().toISOString().split('T')[0]);
-      setFormWho('Shared');
-      setFormRepeat(false);
-      setSuggestedCategory(null);
-      setEditingTransaction(null);
+      closeAddExpenseModal();
 
       try {
         const { data: insertedTx, error: txError } = await supabase
@@ -2066,7 +2061,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       try {
         await navigator.share(shareData);
         triggerToast('Shared successfully!');
-      } catch (err) {
+      } catch {
         setIsInviteModalOpen(true);
       }
     } else {
@@ -2450,18 +2445,20 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
   // Filtered transactions for the ledger
   // Ledger shows: shared expenses + personal expenses added by OTHER users.
   // Current user's own personal expenses are hidden here — they live in the Personal Expenses tab.
-  const currentUid = auth.currentUser?.uid || 'anonymous';
-  const activeTxList = transactions.filter(t => {
-    if (t.isShared) return true; // always show shared bills
-    // For personal expenses: hide if the expense belongs solely to the current user
-    const isMineOnly =
-      t.splits &&
-      Array.isArray(t.splits) &&
-      t.splits.length === 1 &&
-      t.splits[0]?.uid === currentUid;
-    return !isMineOnly; // show only if it's someone else's personal expense
-  });
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredTransactions = useMemo(() => {
+    const currentUid = user?.id || 'anonymous';
+    const activeTxList = transactions.filter(t => {
+      if (t.isShared) return true; // always show shared bills
+      // For personal expenses: hide if the expense belongs solely to the current user
+      const isMineOnly =
+        t.splits &&
+        Array.isArray(t.splits) &&
+        t.splits.length === 1 &&
+        t.splits[0]?.uid === currentUid;
+      return !isMineOnly; // show only if it's someone else's personal expense
+    });
+
     return activeTxList.filter(t => {
       const titleStr = t.title || '';
       const categoryStr = t.category || '';
@@ -2471,11 +2468,11 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
       return matchesSearch && matchesCategory && matchesMonth;
     });
-  }, [activeTxList, searchQuery, categoryFilter, selectedMonth]);
+  }, [transactions, searchQuery, categoryFilter, selectedMonth, user]);
 
   // Personal expenses memo (isShared is false, split only with self)
   const myPersonalExpenses = useMemo(() => {
-    const currentUid = auth.currentUser?.uid || 'anonymous';
+    const currentUid = user?.id || 'anonymous';
     return transactions.filter(t => {
       return t.isShared === false && 
              t.splits && 
@@ -2484,7 +2481,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
              t.splits[0] && 
              t.splits[0].uid === currentUid;
     });
-  }, [transactions, auth.currentUser?.uid]);
+  }, [transactions, user]);
 
   const filteredPersonalExpenses = useMemo(() => {
     return myPersonalExpenses.filter(t => {
@@ -2645,7 +2642,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             
             <div className="space-y-1">
               <h1 className="text-xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Set up your shared space</h1>
-              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-bold uppercase tracking-wider">YouthFirst Tallyin Onboarding</p>
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">YouthFirst Tallyin Onboarding</p>
             </div>
           </div>
 
@@ -2653,21 +2650,25 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           {onboardingStep === 'selection' && (
             <div className="space-y-5">
               {/* Nickname input */}
-              <div className="space-y-1.5 text-left">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Your display name *</label>
-                <input
-                  type="text"
-                  value={nicknameInput === 'You' ? '' : nicknameInput}
-                  onChange={(e) => {
-                    setNicknameInput(e.target.value);
-                    setUserNickname(e.target.value);
-                    localStorage.setItem('userNickname', e.target.value);
-                  }}
-                  placeholder="e.g. Sampath, Alex…"
-                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
-                />
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">This is how you'll appear to roommates.</p>
-              </div>
+              {!isNicknameFixed && (
+                <div className="space-y-1.5 text-left">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Your display name *</label>
+                  <input
+                    type="text"
+                    value={nicknameInput === 'You' ? '' : nicknameInput}
+                    onChange={(e) => {
+                      setNicknameInput(e.target.value);
+                      setUserNickname(e.target.value);
+                      localStorage.setItem('userNickname', e.target.value);
+                    }}
+                    placeholder="e.g. Sampath, Alex…"
+                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                  />
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                    This is how you'll appear to roommates. If you want to change this later, you can do so in Settings.
+                  </p>
+                </div>
+              )}
 
               {userRoomId && (
                 <div className="border border-[#1A3827] dark:border-[#A3E635] bg-[#EAF0EC]/20 dark:bg-[#A3E635]/5 rounded-2xl p-4 flex justify-between items-center text-left">
@@ -2676,7 +2677,10 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                     <p className="font-mono text-xs font-bold text-[#1A3827] dark:text-slate-100 mt-1">Code: {userRoomId}</p>
                   </div>
                   <button 
-                    onClick={() => setHasConfirmedRoom(true)}
+                    onClick={() => {
+                      setIsNicknameFixed(true);
+                      setHasConfirmedRoom(true);
+                    }}
                     className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-955 px-4 py-2 rounded-xl font-bold text-xs hover:opacity-90"
                   >
                     Enter Room
@@ -2691,6 +2695,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                       triggerToast('Please enter your display name first.');
                       return;
                     }
+                    setIsNicknameFixed(true);
                     setOnboardingStep('room-name');
                   }}
                   className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 hover:border-[#1A3827]/25 dark:hover:border-slate-700 hover:bg-[#F6F8F6]/20 dark:hover:bg-slate-800/10 transition-all flex flex-col items-center justify-center gap-2 text-center text-xs font-bold text-[#1A3827] dark:text-slate-200"
@@ -2704,6 +2709,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                       triggerToast('Please enter your display name first.');
                       return;
                     }
+                    setIsNicknameFixed(true);
                     setOnboardingStep('join-room');
                   }}
                   className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 hover:border-[#1A3827]/25 dark:hover:border-slate-700 hover:bg-[#F6F8F6]/20 dark:hover:bg-slate-800/10 transition-all flex flex-col items-center justify-center gap-2 text-center text-xs font-bold text-[#1A3827] dark:text-slate-200"
@@ -2712,6 +2718,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                   <span>Join Room</span>
                 </button>
               </div>
+
 
               {userRooms.length > 0 && (
                 <div className="space-y-2 text-left pt-3 border-t border-[#E3E8E3]/50 dark:border-slate-800/50">
@@ -2975,13 +2982,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     );
   }
 
-  // Helper Components for ErrorBoundary to catch rendering exceptions
-  const HomeView = () => renderHome();
-  const LedgerView = () => renderLedger();
-  const PersonalExpensesView = () => renderPersonalExpenses();
-  const InsightsView = () => renderInsights();
-  const ReceiptsView = () => renderReceipts();
-  const SettingsView = () => renderSettings();
+
 
   // MAIN RUNNING APP
   return (
@@ -3352,19 +3353,19 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
         <main className="flex-grow pt-20 px-4 sm:px-8 pb-24 overflow-y-auto">
           <ErrorBoundary>
-            {currentView === 'home' && <HomeView />}
-            {currentView === 'ledger' && <LedgerView />}
-            {currentView === 'personal-expenses' && <PersonalExpensesView />}
-            {currentView === 'insights' && <InsightsView />}
-            {currentView === 'receipts' && <ReceiptsView />}
-            {currentView === 'settings' && <SettingsView />}
+            {currentView === 'home' && <ViewRenderer render={renderHome} />}
+            {currentView === 'ledger' && <ViewRenderer render={renderLedger} />}
+            {currentView === 'personal-expenses' && <ViewRenderer render={renderPersonalExpenses} />}
+            {currentView === 'insights' && <ViewRenderer render={renderInsights} />}
+            {currentView === 'receipts' && <ViewRenderer render={renderReceipts} />}
+            {currentView === 'settings' && <ViewRenderer render={renderSettings} />}
           </ErrorBoundary>
         </main>
 
         {/* Floating Action Button (FAB) */}
         <div className="fixed bottom-6 right-6 z-30">
           <button 
-            onClick={() => setIsAddExpenseOpen(true)}
+            onClick={() => openAddExpenseModal()}
             className="flex items-center gap-2 bg-[#A3E635] text-[#1A3827] font-bold px-4 sm:px-5 py-3 sm:py-3.5 rounded-full shadow-lg shadow-lime-900/10 hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 border border-[#84CC16]"
             id="fab-quick-add"
           >
@@ -3419,7 +3420,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Everything looks calm in your room today.</p>
           </div>
           <button 
-            onClick={() => setIsAddExpenseOpen(true)}
+            onClick={() => openAddExpenseModal()}
             className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all flex items-center justify-center gap-2 active:scale-98 self-start sm:self-auto shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -3687,7 +3688,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
               
               <div className="grid grid-cols-2 gap-3">
                 <button 
-                  onClick={() => setIsAddExpenseOpen(true)}
+                  onClick={() => openAddExpenseModal()}
                   className="bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3]/50 dark:border-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-800/40 hover:border-[#1A3827]/20 p-3.5 rounded-2xl text-left transition-all duration-150"
                 >
                   <Plus className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635] mb-2" />
@@ -3799,7 +3800,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             </div>
 
             <button 
-              onClick={() => { setEditingTransaction(null); setIsAddExpenseOpen(true); }}
+              onClick={() => openAddExpenseModal()}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
             >
               <Plus className="w-4 h-4" />
@@ -4729,7 +4730,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                           if (updateError) throw updateError;
                           await logActivity('settings', `${userNickname} updated the monthly budget to ₹${monthlyBudget}`);
                           triggerToast('Budget updated for all room members!');
-                        } catch(e) {
+                        } catch {
                           triggerToast('Budget saved locally.');
                         }
                       } else {
@@ -4804,13 +4805,12 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     const today = new Date();
     const currentMonthStr = today.toISOString().substring(0, 7);
     
-    let daysInMonth, daysPassed, daysLeft, activeMonthLabel;
+    let daysInMonth, daysPassed, daysLeft;
     
     if (selectedMonth === 'All') {
       daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
       daysPassed = today.getDate();
       daysLeft = daysInMonth - daysPassed;
-      activeMonthLabel = 'All Time';
     } else {
       const [year, month] = selectedMonth.split('-');
       const y = Number(year);
@@ -4828,8 +4828,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         daysLeft = daysInMonth;
       }
       
-      const dateObj = new Date(y, m - 1, 1);
-      activeMonthLabel = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+
     }
 
     const isPersonalTab = insightsTab === 'personal';
@@ -5071,7 +5070,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                     {catArr.length === 0 ? (
                       <circle cx="50" cy="50" r="40" fill="transparent" stroke="#E3E8E3" strokeWidth="10" />
                     ) : (
-                      catArr.map(([cat, amt], i) => {
+                      catArr.map(([cat, amt]) => {
                         const pct = amt / total;
                         const dash = pct * circumference;
                         const offset = -cumulativePct * circumference;
@@ -5448,7 +5447,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs sm:text-sm font-bold bg-[#F6F8F6] dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-[#E3E8E3]/50 dark:border-slate-800">
-                  {userRoomId || roomCode}
+                  {userRoomId || ''}
                 </span>
                 <button 
                   onClick={handleCopyCode}
@@ -5491,6 +5490,9 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                       onClick={async () => {
                         setUserNickname(nicknameInput);
                         localStorage.setItem('userNickname', nicknameInput);
+                        if (nicknameInput && nicknameInput !== 'You' && nicknameInput.trim() !== '') {
+                          setIsNicknameFixed(true);
+                        }
                         if (userRoomId && user) {
                           await addMemberToRoom(userRoomId, nicknameInput);
                         }
@@ -5554,7 +5556,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                               .eq('id', userRoomId);
                             if (updateError) throw updateError;
                             triggerToast('Room name updated!');
-                          } catch (e) {
+                          } catch {
                             triggerToast('Saved locally. Failed to sync to cloud.');
                           }
                         } else {
@@ -5603,7 +5605,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                           .eq('id', userRoomId);
                         if (updateError) throw updateError;
                         triggerToast('Budget updated for all room members!');
-                      } catch(e) {
+                      } catch {
                         triggerToast('Budget saved locally.');
                       }
                     } else {
@@ -6186,7 +6188,9 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       try {
         const day = new Date(t.date).getDay();
         daysCount[day] = (daysCount[day] || 0) + 1;
-      } catch (_) {}
+      } catch (err) {
+        console.warn('Failed to parse date in VIP modal:', t.date, err);
+      }
     });
     const sortedDays = Object.entries(daysCount).sort((a, b) => b[1] - a[1]);
     const busiestDay = sortedDays.length > 0 ? dayNames[Number(sortedDays[0][0])] : 'N/A';
@@ -6478,7 +6482,10 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                 const url = new URL(code);
                 const joinParam = url.searchParams.get('join');
                 if (joinParam) roomCode = joinParam.trim().toUpperCase();
-              } catch {}
+              } catch {
+                // Scanned code is not a URL, fall back to using the raw code string
+                roomCode = code;
+              }
               if (qrScannerRef.current) {
                 qrScannerRef.current.stop().catch(() => {});
                 qrScannerRef.current = null;
