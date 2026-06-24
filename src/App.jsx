@@ -219,6 +219,7 @@ export default function App() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isManageRoomOpen, setIsManageRoomOpen] = useState(false);
   const [isSettleModalOpen2, setIsSettleModalOpen2] = useState(false);
+  const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
 
   // Navigation State
   const [currentView, setCurrentView] = useState('home');
@@ -3138,11 +3139,11 @@ export default function App() {
             </button>
             
             <button 
-              onClick={() => triggerToast('Tallyin Diamond is active! VIP benefits enabled.')}
+              onClick={() => setIsDiamondModalOpen(true)}
               className="p-2 text-[#5C6E5C] dark:text-slate-400 hover:text-amber-500 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl transition-all"
               title="Diamond Membership Status"
             >
-              <div className="w-4 h-4 border border-[#5C6E5C] dark:border-slate-700 hover:border-amber-500 rotate-45 flex items-center justify-center relative">
+              <div className="w-4 h-4 border border-[#5C6E5C] dark:border-slate-700 hover:border-amber-500 rotate-45 flex items-center justify-center relative animate-pulse">
                 <span className="w-1.5 h-1.5 bg-amber-500 rounded-full absolute"></span>
               </div>
             </button>
@@ -3227,6 +3228,9 @@ export default function App() {
         {/* Manage Room Modal */}
         {isManageRoomOpen && renderManageRoomModal()}
         {nicknamePromptAction && renderNicknamePromptModal()}
+
+        {/* Tallyin Diamond VIP Analytics Modal */}
+        {isDiamondModalOpen && renderDiamondModal()}
       </div>
     </div>
   );
@@ -5597,6 +5601,281 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // TALLYIN DIAMOND VIP ANALYTICS MODAL
+  // ==========================================
+  function renderDiamondModal() {
+    const totalSpendVal = transactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const avgTxValue = transactions.length > 0 ? Math.round(totalSpendVal / transactions.length) : 0;
+
+    // Busiest day analysis
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const daysCount = {};
+    transactions.forEach(t => {
+      if (!t.date) return;
+      try {
+        const day = new Date(t.date).getDay();
+        daysCount[day] = (daysCount[day] || 0) + 1;
+      } catch (_) {}
+    });
+    const sortedDays = Object.entries(daysCount).sort((a, b) => b[1] - a[1]);
+    const busiestDay = sortedDays.length > 0 ? dayNames[Number(sortedDays[0][0])] : 'N/A';
+
+    // Category breakdown
+    const counts = {};
+    transactions.forEach(t => {
+      const amt = Number(t.amount) || 0;
+      counts[t.category] = (counts[t.category] || 0) + amt;
+    });
+    const categoryBreakdown = Object.entries(counts)
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount);
+
+    // Top spender
+    let maxPaid = -1;
+    let topSpender = null;
+    if (members.length > 0 && totalSpendVal > 0) {
+      members.forEach(m => {
+        const paid = transactions
+          .filter(t => t.paidByUid === m.uid || (!t.paidByUid && t.paidBy === m.nickname))
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        if (paid > maxPaid) {
+          maxPaid = paid;
+          topSpender = { nickname: m.nickname, paid, pct: Math.round((paid / totalSpendVal) * 100) };
+        }
+      });
+    }
+
+    // Settlements simplification
+    const debtors = [];
+    const creditors = [];
+    if (computedStats.balances) {
+      members.forEach(m => {
+        const bal = computedStats.balances[m.uid] || 0;
+        const roundedBal = Math.round(bal * 100) / 100;
+        if (roundedBal < -0.05) {
+          debtors.push({ uid: m.uid, nickname: m.nickname, amount: -roundedBal });
+        } else if (roundedBal > 0.05) {
+          creditors.push({ uid: m.uid, nickname: m.nickname, amount: roundedBal });
+        }
+      });
+    }
+
+    debtors.sort((a, b) => b.amount - a.amount);
+    creditors.sort((a, b) => b.amount - a.amount);
+
+    const settlements = [];
+    let dIdx = 0;
+    let cIdx = 0;
+
+    const debtorsCopy = debtors.map(d => ({ ...d }));
+    const creditorsCopy = creditors.map(c => ({ ...c }));
+
+    while (dIdx < debtorsCopy.length && cIdx < creditorsCopy.length) {
+      const debtor = debtorsCopy[dIdx];
+      const creditor = creditorsCopy[cIdx];
+      const amountToSettle = Math.min(debtor.amount, creditor.amount);
+
+      if (amountToSettle > 0.05) {
+        settlements.push({
+          from: debtor.nickname,
+          fromUid: debtor.uid,
+          to: creditor.nickname,
+          toUid: creditor.uid,
+          amount: amountToSettle
+        });
+      }
+
+      debtor.amount -= amountToSettle;
+      creditor.amount -= amountToSettle;
+
+      if (debtor.amount <= 0.05) dIdx++;
+      if (creditor.amount <= 0.05) cIdx++;
+    }
+
+    const handleQuickSettle = (fromUid, toUid, amount) => {
+      setSettlePayer(fromUid);
+      setSettleReceiver(toUid);
+      setSettleAmount(Math.round(amount).toString());
+      setIsDiamondModalOpen(false);
+      setIsSettleModalOpen(true);
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto animate-fade-in">
+        <div className="bg-slate-900 border border-amber-500/20 dark:border-amber-500/30 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden relative max-h-[92vh] flex flex-col transition-colors duration-300 text-slate-100">
+          
+          {/* Modal Header */}
+          <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/40 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-400 p-0.5 flex items-center justify-center shadow-lg shadow-amber-500/20 animate-pulse shrink-0">
+                <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center rotate-45">
+                  <Sparkles className="w-4 h-4 text-amber-400 -rotate-45" />
+                </div>
+              </div>
+              <div>
+                <span className="text-[9px] tracking-widest font-black uppercase text-amber-500 block">TALLYIN DIAMOND</span>
+                <h2 className="font-extrabold text-base sm:text-lg text-white mt-0.5">VIP Room Insights</h2>
+              </div>
+            </div>
+            <button 
+              onClick={() => setIsDiamondModalOpen(false)}
+              className="p-2 rounded-xl text-slate-400 hover:bg-slate-850 hover:text-white transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Modal Body */}
+          <div className="p-6 overflow-y-auto flex-1 space-y-6 scrollbar-thin scrollbar-thumb-slate-800">
+            
+            {transactions.length === 0 ? (
+              <div className="text-center py-12 space-y-3">
+                <div className="w-14 h-14 mx-auto rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <h3 className="font-extrabold text-base text-white">No data to analyze</h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  Add some transaction records or invite roommates to generate Diamond VIP financial summaries and AI observations.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* 1. Quick Stats Grid */}
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-4 space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Total Spend</span>
+                    <span className="text-lg font-black text-amber-400 block">{formatINR(totalSpendVal)}</span>
+                    <span className="text-[9px] text-slate-500 block">Shared + Personal</span>
+                  </div>
+                  
+                  <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-4 space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Busiest Day</span>
+                    <span className="text-lg font-black text-white block">{busiestDay}</span>
+                    <span className="text-[9px] text-slate-500 block">Highest frequency</span>
+                  </div>
+
+                  <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-4 space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Avg. Bill Size</span>
+                    <span className="text-lg font-black text-white block">{formatINR(avgTxValue)}</span>
+                    <span className="text-[9px] text-slate-500 block">Per transaction</span>
+                  </div>
+
+                  <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-4 space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Top Spender</span>
+                    <span className="text-lg font-black text-emerald-450 block truncate" title={topSpender ? `${topSpender.nickname} paid ${topSpender.paid}` : ''}>
+                      {topSpender ? topSpender.nickname : 'N/A'}
+                    </span>
+                    <span className="text-[9px] text-slate-500 block">
+                      {topSpender ? `Covered ${topSpender.pct}%` : 'No members'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 2. Simplified settlements */}
+                <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-5 space-y-3">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Debt Settlement Plan</h4>
+                  {settlements.length === 0 ? (
+                    <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold py-1">
+                      <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                      <span>All settled up! No roommate payments are currently outstanding.</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {settlements.map((s, idx) => (
+                        <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-850 last:border-b-0">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-bold text-rose-400">{s.from}</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                            <span className="text-xs font-bold text-emerald-400">{s.to}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-black text-white">{formatINR(s.amount)}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleQuickSettle(s.fromUid, s.toUid, s.amount)}
+                              className="px-2.5 py-1 text-[10px] bg-amber-500 hover:bg-amber-450 text-slate-950 font-bold rounded-lg transition-all"
+                            >
+                              Settle
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Category distribution */}
+                <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-5 space-y-4">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Category Breakdown</h4>
+                  <div className="space-y-3">
+                    {categoryBreakdown.map(({ category, amount }) => {
+                      const pct = totalSpendVal > 0 ? Math.round((amount / totalSpendVal) * 100) : 0;
+                      return (
+                        <div key={category} className="space-y-1.5">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-semibold text-slate-200">{category}</span>
+                            <span className="font-bold text-slate-400">{formatINR(amount)} ({pct}%)</span>
+                          </div>
+                          <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                            <div 
+                              className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 4. AI Observations */}
+                <div className="bg-gradient-to-tr from-slate-950 to-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 relative overflow-hidden">
+                  <div className="absolute right-0 top-0 translate-x-6 -translate-y-6 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none"></div>
+                  
+                  <div className="flex items-center gap-2 text-amber-400">
+                    <Lightbulb className="w-4 h-4 shrink-0" />
+                    <h4 className="text-[10px] font-black uppercase tracking-wider">Smart Roommate Insights</h4>
+                  </div>
+                  
+                  <ul className="space-y-2 text-xs text-slate-300 leading-relaxed list-disc list-inside">
+                    {totalSpendVal > monthlyBudget && (
+                      <li className="text-rose-400/90 font-medium">
+                        Budget Alert: The room is currently over budget by <span className="font-bold">{formatINR(totalSpendVal - monthlyBudget)}</span>. Consider freezing non-essential communal purchases.
+                      </li>
+                    )}
+                    {categoryBreakdown.length > 0 && (
+                      <li>
+                        Communal Spending: <span className="font-bold text-white">{categoryBreakdown[0].category}</span> represents the largest spending category in your workspace, accounting for <span className="font-bold text-amber-400">{Math.round((categoryBreakdown[0].amount / totalSpendVal) * 100)}%</span> of the total budget.
+                      </li>
+                    )}
+                    {topSpender && topSpender.pct > 50 && (
+                      <li>
+                        Spender Badge: <span className="font-bold text-white">{topSpender.nickname}</span> has paid more than half of all communal expenses. You should consider settling up soon to ease their cash flow.
+                      </li>
+                    )}
+                    <li>
+                      Room Activity: The most active day for transaction registration is <span className="font-bold text-white">{busiestDay}</span>.
+                    </li>
+                  </ul>
+                </div>
+              </>
+            )}
+
+            {/* VIP Footer Badge */}
+            <div className="text-center py-1">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full">
+                👑 VIP Member Workspace
+              </span>
+            </div>
+
+          </div>
+
         </div>
       </div>
     );
