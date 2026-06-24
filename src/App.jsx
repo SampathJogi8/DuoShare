@@ -606,7 +606,8 @@ export default function App() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [handleAuthUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Deep-link invite handler: parse ?join=ROOM-CODE from URL
   useEffect(() => {
