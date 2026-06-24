@@ -188,7 +188,7 @@ export default function App() {
   // Room members & settings
   const [members, setMembers] = useState([]);
   const [monthlyBudget, setMonthlyBudget] = useState(() => Number(localStorage.getItem('monthlyBudget')) || 22000);
-  const [personalCap, setPersonalCap] = useState(() => Number(localStorage.getItem('personalCap')) || 10000);
+  const [personalCap, setPersonalCap] = useState(() => Number(localStorage.getItem('personalCap')) || 2500);
   const [isEditingPersonalCap, setIsEditingPersonalCap] = useState(false);
   const [personalCapInput, setPersonalCapInput] = useState('');
 
