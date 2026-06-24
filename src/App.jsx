@@ -486,7 +486,25 @@ export default function App() {
 
   const fetchUserRooms = useCallback(async () => {
     if (!user) return;
-    setIsFetchingRooms(true);
+    
+    // Optimistic UI: load from cache first
+    const cachedKey = `userRooms_${user.id}`;
+    const cachedData = localStorage.getItem(cachedKey);
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        if (parsed && parsed.length > 0) {
+          setUserRooms(parsed);
+        } else {
+          setIsFetchingRooms(true);
+        }
+      } catch {
+        setIsFetchingRooms(true);
+      }
+    } else {
+      setIsFetchingRooms(true);
+    }
+
     try {
       const { data, error } = await supabase
         .from('members')
@@ -503,6 +521,7 @@ export default function App() {
           monthlyBudget: item.rooms?.monthly_budget || 22000
         }));
       setUserRooms(formatted);
+      localStorage.setItem(cachedKey, JSON.stringify(formatted));
     } catch (err) {
       console.warn("Error fetching user rooms:", err);
     } finally {
