@@ -1273,6 +1273,29 @@ export default function App() {
         .eq('id', tx.id);
       
       if (error) throw error;
+
+      // Delete corresponding receipt if it is a shared expense
+      if (tx.isShared) {
+        let receiptDateStr = '';
+        if (tx.date) {
+          const parts = tx.date.split('-');
+          if (parts.length === 3) {
+            const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            receiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
+          }
+        }
+
+        await supabase
+          .from('receipts')
+          .delete()
+          .eq('room_id', userRoomId || tx.room_id)
+          .eq('title', tx.title)
+          .eq('amount', tx.amount)
+          .eq('category', tx.category)
+          .eq('date', receiptDateStr);
+
+        setReceipts(prev => prev.filter(r => !(r.title === tx.title && r.amount === tx.amount && r.category === tx.category && r.date === receiptDateStr)));
+      }
       
       // Optimistic UI update
       setTransactions(prev => prev.filter(t => t.id !== tx.id));
