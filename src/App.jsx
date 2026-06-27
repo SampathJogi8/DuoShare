@@ -344,6 +344,26 @@ export default function App() {
       }
       setSelectedSplitMembers(initialSplits);
       setCustomSplitValues(initialCustomValues);
+
+      // Try to load the corresponding receipt image from the receipts list
+      if (tx.isShared) {
+        let receiptDateStr = '';
+        if (tx.date) {
+          const parts = tx.date.split('-');
+          if (parts.length === 3) {
+            const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            receiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
+          }
+        }
+        const matchingReceipt = receipts.find(r => r.title === tx.title && r.amount === tx.amount && r.category === tx.category && r.date === receiptDateStr);
+        if (matchingReceipt && matchingReceipt.imageUrl) {
+          setFormReceiptImage(matchingReceipt.imageUrl);
+        } else {
+          setFormReceiptImage(null);
+        }
+      } else {
+        setFormReceiptImage(null);
+      }
     } else {
       setEditingTransaction(null);
       setFormFor('');
@@ -352,6 +372,7 @@ export default function App() {
       setFormDate(new Date().toISOString().split('T')[0]);
       setFormRepeat(false);
       setSuggestedCategory(null);
+      setFormReceiptImage(null);
       setSplitType('equal');
       const initialSplits = {};
       members.forEach(m => {
@@ -380,6 +401,7 @@ export default function App() {
     setFormDate(new Date().toISOString().split('T')[0]);
     setFormRepeat(false);
     setSuggestedCategory(null);
+    setFormReceiptImage(null);
     setSplitType('equal');
     const initialSplits = {};
     members.forEach(m => {
@@ -397,6 +419,57 @@ export default function App() {
     }
   };
 
+  // Helper to convert HEIC image to JPEG/PNG format for browser compatibility
+  const convertHeicToPng = async (file) => {
+    try {
+      const heic2anyModule = await import('heic2any');
+      const heic2any = heic2anyModule.default || heic2anyModule;
+      
+      const convertedBlob = await heic2any({
+        blob: file,
+        toType: 'image/jpeg',
+        quality: 0.6
+      });
+      
+      const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+      return new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+        type: "image/jpeg"
+      });
+    } catch (error) {
+      console.error("HEIC conversion failed:", error);
+      throw new Error("Failed to convert HEIC: " + (error.message || error.toString()), { cause: error });
+    }
+  };
+
+  const handleFormReceiptChange = async (e) => {
+    let file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
+      triggerToast("Converting HEIC image... Please wait.");
+      try {
+        file = await convertHeicToPng(file);
+      } catch (err) {
+        triggerToast(err.message);
+        return;
+      }
+    }
+
+    if (file.size > 3 * 1024 * 1024) {
+      triggerToast("File size too large. Please upload an image under 3MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFormReceiptImage(reader.result);
+    };
+    reader.onerror = () => {
+      triggerToast("Failed to read the file.");
+    };
+    reader.readAsDataURL(file);
+  };
+
   // New Transaction Form State
   const [formFor, setFormFor] = useState('');
   const [formAmount, setFormAmount] = useState('');
@@ -404,6 +477,7 @@ export default function App() {
   const [formDate, setFormDate] = useState('2026-06-21');
   const [formRepeat, setFormRepeat] = useState(false);
   const [suggestedCategory, setSuggestedCategory] = useState(null);
+  const [formReceiptImage, setFormReceiptImage] = useState(null);
 
   // Smart category keyword map
   const CATEGORY_KEYWORDS = {
@@ -1910,6 +1984,79 @@ export default function App() {
 
         if (txError) throw txError;
 
+        if (newPayload.isShared) {
+          let oldReceiptDateStr = '';
+          if (editingTransaction.date) {
+            const parts = editingTransaction.date.split('-');
+            if (parts.length === 3) {
+              const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+              oldReceiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
+            }
+          }
+
+          const newReceiptDateStr = new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' });
+          
+          const { data: updatedReceipts, error: receiptUpdateError } = await supabase
+            .from('receipts')
+            .update({
+              title: formFor,
+              amount: amountNum,
+              category: formCategory,
+              date: newReceiptDateStr,
+              image_url: formReceiptImage
+            })
+            .eq('room_id', currentRoom)
+            .eq('title', editingTransaction.title)
+            .eq('amount', editingTransaction.amount)
+            .eq('category', editingTransaction.category)
+            .eq('date', oldReceiptDateStr)
+            .select();
+
+          if (!receiptUpdateError && (!updatedReceipts || updatedReceipts.length === 0)) {
+            const bgColors = [
+              'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
+              'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
+              'bg-amber-50 border-amber-100 text-amber-800 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-400',
+              'bg-rose-50 border-rose-100 text-rose-800 dark:bg-rose-950/20 dark:border-rose-900/30 dark:text-rose-400'
+            ];
+            const rotations = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2'];
+            const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
+            const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
+
+            await supabase
+              .from('receipts')
+              .insert({
+                room_id: currentRoom,
+                title: formFor,
+                amount: amountNum,
+                category: formCategory,
+                date: newReceiptDateStr,
+                bg_class: randomBg,
+                rotation: randomRot,
+                image_url: formReceiptImage
+              });
+          }
+        } else {
+          let oldReceiptDateStr = '';
+          if (editingTransaction.date) {
+            const parts = editingTransaction.date.split('-');
+            if (parts.length === 3) {
+              const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+              oldReceiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
+            }
+          }
+          await supabase
+            .from('receipts')
+            .delete()
+            .eq('room_id', currentRoom)
+            .eq('title', editingTransaction.title)
+            .eq('amount', editingTransaction.amount)
+            .eq('category', editingTransaction.category)
+            .eq('date', oldReceiptDateStr);
+        }
+
+        fetchReceipts(currentRoom);
+
         // Optimistic UI update — update in local state immediately
         setTransactions(prev => prev.map(t => 
           t.id === editingTransaction.id
@@ -1991,10 +2138,15 @@ export default function App() {
               category: formCategory,
               date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
               bg_class: randomBg,
-              rotation: randomRot
+              rotation: randomRot,
+              image_url: formReceiptImage
             })
             .then(({ error: receiptError }) => {
-              if (receiptError) console.warn('Receipt insert error:', receiptError);
+              if (receiptError) {
+                console.warn('Receipt insert error:', receiptError);
+              } else {
+                fetchReceipts(currentRoom);
+              }
             });
         }
 
@@ -2070,8 +2222,18 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
   // Receipt File upload selection handler
   const handleReceiptUpload = async (e) => {
-    const file = e.target.files[0];
+    let file = e.target.files[0];
     if (!file) return;
+
+    if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
+      triggerToast("Converting HEIC image... Please wait.");
+      try {
+        file = await convertHeicToPng(file);
+      } catch (err) {
+        triggerToast(err.message);
+        return;
+      }
+    }
 
     if (file.size > 3 * 1024 * 1024) {
       triggerToast("File size too large. Please upload an image under 3MB.");
@@ -2147,8 +2309,18 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     input.type = 'file';
     input.accept = 'image/*';
     input.onchange = async (e) => {
-      const file = e.target.files?.[0];
+      let file = e.target.files?.[0];
       if (!file) return;
+
+      if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
+        triggerToast("Converting HEIC image... Please wait.");
+        try {
+          file = await convertHeicToPng(file);
+        } catch (err) {
+          triggerToast(err.message);
+          return;
+        }
+      }
 
       if (file.size > 3 * 1024 * 1024) {
         triggerToast("File size too large. Please upload an image under 3MB.");
@@ -4695,6 +4867,37 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                 onChange={(e) => setFormDate(e.target.value)}
                 className="w-full px-4 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
               />
+            </div>
+
+            {/* Attach Receipt Image */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Attach Receipt (Optional)</label>
+              <div className="flex items-center gap-3">
+                <input 
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFormReceiptChange}
+                  className="hidden"
+                  id="form-receipt-upload"
+                />
+                <label 
+                  htmlFor="form-receipt-upload"
+                  className="flex items-center justify-center gap-2 bg-[#F6F8F6] dark:bg-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-700 text-[#1A3827] dark:text-slate-200 px-4 py-2 rounded-xl font-bold border border-[#E3E8E3] dark:border-slate-700 transition-all text-xs cursor-pointer shadow-sm"
+                >
+                  <Upload className="w-3.5 h-3.5 text-[#1A3827] dark:text-slate-200" />
+                  <span>{formReceiptImage ? 'Change Image' : 'Choose Image'}</span>
+                </label>
+                {formReceiptImage && (
+                  <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 px-3 py-1.5 rounded-xl text-[10px] text-emerald-800 dark:text-[#A3E635] font-bold">
+                    <span className="truncate max-w-[120px]">✓ Attached</span>
+                    <button
+                      type="button"
+                      onClick={() => setFormReceiptImage(null)}
+                      className="text-rose-500 hover:text-rose-700 font-bold ml-1"
+                    >Remove</button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Paid By */}
