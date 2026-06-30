@@ -825,7 +825,7 @@ export default function App() {
       console.error("Error fetching transactions:", err);
       setIsDbSynced(false);
     }
-  }, []);
+  }, [user]);
 
   const fetchActivityLogs = useCallback(async (roomId) => {
     try {
