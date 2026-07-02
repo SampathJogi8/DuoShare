@@ -866,6 +866,8 @@ export default function App() {
           createdBy: t.created_by
         }))
         .filter(t => {
+          // Fund tracker logs (__FUND_INIT__, __FUND_SPEND__) are shown only to their creator/payer
+          // and hidden from other roommates.
           if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__') {
             return t.paidByUid === (user?.id || 'anonymous');
           }
