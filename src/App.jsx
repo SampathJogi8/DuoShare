@@ -219,7 +219,7 @@ const parseTimeAndHistory = (timeStr) => {
   return { time: timeStr, history: [] };
 };
 
-const detectChanges = (oldTx, newTx, payerNickname) => {
+const detectChanges = (oldTx, newTx, payerNickname, oldImages = [], newImages = []) => {
   const changes = [];
   if (oldTx.title !== newTx.title) {
     changes.push(`Title: '${oldTx.title}' → '${newTx.title}'`);
@@ -238,6 +238,15 @@ const detectChanges = (oldTx, newTx, payerNickname) => {
   }
   if (oldTx.splitType !== newTx.splitType) {
     changes.push(`Split Type: '${oldTx.splitType || 'equal'}' → '${newTx.splitType || 'equal'}'`);
+  }
+
+  // Check receipt images changes
+  if (oldImages.length === 0 && newImages.length > 0) {
+    changes.push(`Added receipt images: ${newImages.length} image(s)`);
+  } else if (oldImages.length > 0 && newImages.length === 0) {
+    changes.push('Removed all receipt images');
+  } else if (oldImages.length > 0 && newImages.length > 0 && JSON.stringify(oldImages) !== JSON.stringify(newImages)) {
+    changes.push('Updated receipt images');
   }
 
   // Check split members added/removed
@@ -2138,17 +2147,36 @@ export default function App() {
       ? parseTimeAndHistory(editingTransaction.time).time 
       : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
 
+    let detectedChangesList = '';
+
     if (editingTransaction) {
-      const changesText = detectChanges(editingTransaction, {
+      let oldReceiptDateStr = '';
+      if (editingTransaction.date) {
+        const parts = editingTransaction.date.split('-');
+        if (parts.length === 3) {
+          const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          oldReceiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
+        }
+      }
+      const matchingReceipt = receipts.find(r => 
+        r.title === editingTransaction.title && 
+        Number(r.amount) === Number(editingTransaction.amount) && 
+        r.category === editingTransaction.category && 
+        r.date === oldReceiptDateStr
+      );
+      const oldImages = matchingReceipt && matchingReceipt.imageUrl ? getImages(matchingReceipt.imageUrl) : [];
+
+      detectedChangesList = detectChanges(editingTransaction, {
         title: formFor,
         amount: amountNum,
         category: formCategory,
         date: formDate,
-        paidByUid: formPaidBy
-      }, payerMember.nickname);
+        paidByUid: formPaidBy,
+        splitType
+      }, payerMember.nickname, oldImages, formReceiptImages);
 
       const newHistoryItem = {
-        changes: changesText,
+        changes: detectedChangesList,
         editedBy: userNickname,
         editedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) + ' ' + new Date().toLocaleDateString()
       };
@@ -2325,7 +2353,15 @@ export default function App() {
 
         fetchReceipts(currentRoom);
         
-        await logActivity('edit', `${userNickname} edited expense "${newPayload.title}" to ₹${newPayload.amount}`);
+        let logMsg = `${userNickname} edited expense "${newPayload.title}" to ₹${newPayload.amount}`;
+        if (detectedChangesList && detectedChangesList.includes('Added receipt images') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
+          logMsg = `${userNickname} added receipt image(s) to "${newPayload.title}"`;
+        } else if (detectedChangesList && detectedChangesList.includes('Removed all receipt images') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
+          logMsg = `${userNickname} removed receipt image(s) from "${newPayload.title}"`;
+        } else if (detectedChangesList && detectedChangesList.includes('Updated receipt images') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
+          logMsg = `${userNickname} updated receipt image(s) for "${newPayload.title}"`;
+        }
+        await logActivity('edit', logMsg);
         triggerToast("Expense updated successfully!");
         fetchTransactions(currentRoom);
         
