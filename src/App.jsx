@@ -213,7 +213,7 @@ const parseTimeAndHistory = (timeStr) => {
       const history = Array.isArray(parsed) ? parsed : [parsed];
       return { time: parts[0], history };
     } catch (e) {
-      // fallback
+      return { time: parts[0], history: [] };
     }
   }
   return { time: timeStr, history: [] };
@@ -222,22 +222,22 @@ const parseTimeAndHistory = (timeStr) => {
 const detectChanges = (oldTx, newTx, payerNickname) => {
   const changes = [];
   if (oldTx.title !== newTx.title) {
-    changes.push(`Title: "${oldTx.title}" → "${newTx.title}"`);
+    changes.push(`Title: '${oldTx.title}' → '${newTx.title}'`);
   }
   if (Number(oldTx.amount) !== Number(newTx.amount)) {
     changes.push(`Total Amount: ₹${oldTx.amount} → ₹${newTx.amount}`);
   }
   if (oldTx.category !== newTx.category) {
-    changes.push(`Category: "${oldTx.category}" → "${newTx.category}"`);
+    changes.push(`Category: '${oldTx.category}' → '${newTx.category}'`);
   }
   if (oldTx.date !== newTx.date) {
     changes.push(`Date: ${oldTx.date} → ${newTx.date}`);
   }
   if (oldTx.paidByUid !== newTx.paidByUid) {
-    changes.push(`Payer: "${oldTx.paidBy}" → "${payerNickname}"`);
+    changes.push(`Payer: '${oldTx.paidBy}' → '${payerNickname}'`);
   }
   if (oldTx.splitType !== newTx.splitType) {
-    changes.push(`Split Type: "${oldTx.splitType || 'equal'}" → "${newTx.splitType || 'equal'}"`);
+    changes.push(`Split Type: '${oldTx.splitType || 'equal'}' → '${newTx.splitType || 'equal'}'`);
   }
 
   // Check split members added/removed
@@ -2265,14 +2265,65 @@ export default function App() {
             .eq('date', oldReceiptDateStr);
         }
 
-        fetchReceipts(currentRoom);
-
         // Optimistic UI update — update in local state immediately
         setTransactions(prev => prev.map(t => 
           t.id === editingTransaction.id
             ? { ...t, ...newPayload, isEdited: true }
             : t
         ));
+
+        if (newPayload.isShared) {
+          const newReceiptDateStr = new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' });
+          const serializedImages = formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null;
+          
+          setReceipts(prev => {
+            let found = false;
+            const updated = prev.map(r => {
+              const oldReceiptDateStr = editingTransaction.date ? new Date(editingTransaction.date).toLocaleDateString([], { day: '2-digit', month: 'short' }) : '';
+              if (r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && r.date === oldReceiptDateStr) {
+                found = true;
+                return {
+                  ...r,
+                  title: formFor,
+                  amount: amountNum,
+                  category: formCategory,
+                  date: newReceiptDateStr,
+                  imageUrl: serializedImages
+                };
+              }
+              return r;
+            });
+            
+            if (!found && formReceiptImages.length > 0) {
+              const bgColors = [
+                'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
+                'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
+                'bg-amber-50 border-amber-100 text-amber-800 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-400',
+                'bg-rose-50 border-rose-100 text-rose-800 dark:bg-rose-950/20 dark:border-rose-900/30 dark:text-rose-400'
+              ];
+              const rotations = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2'];
+              const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
+              const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
+              
+              updated.unshift({
+                id: `optimistic-receipt-${Date.now()}`,
+                title: formFor,
+                amount: amountNum,
+                category: formCategory,
+                date: newReceiptDateStr,
+                bgClass: randomBg,
+                rotation: randomRot,
+                imageUrl: serializedImages
+              });
+            }
+            return updated;
+          });
+        } else {
+          const oldReceiptDateStr = editingTransaction.date ? new Date(editingTransaction.date).toLocaleDateString([], { day: '2-digit', month: 'short' }) : '';
+          setReceipts(prev => prev.filter(r => !(r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && r.date === oldReceiptDateStr)));
+        }
+
+        fetchReceipts(currentRoom);
         
         await logActivity('edit', `${userNickname} edited expense "${newPayload.title}" to ₹${newPayload.amount}`);
         triggerToast("Expense updated successfully!");
@@ -2340,6 +2391,18 @@ export default function App() {
           const rotations = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2'];
           const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
           const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
+
+          const newReceipt = {
+            id: `optimistic-receipt-${Date.now()}`,
+            title: formFor,
+            amount: amountNum,
+            category: formCategory,
+            date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
+            bgClass: randomBg,
+            rotation: randomRot,
+            imageUrl: JSON.stringify(formReceiptImages)
+          };
+          setReceipts(prev => [newReceipt, ...prev]);
           
           supabase
             .from('receipts')
@@ -2356,6 +2419,7 @@ export default function App() {
             .then(({ error: receiptError }) => {
               if (receiptError) {
                 console.warn('Receipt insert error:', receiptError);
+                setReceipts(prev => prev.filter(r => r.id !== newReceipt.id));
               } else {
                 fetchReceipts(currentRoom);
               }
@@ -2505,10 +2569,10 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           });
 
         if (uploadError) throw uploadError;
+        setReceipts(prev => [newReceipt, ...prev]);
         triggerToast(`Receipt uploaded! 📧 Notification sent to roommates.`);
       } catch (err) {
         console.error(err);
-        setReceipts([newReceipt, ...receipts]);
         triggerToast(`Failed to upload: ${err.message || 'database error'}`);
       }
     };
