@@ -20,6 +20,8 @@ import {
   Moon, 
   Sun, 
   ChevronDown, 
+  ChevronLeft,
+  ChevronRight,
   AlertCircle,
   Clock,
   QrCode,
@@ -189,6 +191,19 @@ const getLocalMonthStr = (d = new Date()) => {
   return `${year}-${month}`;
 };
 
+const getImages = (imageUrl) => {
+  if (!imageUrl) return [];
+  if (typeof imageUrl === 'string' && imageUrl.startsWith('[') && imageUrl.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(imageUrl);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {
+      // fallback
+    }
+  }
+  return [imageUrl];
+};
+
 export default function App() {
   // Authentication state
   const [user, setUser] = useState(null);
@@ -257,6 +272,7 @@ export default function App() {
   const [isManageRoomOpen, setIsManageRoomOpen] = useState(false);
   const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
   const [activeReceiptZoom, setActiveReceiptZoom] = useState(null);
+  const [activeReceiptImageIndex, setActiveReceiptImageIndex] = useState(0);
 
   // Navigation State
   const [currentView, setCurrentView] = useState('home');
@@ -406,12 +422,12 @@ export default function App() {
         }
         const matchingReceipt = receipts.find(r => r.title === tx.title && r.amount === tx.amount && r.category === tx.category && r.date === receiptDateStr);
         if (matchingReceipt && matchingReceipt.imageUrl) {
-          setFormReceiptImage(matchingReceipt.imageUrl);
+          setFormReceiptImages(getImages(matchingReceipt.imageUrl));
         } else {
-          setFormReceiptImage(null);
+          setFormReceiptImages([]);
         }
       } else {
-        setFormReceiptImage(null);
+        setFormReceiptImages([]);
       }
     } else {
       setEditingTransaction(null);
@@ -421,7 +437,7 @@ export default function App() {
       setFormDate(getLocalDateStr());
       setFormRepeat(false);
       setSuggestedCategory(null);
-      setFormReceiptImage(null);
+      setFormReceiptImages([]);
       setSplitType('equal');
       const initialSplits = {};
       members.forEach(m => {
@@ -450,7 +466,7 @@ export default function App() {
     setFormDate(getLocalDateStr());
     setFormRepeat(false);
     setSuggestedCategory(null);
-    setFormReceiptImage(null);
+    setFormReceiptImages([]);
     setSplitType('equal');
     const initialSplits = {};
     members.forEach(m => {
@@ -491,32 +507,48 @@ export default function App() {
   };
 
   const handleFormReceiptChange = async (e) => {
-    let file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
-      triggerToast("Converting HEIC image... Please wait.");
-      try {
-        file = await convertHeicToPng(file);
-      } catch (err) {
-        triggerToast(err.message);
-        return;
-      }
-    }
-
-    if (file.size > 3 * 1024 * 1024) {
-      triggerToast("File size too large. Please upload an image under 3MB.");
+    const existingCount = formReceiptImages.length;
+    if (existingCount + files.length > 4) {
+      triggerToast("You can upload a maximum of 4 receipt images per transaction.");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFormReceiptImage(reader.result);
-    };
-    reader.onerror = () => {
-      triggerToast("Failed to read the file.");
-    };
-    reader.readAsDataURL(file);
+    const loadedImages = [];
+    for (let file of files) {
+      if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
+        triggerToast(`Converting HEIC image (${file.name})... Please wait.`);
+        try {
+          file = await convertHeicToPng(file);
+        } catch (err) {
+          triggerToast(err.message);
+          continue;
+        }
+      }
+
+      if (file.size > 3 * 1024 * 1024) {
+        triggerToast(`File ${file.name} is too large. Please upload images under 3MB.`);
+        continue;
+      }
+
+      const p = new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => {
+          triggerToast(`Failed to read file ${file.name}`);
+          resolve(null);
+        };
+        reader.readAsDataURL(file);
+      });
+      const result = await p;
+      if (result) {
+        loadedImages.push(result);
+      }
+    }
+
+    setFormReceiptImages(prev => [...prev, ...loadedImages]);
   };
 
   // New Transaction Form State
@@ -526,7 +558,7 @@ export default function App() {
   const [formDate, setFormDate] = useState(() => getLocalDateStr());
   const [formRepeat, setFormRepeat] = useState(false);
   const [suggestedCategory, setSuggestedCategory] = useState(null);
-  const [formReceiptImage, setFormReceiptImage] = useState(null);
+  const [formReceiptImages, setFormReceiptImages] = useState([]);
 
   // Smart category keyword map
   const CATEGORY_KEYWORDS = {
@@ -2088,7 +2120,7 @@ export default function App() {
               amount: amountNum,
               category: formCategory,
               date: newReceiptDateStr,
-              image_url: formReceiptImage
+              image_url: formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null
             })
             .eq('room_id', currentRoom)
             .eq('title', editingTransaction.title)
@@ -2118,7 +2150,7 @@ export default function App() {
                 date: newReceiptDateStr,
                 bg_class: randomBg,
                 rotation: randomRot,
-                image_url: formReceiptImage
+                image_url: formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null
               });
           }
         } else {
@@ -2205,7 +2237,7 @@ export default function App() {
         await logActivity('create', `${userNickname} added expense "${newPayload.title}" (₹${newPayload.amount})`);
         fetchTransactions(currentRoom);
 
-        if (newPayload.isShared && formReceiptImage) {
+        if (newPayload.isShared && formReceiptImages.length > 0) {
           const bgColors = [
             'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
             'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
@@ -2226,7 +2258,7 @@ export default function App() {
               date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
               bg_class: randomBg,
               rotation: randomRot,
-              image_url: formReceiptImage
+              image_url: JSON.stringify(formReceiptImages)
             })
             .then(({ error: receiptError }) => {
               if (receiptError) {
@@ -2262,21 +2294,24 @@ export default function App() {
   // Receipt File upload selection handler
   // Download Receipt helper
   const handleDownloadReceipt = (r) => {
-    if (r.imageUrl) {
-      let ext = 'png';
-      const mime = r.imageUrl.match(/data:([^;]+);/);
-      if (mime && mime[1]) {
-        const parts = mime[1].split('/');
-        if (parts[1]) ext = parts[1];
-      }
-      
-      const link = document.createElement('a');
-      link.href = r.imageUrl;
-      link.download = `${r.title.toLowerCase().replace(/\s+/g, '_')}_receipt.${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      triggerToast('Receipt downloaded!');
+    const images = getImages(r.imageUrl);
+    if (images.length > 0) {
+      images.forEach((imgUrl, index) => {
+        let ext = 'png';
+        const mime = imgUrl.match(/data:([^;]+);/);
+        if (mime && mime[1]) {
+          const parts = mime[1].split('/');
+          if (parts[1]) ext = parts[1];
+        }
+        
+        const link = document.createElement('a');
+        link.href = imgUrl;
+        link.download = `${r.title.toLowerCase().replace(/\s+/g, '_')}_receipt_${index + 1}.${ext}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+      triggerToast(images.length > 1 ? `Downloaded ${images.length} receipt images!` : 'Receipt downloaded!');
     } else {
       const receiptText = `==========================================
              TALLYIN RECEIPT VOUCHER
@@ -2395,47 +2430,63 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
+    input.multiple = true;
     input.onchange = async (e) => {
-      let file = e.target.files?.[0];
-      if (!file) return;
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
 
-      if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
-        triggerToast("Converting HEIC image... Please wait.");
-        try {
-          file = await convertHeicToPng(file);
-        } catch (err) {
-          triggerToast(err.message);
-          return;
-        }
-      }
-
-      if (file.size > 3 * 1024 * 1024) {
-        triggerToast("File size too large. Please upload an image under 3MB.");
+      if (files.length > 4) {
+        triggerToast("You can upload a maximum of 4 receipt images per transaction.");
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64Data = reader.result;
-        try {
-          const { error } = await supabase
-            .from('receipts')
-            .update({ image_url: base64Data })
-            .eq('id', receiptId);
-
-          if (error) throw error;
-
-          setReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, imageUrl: base64Data } : r));
-          triggerToast('Receipt image attached successfully!');
-        } catch (err) {
-          console.error("Error attaching receipt:", err);
-          triggerToast(`Failed to attach image: ${err.message}`);
+      const loadedImages = [];
+      for (let file of files) {
+        if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
+          triggerToast(`Converting HEIC image (${file.name})... Please wait.`);
+          try {
+            file = await convertHeicToPng(file);
+          } catch (err) {
+            triggerToast(err.message);
+            continue;
+          }
         }
-      };
-      reader.onerror = () => {
-        triggerToast("Failed to read file.");
-      };
-      reader.readAsDataURL(file);
+
+        if (file.size > 3 * 1024 * 1024) {
+          triggerToast(`File ${file.name} is too large. Please upload images under 3MB.`);
+          continue;
+        }
+
+        const p = new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => {
+            triggerToast(`Failed to read file ${file.name}`);
+            resolve(null);
+          };
+          reader.readAsDataURL(file);
+        });
+        const result = await p;
+        if (result) loadedImages.push(result);
+      }
+
+      if (loadedImages.length === 0) return;
+
+      const serializedImages = JSON.stringify(loadedImages);
+      try {
+        const { error } = await supabase
+          .from('receipts')
+          .update({ image_url: serializedImages })
+          .eq('id', receiptId);
+
+        if (error) throw error;
+
+        setReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, imageUrl: serializedImages } : r));
+        triggerToast(`Successfully attached ${loadedImages.length} receipt images!`);
+      } catch (err) {
+        console.error("Error attaching receipt:", err);
+        triggerToast(`Failed to attach image: ${err.message}`);
+      }
     };
     input.click();
   };
@@ -5056,30 +5107,48 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
             {/* Attach Receipt Image */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Attach Receipt (Optional)</label>
-              <div className="flex items-center gap-3">
-                <input 
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFormReceiptChange}
-                  className="hidden"
-                  id="form-receipt-upload"
-                />
-                <label 
-                  htmlFor="form-receipt-upload"
-                  className="flex items-center justify-center gap-2 bg-[#F6F8F6] dark:bg-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-700 text-[#1A3827] dark:text-slate-200 px-4 py-2 rounded-xl font-bold border border-[#E3E8E3] dark:border-slate-700 transition-all text-xs cursor-pointer shadow-sm"
-                >
-                  <Upload className="w-3.5 h-3.5 text-[#1A3827] dark:text-slate-200" />
-                  <span>{formReceiptImage ? 'Change Image' : 'Choose Image'}</span>
-                </label>
-                {formReceiptImage && (
-                  <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 px-3 py-1.5 rounded-xl text-[10px] text-emerald-800 dark:text-[#A3E635] font-bold">
-                    <span className="truncate max-w-[120px]">✓ Attached</span>
-                    <button
-                      type="button"
-                      onClick={() => setFormReceiptImage(null)}
-                      className="text-rose-500 hover:text-rose-700 font-bold ml-1"
-                    >Remove</button>
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Attach Receipts (Optional, max 4)</label>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFormReceiptChange}
+                    className="hidden"
+                    id="form-receipt-upload"
+                    disabled={formReceiptImages.length >= 4}
+                  />
+                  {formReceiptImages.length < 4 && (
+                    <label 
+                      htmlFor="form-receipt-upload"
+                      className="flex items-center justify-center gap-2 bg-[#F6F8F6] dark:bg-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-700 text-[#1A3827] dark:text-slate-200 px-4 py-2 rounded-xl font-bold border border-[#E3E8E3] dark:border-slate-700 transition-all text-xs cursor-pointer shadow-sm disabled:opacity-50"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-[#1A3827] dark:text-slate-200" />
+                      <span>Choose Images</span>
+                    </label>
+                  )}
+                  {formReceiptImages.length > 0 && (
+                    <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400">
+                      {formReceiptImages.length} of 4 images selected
+                    </span>
+                  )}
+                </div>
+                {formReceiptImages.length > 0 && (
+                  <div className="flex gap-2.5 overflow-x-auto py-1">
+                    {formReceiptImages.map((img, idx) => (
+                      <div key={idx} className="relative w-16 h-16 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 overflow-hidden shrink-0 group">
+                        <img src={img} className="w-full h-full object-cover" alt={`Receipt ${idx + 1}`} />
+                        <button
+                          type="button"
+                          onClick={() => setFormReceiptImages(prev => prev.filter((_, i) => i !== idx))}
+                          className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600 transition-all scale-90"
+                          title="Remove image"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -7084,50 +7153,66 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             {activeReceipts.map((r) => (
               <div 
                 key={r.id}
-                onClick={() => setActiveReceiptZoom(r)}
+                onClick={() => {
+                  setActiveReceiptZoom(r);
+                  setActiveReceiptImageIndex(0);
+                }}
                 className={`rounded-3xl border p-3 sm:p-4 shadow-sm flex flex-col justify-between h-auto select-none transition-transform duration-300 hover:scale-102 hover:shadow-md cursor-pointer ${r.bgClass}`}
               >
                 <div 
                   className={`bg-white text-slate-800 p-3 border border-slate-200/50 shadow-sm mx-auto w-full aspect-[4/5] flex flex-col justify-between transform transition-all duration-300 hover:rotate-0 hover:scale-102 relative overflow-hidden group/polaroid ${r.rotation}`}
                 >
-                  {r.imageUrl ? (
-                    <div className="w-full h-full relative overflow-hidden rounded bg-slate-50 flex flex-col">
-                      <img 
-                        src={r.imageUrl} 
-                        alt={r.title} 
-                        className="w-full h-[65%] object-cover pointer-events-none" 
-                      />
-                      <div className="p-1 text-center font-mono flex-1 flex flex-col justify-center border-t border-slate-100">
-                        <p className="text-[7px] font-black text-slate-500 tracking-wider">TALLYIN REC</p>
-                        <p className="text-[9px] font-black tracking-tight text-slate-800 truncate uppercase mt-0.5">{r.title}</p>
-                        <p className="text-xs font-black text-[#1A3827] mt-0.5">{formatINR(r.amount)}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="text-center font-mono flex-grow flex flex-col justify-between h-full pt-1">
-                        <div>
-                          <p className="text-[8px] sm:text-[10px] font-black text-slate-500 tracking-wider">TALLYIN REC</p>
-                          <p className="text-[10px] sm:text-xs font-black tracking-tight mt-1 uppercase truncate">{r.title}</p>
-                          
-                          <div className="border-t border-dashed border-slate-300 my-1"></div>
-                          
-                          <p className="text-sm sm:text-base font-black mt-1 text-slate-800">{formatINR(r.amount)}</p>
+                  {(() => {
+                    const images = getImages(r.imageUrl);
+                    if (images.length > 0) {
+                      return (
+                        <div className="w-full h-full relative overflow-hidden rounded bg-slate-50 flex flex-col">
+                          <div className="w-full h-[65%] relative overflow-hidden shrink-0">
+                            <img 
+                              src={images[0]} 
+                              alt={r.title} 
+                              className="w-full h-full object-cover pointer-events-none" 
+                            />
+                            {images.length > 1 && (
+                              <div className="absolute top-1 right-1 bg-[#1A3827]/80 text-[#A3E635] text-[8px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-0.5 backdrop-blur-sm shadow-sm select-none">
+                                <Sparkles className="w-2.5 h-2.5" />
+                                <span>{images.length} imgs</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="p-1 text-center font-mono flex-1 flex flex-col justify-center border-t border-slate-100">
+                            <p className="text-[7px] font-black text-slate-500 tracking-wider">TALLYIN REC</p>
+                            <p className="text-[9px] font-black tracking-tight text-slate-800 truncate uppercase mt-0.5">{r.title}</p>
+                            <p className="text-xs font-black text-[#1A3827] mt-0.5">{formatINR(r.amount)}</p>
+                          </div>
                         </div>
-                        
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAttachReceiptImage(r.id);
-                          }}
-                          className="mt-2 w-full py-1.5 bg-[#1A3827] dark:bg-slate-800 hover:bg-[#255038] text-white text-[9px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 shrink-0 shadow-sm"
-                        >
-                          <Upload className="w-3.5 h-3.5 text-[#A3E635]" />
-                          <span>Attach Receipt</span>
-                        </button>
-                      </div>
-                    </>
-                  )}
+                      );
+                    } else {
+                      return (
+                        <div className="text-center font-mono flex-grow flex flex-col justify-between h-full pt-1">
+                          <div>
+                            <p className="text-[8px] sm:text-[10px] font-black text-slate-500 tracking-wider">TALLYIN REC</p>
+                            <p className="text-[10px] sm:text-xs font-black tracking-tight mt-1 uppercase truncate">{r.title}</p>
+                            
+                            <div className="border-t border-dashed border-slate-300 my-1"></div>
+                            
+                            <p className="text-sm sm:text-base font-black mt-1 text-slate-800">{formatINR(r.amount)}</p>
+                          </div>
+                          
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAttachReceiptImage(r.id);
+                            }}
+                            className="mt-2 w-full py-1.5 bg-[#1A3827] dark:bg-slate-800 hover:bg-[#255038] text-white text-[9px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 shrink-0 shadow-sm"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-[#A3E635]" />
+                            <span>Attach Receipt</span>
+                          </button>
+                        </div>
+                      );
+                    }
+                  })()}
                 </div>
 
                 {/* Title & Metadata */}
@@ -7197,21 +7282,72 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             </button>
           </div>
 
-          {activeReceiptZoom.imageUrl ? (
-            <div className="w-full max-h-[50vh] overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-2">
-              <img 
-                src={activeReceiptZoom.imageUrl} 
-                alt={activeReceiptZoom.title} 
-                className="max-w-full max-h-[48vh] object-contain rounded-lg"
-              />
-            </div>
-          ) : (
-            <div className="w-full py-16 rounded-2xl border-2 border-dashed border-[#E3E8E3] dark:border-slate-850 text-center text-slate-450 dark:text-slate-500 bg-slate-50/50 dark:bg-slate-950/30">
-              <AlertCircle className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-              <p className="text-xs font-semibold">No receipt image file uploaded</p>
-              <p className="text-[9px] mt-1 max-w-[240px] mx-auto opacity-80">This transaction was auto-recorded. Download the text receipt details below.</p>
-            </div>
-          )}
+          {(() => {
+            const images = getImages(activeReceiptZoom.imageUrl);
+            if (images.length > 0) {
+              const currentImage = images[activeReceiptImageIndex] || images[0];
+              return (
+                <div className="space-y-3">
+                  <div className="w-full h-[45vh] relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-2 group">
+                    <img 
+                      src={currentImage} 
+                      alt={`${activeReceiptZoom.title} - Image ${activeReceiptImageIndex + 1}`} 
+                      className="max-w-full max-h-full object-contain rounded-lg transition-all duration-300"
+                    />
+                    
+                    {images.length > 1 && (
+                      <>
+                        {/* Prev Button */}
+                        <button
+                          onClick={() => setActiveReceiptImageIndex(prev => (prev === 0 ? images.length - 1 : prev - 1))}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/85 transition-all opacity-0 group-hover:opacity-100 shadow-md"
+                          title="Previous image"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        
+                        {/* Next Button */}
+                        <button
+                          onClick={() => setActiveReceiptImageIndex(prev => (prev === images.length - 1 ? 0 : prev + 1))}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/85 transition-all opacity-0 group-hover:opacity-100 shadow-md"
+                          title="Next image"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+
+                        {/* Page number badge */}
+                        <div className="absolute bottom-3 right-3 bg-black/60 text-white text-[9px] font-black px-2 py-0.5 rounded-full select-none shadow">
+                          {activeReceiptImageIndex + 1} / {images.length}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
+                  {images.length > 1 && (
+                    <div className="flex justify-center gap-1.5">
+                      {images.map((_, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setActiveReceiptImageIndex(idx)}
+                          className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                            idx === activeReceiptImageIndex ? 'bg-[#1A3827] dark:bg-[#A3E635] w-4' : 'bg-slate-300 dark:bg-slate-700'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            } else {
+              return (
+                <div className="w-full py-16 rounded-2xl border-2 border-dashed border-[#E3E8E3] dark:border-slate-850 text-center text-slate-450 dark:text-slate-500 bg-slate-50/50 dark:bg-slate-950/30">
+                  <AlertCircle className="w-8 h-8 mx-auto text-slate-400 mb-2" />
+                  <p className="text-xs font-semibold">No receipt image file uploaded</p>
+                  <p className="text-[9px] mt-1 max-w-[240px] mx-auto opacity-80">This transaction was auto-recorded. Download the text receipt details below.</p>
+                </div>
+              );
+            }
+          })()}
 
           <div className="flex justify-between items-center pt-2 border-t border-slate-150 dark:border-slate-800 text-xs">
             <div>
