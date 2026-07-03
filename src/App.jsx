@@ -197,7 +197,7 @@ const getImages = (imageUrl) => {
     try {
       const parsed = JSON.parse(imageUrl);
       if (Array.isArray(parsed)) return parsed;
-    } catch (e) {
+    } catch {
       // fallback
     }
   }
@@ -212,7 +212,7 @@ const parseTimeAndHistory = (timeStr) => {
       const parsed = JSON.parse(parts[1]);
       const history = Array.isArray(parsed) ? parsed : [parsed];
       return { time: parts[0], history };
-    } catch (e) {
+    } catch {
       return { time: parts[0], history: [] };
     }
   }
@@ -346,7 +346,6 @@ export default function App() {
   const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
   const [activeReceiptZoom, setActiveReceiptZoom] = useState(null);
   const [activeReceiptImageIndex, setActiveReceiptImageIndex] = useState(0);
-  const [formEditReason, setFormEditReason] = useState('');
   const [activeEditHistoryTx, setActiveEditHistoryTx] = useState(null);
 
   // Navigation State
@@ -441,7 +440,6 @@ export default function App() {
   }, []);
 
   const openAddExpenseModal = (tx = null) => {
-    setFormEditReason('');
     if (tx) {
       setEditingTransaction(tx);
       setFormFor(tx.title);
@@ -536,7 +534,6 @@ export default function App() {
   const closeAddExpenseModal = () => {
     setIsAddExpenseOpen(false);
     setEditingTransaction(null);
-    setFormEditReason('');
     setFormFor('');
     setFormAmount('');
     setFormCategory('Food');
