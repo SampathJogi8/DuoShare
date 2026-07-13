@@ -279,16 +279,35 @@ const detectChanges = (oldTx, newTx, payerNickname, oldImages = [], newImages = 
 
 export default function App() {
   // Authentication state
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [user, setUser] = useState(() => {
+    const codeUserStr = localStorage.getItem('tallyin_code_user');
+    if (codeUserStr) {
+      try {
+        const parsedCodeUser = JSON.parse(codeUserStr);
+        if (parsedCodeUser && parsedCodeUser.id) {
+          return parsedCodeUser;
+        }
+      } catch (e) {
+        console.error("Failed to parse simulated user session:", e);
+      }
+    }
+    return null;
+  });
+  const [authLoading, setAuthLoading] = useState(() => {
+    return !localStorage.getItem('tallyin_code_user');
+  });
   const [authError, setAuthError] = useState(null);
+  const [showCodeLogin, setShowCodeLogin] = useState(false);
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
   const auth = useMemo(() => ({
     currentUser: user ? {
       id: user.id,
       uid: user.id,
       photoURL: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
-      displayName: user.user_metadata?.full_name || user.user_metadata?.name || 'You'
+      displayName: user.user_metadata?.full_name || user.user_metadata?.name || 'You',
+      loginCode: user.loginCode
     } : null
   }), [user]);
 
@@ -834,6 +853,32 @@ export default function App() {
     }
   }, [user]);
 
+  const generateUniqueLoginCode = async () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    let isUnique = false;
+    let attempts = 0;
+    
+    while (!isUnique && attempts < 10) {
+      attempts++;
+      code = '';
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      
+      const { data, error } = await supabase
+        .from('users')
+        .select('uid')
+        .eq('login_code', code)
+        .maybeSingle();
+        
+      if (!error && !data) {
+        isUnique = true;
+      }
+    }
+    return code;
+  };
+
   const handleAuthUser = useCallback(async (currentUser) => {
     const cachedNickname = localStorage.getItem('userNickname');
     const displayName = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name;
@@ -845,9 +890,42 @@ export default function App() {
       setIsNicknameFixed(true);
     }
 
+    const localRoomId = localStorage.getItem('userRoomId');
+
+    // Ensure user record and access code exist in 'users' table
+    supabase
+      .from('users')
+      .select('*')
+      .eq('uid', currentUser.id)
+      .maybeSingle()
+      .then(async ({ data: userProfile, error }) => {
+        if (!error) {
+          if (!userProfile) {
+            const newCode = await generateUniqueLoginCode();
+            await supabase.from('users').insert({
+              uid: currentUser.id,
+              room_id: localRoomId || null,
+              login_code: newCode,
+              updated_at: new Date().toISOString()
+            });
+            currentUser.loginCode = newCode;
+          } else if (!userProfile.login_code) {
+            const newCode = await generateUniqueLoginCode();
+            await supabase.from('users').update({
+              login_code: newCode,
+              updated_at: new Date().toISOString()
+            }).eq('uid', currentUser.id);
+            currentUser.loginCode = newCode;
+          } else {
+            currentUser.loginCode = userProfile.login_code;
+          }
+          setUser({ ...currentUser });
+        }
+      })
+      .catch(e => console.error('Error verifying user login code:', e));
+
     // Load room ID from localStorage if available, otherwise fetch from Supabase
     // Fire-and-forget addMemberToRoom — don't await it to avoid login latency
-    const localRoomId = localStorage.getItem('userRoomId');
     if (localRoomId) {
       setUserRoomId(localRoomId);
       addMemberToRoom(localRoomId, finalNickname, currentUser); // intentionally not awaited
@@ -873,6 +951,10 @@ export default function App() {
 
   // Handle Supabase Auth state changes
   useEffect(() => {
+    if (localStorage.getItem('tallyin_code_user')) {
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       const currentUser = session?.user || null;
       setUser(currentUser);
@@ -884,6 +966,8 @@ export default function App() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (localStorage.getItem('tallyin_code_user')) return;
+
       const currentUser = session?.user || null;
       setUser(currentUser);
       if (currentUser) {
@@ -1258,6 +1342,73 @@ export default function App() {
     }
   };
 
+  const handleCodeLogin = async (e) => {
+    e.preventDefault();
+    if (!accessCodeInput.trim()) return;
+    
+    setIsVerifyingCode(true);
+    setAuthError(null);
+    
+    try {
+      const code = accessCodeInput.trim().toUpperCase();
+      
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('login_code', code)
+        .maybeSingle();
+        
+      if (profileError) throw profileError;
+      
+      if (!userProfile) {
+        throw new Error('Invalid access code. Please verify and try again.');
+      }
+      
+      const { data: memberData, error: memberError } = await supabase
+        .from('members')
+        .select('*')
+        .eq('uid', userProfile.uid)
+        .limit(1);
+        
+      if (memberError) console.warn("Member fetch warning for code user:", memberError);
+      const member = memberData?.[0];
+      
+      const simulatedUser = {
+        id: userProfile.uid,
+        email: member?.email || `code-login-${code.toLowerCase()}@tallyin.com`,
+        user_metadata: {
+          full_name: member?.nickname || 'Roommate',
+          avatar_url: member?.photo_url || ''
+        },
+        isCodeLogin: true,
+        loginCode: code
+      };
+      
+      localStorage.setItem('tallyin_code_user', JSON.stringify(simulatedUser));
+      setUser(simulatedUser);
+      
+      if (userProfile.room_id) {
+        setUserRoomId(userProfile.room_id);
+        localStorage.setItem('userRoomId', userProfile.room_id);
+      }
+      
+      const nick = member?.nickname || 'You';
+      setUserNickname(nick);
+      setNicknameInput(nick);
+      localStorage.setItem('userNickname', nick);
+      setIsNicknameFixed(true);
+      setHasConfirmedRoom(true);
+      
+      triggerToast('Logged in successfully via access code!');
+    } catch (err) {
+      console.error(err);
+      setAuthError(err.message || 'Verification failed.');
+      triggerToast(err.message || 'Verification failed.');
+    } finally {
+      setIsVerifyingCode(false);
+    }
+  };
+
   // Delete Room handler — HOST ONLY
   const handleDeleteRoom = async () => {
     if (!userRoomId) return;
@@ -1456,13 +1607,24 @@ export default function App() {
   // Sign out handler
   const handleSignOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      localStorage.removeItem('tallyin_code_user');
+      setUser(null);
+
+      try {
+        await supabase.auth.signOut();
+      } catch (authErr) {
+        console.warn("Supabase auth signout warning:", authErr);
+      }
+
       setTransactions([]);
       setReceipts([]);
       setActivityLogs([]);
       setUserRoomId(null);
       localStorage.removeItem('userRoomId');
+      localStorage.removeItem('userNickname');
+      setUserNickname('You');
+      setNicknameInput('You');
+      setIsNicknameFixed(false);
       setHasConfirmedRoom(false);
       setOnboardingStep('selection');
       triggerToast('Signed out successfully.');
@@ -3468,15 +3630,67 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             </div>
           </div>
 
-          <button 
-            onClick={handleGoogleLogin}
-            className="w-full bg-[#1A3827] text-white hover:bg-[#255038] py-3.5 px-4 rounded-2xl font-bold text-sm transition-all shadow-sm flex items-center justify-center gap-3 border border-white/5 active:scale-98"
-          >
-            <svg className="w-4 h-4 fill-white" viewBox="0 0 488 512">
-              <path d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"/>
-            </svg>
-            <span>Sign in with Google</span>
-          </button>
+          {!showCodeLogin ? (
+            <div className="space-y-3">
+              <button 
+                onClick={handleGoogleLogin}
+                className="w-full bg-[#1A3827] text-white hover:bg-[#255038] py-3.5 px-4 rounded-2xl font-bold text-sm transition-all shadow-sm flex items-center justify-center gap-3 border border-white/5 active:scale-98"
+              >
+                <svg className="w-4 h-4 fill-white" viewBox="0 0 488 512">
+                  <path d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"/>
+                </svg>
+                <span>Sign in with Google</span>
+              </button>
+              
+              <div className="flex items-center justify-center gap-2 pt-2 text-xs">
+                <span className="text-[#5C6E5C] dark:text-slate-400 font-medium">Or have an access code?</span>
+                <button
+                  onClick={() => {
+                    setShowCodeLogin(true);
+                    setAuthError(null);
+                  }}
+                  className="text-[#1A3827] dark:text-[#A3E635] font-extrabold underline hover:opacity-85"
+                >
+                  Log In via Code
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleCodeLogin} className="space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Enter your 6-digit Access Code</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  placeholder="e.g. TY9832"
+                  value={accessCodeInput}
+                  onChange={e => setAccessCodeInput(e.target.value)}
+                  className="w-full px-3.5 py-3 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-mono tracking-widest uppercase text-center font-bold animate-fade-in"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCodeLogin(false);
+                    setAuthError(null);
+                  }}
+                  className="flex-1 py-3 border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifyingCode}
+                  className="flex-1 py-3 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] disabled:opacity-60 shadow-sm rounded-xl"
+                >
+                  {isVerifyingCode ? 'Verifying...' : 'Log In'}
+                </button>
+              </div>
+            </form>
+          )}
 
           {authError && (
             <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-2xl text-[11px] text-red-700 dark:text-red-400 font-bold leading-relaxed text-center break-words select-all animate-fade-in">
@@ -4259,7 +4473,26 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
             {/* Dropdown Menu */}
             {isProfileDropdownOpen && (
-              <div className="absolute right-0 top-12 mt-2 w-48 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-30 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+              <div className="absolute right-0 top-12 mt-2 w-52 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-30 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+                <div className="px-4 py-2 border-b border-[#F6F8F6] dark:border-slate-800 text-left">
+                  <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Access Code</p>
+                  <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1 rounded-lg">
+                    <span className="font-mono text-[11px] text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all">
+                      {auth.currentUser?.loginCode || 'Generating...'}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(auth.currentUser?.loginCode || '');
+                        triggerToast('Access code copied!');
+                      }}
+                      className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0"
+                      title="Copy Code"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
                 <button 
                   onClick={() => { setCurrentView('settings'); setIsProfileDropdownOpen(false); }}
                   className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
@@ -7911,6 +8144,29 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                     Edit
                   </button>
                 )}
+              </div>
+            </div>
+
+            {/* Unique Access Code */}
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-3 border-t border-[#F6F8F6] dark:border-slate-800 mt-2">
+              <div className="flex-1 w-full text-left">
+                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Unique Access Code</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Use this unique code to instantly log in to this account on other devices.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs sm:text-sm font-bold bg-[#F6F8F6] dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-[#E3E8E3]/50 dark:border-slate-800 text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all">
+                  {auth.currentUser?.loginCode || 'Generating...'}
+                </span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(auth.currentUser?.loginCode || '');
+                    triggerToast('Access code copied!');
+                  }}
+                  className="p-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"
+                  title="Copy Access Code"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
               </div>
             </div>
           </div>
