@@ -1049,7 +1049,8 @@ export default function App() {
         .from('transactions')
         .select('*')
         .eq('room_id', roomId)
-        .order('date', { ascending: false });
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       const mapped = (data || [])
