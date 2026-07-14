@@ -1017,7 +1017,18 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [authLoading]);
 
-
+  // Prevent accidental number changes on scroll/wheel when number inputs are focused
+  useEffect(() => {
+    const handleWheel = () => {
+      if (document.activeElement && document.activeElement.type === 'number') {
+        document.activeElement.blur();
+      }
+    };
+    document.addEventListener('wheel', handleWheel, { passive: true });
+    return () => {
+      document.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   // Sync with dark mode class on document element and body
   useEffect(() => {
