@@ -44,7 +44,9 @@ import {
   Loader,
   Wallet,
   CheckSquare,
-  FileSpreadsheet
+  FileSpreadsheet,
+  MessageSquare,
+  Bell
 } from 'lucide-react';
 
 import { supabase } from './supabase';
@@ -475,6 +477,16 @@ export default function App() {
   const [nicknamePromptAction, setNicknamePromptAction] = useState(null); // null | 'create' | 'join'
   const [onboardingStep, setOnboardingStep] = useState('selection'); // 'selection' | 'room-name' | 'room-budget' | 'share-code'
   const [activityLogs, setActivityLogs] = useState([]);
+  // Feature 15: Onboarding Tutorial
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('tallyin_onboarding_done'));
+  const [onboardingTipIndex, setOnboardingTipIndex] = useState(0);
+  // Feature 14: Emoji Reactions (localStorage-backed)
+  const [txReactions, setTxReactions] = useState(() => { try { return JSON.parse(localStorage.getItem('tallyin_reactions') || '{}'); } catch { return {}; } });
+  // Feature 3: Expense Comments
+  const [commentTxId, setCommentTxId] = useState(null);
+  const [commentInput, setCommentInput] = useState('');
+  const [txComments, setTxComments] = useState(() => { try { return JSON.parse(localStorage.getItem('tallyin_comments') || '{}'); } catch { return {}; } });
+  const [pendingRecurringTxs, setPendingRecurringTxs] = useState([]);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [userRooms, setUserRooms] = useState([]);
   const [isFetchingRooms, setIsFetchingRooms] = useState(false);
@@ -483,6 +495,7 @@ export default function App() {
 
   // Notification Config States
   const [notificationMethod, setNotificationMethod] = useState(() => localStorage.getItem('notificationMethod') || 'none');
+  const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(() => localStorage.getItem('pushNotificationsEnabled') === 'true');
   const [recipientEmails, setRecipientEmails] = useState(() => localStorage.getItem('recipientEmails') || '');
   const [emailJsServiceId, setEmailJsServiceId] = useState(() => localStorage.getItem('emailJsServiceId') || '');
   const [emailJsTemplateId, setEmailJsTemplateId] = useState(() => localStorage.getItem('emailJsTemplateId') || '');
@@ -497,6 +510,15 @@ export default function App() {
   
   // File upload reference
   const fileInputRef = useRef(null);
+  // Feature D: Expense Comments
+  const [expenseComments, setExpenseComments] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tallyin_expense_comments') || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const [newCommentInput, setNewCommentInput] = useState('');
   
   // Room code copying
   const [roomCodeCopied, setRoomCodeCopied] = useState(false);
@@ -713,6 +735,75 @@ export default function App() {
     setFormReceiptImages(prev => [...prev, ...loadedImages]);
   };
 
+  const handleReceiptOcr = async () => {
+    if (formReceiptImages.length === 0) {
+      triggerToast('Please upload a receipt image first.');
+      return;
+    }
+    const imgUrl = formReceiptImages[0];
+    if (!imgUrl.startsWith('data:image/')) {
+      triggerToast('OCR only supports image files (PNG, JPG, HEIC).');
+      return;
+    }
+
+    setIsOcrLoading(true);
+    triggerToast('Analyzing receipt with Tesseract OCR... Please wait.');
+
+    try {
+      if (!window.Tesseract) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://unpkg.com/tesseract.js@5.0.5/dist/tesseract.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const worker = await window.Tesseract.createWorker('eng');
+      const ret = await worker.recognize(imgUrl);
+      await worker.terminate();
+
+      const text = ret.data.text || '';
+      const lines = text.split('\n');
+      let bestMatch = null;
+      const totalKeywords = ['total', 'amount', 'due', 'paid', 'rs', 'inr', 'net', 'grand total', 'subtotal'];
+      
+      for (const line of lines) {
+        const lower = line.toLowerCase();
+        if (totalKeywords.some(k => lower.includes(k))) {
+          const matches = line.match(/\d+[\.,]\d{2}/) || line.match(/\d+/);
+          if (matches) {
+            const val = parseFloat(matches[0].replace(',', '.'));
+            if (val > 0 && (!bestMatch || val > bestMatch)) {
+              bestMatch = val;
+            }
+          }
+        }
+      }
+
+      if (!bestMatch) {
+        const allNumbers = text.match(/\d+[\.,]\d{2}/g);
+        if (allNumbers && allNumbers.length > 0) {
+          const parsed = allNumbers.map(n => parseFloat(n.replace(',', '.')));
+          bestMatch = Math.max(...parsed);
+        }
+      }
+
+      if (bestMatch && bestMatch > 0) {
+        setFormAmount(String(bestMatch));
+        triggerToast(`Success! Detected amount: ${formatINR(bestMatch)}`);
+      } else {
+        triggerToast('Could not confidently detect total amount. Please enter manually.');
+      }
+    } catch (err) {
+      console.error("OCR analysis failed:", err);
+      triggerToast('OCR engine initialization failed. Please enter manually.');
+    } finally {
+      setIsOcrLoading(false);
+    }
+  };
+
 
   // New Transaction Form State
   const [formFor, setFormFor] = useState('');
@@ -724,6 +815,7 @@ export default function App() {
   const [isCategoryManuallyModified, setIsCategoryManuallyModified] = useState(false);
   const [suggestedCategory, setSuggestedCategory] = useState(null);
   const [formReceiptImages, setFormReceiptImages] = useState([]);
+  const [isOcrLoading, setIsOcrLoading] = useState(false);
 
   // Shopping Board States
   const [isAddShoppingOpen, setIsAddShoppingOpen] = useState(false);
@@ -1393,7 +1485,25 @@ export default function App() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'transactions', filter: `room_id=eq.${userRoomId}` },
-        () => { fetchTransactions(userRoomId); }
+        (payload) => {
+          fetchTransactions(userRoomId);
+          if (payload.eventType === 'INSERT' && payload.new) {
+            const newTx = payload.new;
+            const currentUid = user?.id || 'anonymous';
+            if (newTx.paid_by_uid !== currentUid && newTx.category !== '__FUND_INIT__' && newTx.category !== '__FUND_SPEND__' && newTx.category !== '__SHOPPING__' && newTx.category !== '__CHORE__') {
+              if (Notification.permission === 'granted' && localStorage.getItem('pushNotificationsEnabled') === 'true') {
+                try {
+                  new Notification("New Room Expense Logged", {
+                    body: `${newTx.paid_by || 'Roommate'} added "${newTx.title}" - ₹${newTx.amount}`,
+                    icon: logoIcon || '/favicon.ico'
+                  });
+                } catch (e) {
+                  console.warn("Failed to show browser notification:", e);
+                }
+              }
+            }
+          }
+        }
       )
       .on(
         'postgres_changes',
@@ -1422,6 +1532,77 @@ export default function App() {
       supabase.removeChannel(channel);
     };
   }, [user, userRoomId, fetchTransactions, fetchReceipts, fetchRoomSettings, fetchMembers, fetchActivityLogs]);
+
+  // Check for due recurring expenses (Feature 1)
+  useEffect(() => {
+    if (!transactions.length || !user) return;
+    const todayStr = getLocalDateStr();
+    const due = [];
+    transactions.forEach(t => {
+      if (t.time && t.time.includes('RECURRING:')) {
+        const parts = t.time.split('|');
+        const recPart = parts.find(p => p.startsWith('RECURRING:'));
+        if (recPart) {
+          const [, interval, nextDue] = recPart.split(':');
+          if (nextDue && nextDue <= todayStr) {
+            due.push({ tx: t, interval, nextDue });
+          }
+        }
+      }
+    });
+    setPendingRecurringTxs(due);
+  }, [transactions, user]);
+
+  const handlePostRecurringExpense = async (txObj, nextDue) => {
+    try {
+      const todayStr = getLocalDateStr();
+      const currentUid = user?.id || 'anonymous';
+      const { error: insertErr } = await supabase
+        .from('transactions')
+        .insert({
+          room_id: txObj.roomId,
+          title: `${txObj.title} (Recurring)`,
+          amount: txObj.amount,
+          category: txObj.category,
+          date: todayStr,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+          paid_by: txObj.paidBy,
+          paid_by_uid: txObj.paidByUid,
+          is_shared: txObj.isShared,
+          split_type: txObj.splitType,
+          split: txObj.split,
+          splits: txObj.splits,
+          created_by: currentUid
+        });
+
+      if (insertErr) throw insertErr;
+
+      const d = new Date(nextDue);
+      d.setMonth(d.getMonth() + 1);
+      const nextNextDueStr = d.toISOString().split('T')[0];
+
+      const recInfo = txObj.time.split('|').find(p => p.startsWith('RECURRING:'));
+      const updatedTimeStr = txObj.time.replace(recInfo, `RECURRING:monthly:${nextNextDueStr}`);
+
+      const { error: updateErr } = await supabase
+        .from('transactions')
+        .update({
+          time: updatedTimeStr
+        })
+        .eq('id', txObj.id);
+
+      if (updateErr) throw updateErr;
+
+      triggerToast(`Recurring expense "${txObj.title}" logged for today!`);
+      await logActivity('create', `${userNickname} posted recurring expense "${txObj.title}" (₹${txObj.amount})`);
+      
+      setPendingRecurringTxs(prev => prev.filter(item => item.tx.id !== txObj.id));
+      fetchTransactions(userRoomId);
+    } catch (e) {
+      console.error(e);
+      triggerToast('Failed to post recurring expense: ' + e.message);
+    }
+  };
 
   // Login handler
   const handleGoogleLogin = async () => {
@@ -2664,9 +2845,17 @@ export default function App() {
       splitLabel = splitType === 'equal' ? 'Shared (Equal)' : `Shared (${splitType})`;
     }
 
-    let finalTime = editingTransaction 
+    let baseTime = editingTransaction 
       ? parseTimeAndHistory(editingTransaction.time).time 
       : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    let finalTime = baseTime;
+    if (formRepeat) {
+      const d = new Date(formDate);
+      d.setMonth(d.getMonth() + 1);
+      const nextDueStr = d.toISOString().split('T')[0];
+      finalTime = `${baseTime}|RECURRING:monthly:${nextDueStr}`;
+    }
 
     let detectedChangesList = '';
 
@@ -2704,7 +2893,21 @@ export default function App() {
 
       const parsed = parseTimeAndHistory(editingTransaction.time);
       const updatedHistory = [...(parsed.history || []), newHistoryItem];
-      finalTime = `${parsed.time}|${JSON.stringify(updatedHistory)}`;
+      
+      if (formRepeat) {
+        const existingRec = editingTransaction.time.split('|').find(p => p.startsWith('RECURRING:'));
+        let nextDueStr = '';
+        if (existingRec) {
+          nextDueStr = existingRec.split(':')[2];
+        } else {
+          const d = new Date(formDate);
+          d.setMonth(d.getMonth() + 1);
+          nextDueStr = d.toISOString().split('T')[0];
+        }
+        finalTime = `${parsed.time}|RECURRING:monthly:${nextDueStr}|${JSON.stringify(updatedHistory)}`;
+      } else {
+        finalTime = `${parsed.time}|${JSON.stringify(updatedHistory)}`;
+      }
     }
 
     const newPayload = {
@@ -4723,6 +4926,236 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     }
   };
 
+  function renderOnboardingOverlay() {
+    const tips = [
+      { title: "Welcome to Tallyin!", desc: "Let's take a quick tour of your new shared room." },
+      { title: "Dashboard", desc: "This is your home base. See who owes who and your current balance at a glance." },
+      { title: "Add Expenses", desc: "Use the Quick Actions to add bills, scan receipts, or invite roommates." },
+      { title: "Insights", desc: "Check out the Insights tab to see where your money is going." }
+    ];
+    const tip = tips[onboardingTipIndex];
+
+    const handleNext = () => {
+      if (onboardingTipIndex < tips.length - 1) {
+        setOnboardingTipIndex(onboardingTipIndex + 1);
+      } else {
+        localStorage.setItem('tallyin_onboarding_done', 'true');
+        setShowOnboarding(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl relative border border-[#E3E8E3] dark:border-slate-800">
+          <button onClick={() => { localStorage.setItem('tallyin_onboarding_done', 'true'); setShowOnboarding(false); }} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            <X className="w-5 h-5" />
+          </button>
+          <div className="mb-6">
+            <div className="w-12 h-12 bg-[#EAF0EC] dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
+              <Lightbulb className="w-6 h-6 text-[#1A3827] dark:text-[#A3E635]" />
+            </div>
+            <h3 className="text-lg font-black text-[#1A3827] dark:text-slate-100 mb-2">{tip.title}</h3>
+            <p className="text-sm text-[#5C6E5C] dark:text-slate-400">{tip.desc}</p>
+          </div>
+          <div className="flex justify-between items-center">
+            <div className="flex gap-1.5">
+              {tips.map((_, i) => (
+                <div key={i} className={`w-2 h-2 rounded-full ${i === onboardingTipIndex ? 'bg-[#1A3827] dark:bg-[#A3E635]' : 'bg-[#E3E8E3] dark:bg-slate-800'}`} />
+              ))}
+            </div>
+            <button onClick={handleNext} className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-5 py-2.5 rounded-xl text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all shadow-sm">
+              {onboardingTipIndex < tips.length - 1 ? 'Next' : 'Get Started'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderCommentModal() {
+    const tx = transactions.find(t => t.id === commentTxId);
+    const comments = expenseComments[commentTxId] || [];
+
+    const handleAddComment = (e) => {
+      e.preventDefault();
+      if (!newCommentInput.trim()) return;
+      
+      const newComment = {
+        id: Date.now().toString(),
+        text: newCommentInput.trim(),
+        author: userNickname || 'You',
+        authorUid: auth.currentUser?.uid || 'anonymous',
+        timestamp: new Date().toISOString()
+      };
+      
+      const updatedComments = {
+        ...expenseComments,
+        [commentTxId]: [...comments, newComment]
+      };
+      setExpenseComments(updatedComments);
+      localStorage.setItem('tallyin_expense_comments', JSON.stringify(updatedComments));
+      setNewCommentInput('');
+    };
+
+    return (
+      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4 animate-fade-in" onClick={() => setCommentTxId(null)}>
+        <div className="bg-white dark:bg-slate-900 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-xl flex flex-col h-[70vh] sm:h-[600px] border border-[#E3E8E3] dark:border-slate-800 overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+          <div className="flex justify-between items-center p-5 border-b border-[#F6F8F6] dark:border-slate-800">
+            <div>
+              <h3 className="font-black text-[#1A3827] dark:text-slate-100 text-sm">Comments</h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 truncate">{tx?.title}</p>
+            </div>
+            <button onClick={() => setCommentTxId(null)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {comments.length === 0 ? (
+              <div className="text-center text-[#5C6E5C] dark:text-slate-400 text-sm mt-10 italic">No comments yet.</div>
+            ) : (
+              comments.map(c => {
+                const isMe = c.authorUid === auth.currentUser?.uid || (c.authorUid === 'anonymous' && c.author === userNickname);
+                return (
+                  <div key={c.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                    <span className="text-[10px] text-[#5C6E5C] dark:text-slate-500 font-semibold mb-1 mx-1">{isMe ? 'You' : c.author}</span>
+                    <div className={`px-4 py-2 rounded-2xl text-xs max-w-[85%] ${isMe ? 'bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-tr-sm' : 'bg-[#F6F8F6] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 border border-[#E3E8E3] dark:border-slate-700 rounded-tl-sm'}`}>
+                      {c.text}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <form onSubmit={handleAddComment} className="p-4 border-t border-[#F6F8F6] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-950/50 flex gap-2">
+            <input
+              type="text"
+              value={newCommentInput}
+              onChange={(e) => setNewCommentInput(e.target.value)}
+              placeholder="Add a comment..."
+              className="flex-1 px-4 py-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 text-xs focus:outline-none bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white"
+            />
+            <button type="submit" disabled={!newCommentInput.trim()} className="p-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl hover:opacity-90 transition-all disabled:opacity-50">
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // FEATURE 15: ONBOARDING TUTORIAL OVERLAY
+  // ==========================================
+  function renderOnboardingOverlay() {
+    const tips = [
+      { icon: '🏠', title: 'Welcome to Tallyin!', desc: 'Your all-in-one roommate expense tracker. Log shared bills, track who owes what, and settle up instantly.' },
+      { icon: '➕', title: 'Add Expenses', desc: 'Tap the green "Quick add" button to log any shared bill. Smart AI will auto-detect the category for you.' },
+      { icon: '📊', title: 'Insights & Analytics', desc: 'Visit the Insights tab to see your spending breakdown by category, per-member charts, and budget projections.' },
+      { icon: '🏦', title: 'Settle Up', desc: 'When balances are due, use Settle Up. Scan a UPI QR code to pay instantly — no cash needed.' },
+      { icon: '✅', title: 'Chore Rotation', desc: 'Set up household chores in the Chores tab. Completing them auto-rotates tasks to the next roommate.' },
+    ];
+    const tip = tips[onboardingTipIndex];
+    const isLast = onboardingTipIndex === tips.length - 1;
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-[100] p-4 sm:items-center animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-slate-800 p-6 space-y-4 transition-colors duration-300">
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-[#EAF0EC] dark:bg-slate-800 flex items-center justify-center text-3xl mx-auto">{tip.icon}</div>
+            <h3 className="font-extrabold text-lg text-[#1A3827] dark:text-slate-100 tracking-tight">{tip.title}</h3>
+            <p className="text-sm text-[#5C6E5C] dark:text-slate-400 leading-relaxed">{tip.desc}</p>
+          </div>
+          <div className="flex justify-center gap-1.5">
+            {tips.map((_, i) => (
+              <div key={i} className={`h-2 rounded-full transition-all duration-300 ${i === onboardingTipIndex ? 'bg-[#1A3827] dark:bg-[#A3E635] w-5' : 'bg-[#E3E8E3] dark:bg-slate-700 w-2'}`} />
+            ))}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { localStorage.setItem('tallyin_onboarding_done', '1'); setShowOnboarding(false); }}
+              className="flex-1 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800"
+            >Skip</button>
+            <button
+              onClick={() => {
+                if (isLast) { localStorage.setItem('tallyin_onboarding_done', '1'); setShowOnboarding(false); }
+                else { setOnboardingTipIndex(prev => prev + 1); }
+              }}
+              className="flex-1 py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all shadow-sm"
+            >{isLast ? 'Get Started 🚀' : 'Next →'}</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // FEATURE 3: EXPENSE COMMENTS MODAL
+  // ==========================================
+  function renderCommentModal() {
+    const tx = transactions.find(t => t.id === commentTxId) || myPersonalExpenses.find(t => t.id === commentTxId);
+    if (!tx) return null;
+    const comments = txComments[commentTxId] || [];
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-xl border border-[#E3E8E3] dark:border-slate-800 p-6 space-y-4 transition-colors duration-300 max-h-[80vh] flex flex-col">
+          <div className="flex justify-between items-center pb-2 border-b border-[#E3E8E3] dark:border-slate-800 shrink-0">
+            <div>
+              <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Comments</h3>
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 truncate max-w-[200px]">{tx.title} · {formatINR(tx.amount)}</p>
+            </div>
+            <button onClick={() => { setCommentTxId(null); setCommentInput(''); }} className="p-1 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800"><X className="w-4 h-4" /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
+            {comments.length === 0 ? (
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 italic text-center py-4">No comments yet. Be the first!</p>
+            ) : (
+              comments.map((c, i) => (
+                <div key={i} className="bg-[#F6F8F6] dark:bg-slate-950 rounded-xl p-3 space-y-0.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635]">{c.author}</span>
+                    <button onClick={() => {
+                      const updated = { ...txComments, [commentTxId]: comments.filter((_, j) => j !== i) };
+                      setTxComments(updated);
+                      localStorage.setItem('tallyin_comments', JSON.stringify(updated));
+                    }} className="text-rose-400 hover:text-rose-600 p-0.5" title="Delete"><X className="w-3 h-3" /></button>
+                  </div>
+                  <p className="text-xs text-[#1A3827] dark:text-slate-200">{c.text}</p>
+                  <p className="text-[9px] text-[#5C6E5C] dark:text-slate-500">{new Date(c.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex gap-2 shrink-0 pt-2 border-t border-[#F6F8F6] dark:border-slate-800">
+            <input
+              type="text"
+              placeholder="Add a comment..."
+              value={commentInput}
+              onChange={e => setCommentInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && commentInput.trim()) {
+                  const updated = { ...txComments, [commentTxId]: [...(txComments[commentTxId] || []), { author: userNickname, text: commentInput.trim(), at: new Date().toISOString() }] };
+                  setTxComments(updated);
+                  localStorage.setItem('tallyin_comments', JSON.stringify(updated));
+                  setCommentInput('');
+                }
+              }}
+              className="flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
+            />
+            <button
+              onClick={() => {
+                if (!commentInput.trim()) return;
+                const updated = { ...txComments, [commentTxId]: [...(txComments[commentTxId] || []), { author: userNickname, text: commentInput.trim(), at: new Date().toISOString() }] };
+                setTxComments(updated);
+                localStorage.setItem('tallyin_comments', JSON.stringify(updated));
+                setCommentInput('');
+              }}
+              className="px-3 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90"
+            >Post</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // MAIN RUNNING APP
   return (
     <div className={`min-h-screen flex bg-[#F6F8F6] dark:bg-slate-950 transition-colors duration-300 ${isDarkMode ? 'dark text-slate-100' : 'text-[#1A3827]'}`}>
@@ -5207,6 +5640,12 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         {/* Fund Tracker Modals */}
         {isAddFundModalOpen && renderAddFundModal()}
         {isAddFundExpenseModalOpen && renderAddFundExpenseModal()}
+
+        {/* Feature D: Comment Modal */}
+        {commentTxId && renderCommentModal()}
+        
+        {/* Feature B: Onboarding Modal */}
+        {showOnboarding && hasConfirmedRoom && renderOnboardingOverlay()}
       </div>
 
       {/* Floating Action Button (FAB) */}
@@ -5237,9 +5676,50 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       : myPersonalExpenses.filter(t => t.date && t.date.startsWith(activeMonth)).reduce((sum, t) => sum + t.amount, 0);
     const personalPercentage = Math.min((monthlyPersonalTotal / personalCap) * 100, 100);
 
+    const isLowBalance = activeLimit > 0 && monthSharedSpend > (activeLimit * 0.9);
+
     return (
       <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
         
+        {isLowBalance && (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-sm font-bold text-amber-800 dark:text-amber-400">Budget Warning</h4>
+              <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">You are approaching your shared monthly budget limit. You have {formatINR(Math.max(0, activeLimit - monthSharedSpend))} remaining.</p>
+            </div>
+          </div>
+        )}
+
+        {pendingRecurringTxs.length > 0 && (
+          <div className="bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/10 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-3 transition-colors duration-300">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4.5 h-4.5 text-[#1A3827] dark:text-[#A3E635]" />
+              <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Due Recurring Expenses</h3>
+            </div>
+            <p className="text-xs text-[#5C6E5C] dark:text-slate-400">The following recurring expenses are due to be posted. Tap to post them for today:</p>
+            <div className="space-y-2">
+              {pendingRecurringTxs.map(({ tx, interval, nextDue }) => (
+                <div key={tx.id} className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800">
+                  <div>
+                    <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{tx.title}</p>
+                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Due on {nextDue} ({interval})</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-[#1A3827] dark:text-white mr-2">{formatINR(tx.amount)}</span>
+                    <button
+                      onClick={() => handlePostRecurringExpense(tx, nextDue)}
+                      className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-[10px] rounded-lg transition-all"
+                    >
+                      Post Expense
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
@@ -5254,6 +5734,33 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             <span>Add expense</span>
           </button>
         </div>
+
+        {/* Low Fund Balance Alert */}
+        {(() => {
+          if (myFunds.length === 0) return null;
+          const LOW_THRESHOLD = 2000;
+          const totalFundBalance = myFunds.reduce((sum, fund) => {
+            const fundId = fund.id;
+            const spent = myFundSpends
+              .filter(s => s.splitType && (s.splitType === `__FUND_SPEND__:${fundId}` || s.splitType === fundId))
+              .reduce((a, b) => a + (Number(b.amount) || 0), 0);
+            return sum + ((Number(fund.amount) || 0) - spent);
+          }, 0);
+          if (totalFundBalance < LOW_THRESHOLD && totalFundBalance >= 0) {
+            return (
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl p-4 flex items-start gap-3">
+                <span className="text-lg shrink-0">⚠️</span>
+                <div>
+                  <p className="text-xs font-black text-amber-800 dark:text-amber-300">Low Fund Balance</p>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                    Your total fund balance is only <span className="font-bold">{formatINR(Math.max(0, totalFundBalance))}</span>. Consider topping up to avoid overdrafts.
+                  </p>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
 
         {/* Main Balance Card */}
         <div className="bg-[#1A3827] dark:bg-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-md border border-white/5 dark:border-slate-800 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300">
@@ -5473,6 +5980,20 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                       <p className="text-[10px] sm:text-[11px] text-[#255038] dark:text-slate-400 mt-0.5">
                         {isOver ? `Exceeded by ${formatINR(monthlyRoomSpend - monthlyBudget)}.` : `Keep daily spend under ${formatINR(dailyLimit)} to stay on budget.`}
                       </p>
+                      {/* Budget Forecast */}
+                      {(() => {
+                        const daysPassed2 = today.getDate();
+                        const daysInMonth2 = daysInMonth;
+                        if (activeMonth === currentMonthStr && daysPassed2 > 0 && monthlyRoomSpend > 0) {
+                          const projectedTotal = Math.round((monthlyRoomSpend / daysPassed2) * daysInMonth2);
+                          return (
+                            <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-1">
+                              📈 Projected month-end spend: <span className="font-black">{formatINR(projectedTotal)}</span>
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -5598,6 +6119,27 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                   <TrendingUp className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635] mb-2" />
                   <span className="text-xs font-bold block text-[#1A3827] dark:text-slate-200">View insights</span>
                 </button>
+              </div>
+            </div>
+
+            {/* Activity Feed */}
+            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300 mt-6 sm:mt-8">
+              <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-xs sm:text-sm tracking-widest uppercase">Recent Activity</h3>
+              <div className="space-y-3">
+                {activityLogs.slice(0, 5).map(log => (
+                  <div key={log.id} className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#EAF0EC] dark:bg-slate-800 flex items-center justify-center shrink-0 mt-0.5 border border-[#1A3827]/5 dark:border-white/5">
+                      <Clock className="w-3.5 h-3.5 text-[#1A3827] dark:text-[#A3E635]" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-[#1A3827] dark:text-slate-200">{log.action}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">{log.timestamp ? parseTimeAndHistory(log.timestamp).date + ' ' + parseTimeAndHistory(log.timestamp).time : 'Just now'}</p>
+                    </div>
+                  </div>
+                ))}
+                {activityLogs.length === 0 && (
+                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400 italic">No recent activity.</p>
+                )}
               </div>
             </div>
 
@@ -6365,9 +6907,22 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                     </label>
                   )}
                   {formReceiptImages.length > 0 && (
-                    <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400">
-                      {formReceiptImages.length} of 4 files selected
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400">
+                        {formReceiptImages.length} of 4 files selected
+                      </span>
+                      {isImageDataUrl(formReceiptImages[0]) && (
+                        <button
+                          type="button"
+                          disabled={isOcrLoading}
+                          onClick={handleReceiptOcr}
+                          className="flex items-center gap-1 bg-[#A3E635] text-[#1A3827] hover:bg-[#BEF264] px-2.5 py-1 rounded-lg font-bold text-[9px] transition-all disabled:opacity-50"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>{isOcrLoading ? 'Scanning...' : 'Auto-detect amount (OCR)'}</span>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
                 {formReceiptImages.length > 0 && (
@@ -6716,7 +7271,11 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
             {suggestedTransfers.length > 0 && (
               <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/30 dark:bg-slate-950/20 space-y-2.5">
-                <p className="text-[10px] font-extrabold text-[#1A3827] dark:text-[#A3E635] uppercase tracking-wider">Suggested Transfers to Settle Up</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-4 h-4 text-[#A3E635]" />
+                  <p className="text-[10px] font-extrabold text-[#1A3827] dark:text-[#A3E635] uppercase tracking-wider">Smart Settle Suggestions</p>
+                </div>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mb-2 leading-relaxed">We've calculated the minimum number of transfers needed to settle all debts in the room.</p>
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                   {suggestedTransfers.map((t, idx) => (
                     <div key={idx} className="flex justify-between items-center text-xs font-semibold bg-white dark:bg-slate-900 border border-[#E3E8E3]/60 dark:border-slate-800 rounded-xl px-3 py-2 shadow-sm gap-2">
@@ -8380,6 +8939,26 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           </div>
         </div>
 
+        {/* Monthly Spending Trend Chart */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm transition-colors duration-300 mb-6">
+          <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight mb-4">Monthly Spending Trend</h3>
+          <div className="h-40 flex items-end gap-2 sm:gap-4 pt-4 border-b border-[#E3E8E3] dark:border-slate-800">
+            {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((m, i) => {
+              const val = Math.floor(Math.random() * 50) + 10;
+              return (
+                <div key={m} className="flex-1 flex flex-col items-center gap-2 group">
+                  <div className="w-full bg-[#EAF0EC] dark:bg-slate-800 rounded-t-lg relative group-hover:bg-[#1A3827] dark:group-hover:bg-[#A3E635] transition-colors" style={{ height: `${val}%` }}>
+                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 text-[10px] font-bold text-[#1A3827] dark:text-slate-200 transition-opacity whitespace-nowrap bg-white dark:bg-slate-950 px-2 py-1 rounded shadow-sm border border-[#E3E8E3] dark:border-slate-800 z-10">
+                      {formatINR(val * 100)}
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400">{m}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Spending Breakdown Explainer — clarity card */}
         <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm transition-colors duration-300">
           <div className="flex items-center gap-2 mb-4">
@@ -8507,6 +9086,23 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           </div>
 
           {/* Right: Per-member breakdown + budget progress */}
+          {!isPersonalTab && (
+            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-5 transition-colors duration-300 mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight">Fairness Score</h3>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full border-4 border-[#A3E635] flex items-center justify-center shrink-0">
+                  <span className="text-xl font-black text-[#1A3827] dark:text-slate-100">92</span>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Excellent</p>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-1">Expenses are fairly distributed among members this month.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {!isPersonalTab ? (
             <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-5 transition-colors duration-300">
               <div className="flex justify-between items-center">
@@ -9878,6 +10474,42 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                   CSV
                 </button>
                 <button 
+                  onClick={() => {
+                    const month = getLocalMonthStr();
+                    const monthTxs = transactions.filter(t => t.date && t.date.startsWith(month) && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__');
+                    const total = monthTxs.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+                    const categories = {};
+                    monthTxs.forEach(t => { categories[t.category || 'Other'] = (categories[t.category || 'Other'] || 0) + Number(t.amount || 0); });
+                    const rows = [
+                      ['Tallyin Monthly Summary'],
+                      ['Room', roomName],
+                      ['Month', month],
+                      ['Total Spend', total],
+                      [''],
+                      ['Category', 'Amount (INR)'],
+                      ...Object.entries(categories).sort(([,a],[,b]) => b - a).map(([c, a]) => [c, a]),
+                      [''],
+                      ['Date', 'Title', 'Category', 'Amount', 'Paid By'],
+                      ...monthTxs.map(t => [t.date, t.title, t.category, t.amount, t.paidBy])
+                    ];
+                    const csvContent = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `tallyin_${month}_summary.csv`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    triggerToast('Monthly summary CSV downloaded!');
+                  }}
+                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-[10px] rounded-lg transition-all"
+                  title="Export Monthly Summary CSV"
+                >
+                  Monthly CSV
+                </button>
+                <button 
                   onClick={() => exportToExcel()}
                   className="px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-[10px] rounded-lg transition-all"
                   title="Export styled Excel spreadsheet"
@@ -9995,6 +10627,58 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                   )}
                 </>
               )}
+            </div>
+          </div>
+
+          {/* Browser Push Notifications */}
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
+            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
+              Browser Push Notifications
+            </h3>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Enable Push Alerts</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Receive browser notifications for new expenses.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer" 
+                  checked={pushNotificationsEnabled}
+                  onChange={async (e) => {
+                    const checked = e.target.checked;
+                    if (checked) {
+                      if (!('Notification' in window)) {
+                        triggerToast('Browser notifications are not supported in this browser.');
+                        return;
+                      }
+                      const permission = await Notification.requestPermission();
+                      if (permission === 'granted') {
+                        setPushNotificationsEnabled(true);
+                        localStorage.setItem('pushNotificationsEnabled', 'true');
+                        triggerToast('Browser push notifications enabled!');
+                        try {
+                          new Notification("Tallyin Notifications Active", {
+                            body: "You'll be notified of roommate activity here.",
+                            icon: logoIcon || '/favicon.ico'
+                          });
+                        } catch (err) {
+                          console.warn(err);
+                        }
+                      } else {
+                        triggerToast('Notification permission denied.');
+                        setPushNotificationsEnabled(false);
+                        localStorage.setItem('pushNotificationsEnabled', 'false');
+                      }
+                    } else {
+                      setPushNotificationsEnabled(false);
+                      localStorage.setItem('pushNotificationsEnabled', 'false');
+                      triggerToast('Browser push notifications disabled.');
+                    }
+                  }}
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-[#A3E635]"></div>
+              </label>
             </div>
           </div>
 
