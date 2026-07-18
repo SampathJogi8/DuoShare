@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DuoShare</string>
+    <string name="title_activity_main">DuoShare</string>
+    <string name="package_name">com.duoshare.app</string>
+    <string name="custom_url_scheme">com.duoshare.app</string>
+</resources>

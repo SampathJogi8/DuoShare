@@ -1,0 +1,8 @@
+{
+  "appId": "com.duoshare.app",
+  "appName": "DuoShare",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
