@@ -5564,11 +5564,19 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           generationConfig: { temperature: 0.7, maxOutputTokens: 400 }
         })
       });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const apiErrorMsg = errorData?.error?.message || `HTTP Error ${res.status}`;
+        throw new Error(apiErrorMsg);
+      }
+
       const data = await res.json();
-      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
+      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't parse a response. Please try again.";
       setAiMessages(prev => [...prev, { role: 'assistant', text: reply }]);
     } catch (err) {
-      setAiMessages(prev => [...prev, { role: 'assistant', text: "⚠️ Network error. Check your connection and try again." }]);
+      console.error("Tallyin AI Error:", err);
+      setAiMessages(prev => [...prev, { role: 'assistant', text: `⚠️ API Error: ${err.message}` }]);
     } finally {
       setAiLoading(false);
     }
