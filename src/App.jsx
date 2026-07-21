@@ -3083,56 +3083,45 @@ export default function App() {
     };
 
     if (editingTransaction) {
-      try {
-        const { error: txError } = await supabase
-          .from('transactions')
-          .update({
-            title: newPayload.title,
-            amount: newPayload.amount,
-            category: newPayload.category,
-            date: newPayload.date,
-            time: newPayload.time,
-            paid_by: newPayload.paidBy,
-            paid_by_uid: newPayload.paidByUid,
-            is_shared: newPayload.isShared,
-            is_edited: true,
-            split_type: newPayload.splitType,
-            split: newPayload.split,
-            splits: newPayload.splits
-          })
-          .eq('id', editingTransaction.id);
+      // 1. Optimistic UI update — update transaction immediately in local state
+      setTransactions(prev => prev.map(t => 
+        t.id === editingTransaction.id
+          ? { ...t, ...newPayload, isEdited: true }
+          : t
+      ));
 
-        if (txError) throw txError;
+      // 2. Resolve receipt dates & optimistic receipts update
+      let oldReceiptDateStr = '';
+      if (editingTransaction.date) {
+        const parts = editingTransaction.date.split('-');
+        if (parts.length === 3) {
+          const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          oldReceiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
+        }
+      }
 
-        if (newPayload.isShared) {
-          let oldReceiptDateStr = '';
-          if (editingTransaction.date) {
-            const parts = editingTransaction.date.split('-');
-            if (parts.length === 3) {
-              const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-              oldReceiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
+      if (newPayload.isShared) {
+        const newReceiptDateStr = new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' });
+        const serializedImages = formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null;
+        
+        setReceipts(prev => {
+          let found = false;
+          const updated = prev.map(r => {
+            if (r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && r.date === oldReceiptDateStr) {
+              found = true;
+              return {
+                ...r,
+                title: formFor,
+                amount: amountNum,
+                category: formCategory,
+                date: newReceiptDateStr,
+                imageUrl: serializedImages
+              };
             }
-          }
-
-          const newReceiptDateStr = new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' });
+            return r;
+          });
           
-          const { data: updatedReceipts, error: receiptUpdateError } = await supabase
-            .from('receipts')
-            .update({
-              title: formFor,
-              amount: amountNum,
-              category: formCategory,
-              date: newReceiptDateStr,
-              image_url: formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null
-            })
-            .eq('room_id', currentRoom)
-            .eq('title', editingTransaction.title)
-            .eq('amount', editingTransaction.amount)
-            .eq('category', editingTransaction.category)
-            .eq('date', oldReceiptDateStr)
-            .select();
-
-          if (!receiptUpdateError && (!updatedReceipts || updatedReceipts.length === 0)) {
+          if (!found && formReceiptImages.length > 0) {
             const bgColors = [
               'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
               'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
@@ -3142,69 +3131,72 @@ export default function App() {
             const rotations = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2'];
             const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
             const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
+            
+            updated.unshift({
+              id: `optimistic-receipt-${Date.now()}`,
+              title: formFor,
+              amount: amountNum,
+              category: formCategory,
+              date: newReceiptDateStr,
+              bgClass: randomBg,
+              rotation: randomRot,
+              imageUrl: serializedImages
+            });
+          }
+          return updated;
+        });
+      } else {
+        setReceipts(prev => prev.filter(r => !(r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && r.date === oldReceiptDateStr)));
+      }
 
-            await supabase
+      // 3. Close the modal immediately (zero-latency transition)
+      closeAddExpenseModal();
+
+      // 4. Update the DB asynchronously in the background
+      (async () => {
+        try {
+          const { error: txError } = await supabase
+            .from('transactions')
+            .update({
+              title: newPayload.title,
+              amount: newPayload.amount,
+              category: newPayload.category,
+              date: newPayload.date,
+              time: newPayload.time,
+              paid_by: newPayload.paidBy,
+              paid_by_uid: newPayload.paidByUid,
+              is_shared: newPayload.isShared,
+              is_edited: true,
+              split_type: newPayload.splitType,
+              split: newPayload.split,
+              splits: newPayload.splits
+            })
+            .eq('id', editingTransaction.id);
+
+          if (txError) throw txError;
+
+          if (newPayload.isShared) {
+            const newReceiptDateStr = new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' });
+            
+            const { data: updatedReceipts, error: receiptUpdateError } = await supabase
               .from('receipts')
-              .insert({
-                room_id: currentRoom,
+              .update({
                 title: formFor,
                 amount: amountNum,
                 category: formCategory,
                 date: newReceiptDateStr,
-                bg_class: randomBg,
-                rotation: randomRot,
                 image_url: formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null
-              });
-          }
-        } else {
-          let oldReceiptDateStr = '';
-          if (editingTransaction.date) {
-            const parts = editingTransaction.date.split('-');
-            if (parts.length === 3) {
-              const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-              oldReceiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
-            }
-          }
-          await supabase
-            .from('receipts')
-            .delete()
-            .eq('room_id', currentRoom)
-            .eq('title', editingTransaction.title)
-            .eq('amount', editingTransaction.amount)
-            .eq('category', editingTransaction.category)
-            .eq('date', oldReceiptDateStr);
-        }
+              })
+              .eq('room_id', currentRoom)
+              .eq('title', editingTransaction.title)
+              .eq('amount', editingTransaction.amount)
+              .eq('category', editingTransaction.category)
+              .eq('date', oldReceiptDateStr)
+              .select();
 
-        // Optimistic UI update — update in local state immediately
-        setTransactions(prev => prev.map(t => 
-          t.id === editingTransaction.id
-            ? { ...t, ...newPayload, isEdited: true }
-            : t
-        ));
+            if (receiptUpdateError) throw receiptUpdateError;
 
-        if (newPayload.isShared) {
-          const newReceiptDateStr = new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' });
-          const serializedImages = formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null;
-          
-          setReceipts(prev => {
-            let found = false;
-            const updated = prev.map(r => {
-              const oldReceiptDateStr = editingTransaction.date ? new Date(editingTransaction.date).toLocaleDateString([], { day: '2-digit', month: 'short' }) : '';
-              if (r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && r.date === oldReceiptDateStr) {
-                found = true;
-                return {
-                  ...r,
-                  title: formFor,
-                  amount: amountNum,
-                  category: formCategory,
-                  date: newReceiptDateStr,
-                  imageUrl: serializedImages
-                };
-              }
-              return r;
-            });
-            
-            if (!found && formReceiptImages.length > 0) {
+            if (!updatedReceipts || updatedReceipts.length === 0) {
               const bgColors = [
                 'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
                 'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
@@ -3214,41 +3206,50 @@ export default function App() {
               const rotations = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2'];
               const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
               const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
-              
-              updated.unshift({
-                id: `optimistic-receipt-${Date.now()}`,
-                title: formFor,
-                amount: amountNum,
-                category: formCategory,
-                date: newReceiptDateStr,
-                bgClass: randomBg,
-                rotation: randomRot,
-                imageUrl: serializedImages
-              });
-            }
-            return updated;
-          });
-        } else {
-          const oldReceiptDateStr = editingTransaction.date ? new Date(editingTransaction.date).toLocaleDateString([], { day: '2-digit', month: 'short' }) : '';
-          setReceipts(prev => prev.filter(r => !(r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && r.date === oldReceiptDateStr)));
-        }
 
-        let logMsg = `${userNickname} edited expense "${newPayload.title}" to ₹${newPayload.amount}`;
-        if (detectedChangesList && detectedChangesList.includes('Added receipt files') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
-          logMsg = `${userNickname} added receipt file(s) to "${newPayload.title}"`;
-        } else if (detectedChangesList && detectedChangesList.includes('Removed all receipt files') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
-          logMsg = `${userNickname} removed receipt file(s) from "${newPayload.title}"`;
-        } else if (detectedChangesList && detectedChangesList.includes('Updated receipt files') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
-          logMsg = `${userNickname} updated receipt file(s) for "${newPayload.title}"`;
+              const { error: insertError } = await supabase
+                .from('receipts')
+                .insert({
+                  room_id: currentRoom,
+                  title: formFor,
+                  amount: amountNum,
+                  category: formCategory,
+                  date: newReceiptDateStr,
+                  bg_class: randomBg,
+                  rotation: randomRot,
+                  image_url: formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null
+                });
+              if (insertError) throw insertError;
+            }
+          } else {
+            const { error: deleteError } = await supabase
+              .from('receipts')
+              .delete()
+              .eq('room_id', currentRoom)
+              .eq('title', editingTransaction.title)
+              .eq('amount', editingTransaction.amount)
+              .eq('category', editingTransaction.category)
+              .eq('date', oldReceiptDateStr);
+            if (deleteError) throw deleteError;
+          }
+
+          let logMsg = `${userNickname} edited expense "${newPayload.title}" to ₹${newPayload.amount}`;
+          if (detectedChangesList && detectedChangesList.includes('Added receipt files') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
+            logMsg = `${userNickname} added receipt file(s) to "${newPayload.title}"`;
+          } else if (detectedChangesList && detectedChangesList.includes('Removed all receipt files') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
+            logMsg = `${userNickname} removed receipt file(s) from "${newPayload.title}"`;
+          } else if (detectedChangesList && detectedChangesList.includes('Updated receipt files') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
+            logMsg = `${userNickname} updated receipt file(s) for "${newPayload.title}"`;
+          }
+          await logActivity('edit', logMsg);
+          triggerToast("Expense updated successfully!");
+        } catch (error) {
+          console.error("Error updating transaction:", error);
+          triggerToast(`Failed to update: ${error.message}`);
+          fetchTransactions(currentRoom);
+          fetchReceipts(currentRoom);
         }
-        await logActivity('edit', logMsg);
-        triggerToast("Expense updated successfully!");
-        closeAddExpenseModal();
-      } catch (error) {
-        console.error("Error updating transaction:", error);
-        triggerToast(`Failed to update: ${error.message}`);
-        fetchTransactions(currentRoom);
-      }
+      })();
     } else {
       // Optimistic UI — close modal and add to local state immediately
       const optimisticId = `optimistic-${Date.now()}`;
@@ -5576,7 +5577,18 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       setAiMessages(prev => [...prev, { role: 'assistant', text: reply }]);
     } catch (err) {
       console.error("Tallyin AI Error:", err);
-      setAiMessages(prev => [...prev, { role: 'assistant', text: `⚠️ API Error: ${err.message}` }]);
+      let friendlyError = err.message || "";
+      const lowerErr = friendlyError.toLowerCase();
+      
+      if (lowerErr.includes('quota') || lowerErr.includes('exhausted') || lowerErr.includes('limit') || lowerErr.includes('429') || lowerErr.includes('rate')) {
+        friendlyError = "Tallyin AI free query quota has been reached! ☕ Please try again later.";
+      } else if (lowerErr.includes('api key') || lowerErr.includes('invalid') || lowerErr.includes('key')) {
+        friendlyError = "API key configuration issue. Please verify the VITE_GEMINI_API_KEY settings.";
+      } else {
+        friendlyError = "I'm having trouble connecting right now. Please try again in a moment.";
+      }
+      
+      setAiMessages(prev => [...prev, { role: 'assistant', text: `⚠️ ${friendlyError}` }]);
     } finally {
       setAiLoading(false);
     }
