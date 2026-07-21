@@ -5766,7 +5766,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       )}
 
       {/* Sidebar Navigation */}
-      <aside className={`w-64 border-r border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between fixed top-0 bottom-0 left-0 h-full z-40 transition-transform duration-300 ${
+      <aside className={`w-64 border-r border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between fixed top-0 bottom-0 left-0 h-full z-40 transition-transform duration-300 overflow-y-auto ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       }`}>
         <div className="p-6">
@@ -6520,7 +6520,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               const monthName = activeDateObj.toLocaleString('default', { month: 'long' });
 
               const monthlyRoomSpend = transactions
-                .filter(t => t.isShared && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__' && t.date && t.date.startsWith(activeMonth))
+                .filter(t => t.isShared && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__' && t.category !== 'Payment' && t.date && t.date.startsWith(activeMonth))
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
               const budgetPct = Math.min(100, Math.round((monthlyRoomSpend / monthlyBudget) * 100)) || 0;
@@ -11088,7 +11088,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <button 
                   onClick={() => {
                     const month = getLocalMonthStr();
-                    const monthTxs = transactions.filter(t => t.date && t.date.startsWith(month) && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__');
+                    const monthTxs = transactions.filter(t => t.date && t.date.startsWith(month) && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__' && t.category !== 'Payment');
                     const total = monthTxs.reduce((s, t) => s + (Number(t.amount) || 0), 0);
                     const categories = {};
                     monthTxs.forEach(t => { categories[t.category || 'Other'] = (categories[t.category || 'Other'] || 0) + Number(t.amount || 0); });
@@ -11627,7 +11627,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         // 1. Exclude system categories
         // 2. Filter by selectedMonth if not 'All'
         const filteredTx = transactions.filter(t => {
-          if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__CHORE__') return false;
+          if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__CHORE__' || t.category === 'Payment') return false;
           return selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
         });
 
