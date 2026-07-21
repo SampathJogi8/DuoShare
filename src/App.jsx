@@ -52,7 +52,7 @@ import {
 import { supabase } from './supabase';
 import logoIcon from './assets/logo_icon.png';
 
-const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v2.4.0';
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v3.1.8';
 
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
