@@ -11790,7 +11790,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         return (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto animate-fade-in">
-            <div className="bg-slate-900 border border-amber-500/20 dark:border-amber-500/30 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden relative max-h-[90vh] flex flex-col transition-colors duration-300 text-slate-100">
+            <div className="bg-slate-900 border border-amber-500/20 dark:border-amber-500/30 w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden relative max-h-[92vh] sm:max-h-[90vh] flex flex-col transition-colors duration-300 text-slate-100">
               
               {/* Modal Header */}
               <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/40 shrink-0">
@@ -11814,10 +11814,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
 
               {/* Modal Body */}
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4 sm:space-y-5 scrollbar-thin scrollbar-thumb-slate-800">
+              <div className="p-3.5 sm:p-6 overflow-y-auto flex-1 space-y-3.5 sm:space-y-5 scrollbar-thin scrollbar-thumb-slate-800">
                 
                 {/* 0. Month Filter / Selected Period Selector */}
-                <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-3 sm:p-4 flex items-center justify-between gap-3">
+                <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-2.5 sm:p-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                     <span className="text-[10px] sm:text-xs font-bold text-[#94a3b8] dark:text-slate-300 uppercase tracking-wider">Analysis Period</span>
@@ -11854,28 +11854,28 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 ) : (
                   <>
                     {/* 1. Quick Stats Grid */}
-                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                      <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-3 sm:p-4 space-y-0.5 sm:space-y-1 min-w-0">
+                    <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+                      <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-2.5 sm:p-4 space-y-0.5 sm:space-y-1 min-w-0">
                         <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Total Spend</span>
-                        <span className="text-sm sm:text-base md:text-lg font-black text-amber-400 block truncate" title={formatINR(totalSpendVal)}>{formatINR(totalSpendVal)}</span>
+                        <span className="text-xs sm:text-base font-black text-amber-400 block truncate" title={formatINR(totalSpendVal)}>{formatINR(totalSpendVal)}</span>
                         <span className="text-[8px] sm:text-[9px] text-slate-500 block truncate">Shared + Personal</span>
                       </div>
                       
-                      <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-3 sm:p-4 space-y-0.5 sm:space-y-1 min-w-0">
+                      <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-2.5 sm:p-4 space-y-0.5 sm:space-y-1 min-w-0">
                         <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Busiest Day</span>
-                        <span className="text-sm sm:text-base md:text-lg font-black text-white block truncate" title={busiestDay}>{busiestDay}</span>
+                        <span className="text-xs sm:text-base font-black text-white block truncate" title={busiestDay}>{busiestDay}</span>
                         <span className="text-[8px] sm:text-[9px] text-slate-500 block truncate">Highest frequency</span>
                       </div>
 
-                      <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-3 sm:p-4 space-y-0.5 sm:space-y-1 min-w-0">
+                      <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-2.5 sm:p-4 space-y-0.5 sm:space-y-1 min-w-0">
                         <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Avg. Bill Size</span>
-                        <span className="text-sm sm:text-base md:text-lg font-black text-white block truncate" title={formatINR(avgTxValue)}>{formatINR(avgTxValue)}</span>
+                        <span className="text-xs sm:text-base font-black text-white block truncate" title={formatINR(avgTxValue)}>{formatINR(avgTxValue)}</span>
                         <span className="text-[8px] sm:text-[9px] text-slate-500 block truncate">Per transaction</span>
                       </div>
 
-                      <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-3 sm:p-4 space-y-0.5 sm:space-y-1 min-w-0">
+                      <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-2.5 sm:p-4 space-y-0.5 sm:space-y-1 min-w-0">
                         <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Top Spender</span>
-                        <span className="text-sm sm:text-base md:text-lg font-black text-emerald-450 block truncate" title={topSpender ? `${topSpender.nickname} paid ${formatINR(topSpender.paid)}` : ''}>
+                        <span className="text-xs sm:text-base font-black text-emerald-450 block truncate" title={topSpender ? `${topSpender.nickname} paid ${formatINR(topSpender.paid)}` : ''}>
                           {topSpender ? topSpender.nickname : 'N/A'}
                         </span>
                         <span className="text-[8px] sm:text-[9px] text-slate-500 block truncate">
@@ -11885,7 +11885,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     </div>
 
                     {/* 2. Simplified settlements */}
-                    <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-3.5 sm:p-5 space-y-2.5 sm:space-y-3">
+                    <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-3 sm:p-5 space-y-2.5 sm:space-y-3">
                       <h4 className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Debt Settlement Plan</h4>
                       {settlements.length === 0 ? (
                         <div className="flex items-center gap-2 text-emerald-400 text-[11px] sm:text-xs font-semibold py-1">
@@ -11893,15 +11893,15 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           <span>All settled up! No roommate payments are currently outstanding.</span>
                         </div>
                       ) : (
-                        <div className="space-y-2 sm:space-y-3">
+                        <div className="space-y-2.5 sm:space-y-3">
                           {settlements.map((s, idx) => (
-                            <div key={idx} className="flex justify-between items-center py-1.5 sm:py-2 border-b border-slate-850 last:border-b-0 min-w-0">
-                              <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1 mr-2">
-                                <span className="text-[11px] sm:text-xs font-bold text-rose-400 truncate max-w-[80px] sm:max-w-[120px]" title={s.from}>{s.from}</span>
+                            <div key={idx} className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 sm:py-2 border-b border-slate-850 last:border-b-0 gap-1.5 sm:gap-0 min-w-0">
+                              <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
+                                <span className="text-[11px] sm:text-xs font-bold text-rose-400 truncate max-w-[90px] sm:max-w-[120px]" title={s.from}>{s.from}</span>
                                 <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-500 shrink-0" />
-                                <span className="text-[11px] sm:text-xs font-bold text-emerald-400 truncate max-w-[80px] sm:max-w-[120px]" title={s.to}>{s.to}</span>
+                                <span className="text-[11px] sm:text-xs font-bold text-emerald-400 truncate max-w-[90px] sm:max-w-[120px]" title={s.to}>{s.to}</span>
                               </div>
-                              <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                              <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto shrink-0">
                                 <span className="text-[11px] sm:text-xs font-black text-white">{formatINR(s.amount)}</span>
                                 <button
                                   type="button"
@@ -11918,7 +11918,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     </div>
 
                     {/* 3. Category distribution */}
-                    <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-3.5 sm:p-5 space-y-3 sm:space-y-4">
+                    <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-3 sm:p-5 space-y-3 sm:space-y-4">
                       <h4 className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Category Breakdown</h4>
                       <div className="space-y-2.5 sm:space-y-3">
                         {categoryBreakdown.map(({ category, amount }) => {
@@ -11942,7 +11942,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     </div>
 
                     {/* 4. AI Observations */}
-                    <div className="bg-gradient-to-tr from-slate-950 to-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-5 space-y-2.5 sm:space-y-3 relative overflow-hidden">
+                    <div className="bg-gradient-to-tr from-slate-950 to-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-5 space-y-2.5 sm:space-y-3 relative overflow-hidden">
                       <div className="absolute right-0 top-0 translate-x-6 -translate-y-6 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none"></div>
                       
                       <div className="flex items-center gap-2 text-amber-400">
