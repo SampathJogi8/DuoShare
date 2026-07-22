@@ -539,7 +539,7 @@ export default function App() {
   });
   const [offlineMode, setOfflineMode] = useState(false);
   const [isDbSynced, setIsDbSynced] = useState(false);
-  const [hasConfirmedRoom, setHasConfirmedRoom] = useState(() => !!localStorage.getItem('userRoomId'));
+  const [hasConfirmedRoom, setHasConfirmedRoom] = useState(false);
   
   // Nicknames & Roommates Dynamic State
   const [userNickname, setUserNickname] = useState(() => localStorage.getItem('userNickname') || 'You');
