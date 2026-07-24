@@ -3598,17 +3598,21 @@ export default function App() {
             });
         }
 
-        // Send client-side email notifications if configured
+        triggerToast("Expense added!");
+
+        // Fire email notification independently — errors here never affect the expense save
         if (notificationMethod !== 'none') {
-          sendEmailNotification(newPayload);
-          triggerToast(`Added! 📧 Email notification sent.`);
-        } else {
-          triggerToast("Expense added!");
+          sendEmailNotification(newPayload).catch(err => {
+            console.warn('Email notification failed silently:', err);
+          });
         }
       } catch (error) {
         console.error(error);
-        // Optimistic entry already in state — just show error toast
         triggerToast(`Saved locally (DB sync failed: ${error.message || 'database error'}).`);
+        // Still attempt email even if DB had issues
+        if (notificationMethod !== 'none') {
+          sendEmailNotification(newPayload).catch(err => console.warn('Email failed:', err));
+        }
       }
     }
   };
