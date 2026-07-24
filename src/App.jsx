@@ -583,7 +583,7 @@ export default function App() {
   const [emailJsPublicKey, setEmailJsPublicKey] = useState(() => localStorage.getItem('emailJsPublicKey') || '');
   const [googleScriptUrl, setGoogleScriptUrl] = useState(() => localStorage.getItem('googleScriptUrl') || '');
   const [showEmailGuide, setShowEmailGuide] = useState(false);
-  const [emailGuideTab, setEmailGuideTab] = useState('emailjs');
+  const [emailGuideTab, setEmailGuideTab] = useState('tallyin');
   
   // Log download states
   const [logStartDate, setLogStartDate] = useState('');
@@ -2866,10 +2866,14 @@ export default function App() {
       </div>
     `;
 
-    if (notificationMethod === 'google-script' && googleScriptUrl) {
+    const activeScriptUrl = notificationMethod === 'tallyin'
+      ? 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec'
+      : googleScriptUrl;
+
+    if ((notificationMethod === 'google-script' || notificationMethod === 'tallyin') && activeScriptUrl) {
       try {
         for (const email of emailList) {
-          await fetch(googleScriptUrl, {
+          await fetch(activeScriptUrl, {
             method: 'POST',
             mode: 'no-cors',
             headers: {
@@ -11614,10 +11618,20 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none"
                 >
                   <option value="none">None (Disabled)</option>
-                  <option value="emailjs">EmailJS Service</option>
-                  <option value="google-script">Google Script Webhook</option>
+                  <option value="tallyin">Tallyin Default Mailer</option>
+                  <option value="emailjs">EmailJS Service (Custom)</option>
+                  <option value="google-script">Google Script Webhook (Custom)</option>
                 </select>
               </div>
+
+              {notificationMethod === 'tallyin' && (
+                <div className="bg-emerald-50/50 dark:bg-[#1e2d24] border border-emerald-100 dark:border-[#2f4638] rounded-2xl p-3 text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold space-y-1">
+                  <p>✨ Centralized Mailer Enabled</p>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+                    Emails will be sent automatically from our centralized alert address. No personal setup or keys are needed! Just define the recipients below.
+                  </p>
+                </div>
+              )}
 
               {notificationMethod !== 'none' && (
                 <>
@@ -11950,8 +11964,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           {/* Tab Switcher */}
           <div className="flex mx-6 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl p-1 gap-1 shrink-0">
             {[
-              ['emailjs', '📧 EmailJS Service'],
-              ['google-script', '⚡ Google Apps Script']
+              ['tallyin', '✨ Default Mailer'],
+              ['emailjs', '📧 EmailJS'],
+              ['google-script', '⚡ Google Script']
             ].map(([tab, label]) => (
               <button
                 key={tab}
@@ -11968,8 +11983,49 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           {/* Scrollable Content */}
-          <div className="px-6 pb-6 pt-4 space-y-4 overflow-y-auto flex-1 text-xs text-[#1A3827] dark:text-slate-200 leading-relaxed">
-            {emailGuideTab === 'emailjs' ? (
+          <div className="px-6 pb-6 pt-4 space-y-4 overflow-y-auto flex-1 text-xs text-[#1A3827] dark:text-slate-200 leading-relaxed font-semibold">
+            {emailGuideTab === 'tallyin' && (
+              <div className="space-y-4 font-semibold text-[#1A3827] dark:text-slate-200">
+                <div className="bg-[#EAF0EC] dark:bg-[#1e2d24] border border-[#1A3827]/15 dark:border-[#2f4638] rounded-2xl p-4 text-[11px] space-y-1.5">
+                  <p className="text-emerald-800 dark:text-emerald-300 font-extrabold text-xs">🚀 Recommended: Tallyin Default Mailer</p>
+                  <p className="text-[#5C6E5C] dark:text-slate-400 font-medium font-semibold">
+                    This is a completely free, centralized email sender configured for Tallyin. It requires absolutely no script setup, account registration, or key configuration on your end.
+                  </p>
+                </div>
+
+                <div className="space-y-3.5">
+                  <div className="flex gap-3">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">1</span>
+                    <div>
+                      <strong className="font-extrabold">Select Tallyin Default Mailer:</strong> Choose <span className="font-bold text-[#1A3827] dark:text-white">Tallyin Default Mailer</span> as your notification method in settings.
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">2</span>
+                    <div>
+                      <strong className="font-extrabold">Define Recipients:</strong> Enter the comma-separated email addresses of the roommates you want to alert (e.g., <code className="font-mono text-emerald-600 dark:text-[#A3E635]">friend1@gmail.com, friend2@gmail.com</code>).
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">3</span>
+                    <div>
+                      <strong className="font-extrabold">Automated Alerts:</strong> Any time you or your roommates add, edit, or settle expenses, Tallyin will automatically dispatch a styled, real-time alert email.
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">4</span>
+                    <div>
+                      <strong className="font-extrabold">Check Spam/Junk:</strong> If someone doesn't receive the alerts, please ask them to check their spam or junk folder and mark it as "Not Spam".
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {emailGuideTab === 'emailjs' && (
               <div className="space-y-4">
                 <p className="text-[#5C6E5C] dark:text-slate-400 font-medium">
                   EmailJS lets you send transactional emails directly from the browser using your own personal email provider (Gmail, Outlook, etc.).
@@ -12048,7 +12104,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   </div>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {emailGuideTab === 'google-script' && (
               <div className="space-y-4">
                 <p className="text-[#5C6E5C] dark:text-slate-400 font-medium">
                   Google Apps Script allows you to set up a custom email webhook endpoint using your Google Account for free, without any third-party limitations.
