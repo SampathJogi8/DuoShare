@@ -1567,6 +1567,22 @@ export default function App() {
     setRoomCreatedBy(null);
   }, [userRoomId]);
 
+  // Auto-populate recipientEmails from room members' Google emails if not configured yet
+  useEffect(() => {
+    if (members && members.length > 0 && user) {
+      const otherEmails = members
+        .filter(m => m.uid !== user.id && m.email)
+        .map(m => m.email)
+        .join(', ');
+      
+      const stored = localStorage.getItem('recipientEmails');
+      if (stored === null && otherEmails) {
+        setRecipientEmails(otherEmails);
+        localStorage.setItem('recipientEmails', otherEmails);
+      }
+    }
+  }, [members, user]);
+
   // Supabase Real-time Sync
   useEffect(() => {
     if (!user || !userRoomId) return;
@@ -11647,6 +11663,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       }}
                       className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
                     />
+                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-1">
+                      💡 Filled automatically with your roommates' Google Sign-in emails. Add any extra emails as needed.
+                    </p>
                   </div>
 
                   {notificationMethod === 'emailjs' && (
