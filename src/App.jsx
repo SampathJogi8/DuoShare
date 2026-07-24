@@ -2882,7 +2882,9 @@ export default function App() {
     const txPaidBy = transaction?.paidBy || transaction?.paid_by || 'Roommate';
     const txCategory = transaction?.category || 'General';
     const txDate = transaction?.date || getLocalDateStr();
-    const txTime = transaction?.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    const rawTime = transaction?.time || '';
+    const parsedTimeObj = parseTimeAndHistory(rawTime);
+    const txTime = parsedTimeObj.time || (rawTime ? String(rawTime).split('|')[0] : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
     const txDateTime = `${txDate} • ${txTime}`;
     const txSplit = transaction?.split || (transaction?.isShared ? 'Split equally' : 'Personal');
     const txIdFormatted = formatTxId(transaction?.id);
@@ -3643,13 +3645,6 @@ export default function App() {
           }
           await logActivity('edit', logMsg);
           triggerToast("Expense updated successfully!");
-
-          // Fire update email notification independently
-          if (notificationMethod !== 'none') {
-            sendEmailNotification(newPayload, 'update').catch(err => {
-              console.warn('Update email notification failed silently:', err);
-            });
-          }
         } catch (error) {
           console.error("Error updating transaction:", error);
           triggerToast(`Failed to update: ${error.message}`);
