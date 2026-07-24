@@ -575,15 +575,9 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState(() => getLocalMonthStr());
 
   // Notification Config States
-  const [notificationMethod, setNotificationMethod] = useState(() => localStorage.getItem('notificationMethod') || 'none');
+  const [notificationMethod, setNotificationMethod] = useState(() => localStorage.getItem('notificationMethod') || 'tallyin');
   const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(() => localStorage.getItem('pushNotificationsEnabled') === 'true');
   const [recipientEmails, setRecipientEmails] = useState(() => localStorage.getItem('recipientEmails') || '');
-  const [emailJsServiceId, setEmailJsServiceId] = useState(() => localStorage.getItem('emailJsServiceId') || '');
-  const [emailJsTemplateId, setEmailJsTemplateId] = useState(() => localStorage.getItem('emailJsTemplateId') || '');
-  const [emailJsPublicKey, setEmailJsPublicKey] = useState(() => localStorage.getItem('emailJsPublicKey') || '');
-  const [googleScriptUrl, setGoogleScriptUrl] = useState(() => localStorage.getItem('googleScriptUrl') || '');
-  const [showEmailGuide, setShowEmailGuide] = useState(false);
-  const [emailGuideTab, setEmailGuideTab] = useState('tallyin');
   
   // Log download states
   const [logStartDate, setLogStartDate] = useState('');
@@ -2882,11 +2876,9 @@ export default function App() {
       </div>
     `;
 
-    const activeScriptUrl = notificationMethod === 'tallyin'
-      ? 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec'
-      : googleScriptUrl;
+    const activeScriptUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
 
-    if ((notificationMethod === 'google-script' || notificationMethod === 'tallyin') && activeScriptUrl) {
+    if (notificationMethod === 'tallyin') {
       try {
         for (const email of emailList) {
           await fetch(activeScriptUrl, {
@@ -2903,41 +2895,9 @@ export default function App() {
             })
           });
         }
-        console.log('Client-side Google Apps Script email triggered successfully');
+        console.log('Central Tallyin email notification sent successfully');
       } catch (err) {
-        console.error('Failed client-side Apps Script email trigger:', err);
-      }
-    } else if (notificationMethod === 'emailjs' && emailJsServiceId && emailJsTemplateId && emailJsPublicKey) {
-      try {
-        for (const email of emailList) {
-          const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              service_id: emailJsServiceId,
-              template_id: emailJsTemplateId,
-              user_id: emailJsPublicKey,
-              template_params: {
-                to_email: email,
-                title: transaction.title,
-                amount: formattedAmount,
-                paid_by: transaction.paidBy,
-                split_type: transaction.split,
-                room_id: roomDisplayName
-              }
-            })
-          });
-          if (response.ok) {
-            console.log(`EmailJS notification sent to ${email}`);
-          } else {
-            const errText = await response.text();
-            console.error(`EmailJS error response: ${errText}`);
-          }
-        }
-      } catch (err) {
-        console.error('Failed client-side EmailJS trigger:', err);
+        console.error('Failed to send central email notification:', err);
       }
     }
   };
@@ -6473,8 +6433,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Feature D: Comment Modal */}
         {commentTxId && renderCommentModal()}
 
-        {/* Email Setup Guide Modal */}
-        {showEmailGuide && renderEmailGuideModal()}
+
         
         {/* Feature B: Onboarding Modal */}
         {showOnboarding && hasConfirmedRoom && renderOnboardingOverlay()}
@@ -11608,128 +11567,63 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           {/* Email Notifications */}
+          {/* Email Notifications */}
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
-            <div className="flex justify-between items-center pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
-              <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">
-                Email Notifications
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowEmailGuide(true)}
-                className="text-[10px] sm:text-xs font-bold text-emerald-600 dark:text-[#A3E635] hover:opacity-80 flex items-center gap-1 bg-emerald-50/50 dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-emerald-100 dark:border-slate-700/80 transition-all active:scale-95 cursor-pointer"
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">
+                  Email Notifications
+                </h3>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 font-medium">
+                  Send real-time alerts when roommate expenses are added or updated.
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  const newMethod = notificationMethod === 'tallyin' ? 'none' : 'tallyin';
+                  setNotificationMethod(newMethod);
+                  localStorage.setItem('notificationMethod', newMethod);
+                  triggerToast(newMethod === 'tallyin' ? 'Email alerts enabled!' : 'Email alerts disabled.');
+                }}
+                className={`w-12 h-6 rounded-full p-1 transition-all duration-200 cursor-pointer shrink-0 ${
+                  notificationMethod === 'tallyin' ? 'bg-[#A3E635]' : 'bg-[#E3E8E3] dark:bg-slate-800'
+                }`}
               >
-                <span>💡 Setup Guide</span>
+                <div 
+                  className={`w-4 h-4 rounded-full bg-white transition-all duration-200 ${
+                    notificationMethod === 'tallyin' ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
               </button>
             </div>
-            
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Notification Method</label>
-                <select
-                  value={notificationMethod}
-                  onChange={(e) => {
-                    setNotificationMethod(e.target.value);
-                    localStorage.setItem('notificationMethod', e.target.value);
-                  }}
-                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none"
-                >
-                  <option value="none">None (Disabled)</option>
-                  <option value="tallyin">Tallyin Default Mailer</option>
-                  <option value="emailjs">EmailJS Service (Custom)</option>
-                  <option value="google-script">Google Script Webhook (Custom)</option>
-                </select>
-              </div>
 
-              {notificationMethod === 'tallyin' && (
+            {notificationMethod === 'tallyin' && (
+              <div className="space-y-4 pt-4 border-t border-[#F6F8F6] dark:border-slate-800 animate-fade-in">
                 <div className="bg-emerald-50/50 dark:bg-[#1e2d24] border border-emerald-100 dark:border-[#2f4638] rounded-2xl p-3 text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold space-y-1">
-                  <p>✨ Centralized Mailer Enabled</p>
+                  <p>✨ Centralized Mailer Active</p>
                   <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
-                    Emails will be sent automatically from our centralized alert address. No personal setup or keys are needed! Just define the recipients below.
+                    Emails are sent automatically from our centralized alert address. No personal setup or keys are needed!
                   </p>
                 </div>
-              )}
 
-              {notificationMethod !== 'none' && (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Recipient Emails (comma-separated)</label>
-                    <input
-                      type="text"
-                      placeholder="email1@example.com, email2@example.com"
-                      value={recipientEmails}
-                      onChange={(e) => {
-                        setRecipientEmails(e.target.value);
-                        localStorage.setItem('recipientEmails', e.target.value);
-                      }}
-                      className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
-                    />
-                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-1">
-                      💡 Filled automatically with your roommates' Google Sign-in emails. Add any extra emails as needed.
-                    </p>
-                  </div>
-
-                  {notificationMethod === 'emailjs' && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Service ID</label>
-                        <input
-                          type="text"
-                          placeholder="service_xxx"
-                          value={emailJsServiceId}
-                          onChange={(e) => {
-                            setEmailJsServiceId(e.target.value);
-                            localStorage.setItem('emailJsServiceId', e.target.value);
-                          }}
-                          className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Template ID</label>
-                        <input
-                          type="text"
-                          placeholder="template_xxx"
-                          value={emailJsTemplateId}
-                          onChange={(e) => {
-                            setEmailJsTemplateId(e.target.value);
-                            localStorage.setItem('emailJsTemplateId', e.target.value);
-                          }}
-                          className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Public Key</label>
-                        <input
-                          type="text"
-                          placeholder="public_key_xxx"
-                          value={emailJsPublicKey}
-                          onChange={(e) => {
-                            setEmailJsPublicKey(e.target.value);
-                            localStorage.setItem('emailJsPublicKey', e.target.value);
-                          }}
-                          className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {notificationMethod === 'google-script' && (
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Google Script URL</label>
-                      <input
-                        type="url"
-                        placeholder="https://script.google.com/macros/s/..."
-                        value={googleScriptUrl}
-                        onChange={(e) => {
-                          setGoogleScriptUrl(e.target.value);
-                          localStorage.setItem('googleScriptUrl', e.target.value);
-                        }}
-                        className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Recipient Emails (comma-separated)</label>
+                  <input
+                    type="text"
+                    placeholder="email1@example.com, email2@example.com"
+                    value={recipientEmails}
+                    onChange={(e) => {
+                      setRecipientEmails(e.target.value);
+                      localStorage.setItem('recipientEmails', e.target.value);
+                    }}
+                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                  />
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-1">
+                    💡 Filled automatically with your roommates' Google Sign-in emails. Add any extra emails as needed.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Browser Push Notifications */}
@@ -11941,267 +11835,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     );
   }
 
-  // ==========================================
-  // EMAIL SETUP GUIDE MODAL
-  // ==========================================
-  function renderEmailGuideModal() {
-    const appsScriptCode = `function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    MailApp.sendEmail({
-      to: data.to,
-      subject: data.subject,
-      htmlBody: data.htmlBody,
-      body: data.textBody
-    });
-    return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}`;
 
-    return (
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-        <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-xl border border-[#E3E8E3] dark:border-slate-800 max-h-[90vh] flex flex-col overflow-hidden transition-colors duration-300">
-          
-          {/* Header */}
-          <div className="flex justify-between items-center px-6 pt-6 pb-4 shrink-0">
-            <div>
-              <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Email Setup Guide</h3>
-              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 font-bold uppercase tracking-widest">Configure client-side email alerts</p>
-            </div>
-            <button 
-              onClick={() => setShowEmailGuide(false)}
-              className="p-1.5 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Tab Switcher */}
-          <div className="flex mx-6 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl p-1 gap-1 shrink-0">
-            {[
-              ['tallyin', '✨ Default Mailer'],
-              ['emailjs', '📧 EmailJS'],
-              ['google-script', '⚡ Google Script']
-            ].map(([tab, label]) => (
-              <button
-                key={tab}
-                onClick={() => setEmailGuideTab(tab)}
-                className={`flex-1 py-2 rounded-xl text-xs font-black tracking-wide transition-all cursor-pointer ${
-                  emailGuideTab === tab
-                    ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shadow-sm'
-                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Scrollable Content */}
-          <div className="px-6 pb-6 pt-4 space-y-4 overflow-y-auto flex-1 text-xs text-[#1A3827] dark:text-slate-200 leading-relaxed font-semibold">
-            {emailGuideTab === 'tallyin' && (
-              <div className="space-y-4 font-semibold text-[#1A3827] dark:text-slate-200">
-                <div className="bg-[#EAF0EC] dark:bg-[#1e2d24] border border-[#1A3827]/15 dark:border-[#2f4638] rounded-2xl p-4 text-[11px] space-y-1.5">
-                  <p className="text-emerald-800 dark:text-emerald-300 font-extrabold text-xs">🚀 Recommended: Tallyin Default Mailer</p>
-                  <p className="text-[#5C6E5C] dark:text-slate-400 font-medium font-semibold">
-                    This is a completely free, centralized email sender configured for Tallyin. It requires absolutely no script setup, account registration, or key configuration on your end.
-                  </p>
-                </div>
-
-                <div className="space-y-3.5">
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">1</span>
-                    <div>
-                      <strong className="font-extrabold">Select Tallyin Default Mailer:</strong> Choose <span className="font-bold text-[#1A3827] dark:text-white">Tallyin Default Mailer</span> as your notification method in settings.
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">2</span>
-                    <div>
-                      <strong className="font-extrabold">Define Recipients:</strong> Enter the comma-separated email addresses of the roommates you want to alert (e.g., <code className="font-mono text-emerald-600 dark:text-[#A3E635]">friend1@gmail.com, friend2@gmail.com</code>).
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">3</span>
-                    <div>
-                      <strong className="font-extrabold">Automated Alerts:</strong> Any time you or your roommates add, edit, or settle expenses, Tallyin will automatically dispatch a styled, real-time alert email.
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">4</span>
-                    <div>
-                      <strong className="font-extrabold">Check Spam/Junk:</strong> If someone doesn't receive the alerts, please ask them to check their spam or junk folder and mark it as "Not Spam".
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {emailGuideTab === 'emailjs' && (
-              <div className="space-y-4">
-                <p className="text-[#5C6E5C] dark:text-slate-400 font-medium">
-                  EmailJS lets you send transactional emails directly from the browser using your own personal email provider (Gmail, Outlook, etc.).
-                </p>
-
-                <div className="space-y-3.5">
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">1</span>
-                    <div>
-                      <strong className="font-extrabold">Create an Account:</strong> Sign up for free at <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-[#A3E635] underline font-bold">emailjs.com</a>.
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">2</span>
-                    <div>
-                      <strong className="font-extrabold">Add Email Service:</strong> In your EmailJS dashboard, go to <span className="px-1.5 py-0.5 bg-[#F6F8F6] dark:bg-slate-800 rounded font-mono text-[10px] font-bold">Email Services</span>, add a provider (e.g. Gmail), and copy the <span className="font-extrabold">Service ID</span>.
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">3</span>
-                    <div>
-                      <strong className="font-extrabold">Create Email Template:</strong> Go to <span className="px-1.5 py-0.5 bg-[#F6F8F6] dark:bg-slate-800 rounded font-mono text-[10px] font-bold">Email Templates</span> and click <span className="font-bold">Create New Template</span>. Copy the <span className="font-extrabold">Template ID</span>.
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px] mt-0.5">4</span>
-                    <div className="flex-1">
-                      <strong className="font-extrabold">Configure Template Fields:</strong> Edit your template's subject and body. You must use the following exact placeholders:
-                      <div className="mt-2 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-[#F6F8F6] dark:bg-slate-950 border-b border-[#E3E8E3] dark:border-slate-800 text-[10px] text-[#5C6E5C] dark:text-slate-400">
-                              <th className="p-2 font-bold">Placeholder</th>
-                              <th className="p-2 font-bold">Description</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[#E3E8E3] dark:divide-slate-800 text-[11px] font-semibold">
-                            <tr>
-                              <td className="p-2 font-mono text-emerald-600 dark:text-[#A3E635]">{"{{to_email}}"}</td>
-                              <td className="p-2">The recipient's email address.</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-mono text-emerald-600 dark:text-[#A3E635]">{"{{title}}"}</td>
-                              <td className="p-2">The description of the expense.</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-mono text-emerald-600 dark:text-[#A3E635]">{"{{amount}}"}</td>
-                              <td className="p-2">The amount (e.g. ₹1,500).</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-mono text-emerald-600 dark:text-[#A3E635]">{"{{paid_by}}"}</td>
-                              <td className="p-2">Who paid for the expense.</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-mono text-emerald-600 dark:text-[#A3E635]">{"{{split_type}}"}</td>
-                              <td className="p-2">The split arrangement details.</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-mono text-emerald-600 dark:text-[#A3E635]">{"{{room_id}}"}</td>
-                              <td className="p-2">Room name or unique code.</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">5</span>
-                    <div>
-                      <strong className="font-extrabold">Retrieve Public Key:</strong> Navigate to <span className="px-1.5 py-0.5 bg-[#F6F8F6] dark:bg-slate-800 rounded font-mono text-[10px] font-bold">Account &gt; API Keys</span> in the bottom-left of the EmailJS dashboard. Copy the <span className="font-extrabold">Public Key</span>.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {emailGuideTab === 'google-script' && (
-              <div className="space-y-4">
-                <p className="text-[#5C6E5C] dark:text-slate-400 font-medium">
-                  Google Apps Script allows you to set up a custom email webhook endpoint using your Google Account for free, without any third-party limitations.
-                </p>
-
-                <div className="space-y-3.5">
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">1</span>
-                    <div>
-                      <strong className="font-extrabold">Open Apps Script:</strong> Go to <a href="https://script.google.com/" target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-[#A3E635] underline font-bold">script.google.com</a> and click <span className="font-bold">New Project</span>.
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px] mt-1">2</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center mb-1.5">
-                        <strong className="font-extrabold">Paste Deployment Code:</strong>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(appsScriptCode);
-                            triggerToast('Apps Script code copied!');
-                          }}
-                          className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-[#A3E635] hover:opacity-85 font-black focus:outline-none cursor-pointer bg-emerald-50 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-emerald-100 dark:border-slate-700"
-                        >
-                          <Copy className="w-2.5 h-2.5" /> Copy Code
-                        </button>
-                      </div>
-                      <pre className="p-3 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl overflow-x-auto font-mono text-[10px] border border-[#E3E8E3] dark:border-slate-800 text-slate-700 dark:text-slate-300 max-h-48">
-                        {appsScriptCode}
-                      </pre>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px] mt-1">3</span>
-                    <div>
-                      <strong className="font-extrabold">Deploy Web App:</strong>
-                      <ul className="list-disc pl-4 mt-1 space-y-1 text-[#5C6E5C] dark:text-slate-400 font-semibold">
-                        <li>Click <span className="font-extrabold text-[#1A3827] dark:text-white">Deploy &gt; New deployment</span>.</li>
-                        <li>Click the gear icon next to "Select type" and choose <span className="font-extrabold text-[#1A3827] dark:text-white">Web app</span>.</li>
-                        <li>Configure Settings:
-                          <ul className="list-circle pl-4 mt-1 space-y-0.5">
-                            <li>Execute as: <span className="font-mono text-emerald-600 dark:text-[#A3E635]">Me (your-email@gmail.com)</span></li>
-                            <li>Who has access: <span className="font-mono text-emerald-600 dark:text-[#A3E635]">Anyone</span> (allows client browser requests)</li>
-                          </ul>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-extrabold shrink-0 text-[10px]">4</span>
-                    <div>
-                      <strong className="font-extrabold">Authorize &amp; Link URL:</strong> Click <span className="font-bold">Deploy</span>, authorize permissions (allowing the script to send emails on your behalf), copy the generated <span className="font-extrabold">Web App URL</span>, and paste it into Tallyin settings.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="px-6 py-4 bg-[#F6F8F6] dark:bg-slate-950 border-t border-[#E3E8E3] dark:border-slate-800 flex justify-end shrink-0 gap-2">
-            <button
-              onClick={() => setShowEmailGuide(false)}
-              className="px-4 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-[#1A3827] font-black text-xs rounded-xl hover:opacity-90 active:scale-95 transition-all cursor-pointer"
-            >
-              Close
-            </button>
-          </div>
-
-        </div>
-      </div>
-    );
-  }
 
   // ==========================================
   // CUSTOM INVITE MODAL
