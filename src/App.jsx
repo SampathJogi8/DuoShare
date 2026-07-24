@@ -577,7 +577,6 @@ export default function App() {
   // Notification Config States
   const [notificationMethod, setNotificationMethod] = useState(() => localStorage.getItem('notificationMethod') || 'tallyin');
   const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(() => localStorage.getItem('pushNotificationsEnabled') === 'true');
-  const [recipientEmails, setRecipientEmails] = useState(() => localStorage.getItem('recipientEmails') || '');
   
   // Log download states
   const [logStartDate, setLogStartDate] = useState('');
@@ -1561,21 +1560,7 @@ export default function App() {
     setRoomCreatedBy(null);
   }, [userRoomId]);
 
-  // Auto-populate recipientEmails from room members' Google emails if not configured yet
-  useEffect(() => {
-    if (members && members.length > 0 && user) {
-      const otherEmails = members
-        .filter(m => m.uid !== user.id && m.email)
-        .map(m => m.email)
-        .join(', ');
-      
-      const stored = localStorage.getItem('recipientEmails');
-      if (stored === null && otherEmails) {
-        setRecipientEmails(otherEmails);
-        localStorage.setItem('recipientEmails', otherEmails);
-      }
-    }
-  }, [members, user]);
+
 
   // Supabase Real-time Sync
   useEffect(() => {
@@ -2836,10 +2821,9 @@ export default function App() {
     const messageText = `Tallyin Alert: A new expense "${transaction.title}" of ${formattedAmount} was added by ${transaction.paidBy} in Room ${roomDisplayName}.`;
     
     // Automatically include all other room members' emails
-    const emailList = [...new Set([
-      ...recipientEmails.split(',').map(e => e.trim()).filter(Boolean),
-      ...members.filter(m => m.uid !== user?.id && m.email).map(m => m.email)
-    ])];
+    const emailList = members
+      .filter(m => m.uid !== user?.id && m.email)
+      .map(m => m.email);
     
     if (emailList.length === 0) return;
 
@@ -11602,24 +11586,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <div className="bg-emerald-50/50 dark:bg-[#1e2d24] border border-emerald-100 dark:border-[#2f4638] rounded-2xl p-3 text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold space-y-1">
                   <p>✨ Centralized Mailer Active</p>
                   <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
-                    Emails are sent automatically from our centralized alert address. No personal setup or keys are needed!
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Recipient Emails (comma-separated)</label>
-                  <input
-                    type="text"
-                    placeholder="email1@example.com, email2@example.com"
-                    value={recipientEmails}
-                    onChange={(e) => {
-                      setRecipientEmails(e.target.value);
-                      localStorage.setItem('recipientEmails', e.target.value);
-                    }}
-                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
-                  />
-                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-1">
-                    💡 Filled automatically with your roommates' Google Sign-in emails. Add any extra emails as needed.
+                    Alerts are sent automatically to all roommates' Google Sign-in email addresses. No personal setup or inputs required!
                   </p>
                 </div>
               </div>
