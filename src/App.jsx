@@ -1712,6 +1712,8 @@ export default function App() {
     };
   }, [user, userRoomId, fetchTransactions, fetchReceipts, fetchRoomSettings, fetchMembers, fetchActivityLogs]);
 
+
+
   // Check for due recurring expenses (Feature 1)
   useEffect(() => {
     if (!transactions.length || !user) return;
@@ -1876,16 +1878,18 @@ export default function App() {
     }
   };
 
-  // Delete Room handler — HOST ONLY
-  const handleDeleteRoom = async () => {
+  // Delete Room handler
+  const handleDeleteRoom = async (bypassHostCheck = false, skipConfirmation = false) => {
     if (!userRoomId) return;
     // Permission check
-    if (user && roomCreatedBy && roomCreatedBy !== user.id) {
+    if (!bypassHostCheck && user && roomCreatedBy && roomCreatedBy !== user.id) {
       triggerToast('Only the room host can delete the room.');
       return;
     }
-    const confirmed = window.confirm(`Delete room ${userRoomId} permanently? All transactions and data will be lost. This cannot be undone.`);
-    if (!confirmed) return;
+    if (!skipConfirmation) {
+      const confirmed = window.confirm(`Delete room ${userRoomId} permanently? All transactions and data will be lost. This cannot be undone.`);
+      if (!confirmed) return;
+    }
     try {
       // 1. Generate and download JSON backup
       const backupData = {
@@ -1911,6 +1915,16 @@ export default function App() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       triggerToast('Room backup JSON downloaded successfully!');
+
+      // 1b. Generate and download CSV statement
+      try {
+        const statementList = transactions.filter(t => t.category !== '__DELETE_PROPOSAL__');
+        if (statementList.length > 0) {
+          exportToCSV(statementList);
+        }
+      } catch (e) {
+        console.warn("Failed to auto-download statement CSV:", e);
+      }
 
       // 2. Delete room from rooms table (will cascade delete members, transactions, receipts)
       const { error: deleteError } = await supabase
@@ -1960,6 +1974,149 @@ export default function App() {
       setOnboardingStep('selection');
     }
   };
+
+  // Delete Room Proposal Memo
+  const deleteProposal = useMemo(() => {
+    return transactions.find(t => t.category === '__DELETE_PROPOSAL__');
+  }, [transactions]);
+
+  // Propose Room Deletion
+  const handleProposeDeleteRoom = async () => {
+    if (!userRoomId || !user) return;
+    const confirmed = window.confirm("Are you sure you want to propose deleting this room permanently? This requires approval from all members.");
+    if (!confirmed) return;
+
+    try {
+      // Create a __DELETE_PROPOSAL__ transaction
+      const proposalTx = {
+        room_id: userRoomId,
+        title: 'Delete Room Proposal',
+        amount: 0,
+        category: '__DELETE_PROPOSAL__',
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+        paid_by: userNickname,
+        paid_by_uid: user.id,
+        is_shared: true,
+        split_type: 'equal',
+        splits: [
+          {
+            uid: user.id,
+            nickname: userNickname,
+            approved: true,
+            timestamp: new Date().toISOString()
+          }
+        ],
+        created_by: user.id
+      };
+
+      const { error } = await supabase
+        .from('transactions')
+        .insert(proposalTx);
+
+      if (error) throw error;
+
+      await logActivity('settings', `${userNickname} proposed room deletion`);
+      triggerToast('Room deletion proposal created!');
+      
+      // If there is only 1 member in the room, met immediately
+      if (members.length <= 1) {
+        await handleDeleteRoom(true, true);
+      }
+    } catch (err) {
+      console.error('Propose delete room error:', err);
+      triggerToast(`Failed to propose room deletion: ${err.message}`);
+    }
+  };
+
+  // Approve Room Deletion
+  const handleApproveDeleteRoom = async (proposalTx) => {
+    if (!userRoomId || !user || !proposalTx) return;
+
+    // Check if already approved
+    const existingSplits = proposalTx.splits || [];
+    if (existingSplits.some(s => s.uid === user.id)) {
+      triggerToast('You have already approved this deletion proposal.');
+      return;
+    }
+
+    try {
+      const updatedSplits = [
+        ...existingSplits,
+        {
+          uid: user.id,
+          nickname: userNickname,
+          approved: true,
+          timestamp: new Date().toISOString()
+        }
+      ];
+
+      // Update proposal transaction
+      const { error } = await supabase
+        .from('transactions')
+        .update({ splits: updatedSplits })
+        .eq('id', proposalTx.id);
+
+      if (error) throw error;
+
+      await logActivity('settings', `${userNickname} approved room deletion`);
+      triggerToast('Approval submitted!');
+
+      // Check if all members have now approved
+      const approvedUids = new Set(updatedSplits.map(s => s.uid));
+      const allApproved = members.every(m => approvedUids.has(m.uid));
+
+      if (allApproved) {
+        triggerToast('All members have approved! Finalizing deletion...');
+        // Perform actual deletion (bypass check is true, skipConfirmation is true)
+        await handleDeleteRoom(true, true);
+      }
+    } catch (err) {
+      console.error('Approve delete room error:', err);
+      triggerToast(`Failed to approve room deletion: ${err.message}`);
+    }
+  };
+
+  // Reject / Cancel Room Deletion
+  const handleRejectDeleteRoom = async (proposalTx) => {
+    if (!userRoomId || !proposalTx) return;
+    const confirmed = window.confirm("Are you sure you want to cancel the room deletion proposal? This will reject the deletion for all members.");
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', proposalTx.id);
+
+      if (error) throw error;
+
+      await logActivity('settings', `${userNickname} cancelled the room deletion proposal`);
+      triggerToast('Room deletion proposal cancelled.');
+    } catch (err) {
+      console.error('Reject delete room error:', err);
+      triggerToast(`Failed to cancel room deletion: ${err.message}`);
+    }
+  };
+
+  // Auto-delete trigger for host when all members approve a deletion proposal
+  useEffect(() => {
+    if (!userRoomId || !user) return;
+    const isHost = roomCreatedBy && roomCreatedBy === user.id;
+    if (!isHost || !deleteProposal || members.length === 0) return;
+
+    const approvedSplits = deleteProposal.splits || [];
+    const approvedUids = new Set(approvedSplits.map(s => s.uid));
+    const allApproved = members.every(m => approvedUids.has(m.uid));
+
+    if (allApproved) {
+      console.log('Host client detected all approvals. Executing room deletion...');
+      const timer = setTimeout(() => {
+        handleDeleteRoom(true, true);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [deleteProposal, members, user, userRoomId, roomCreatedBy, handleDeleteRoom]);
 
   // Leave Room handler — for NON-HOST members to voluntarily leave
   const handleLeaveRoom = async () => {
@@ -2356,7 +2513,7 @@ export default function App() {
 
   // Dynamically calculated values based on synced transactions state
   const computedStats = useMemo(() => {
-    const data = transactions.filter(t => t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__');
+    const data = transactions.filter(t => t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__' && t.category !== '__DELETE_PROPOSAL__');
     const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
 
     // Calculate totals
@@ -4203,7 +4360,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
   const filteredTransactions = useMemo(() => {
     const currentUid = user?.id || 'anonymous';
     const activeTxList = transactions.filter(t => {
-      if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__CHORE__') return false;
+      if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__') return false;
       if (t.isShared) return true; // always show shared bills
       // For personal expenses: hide if the expense belongs solely to the current user
       const isMineOnly =
@@ -4234,7 +4391,8 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       t.category !== '__FUND_INIT__' &&
       t.category !== '__FUND_SPEND__' &&
       t.category !== '__SHOPPING__' &&
-      t.category !== '__CHORE__'
+      t.category !== '__CHORE__' &&
+      t.category !== '__DELETE_PROPOSAL__'
     );
   }, [formFor, transactions, editingTransaction]);
 
@@ -4262,7 +4420,8 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
              t.category !== '__FUND_INIT__' &&
              t.category !== '__FUND_SPEND__' &&
              t.category !== '__SHOPPING__' &&
-             t.category !== '__CHORE__';
+             t.category !== '__CHORE__' &&
+             t.category !== '__DELETE_PROPOSAL__';
     });
   }, [transactions, user]);
 
@@ -8166,30 +8325,96 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             </div>
 
-            {/* Danger Zone — host only */}
-            {isHost ? (
-              <div className="border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/10 rounded-2xl p-4 space-y-2">
-                <p className="text-xs font-black text-rose-700 dark:text-rose-400">Danger Zone</p>
-                <p className="text-[11px] text-rose-600/80 dark:text-rose-400/70">Deleting the room will permanently remove all transactions, members, and data. This cannot be undone.</p>
-                <button
-                  onClick={() => { setIsManageRoomOpen(false); handleDeleteRoom(); }}
-                  className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
-                >
-                  Delete Room Permanently
-                </button>
-              </div>
-            ) : (
-              <div className="border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/10 rounded-2xl p-4 space-y-2">
-                <p className="text-xs font-black text-amber-700 dark:text-amber-400">Leave Room</p>
-                <p className="text-[11px] text-amber-600/80 dark:text-amber-400/70">You can leave this room at any time. Your past expenses will remain in the room ledger.</p>
-                <button
-                  onClick={() => { setIsManageRoomOpen(false); handleLeaveRoom(); }}
-                  className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-all"
-                >
-                  Leave Room
-                </button>
-              </div>
-            )}
+            {/* Danger Zone — consensus-based deletion */}
+            <div className="border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/10 rounded-2xl p-4 space-y-3">
+              <p className="text-xs font-black text-rose-700 dark:text-rose-400">Danger Zone</p>
+              
+              {!deleteProposal ? (
+                <>
+                  <p className="text-[11px] text-rose-600/80 dark:text-rose-400/70">
+                    Deleting the room will permanently remove all transactions, members, and data. This requires approval from all room members.
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (members.length <= 1) {
+                        handleDeleteRoom();
+                      } else {
+                        handleProposeDeleteRoom();
+                      }
+                    }}
+                    className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
+                  >
+                    {members.length <= 1 ? "Delete Room Permanently" : "Propose Room Deletion"}
+                  </button>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-rose-100 dark:border-rose-950 space-y-2">
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Delete Room Proposal Active
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Proposed by <span className="font-semibold text-rose-600 dark:text-rose-400">{deleteProposal.paidBy}</span>. All members must approve.
+                    </p>
+                    
+                    {/* Status grid */}
+                    <div className="space-y-1.5 pt-1">
+                      {members.map(m => {
+                        const approved = (deleteProposal.splits || []).some(s => s.uid === m.uid);
+                        return (
+                          <div key={m.uid} className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 dark:text-slate-300 font-medium">{m.nickname}</span>
+                            {approved ? (
+                              <span className="text-emerald-600 dark:text-[#A3E635] font-bold flex items-center gap-1">
+                                ✓ Approved
+                              </span>
+                            ) : (
+                              <span className="text-amber-500 font-medium flex items-center gap-1">
+                                ◷ Pending
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {!(deleteProposal.splits || []).some(s => s.uid === currentUid) ? (
+                      <button
+                        onClick={() => handleApproveDeleteRoom(deleteProposal)}
+                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all"
+                      >
+                        Approve Deletion
+                      </button>
+                    ) : (
+                      <div className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-center font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-700">
+                        Approved (Waiting...)
+                      </div>
+                    )}
+                    
+                    <button
+                      onClick={() => handleRejectDeleteRoom(deleteProposal)}
+                      className="py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Leave room is still shown to non-hosts for convenience */}
+              {!isHost && (
+                <div className="pt-2 border-t border-rose-100 dark:border-rose-950/40">
+                  <button
+                    onClick={() => { setIsManageRoomOpen(false); handleLeaveRoom(); }}
+                    className="w-full py-1.5 border border-amber-200 dark:border-amber-900/40 hover:bg-amber-50 dark:hover:bg-amber-950/10 text-amber-600 dark:text-amber-400 font-bold text-[10px] rounded-lg transition-all"
+                  >
+                    Leave Room Instead
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -11306,7 +11531,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <button 
                   onClick={() => {
                     const month = getLocalMonthStr();
-                    const monthTxs = transactions.filter(t => t.date && t.date.startsWith(month) && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__' && t.category !== 'Payment');
+                    const monthTxs = transactions.filter(t => t.date && t.date.startsWith(month) && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__' && t.category !== '__DELETE_PROPOSAL__' && t.category !== 'Payment');
                     const total = monthTxs.reduce((s, t) => s + (Number(t.amount) || 0), 0);
                     const categories = {};
                     monthTxs.forEach(t => { categories[t.category || 'Other'] = (categories[t.category || 'Other'] || 0) + Number(t.amount || 0); });
@@ -11845,7 +12070,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         // 1. Exclude system categories
         // 2. Filter by selectedMonth if not 'All'
         const filteredTx = transactions.filter(t => {
-          if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__CHORE__' || t.category === 'Payment') return false;
+          if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__' || t.category === 'Payment') return false;
           return selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
         });
 
