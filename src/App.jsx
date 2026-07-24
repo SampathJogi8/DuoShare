@@ -2856,7 +2856,15 @@ export default function App() {
       .filter(m => m.uid !== user?.id && m.email)
       .map(m => m.email);
     
-    if (emailList.length === 0) return;
+    console.log('[Tallyin Email Debug] All members:', members.map(m => ({ uid: m.uid, nickname: m.nickname, email: m.email })));
+    console.log('[Tallyin Email Debug] Current user id:', user?.id);
+    console.log('[Tallyin Email Debug] Email list to notify:', emailList);
+    console.log('[Tallyin Email Debug] Notification method:', notificationMethod);
+    
+    if (emailList.length === 0) {
+      console.warn('[Tallyin Email Debug] No emails found for other members — email skipped.');
+      return;
+    }
 
     const htmlBody = `
       <div style="background-color: #F8FAFC; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
