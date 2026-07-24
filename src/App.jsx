@@ -3599,7 +3599,7 @@ export default function App() {
         }
 
         // Send client-side email notifications if configured
-        if (notificationMethod !== 'none' && recipientEmails) {
+        if (notificationMethod !== 'none') {
           sendEmailNotification(newPayload);
           triggerToast(`Added! 📧 Email notification sent.`);
         } else {
