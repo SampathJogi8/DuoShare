@@ -2886,7 +2886,10 @@ export default function App() {
     const parsedTimeObj = parseTimeAndHistory(rawTime);
     const txTime = parsedTimeObj.time || (rawTime ? String(rawTime).split('|')[0] : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
     const txDateTime = `${txDate} • ${txTime}`;
-    const txSplit = transaction?.split || (transaction?.isShared ? 'Split equally' : 'Personal');
+    const isSettlement = actionType === 'settle' || txCategory === 'Payment' || (txTitle && txTitle.startsWith('Payment:'));
+    const txSplit = isSettlement
+      ? 'Direct Settlement Transfer'
+      : (transaction?.split || (transaction?.isShared ? 'Split equally' : 'Personal'));
     const txIdFormatted = formatTxId(transaction?.id);
     
     let actionTitle = 'New Expense Added';
@@ -2948,10 +2951,32 @@ export default function App() {
       return;
     }
 
-    // Generate Roommate Split Share Breakdown HTML
+    // Generate Roommate Split Share Breakdown or Settlement Details HTML
     let splitRowsHtml = '';
     const splitsArr = Array.isArray(transaction?.splits) ? transaction.splits : [];
-    if (splitsArr.length > 0) {
+    if (isSettlement) {
+      const receiverMember = splitsArr.find(s => s.uid !== transaction?.paidByUid || (s.amount ?? 0) > 0);
+      const receiverName = receiverMember?.nickname || (txTitle.includes(' to ') ? txTitle.split(' to ')[1] : 'Roommate');
+      splitRowsHtml = `
+        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px 24px; margin-bottom: 28px;">
+          <div style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">SETTLEMENT PAYMENT DETAILS</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <tr style="border-bottom: 1px solid #E2E8F0;">
+              <td style="padding: 10px 0; color: #0F172A; font-weight: 600;">Paid By (Sender)</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: 800; color: #0F172A;">${txPaidBy}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #E2E8F0;">
+              <td style="padding: 10px 0; color: #0F172A; font-weight: 600;">Paid To (Receiver)</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: 800; color: #1A3827;">${receiverName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color: #0F172A; font-weight: 600;">Status</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: 800; color: #16A34A;">Fully Settled</td>
+            </tr>
+          </table>
+        </div>
+      `;
+    } else if (splitsArr.length > 0) {
       const rows = splitsArr.map(s => {
         const amt = Number(s.amount ?? 0);
         const name = s.nickname || s.name || 'Roommate';
