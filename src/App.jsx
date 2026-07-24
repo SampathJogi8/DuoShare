@@ -2855,45 +2855,66 @@ export default function App() {
 
   // Client-Side Email Notification Dispatcher
   const sendEmailNotification = async (transaction, actionType = 'add') => {
-    if (!notificationMethod || notificationMethod === 'none') return;
-    
-    const formattedAmount = `₹${transaction.amount.toLocaleString("en-IN")}`;
+    if (notificationMethod === 'none') return;
+
+    const rawAmt = Number(transaction?.amount ?? 0);
+    const amountVal = isNaN(rawAmt) ? 0 : rawAmt;
+    const formattedAmount = `₹${amountVal.toLocaleString("en-IN")}`;
     const roomDisplayName = userRoomId || 'TL-ROOM';
+    const txTitle = transaction?.title || 'Expense';
+    const txPaidBy = transaction?.paidBy || transaction?.paid_by || 'Roommate';
+    const txSplit = transaction?.split || (transaction?.isShared ? 'Split equally' : 'Personal');
     
     let actionTitle = 'New Expense Added';
     let actionBadge = 'ACTIVITY ALERT';
-    let subjectText = `Tallyin Expense: ${transaction.title} (${formattedAmount})`;
+    let subjectText = `Tallyin Expense: ${txTitle} (${formattedAmount})`;
     let introText = `A new roommate transaction has been logged in room <strong>${roomDisplayName}</strong>. Here are the details of the entry:`;
 
     if (actionType === 'update' || actionType === 'edit') {
       actionTitle = 'Expense Updated';
       actionBadge = 'EXPENSE UPDATED';
-      subjectText = `Tallyin Expense Updated: ${transaction.title} (${formattedAmount})`;
-      introText = `An existing expense "${transaction.title}" was updated in room <strong>${roomDisplayName}</strong> by <strong>${transaction.paidBy || 'a roommate'}</strong>. Here are the updated details:`;
+      subjectText = `Tallyin Expense Updated: ${txTitle} (${formattedAmount})`;
+      introText = `An existing expense "${txTitle}" was updated in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the updated details:`;
     } else if (actionType === 'settle') {
       actionTitle = 'Payment Settled';
       actionBadge = 'SETTLEMENT RECORDED';
-      subjectText = `Tallyin Settlement Recorded: ${transaction.title} (${formattedAmount})`;
-      introText = `A settlement payment of <strong>${formattedAmount}</strong> was recorded in room <strong>${roomDisplayName}</strong> by <strong>${transaction.paidBy || 'a roommate'}</strong>. Here are the settlement details:`;
+      subjectText = `Tallyin Settlement Recorded: ${txTitle} (${formattedAmount})`;
+      introText = `A settlement payment of <strong>${formattedAmount}</strong> was recorded in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the settlement details:`;
     }
 
-    const messageText = `Tallyin Alert [${actionTitle}]: "${transaction.title}" of ${formattedAmount} by ${transaction.paidBy} in Room ${roomDisplayName}.`;
+    const messageText = `Tallyin Alert [${actionTitle}]: "${txTitle}" of ${formattedAmount} by ${txPaidBy} in Room ${roomDisplayName}.`;
 
-    // Build recipient list — all members who have a valid email stored
-    const allMemberEmails = members
+    // 1. Get emails from React state
+    const stateEmails = members
       .map(m => m.email)
       .filter(e => e && typeof e === 'string' && e.includes('@'));
-    
-    // Always include current user's own email if valid
+
+    // 2. Fetch fresh emails from Supabase DB to ensure no roommate is missed
+    let dbEmails = [];
+    if (userRoomId) {
+      try {
+        const { data: dbMembers } = await supabase
+          .from('members')
+          .select('email')
+          .eq('room_id', userRoomId);
+        if (dbMembers) {
+          dbEmails = dbMembers
+            .map(m => m.email)
+            .filter(e => e && typeof e === 'string' && e.includes('@'));
+        }
+      } catch (err) {
+        console.warn('[Tallyin Email Debug] DB member fetch warning:', err);
+      }
+    }
+
+    // 3. Include active user's own email if valid
     const currentUserEmail = (user?.email && typeof user.email === 'string' && user.email.includes('@')) ? user.email : '';
-    const emailSet = new Set(allMemberEmails);
+    const emailSet = new Set([...stateEmails, ...dbEmails]);
     if (currentUserEmail) emailSet.add(currentUserEmail);
     const emailList = [...emailSet].map(e => e.trim()).filter(Boolean);
 
     console.log('[Tallyin Email Debug] Action Type:', actionType);
-    console.log('[Tallyin Email Debug] All members:', members.map(m => ({ uid: m.uid, nickname: m.nickname, email: m.email })));
-    console.log('[Tallyin Email Debug] Current user email:', currentUserEmail);
-    console.log('[Tallyin Email Debug] Final email list:', emailList);
+    console.log('[Tallyin Email Debug] All member emails found:', emailList);
 
     if (emailList.length === 0) {
       console.warn('[Tallyin Email Debug] No valid recipient emails found — email notification skipped.');
@@ -2943,7 +2964,7 @@ export default function App() {
                 <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
                   <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                     <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">DESCRIPTION</span>
-                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.title}</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txTitle}</span>
                   </div>
                 </td>
                 <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
@@ -2957,13 +2978,13 @@ export default function App() {
                 <td style="width: 50%; padding-right: 8px;">
                   <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                     <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">PAID BY</span>
-                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.paidBy || 'Roommate'}</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txPaidBy}</span>
                   </div>
                 </td>
                 <td style="width: 50%; padding-left: 8px;">
                   <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                     <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">SPLIT METHOD</span>
-                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.split || (transaction.isShared ? 'Split equally' : 'Personal')}</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txSplit}</span>
                   </div>
                 </td>
               </tr>
@@ -2990,27 +3011,25 @@ export default function App() {
 
     const activeScriptUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
 
-    if (notificationMethod === 'tallyin') {
-      try {
-        for (const email of emailList) {
-          await fetch(activeScriptUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-              'Content-Type': 'text/plain',
-            },
-            body: JSON.stringify({
-              to: email,
-              subject: subjectText,
-              htmlBody: htmlBody,
-              textBody: messageText
-            })
-          });
-        }
-        console.log(`Central Tallyin email notification (${actionType}) sent successfully`);
-      } catch (err) {
-        console.error(`Failed to send central email notification (${actionType}):`, err);
+    try {
+      for (const email of emailList) {
+        await fetch(activeScriptUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'text/plain',
+          },
+          body: JSON.stringify({
+            to: email,
+            subject: subjectText,
+            htmlBody: htmlBody,
+            textBody: messageText
+          })
+        });
       }
+      console.log(`Central Tallyin email notification (${actionType}) sent successfully to:`, emailList);
+    } catch (err) {
+      console.error(`Failed to send central email notification (${actionType}):`, err);
     }
   };
 
@@ -3101,6 +3120,11 @@ export default function App() {
       
       await logActivity('edit', logMsg);
       triggerToast(isCurrentlyPaidBack ? 'Marked as unpaid.' : 'Marked as paid back!');
+
+      if (notificationMethod !== 'none') {
+        sendEmailNotification({ ...t, split: newSplit }, 'update').catch(err => console.warn('Paid back email failed:', err));
+      }
+
       fetchTransactions(userRoomId);
     } catch (err) {
       console.error("Error toggling paid back state:", err);
@@ -9169,6 +9193,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           splitType: payload.split_type 
         } : t));
         triggerToast('Payment updated successfully.');
+
+        if (notificationMethod !== 'none') {
+          sendEmailNotification({ title: payload.title, amount: payload.amount, paidBy: nickname }, 'update').catch(err => console.warn('Fund update email failed:', err));
+        }
       } else {
         // Create new fund spend
         const { data, error } = await supabase
@@ -9201,6 +9229,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           setTransactions(prev => [newTx, ...prev]);
         }
         triggerToast('Payment recorded successfully.');
+
+        if (notificationMethod !== 'none') {
+          sendEmailNotification({ title: payload.title, amount: payload.amount, paidBy: nickname, isShared: false, split: selectedFundId }, 'add').catch(err => console.warn('Fund spend email failed:', err));
+        }
       }
       closeAddFundExpenseModal();
       fetchTransactions(userRoomId);
