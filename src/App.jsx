@@ -3177,6 +3177,11 @@ export default function App() {
 
       await logActivity('edit', `${userNickname} added ₹${addedAmount} to existing expense "${existingTx.title}"`);
       triggerToast(`Added ₹${addedAmount} to "${existingTx.title}" successfully!`);
+
+      if (notificationMethod !== 'none') {
+        sendEmailNotification({ ...existingTx, amount: newAmount }, 'update').catch(err => console.warn('Merge expense email failed:', err));
+      }
+
       fetchTransactions(userRoomId);
     } catch (err) {
       console.error("Error merging transactions:", err);
