@@ -2880,13 +2880,17 @@ export default function App() {
     const roomDisplayName = activeRoomId;
     const txTitle = transaction?.title || 'Expense';
     const txPaidBy = transaction?.paidBy || transaction?.paid_by || 'Roommate';
+    const txCategory = transaction?.category || 'General';
+    const txDate = transaction?.date || getLocalDateStr();
+    const txTime = transaction?.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    const txDateTime = `${txDate} • ${txTime}`;
     const txSplit = transaction?.split || (transaction?.isShared ? 'Split equally' : 'Personal');
     const txIdFormatted = formatTxId(transaction?.id);
     
     let actionTitle = 'New Expense Added';
     let actionBadge = 'ACTIVITY ALERT';
     let subjectText = `Tallyin Expense [${txIdFormatted}]: ${txTitle} (${formattedAmount})`;
-    let introText = `A new roommate transaction (ID: <strong>${txIdFormatted}</strong>) has been logged in room <strong>${roomDisplayName}</strong>. Here are the details of the entry:`;
+    let introText = `A new roommate transaction (ID: <strong>${txIdFormatted}</strong>) has been logged in room <strong>${roomDisplayName}</strong>. Here are the full details of the entry:`;
 
     if (actionType === 'update' || actionType === 'edit') {
       actionTitle = 'Expense Updated';
@@ -2900,7 +2904,7 @@ export default function App() {
       introText = `A settlement payment of <strong>${formattedAmount}</strong> (ID: <strong>${txIdFormatted}</strong>) was recorded in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the settlement details:`;
     }
 
-    const messageText = `Tallyin Alert [${actionTitle}] (ID: ${txIdFormatted}): "${txTitle}" of ${formattedAmount} by ${txPaidBy} in Room ${roomDisplayName}.`;
+    const messageText = `Tallyin Alert [${actionTitle}] (ID: ${txIdFormatted}): "${txTitle}" of ${formattedAmount} by ${txPaidBy} in Room ${roomDisplayName} on ${txDateTime}. Category: ${txCategory}, Split: ${txSplit}.`;
 
     // 1. Get emails from React state
     const stateEmails = members
@@ -2942,96 +2946,147 @@ export default function App() {
       return;
     }
 
+    // Generate Roommate Split Share Breakdown HTML
+    let splitRowsHtml = '';
+    const splitsArr = Array.isArray(transaction?.splits) ? transaction.splits : [];
+    if (splitsArr.length > 0) {
+      const rows = splitsArr.map(s => {
+        const amt = Number(s.amount ?? 0);
+        const name = s.nickname || s.name || 'Roommate';
+        return `
+          <tr style="border-bottom: 1px solid #E2E8F0;">
+            <td style="padding: 10px 0; color: #0F172A; font-weight: 600;">${name}</td>
+            <td style="padding: 10px 0; text-align: right; font-weight: 800; color: #1A3827;">₹${amt.toLocaleString('en-IN')}</td>
+          </tr>
+        `;
+      }).join('');
+
+      splitRowsHtml = `
+        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px 24px; margin-bottom: 28px;">
+          <div style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">ROOMMATE SHARE BREAKDOWN</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            ${rows}
+          </table>
+        </div>
+      `;
+    }
+
     const htmlBody = `
-      <div style="background-color: #F8FAFC; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03); border: 1px solid #E2E8F0;">
+      <div style="background-color: #F1F5F9; padding: 40px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid #E2E8F0;">
           
-          <!-- MNC Premium Header Banner -->
-          <div style="background-color: #1A3827; padding: 28px 32px; text-align: left;">
+          <!-- Top MNC Banner -->
+          <div style="background-color: #1A3827; padding: 32px 36px;">
             <table style="width: 100%; border-collapse: collapse;">
               <tr>
                 <td style="vertical-align: middle;">
                   <table style="border-collapse: collapse;">
                     <tr>
-                      <td style="vertical-align: middle; padding-right: 10px;">
-                        <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="T" width="36" height="36" style="display: block; border-radius: 10px;" />
+                      <td style="padding-right: 12px; vertical-align: middle;">
+                        <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="T" width="40" height="40" style="display: block; border-radius: 12px;" />
                       </td>
                       <td style="vertical-align: middle;">
-                        <span style="font-size: 20px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1;">Tallyin</span>
+                        <span style="font-size: 22px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px;">Tallyin</span>
+                        <span style="display: block; font-size: 10px; color: #A3E635; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-top: 2px;">ROOMMATE EXPENSE SYNC</span>
                       </td>
                     </tr>
                   </table>
                 </td>
                 <td style="text-align: right; vertical-align: middle;">
-                  <span style="background-color: rgba(163, 230, 53, 0.2); color: #A3E635; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 6px 12px; border-radius: 20px; font-family: sans-serif;">${actionBadge}</span>
+                  <span style="background-color: rgba(163, 230, 53, 0.2); color: #A3E635; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; padding: 7px 14px; border-radius: 20px; display: inline-block;">${actionBadge}</span>
                 </td>
               </tr>
             </table>
           </div>
 
-          <!-- Content Area -->
-          <div style="padding: 32px;">
-            <h2 style="color: #0F172A; margin: 0 0 8px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; font-family: sans-serif;">${actionTitle}</h2>
-            <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">
+          <!-- Main Body -->
+          <div style="padding: 36px 36px 28px 36px;">
+            <h2 style="color: #0F172A; margin: 0 0 6px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">${actionTitle}</h2>
+            <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 24px 0;">
               Hello Roommate,
             </p>
-            <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">
+            <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 24px 0;">
               ${introText}
             </p>
 
-            <!-- Key Metadata Info Cards -->
+            <!-- Prominent Amount Highlight Card -->
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 5px solid #1A3827; padding: 20px 24px; border-radius: 16px; margin-bottom: 28px;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td>
+                    <span style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px;">TOTAL AMOUNT</span>
+                    <span style="font-size: 28px; font-weight: 900; color: #1A3827; letter-spacing: -0.5px;">${formattedAmount}</span>
+                  </td>
+                  <td style="text-align: right; vertical-align: middle;">
+                    <span style="font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px;">CATEGORY</span>
+                    <span style="background-color: #E2E8F0; color: #0F172A; font-size: 12px; font-weight: 700; padding: 5px 14px; border-radius: 20px; display: inline-block;">${txCategory}</span>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Detailed Grid Info Cards -->
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
               <tr>
                 <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
-                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
-                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">TRANSACTION ID</span>
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">TRANSACTION ID</span>
                     <span style="font-size: 13px; font-weight: 800; color: #1A3827; font-family: monospace;">${txIdFormatted}</span>
                   </div>
                 </td>
                 <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
-                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
-                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">DESCRIPTION</span>
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">DESCRIPTION / TITLE</span>
                     <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txTitle}</span>
                   </div>
                 </td>
               </tr>
               <tr>
                 <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
-                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
-                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">AMOUNT</span>
-                    <span style="font-size: 13px; font-weight: 700; color: #1A3827;">${formattedAmount}</span>
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">PAID BY</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txPaidBy}</span>
                   </div>
                 </td>
                 <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
-                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
-                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">PAID BY</span>
-                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txPaidBy}</span>
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">DATE & TIMESTAMP</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txDateTime}</span>
                   </div>
                 </td>
               </tr>
               <tr>
-                <td colspan="2" style="width: 100%;">
-                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
-                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">SPLIT METHOD</span>
+                <td style="width: 50%; padding-right: 8px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">ROOM CODE</span>
+                    <span style="font-size: 13px; font-weight: 800; color: #1A3827; font-family: monospace;">${roomDisplayName}</span>
+                  </div>
+                </td>
+                <td style="width: 50%; padding-left: 8px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">SPLIT METHOD</span>
                     <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txSplit}</span>
                   </div>
                 </td>
               </tr>
             </table>
 
-            <!-- MNC CTA Action Button -->
-            <div style="text-align: center; margin-top: 32px; margin-bottom: 16px;">
-              <a href="https://tallyin.vercel.app" style="background-color: #1A3827; color: #ffffff; padding: 12px 28px; border-radius: 10px; font-weight: bold; font-size: 14px; text-decoration: none; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif;">View Room Ledger</a>
+            <!-- Roommate Share Breakdown -->
+            ${splitRowsHtml}
+
+            <!-- CTA -->
+            <div style="text-align: center; margin-top: 32px;">
+              <a href="https://tallyin.vercel.app" style="background-color: #1A3827; color: #ffffff; padding: 14px 32px; border-radius: 12px; font-weight: 800; font-size: 14px; text-decoration: none; display: inline-block; box-shadow: 0 4px 12px rgba(26, 56, 39, 0.2);">Open Tallyin Room Ledger</a>
             </div>
           </div>
 
-          <!-- MNC Footer Section -->
-          <div style="background-color: #F8FAFC; padding: 24px 32px; border-top: 1px solid #E2E8F0; text-align: center;">
-            <p style="font-size: 11px; color: #64748B; line-height: 1.5; margin: 0 0 8px 0;">
-              This alert was sent automatically by the Tallyin billing synchronization platform.
+          <!-- Footer -->
+          <div style="background-color: #F8FAFC; padding: 24px 36px; border-top: 1px solid #E2E8F0; text-align: center;">
+            <p style="font-size: 11px; color: #64748B; line-height: 1.5; margin: 0 0 6px 0;">
+              Automated expense alert from Tallyin Roommate Sync Engine for room <strong>${roomDisplayName}</strong>.
             </p>
             <p style="font-size: 10px; color: #94A3B8; margin: 0;">
-              © 2026 Tallyin Corporation. All rights reserved. • Roommate Expense Management Sync
+              © 2026 Tallyin Corporation. All rights reserved.
             </p>
           </div>
         </div>
