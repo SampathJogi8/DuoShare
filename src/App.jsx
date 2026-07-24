@@ -2854,31 +2854,49 @@ export default function App() {
   };
 
   // Client-Side Email Notification Dispatcher
-  const sendEmailNotification = async (transaction) => {
+  const sendEmailNotification = async (transaction, actionType = 'add') => {
     if (!notificationMethod || notificationMethod === 'none') return;
     
     const formattedAmount = `₹${transaction.amount.toLocaleString("en-IN")}`;
     const roomDisplayName = userRoomId || 'TL-ROOM';
-    const messageText = `Tallyin Alert: A new expense "${transaction.title}" of ${formattedAmount} was added by ${transaction.paidBy} in Room ${roomDisplayName}.`;
     
-    // Build recipient list — all members who have a real email stored
+    let actionTitle = 'New Expense Added';
+    let actionBadge = 'ACTIVITY ALERT';
+    let subjectText = `Tallyin Expense: ${transaction.title} (${formattedAmount})`;
+    let introText = `A new roommate transaction has been logged in room <strong>${roomDisplayName}</strong>. Here are the details of the entry:`;
+
+    if (actionType === 'update' || actionType === 'edit') {
+      actionTitle = 'Expense Updated';
+      actionBadge = 'EXPENSE UPDATED';
+      subjectText = `Tallyin Expense Updated: ${transaction.title} (${formattedAmount})`;
+      introText = `An existing expense "${transaction.title}" was updated in room <strong>${roomDisplayName}</strong> by <strong>${transaction.paidBy || 'a roommate'}</strong>. Here are the updated details:`;
+    } else if (actionType === 'settle') {
+      actionTitle = 'Payment Settled';
+      actionBadge = 'SETTLEMENT RECORDED';
+      subjectText = `Tallyin Settlement Recorded: ${transaction.title} (${formattedAmount})`;
+      introText = `A settlement payment of <strong>${formattedAmount}</strong> was recorded in room <strong>${roomDisplayName}</strong> by <strong>${transaction.paidBy || 'a roommate'}</strong>. Here are the settlement details:`;
+    }
+
+    const messageText = `Tallyin Alert [${actionTitle}]: "${transaction.title}" of ${formattedAmount} by ${transaction.paidBy} in Room ${roomDisplayName}.`;
+
+    // Build recipient list — all members who have a valid email stored
     const allMemberEmails = members
-      .filter(m => m.email && !m.email.includes('@tallyin.com'))
-      .map(m => m.email);
+      .map(m => m.email)
+      .filter(e => e && typeof e === 'string' && e.includes('@'));
     
-    // Always include the current user's own email as a confirmation copy (if real)
-    const currentUserEmail = (user?.email && !user.email.includes('@tallyin.com')) ? user.email : '';
+    // Always include current user's own email if valid
+    const currentUserEmail = (user?.email && typeof user.email === 'string' && user.email.includes('@')) ? user.email : '';
     const emailSet = new Set(allMemberEmails);
     if (currentUserEmail) emailSet.add(currentUserEmail);
-    const emailList = [...emailSet];
+    const emailList = [...emailSet].map(e => e.trim()).filter(Boolean);
 
+    console.log('[Tallyin Email Debug] Action Type:', actionType);
     console.log('[Tallyin Email Debug] All members:', members.map(m => ({ uid: m.uid, nickname: m.nickname, email: m.email })));
     console.log('[Tallyin Email Debug] Current user email:', currentUserEmail);
     console.log('[Tallyin Email Debug] Final email list:', emailList);
-    console.log('[Tallyin Email Debug] Notification method:', notificationMethod);
 
     if (emailList.length === 0) {
-      console.warn('[Tallyin Email Debug] No emails found at all — email skipped.');
+      console.warn('[Tallyin Email Debug] No valid recipient emails found — email notification skipped.');
       return;
     }
 
@@ -2903,7 +2921,7 @@ export default function App() {
                   </table>
                 </td>
                 <td style="text-align: right; vertical-align: middle;">
-                  <span style="background-color: rgba(163, 230, 53, 0.2); color: #A3E635; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 6px 12px; border-radius: 20px; font-family: sans-serif;">ACTIVITY ALERT</span>
+                  <span style="background-color: rgba(163, 230, 53, 0.2); color: #A3E635; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 6px 12px; border-radius: 20px; font-family: sans-serif;">${actionBadge}</span>
                 </td>
               </tr>
             </table>
@@ -2911,12 +2929,12 @@ export default function App() {
 
           <!-- Content Area -->
           <div style="padding: 32px;">
-            <h2 style="color: #0F172A; margin: 0 0 8px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; font-family: sans-serif;">New Expense Added</h2>
+            <h2 style="color: #0F172A; margin: 0 0 8px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; font-family: sans-serif;">${actionTitle}</h2>
             <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">
               Hello Roommate,
             </p>
             <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">
-              A new roommate transaction has been logged in room <strong>${roomDisplayName}</strong>. Here are the details of the entry:
+              ${introText}
             </p>
 
             <!-- Key Metadata Info Cards -->
@@ -2939,13 +2957,13 @@ export default function App() {
                 <td style="width: 50%; padding-right: 8px;">
                   <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                     <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">PAID BY</span>
-                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.paidBy}</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.paidBy || 'Roommate'}</span>
                   </div>
                 </td>
                 <td style="width: 50%; padding-left: 8px;">
                   <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                     <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">SPLIT METHOD</span>
-                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.split}</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.split || (transaction.isShared ? 'Split equally' : 'Personal')}</span>
                   </div>
                 </td>
               </tr>
@@ -2983,15 +3001,15 @@ export default function App() {
             },
             body: JSON.stringify({
               to: email,
-              subject: `Tallyin Expense: ${transaction.title} (${formattedAmount})`,
+              subject: subjectText,
               htmlBody: htmlBody,
               textBody: messageText
             })
           });
         }
-        console.log('Central Tallyin email notification sent successfully');
+        console.log(`Central Tallyin email notification (${actionType}) sent successfully`);
       } catch (err) {
-        console.error('Failed to send central email notification:', err);
+        console.error(`Failed to send central email notification (${actionType}):`, err);
       }
     }
   };
@@ -3504,6 +3522,13 @@ export default function App() {
           }
           await logActivity('edit', logMsg);
           triggerToast("Expense updated successfully!");
+
+          // Fire update email notification independently
+          if (notificationMethod !== 'none') {
+            sendEmailNotification(newPayload, 'update').catch(err => {
+              console.warn('Update email notification failed silently:', err);
+            });
+          }
         } catch (error) {
           console.error("Error updating transaction:", error);
           triggerToast(`Failed to update: ${error.message}`);
@@ -3626,7 +3651,7 @@ export default function App() {
 
         // Fire email notification independently — errors here never affect the expense save
         if (notificationMethod !== 'none') {
-          sendEmailNotification(newPayload).catch(err => {
+          sendEmailNotification(newPayload, 'add').catch(err => {
             console.warn('Email notification failed silently:', err);
           });
         }
@@ -3635,7 +3660,7 @@ export default function App() {
         triggerToast(`Saved locally (DB sync failed: ${error.message || 'database error'}).`);
         // Still attempt email even if DB had issues
         if (notificationMethod !== 'none') {
-          sendEmailNotification(newPayload).catch(err => console.warn('Email failed:', err));
+          sendEmailNotification(newPayload, 'add').catch(err => console.warn('Email failed:', err));
         }
       }
     }
@@ -4018,6 +4043,14 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
       await logActivity('settle', `${payer.nickname} recorded payment of ${formatINR(amountNum)} to ${receiver.nickname}`);
       triggerToast(`Recorded payment of ${formatINR(amountNum)} from ${payer.nickname} to ${receiver.nickname}!`);
+
+      // Fire settlement email notification independently
+      if (notificationMethod !== 'none') {
+        sendEmailNotification(newPayload, 'settle').catch(err => {
+          console.warn('Settle email notification failed silently:', err);
+        });
+      }
+
       setIsSettleModalOpen(false);
     } catch (err) {
       console.error(err);
