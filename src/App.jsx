@@ -2727,6 +2727,22 @@ export default function App() {
     return t && t.split && typeof t.split === 'string' && t.split.includes('[PAID_BACK]');
   };
 
+  // Helper to format clean, human-readable Transaction ID
+  const formatTxId = (id) => {
+    if (!id) return 'TX-N/A';
+    const str = String(id).trim();
+    if (str.startsWith('TX-')) return str.toUpperCase();
+    if (str.startsWith('optimistic-')) {
+      const parts = str.split('-');
+      const numStr = (parts[parts.length - 1] || '').slice(-6);
+      return `TX-${numStr || 'PENDING'}`;
+    }
+    if (str.length > 8 && str.includes('-')) {
+      return `TX-${str.split('-')[0].toUpperCase()}`;
+    }
+    return `TX-${str.toUpperCase()}`;
+  };
+
   // Helper to resolve split label without paid back status
   const getDisplaySplitLabel = (t) => {
     if (!t || !t.split) return '';
@@ -2865,25 +2881,26 @@ export default function App() {
     const txTitle = transaction?.title || 'Expense';
     const txPaidBy = transaction?.paidBy || transaction?.paid_by || 'Roommate';
     const txSplit = transaction?.split || (transaction?.isShared ? 'Split equally' : 'Personal');
+    const txIdFormatted = formatTxId(transaction?.id);
     
     let actionTitle = 'New Expense Added';
     let actionBadge = 'ACTIVITY ALERT';
-    let subjectText = `Tallyin Expense: ${txTitle} (${formattedAmount})`;
-    let introText = `A new roommate transaction has been logged in room <strong>${roomDisplayName}</strong>. Here are the details of the entry:`;
+    let subjectText = `Tallyin Expense [${txIdFormatted}]: ${txTitle} (${formattedAmount})`;
+    let introText = `A new roommate transaction (ID: <strong>${txIdFormatted}</strong>) has been logged in room <strong>${roomDisplayName}</strong>. Here are the details of the entry:`;
 
     if (actionType === 'update' || actionType === 'edit') {
       actionTitle = 'Expense Updated';
       actionBadge = 'EXPENSE UPDATED';
-      subjectText = `Tallyin Expense Updated: ${txTitle} (${formattedAmount})`;
-      introText = `An existing expense "${txTitle}" was updated in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the updated details:`;
+      subjectText = `Tallyin Expense Updated [${txIdFormatted}]: ${txTitle} (${formattedAmount})`;
+      introText = `An existing expense "${txTitle}" (ID: <strong>${txIdFormatted}</strong>) was updated in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the updated details:`;
     } else if (actionType === 'settle') {
       actionTitle = 'Payment Settled';
       actionBadge = 'SETTLEMENT RECORDED';
-      subjectText = `Tallyin Settlement Recorded: ${txTitle} (${formattedAmount})`;
-      introText = `A settlement payment of <strong>${formattedAmount}</strong> was recorded in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the settlement details:`;
+      subjectText = `Tallyin Settlement Recorded [${txIdFormatted}]: ${txTitle} (${formattedAmount})`;
+      introText = `A settlement payment of <strong>${formattedAmount}</strong> (ID: <strong>${txIdFormatted}</strong>) was recorded in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the settlement details:`;
     }
 
-    const messageText = `Tallyin Alert [${actionTitle}]: "${txTitle}" of ${formattedAmount} by ${txPaidBy} in Room ${roomDisplayName}.`;
+    const messageText = `Tallyin Alert [${actionTitle}] (ID: ${txIdFormatted}): "${txTitle}" of ${formattedAmount} by ${txPaidBy} in Room ${roomDisplayName}.`;
 
     // 1. Get emails from React state
     const stateEmails = members
@@ -2917,7 +2934,7 @@ export default function App() {
     if (storedCodeEmail) emailSet.add(storedCodeEmail);
     const emailList = [...emailSet].map(e => e.trim()).filter(Boolean);
 
-    console.log('[Tallyin Email Debug] Action Type:', actionType);
+    console.log('[Tallyin Email Debug] Action Type:', actionType, 'Tx ID:', txIdFormatted);
     console.log('[Tallyin Email Debug] All member emails found:', emailList);
 
     if (emailList.length === 0) {
@@ -2967,25 +2984,33 @@ export default function App() {
               <tr>
                 <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
                   <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
+                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">TRANSACTION ID</span>
+                    <span style="font-size: 13px; font-weight: 800; color: #1A3827; font-family: monospace;">${txIdFormatted}</span>
+                  </div>
+                </td>
+                <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                     <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">DESCRIPTION</span>
                     <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txTitle}</span>
                   </div>
                 </td>
-                <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
+              </tr>
+              <tr>
+                <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
                   <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                     <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">AMOUNT</span>
                     <span style="font-size: 13px; font-weight: 700; color: #1A3827;">${formattedAmount}</span>
                   </div>
                 </td>
-              </tr>
-              <tr>
-                <td style="width: 50%; padding-right: 8px;">
+                <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
                   <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                     <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">PAID BY</span>
                     <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txPaidBy}</span>
                   </div>
                 </td>
-                <td style="width: 50%; padding-left: 8px;">
+              </tr>
+              <tr>
+                <td colspan="2" style="width: 100%;">
                   <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                     <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">SPLIT METHOD</span>
                     <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txSplit}</span>
@@ -4516,8 +4541,9 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
     try {
       // 1. Generate CSV Attachment
-      const csvHeaders = ['Date', 'Time', 'Description/Merchant', 'Amount (INR)', 'Category', 'Paid By', 'Split Type'];
+      const csvHeaders = ['Transaction ID', 'Date', 'Time', 'Description/Merchant', 'Amount (INR)', 'Category', 'Paid By', 'Split Type'];
       const csvRows = txList.map(t => [
+        formatTxId(t.id),
         t.date,
         parseTimeAndHistory(t.time).time,
         t.title,
@@ -7822,6 +7848,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           )}
                         </h4>
                         <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
+                          <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Transaction ID">
+                            {formatTxId(t.id)}
+                          </span>
                           <span className="text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0">
                             {t.category}
                           </span>
