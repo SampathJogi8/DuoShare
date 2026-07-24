@@ -2830,35 +2830,81 @@ export default function App() {
     if (emailList.length === 0) return;
 
     const htmlBody = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background-color: #F6F8F6; color: #1A3827; border-radius: 16px; border: 1px solid #E3E8E3; max-width: 500px; margin: 20px auto; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
-        <h2 style="color: #1A3827; margin: 0 0 4px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">Tallyin Expense</h2>
-        <p style="font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #5C6E5C; margin: 0 0 16px 0; font-weight: bold;">Real-time Billing Sync</p>
-        <div style="background-color: white; padding: 20px; border-radius: 12px; border: 1px solid #E3E8E3; margin-bottom: 16px;">
-          <p style="margin: 0 0 10px 0; font-size: 14px; color: #5C6E5C;">Hi Roommate,</p>
-          <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.5; color: #1A3827;">
-            A new expense has been recorded in room <strong>${roomDisplayName}</strong>:
-          </p>
+      <div style="background-color: #F8FAFC; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03); border: 1px solid #E2E8F0;">
           
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
-            <tr>
-              <td style="padding: 6px 0; font-size: 13px; color: #5C6E5C; width: 100px;">Description:</td>
-              <td style="padding: 6px 0; font-size: 13px; color: #1A3827; font-weight: bold;">${transaction.title}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; font-size: 13px; color: #5C6E5C;">Amount:</td>
-              <td style="padding: 6px 0; font-size: 13px; color: #1A3827; font-weight: bold; font-size: 15px;">${formattedAmount}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; font-size: 13px; color: #5C6E5C;">Paid By:</td>
-              <td style="padding: 6px 0; font-size: 13px; color: #1A3827; font-weight: 600;">${transaction.paidBy}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; font-size: 13px; color: #5C6E5C;">Split Ratio:</td>
-              <td style="padding: 6px 0; font-size: 13px; color: #1A3827;">${transaction.split}</td>
-            </tr>
-          </table>
+          <!-- MNC Premium Header Banner -->
+          <div style="background-color: #ffffff; padding: 32px; text-align: left; border-bottom: 1px solid #E2E8F0;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td>
+                  <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/logo_full.png" alt="Tallyin Logo" style="height: 38px; display: block;" />
+                </td>
+                <td style="text-align: right; vertical-align: middle;">
+                  <span style="background-color: rgba(26, 56, 39, 0.08); color: #1A3827; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 6px 12px; border-radius: 20px; font-family: sans-serif;">ACTIVITY ALERT</span>
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Content Area -->
+          <div style="padding: 32px;">
+            <h2 style="color: #0F172A; margin: 0 0 8px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; font-family: sans-serif;">New Expense Added</h2>
+            <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">
+              Hello Roommate,
+            </p>
+            <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">
+              A new roommate transaction has been logged in room <strong>${roomDisplayName}</strong>. Here are the details of the entry:
+            </p>
+
+            <!-- Key Metadata Info Cards -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+              <tr>
+                <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
+                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">DESCRIPTION</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.title}</span>
+                  </div>
+                </td>
+                <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
+                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">AMOUNT</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #1A3827;">${formattedAmount}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="width: 50%; padding-right: 8px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
+                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">PAID BY</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.paidBy}</span>
+                  </div>
+                </td>
+                <td style="width: 50%; padding-left: 8px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
+                    <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">SPLIT METHOD</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${transaction.split}</span>
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <!-- MNC CTA Action Button -->
+            <div style="text-align: center; margin-top: 32px; margin-bottom: 16px;">
+              <a href="https://tallyin.vercel.app" style="background-color: #1A3827; color: #ffffff; padding: 12px 28px; border-radius: 10px; font-weight: bold; font-size: 14px; text-decoration: none; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif;">View Room Ledger</a>
+            </div>
+          </div>
+
+          <!-- MNC Footer Section -->
+          <div style="background-color: #F8FAFC; padding: 24px 32px; border-top: 1px solid #E2E8F0; text-align: center;">
+            <p style="font-size: 11px; color: #64748B; line-height: 1.5; margin: 0 0 8px 0;">
+              This alert was sent automatically by the Tallyin billing synchronization platform.
+            </p>
+            <p style="font-size: 10px; color: #94A3B8; margin: 0;">
+              © 2026 Tallyin Corporation. All rights reserved. • Roommate Expense Management Sync
+            </p>
+          </div>
         </div>
-        <p style="font-size: 11px; color: #5C6E5C; text-align: center; margin: 0;">Open your Tallyin dashboard to view the full ledger or settle balances.</p>
       </div>
     `;
 
