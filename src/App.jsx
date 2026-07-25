@@ -3086,22 +3086,22 @@ export default function App() {
           `;
         }
 
-        const isPdf = typeof fileData === 'string' && (fileData.includes('application/pdf') || fileData.includes('pdf'));
+        const isPdf = typeof fileData === 'string' && (fileData.startsWith('data:application/pdf') || fileData.includes('pdf'));
         const isExcel = typeof fileData === 'string' && (fileData.includes('spreadsheet') || fileData.includes('excel'));
         
-        let labelText = `Receipt Photo #${idx + 1} (Image File)`;
-        let badgeText = 'IMG';
+        let labelText = `Receipt Image #${idx + 1} (Photo File)`;
+        let badgeText = '📷';
         let badgeBg = '#DCFCE7';
         let badgeColor = '#166534';
 
         if (isPdf) {
           labelText = `Receipt Document #${idx + 1} (PDF File)`;
-          badgeText = 'PDF';
+          badgeText = '📄';
           badgeBg = '#DBEAFE';
           badgeColor = '#1E40AF';
         } else if (isExcel) {
           labelText = `Receipt Spreadsheet #${idx + 1} (Excel File)`;
-          badgeText = 'XLS';
+          badgeText = '📊';
           badgeBg = '#FEF08A';
           badgeColor = '#854D0E';
         }
@@ -3111,11 +3111,11 @@ export default function App() {
             <table style="width: 100%; border-collapse: collapse;">
               <tr>
                 <td style="width: 36px; vertical-align: middle;">
-                  <div style="background-color: ${badgeBg}; color: ${badgeColor}; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 11px;">${badgeText}</div>
+                  <div style="background-color: ${badgeBg}; color: ${badgeColor}; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 14px;">${badgeText}</div>
                 </td>
                 <td style="padding-left: 10px; vertical-align: middle;">
                   <div style="font-size: 13px; font-weight: 700; color: #0F172A;">${labelText}</div>
-                  <div style="font-size: 11px; color: #64748B;">File attached to this email (see downloadable attachments below)</div>
+                  <div style="font-size: 11px; color: #64748B;">Attached file (see downloadable attachments at bottom of email)</div>
                 </td>
               </tr>
             </table>
@@ -3128,7 +3128,7 @@ export default function App() {
           <div style="font-size: 10px; font-weight: 800; color: #1A3827; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">
             ATTACHED RECEIPT PROOF (${receiptImages.length} ${receiptImages.length === 1 ? 'FILE' : 'FILES'})
           </div>
-          <div style="font-size: 12px; color: #64748B; margin-bottom: 4px;">The following receipt document(s) were attached to this transaction:</div>
+          <div style="font-size: 12px; color: #64748B; margin-bottom: 4px;">The following receipt image(s) were attached to this transaction:</div>
           ${itemsHtml}
         </div>
       `;
@@ -3165,12 +3165,33 @@ export default function App() {
           <!-- Main Body -->
           <div style="padding: 36px 36px 28px 36px;">
             <h2 style="color: #0F172A; margin: 0 0 6px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">${actionTitle}</h2>
-            <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 24px 0;">
+            <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 16px 0;">
               Hello Roommate,
             </p>
-            <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 24px 0;">
+            <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 20px 0;">
               ${introText}
             </p>
+
+            ${receiptImages && receiptImages.length > 0 ? `
+              <!-- Prominent Top Attachment Alert Banner -->
+              <div style="background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 14px; padding: 14px 18px; margin-bottom: 24px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="width: 36px; vertical-align: middle;">
+                      <div style="background-color: #059669; color: #FFFFFF; width: 32px; height: 32px; border-radius: 10px; text-align: center; line-height: 32px; font-size: 16px;">📷</div>
+                    </td>
+                    <td style="padding-left: 10px; vertical-align: middle;">
+                      <div style="font-size: 13px; font-weight: 800; color: #065F46;">
+                        ${receiptImages.length} Receipt Image${receiptImages.length === 1 ? '' : 's'} Attached to this Email!
+                      </div>
+                      <div style="font-size: 11px; color: #047857; margin-top: 2px;">
+                        Attached files are available in your email app at the bottom.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            ` : ''}
 
             <!-- Prominent Amount Highlight Card -->
             <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 5px solid #1A3827; padding: 20px 24px; border-radius: 16px; margin-bottom: 28px;">
