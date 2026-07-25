@@ -2892,24 +2892,24 @@ export default function App() {
       : (transaction?.split || (transaction?.isShared ? 'Split equally' : 'Personal'));
     const txIdFormatted = formatTxId(transaction?.id);
     
-    let actionTitle = 'New Expense Added';
-    let actionBadge = 'ACTIVITY ALERT';
-    let subjectText = `Tallyin Expense [${txIdFormatted}]: ${txTitle} (${formattedAmount})`;
-    let introText = `A new roommate transaction (ID: <strong>${txIdFormatted}</strong>) has been logged in room <strong>${roomDisplayName}</strong>. Here are the full details of the entry:`;
+    let actionTitle = 'New Expense Logged';
+    let actionBadge = 'Expense Logged';
+    let subjectText = `Tallyin: ${txPaidBy} added ${formattedAmount} for "${txTitle}"`;
+    let introText = `A new transaction "${txTitle}" of <strong>${formattedAmount}</strong> has been logged in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>.`;
 
     if (actionType === 'update' || actionType === 'edit') {
       actionTitle = 'Expense Updated';
-      actionBadge = 'EXPENSE UPDATED';
-      subjectText = `Tallyin Expense Updated [${txIdFormatted}]: ${txTitle} (${formattedAmount})`;
-      introText = `An existing expense "${txTitle}" (ID: <strong>${txIdFormatted}</strong>) was updated in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the updated details:`;
+      actionBadge = 'Expense Updated';
+      subjectText = `Tallyin: Updated expense "${txTitle}" (${formattedAmount})`;
+      introText = `The expense "${txTitle}" (${formattedAmount}) was updated in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>.`;
     } else if (actionType === 'settle') {
       actionTitle = 'Payment Settled';
-      actionBadge = 'SETTLEMENT RECORDED';
-      subjectText = `Tallyin Settlement Recorded [${txIdFormatted}]: ${txTitle} (${formattedAmount})`;
-      introText = `A settlement payment of <strong>${formattedAmount}</strong> (ID: <strong>${txIdFormatted}</strong>) was recorded in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the settlement details:`;
+      actionBadge = 'Payment Settled';
+      subjectText = `Tallyin: Settlement of ${formattedAmount} from ${txPaidBy}`;
+      introText = `A settlement payment of <strong>${formattedAmount}</strong> was recorded in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>.`;
     }
 
-    let messageText = `Tallyin Alert [${actionTitle}] (ID: ${txIdFormatted}): "${txTitle}" of ${formattedAmount} by ${txPaidBy} in Room ${roomDisplayName} on ${txDateTime}. Category: ${txCategory}, Split: ${txSplit}.`;
+    let messageText = `Tallyin: "${txTitle}" of ${formattedAmount} logged by ${txPaidBy} in Room ${roomDisplayName} on ${txDateTime}. Category: ${txCategory}, Split: ${txSplit}.`;
 
     // Extract & resolve receipt files attached to this transaction
     let receiptImages = [];
@@ -8976,64 +8976,144 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   function renderSettleModal() {
     const currentUid = auth.currentUser?.uid || 'anonymous';
     const receiver = members.find(m => m.uid === settleReceiver);
+    const topTransfer = suggestedTransfers && suggestedTransfers.length > 0 ? suggestedTransfers[0] : null;
+
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
         <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-xl border border-[#E3E8E3] dark:border-slate-800 max-h-[90vh] flex flex-col overflow-hidden transition-colors duration-300">
+          
+          {/* Header */}
           <div className="px-6 py-4 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center shrink-0">
-            <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Settle Up</h3>
-            <button onClick={() => setIsSettleModalOpen(false)} className="p-1 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"><X className="w-5 h-5" /></button>
+            <div>
+              <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Settle Up</h3>
+              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium">Record a 1-on-1 settlement payment</p>
+            </div>
+            <button onClick={() => setIsSettleModalOpen(false)} className="p-1.5 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400">
+              <X className="w-5 h-5" />
+            </button>
           </div>
+
           <form onSubmit={handleRecordPayment} className="p-6 space-y-4 overflow-y-auto flex-1">
+            
+            {/* 1-Tap Quick Settle Card if balances exist */}
+            {topTransfer && (
+              <div className="bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
+                <div>
+                  <span className="text-[9px] font-extrabold text-[#166534] dark:text-[#A3E635] uppercase tracking-wider block mb-0.5">⚡ QUICK SETTLE SUGGESTION</span>
+                  <p className="text-xs font-bold text-[#0F172A] dark:text-slate-100 leading-snug">
+                    <span className="text-rose-600 font-extrabold">{topTransfer.fromUid === currentUid ? 'You' : topTransfer.fromName}</span> owes{' '}
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-extrabold">{topTransfer.toUid === currentUid ? 'You' : topTransfer.toName}</span>:{' '}
+                    <span className="font-black text-[#1A3827] dark:text-white">{formatINR(topTransfer.amount)}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettlePayer(topTransfer.fromUid);
+                    setSettleReceiver(topTransfer.toUid);
+                    setSettleAmount(topTransfer.amount.toFixed(2));
+                  }}
+                  className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-3 py-1.5 rounded-xl text-xs font-black shrink-0 hover:opacity-90 active:scale-95 transition-all shadow-xs"
+                >
+                  Auto Fill
+                </button>
+              </div>
+            )}
+
+            {/* Quick Direction Toggle (I Paid vs Someone Paid Me) */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Who paid?</label>
-              <select
-                value={settlePayer}
-                onChange={e => {
-                  const val = e.target.value;
-                  setSettlePayer(val);
-                  if (settleReceiver === val) {
-                    const firstOther = members.find(m => m.uid !== val);
-                    setSettleReceiver(firstOther ? firstOther.uid : '');
-                  }
-                }}
-                className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none"
-              >
-                {members.map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
-              </select>
+              <label className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 block uppercase tracking-wide">Payment Direction</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettlePayer(currentUid);
+                    const firstOther = members.find(m => m.uid !== currentUid);
+                    if (firstOther) setSettleReceiver(firstOther.uid);
+                  }}
+                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                    settlePayer === currentUid
+                      ? 'bg-[#1A3827] border-[#1A3827] text-white dark:bg-[#A3E635] dark:border-[#A3E635] dark:text-slate-950 shadow-xs'
+                      : 'border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>💸 I Paid Money</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettleReceiver(currentUid);
+                    const firstOther = members.find(m => m.uid !== currentUid);
+                    if (firstOther) setSettlePayer(firstOther.uid);
+                  }}
+                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                    settleReceiver === currentUid
+                      ? 'bg-[#1A3827] border-[#1A3827] text-white dark:bg-[#A3E635] dark:border-[#A3E635] dark:text-slate-950 shadow-xs'
+                      : 'border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>📥 I Received Money</span>
+                </button>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Paid to (receiving money)</label>
-              <select
-                value={settleReceiver}
-                onChange={e => setSettleReceiver(e.target.value)}
-                className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none"
-              >
-                {members.filter(m => m.uid !== settlePayer).map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
-              </select>
+
+            {/* Roommate Selection */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400 block">Payer (Who paid)</label>
+                <select
+                  value={settlePayer}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setSettlePayer(val);
+                    if (settleReceiver === val) {
+                      const firstOther = members.find(m => m.uid !== val);
+                      setSettleReceiver(firstOther ? firstOther.uid : '');
+                    }
+                  }}
+                  className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white font-bold focus:outline-none"
+                >
+                  {members.map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400 block">Receiver (Paid to)</label>
+                <select
+                  value={settleReceiver}
+                  onChange={e => setSettleReceiver(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white font-bold focus:outline-none"
+                >
+                  {members.filter(m => m.uid !== settlePayer).map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
+                </select>
+              </div>
             </div>
+
+            {/* Amount Field */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Amount (₹)</label>
+              <label className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 block uppercase tracking-wide">Settlement Amount (₹)</label>
               <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold">₹</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-[#1A3827] dark:text-[#A3E635] font-black">₹</span>
                 <input
                   type="number" min="0.01" step="0.01" required
                   placeholder="0.00"
                   value={settleAmount}
                   onChange={e => setSettleAmount(e.target.value)}
-                  className="w-full pl-7 pr-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
+                  className="w-full pl-9 pr-4 py-3 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl text-base font-extrabold focus:outline-none focus:ring-2 focus:ring-[#1A3827] dark:focus:ring-[#A3E635] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
                 />
               </div>
             </div>
             
-            {/* UPI QR Payment Integration */}
+            {/* UPI Payment integration (If current user is paying) */}
             {settlePayer === currentUid && receiver && (
-              <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/50 dark:bg-slate-950 space-y-3.5">
+              <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/60 dark:bg-slate-950 space-y-3">
                 <div className="flex items-center gap-2 text-xs font-extrabold text-[#1A3827] dark:text-[#A3E635]">
                   <QrCode className="w-4 h-4" />
-                  <span>INSTANT UPI SETTLEMENT (OPTIONAL)</span>
+                  <span>PAY VIA UPI / QR CODE (OPTIONAL)</span>
                 </div>
                 
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block uppercase">
                     {receiver.nickname}'s UPI ID
                   </label>
@@ -9042,12 +9122,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     placeholder="e.g. username@bank or mobile@upi"
                     value={settleUpiId}
                     onChange={e => setSettleUpiId(e.target.value)}
-                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
+                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
                   />
                 </div>
 
                 {settleUpiId && settleUpiId.includes('@') && settleAmount && Number(settleAmount) > 0 && (
-                  <div className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-900 rounded-xl border border-[#E3E8E3] dark:border-slate-800 space-y-3 animate-fade-in">
+                  <div className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-900 rounded-xl border border-[#E3E8E3] dark:border-slate-800 space-y-2.5 animate-fade-in">
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
                         `upi://pay?pa=${settleUpiId.trim()}&pn=${encodeURIComponent(
@@ -9055,69 +9135,37 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         )}&am=${settleAmount}&cu=INR`
                       )}`}
                       alt="UPI QR Code"
-                      className="w-40 h-40 object-contain p-2 bg-white rounded-lg border border-slate-100"
+                      className="w-36 h-36 object-contain p-2 bg-white rounded-lg border border-slate-100"
                     />
-                    <div className="text-center space-y-1">
-                      <p className="text-[10px] font-bold text-[#1A3827] dark:text-slate-300">
-                        Scan to pay {formatINR(Number(settleAmount))}
-                      </p>
-                      <p className="text-[9px] text-[#5C6E5C] dark:text-slate-500">
-                        Supports PhonePe, GPay, Paytm, BHIM & more.
-                      </p>
-                    </div>
-                    
-                    {/* Launch on Mobile button */}
                     <a
                       href={`upi://pay?pa=${settleUpiId.trim()}&pn=${encodeURIComponent(
                         receiver.nickname
                       )}&am=${settleAmount}&cu=INR`}
-                      className="inline-flex items-center gap-1.5 justify-center w-full py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl font-bold text-xs shadow-sm hover:opacity-90 active:scale-98 transition-all text-center"
+                      className="inline-flex items-center gap-1.5 justify-center w-full py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl font-extrabold text-xs shadow-xs hover:opacity-90 active:scale-98 transition-all text-center"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>Pay via UPI App</span>
+                      <span>Open GPay / PhonePe / Paytm</span>
                     </a>
                   </div>
                 )}
               </div>
             )}
 
-            {suggestedTransfers.length > 0 && (
-              <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/30 dark:bg-slate-950/20 space-y-2.5">
-                <div className="flex items-center gap-2 mb-1">
-                  <Sparkles className="w-4 h-4 text-[#A3E635]" />
-                  <p className="text-[10px] font-extrabold text-[#1A3827] dark:text-[#A3E635] uppercase tracking-wider">Smart Settle Suggestions</p>
-                </div>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mb-2 leading-relaxed">We've calculated the minimum number of transfers needed to settle all debts in the room.</p>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {suggestedTransfers.map((t, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-xs font-semibold bg-white dark:bg-slate-900 border border-[#E3E8E3]/60 dark:border-slate-800 rounded-xl px-3 py-2 shadow-sm gap-2">
-                      <div className="flex items-center gap-1 flex-wrap text-[11px]">
-                        <span className="text-rose-500 font-bold">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
-                        <span className="text-slate-400 font-normal">owes</span>
-                        <span className="text-[#1A3827] dark:text-slate-100 font-bold">{formatINR(t.amount)}</span>
-                        <span className="text-slate-400 font-normal">to</span>
-                        <span className="text-[#1A3827] dark:text-[#A3E635] font-bold">{t.toUid === currentUid ? 'You' : t.toName}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSettlePayer(t.fromUid);
-                          setSettleReceiver(t.toUid);
-                          setSettleAmount(t.amount.toFixed(2));
-                        }}
-                        className="px-2.5 py-1 bg-[#1A3827] dark:bg-slate-800 text-white dark:text-[#A3E635] font-extrabold rounded-lg text-[9px] hover:opacity-90 active:scale-95 transition-all shrink-0 uppercase tracking-wider"
-                      >
-                        Settle
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
+            {/* Modal Actions */}
             <div className="flex gap-3 pt-2">
-              <button type="button" onClick={() => setIsSettleModalOpen(false)} className="flex-1 py-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800">Cancel</button>
-              <button type="submit" className="flex-1 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] shadow-sm">Record Payment</button>
+              <button
+                type="button"
+                onClick={() => setIsSettleModalOpen(false)}
+                className="flex-1 py-3 rounded-xl border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-2 py-3 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs hover:bg-[#255038] shadow-md transition-all active:scale-98"
+              >
+                Record {settleAmount && Number(settleAmount) > 0 ? formatINR(Number(settleAmount)) : ''} Settlement
+              </button>
             </div>
           </form>
         </div>
