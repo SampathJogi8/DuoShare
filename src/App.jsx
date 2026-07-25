@@ -8975,7 +8975,17 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // ==========================================
   function renderSettleModal() {
     const currentUid = auth.currentUser?.uid || 'anonymous';
-    const receiver = members.find(m => m.uid === settleReceiver);
+    const otherMembers = members.filter(m => m.uid !== currentUid);
+    const selectedTargetUid = settlePayer === currentUid ? settleReceiver : settlePayer;
+    const isCurrentUserPayer = settlePayer === currentUid;
+
+    const targetMember = members.find(m => m.uid === selectedTargetUid) || otherMembers[0];
+    
+    // Calculate balance specifically between current user & selected target member
+    const targetBalance = computedStats?.balances?.[targetMember?.uid] || 0;
+    const userBalance = computedStats?.currentUserBalance || 0;
+
+    // Top smart transfer suggestion for 1-click fill
     const topTransfer = suggestedTransfers && suggestedTransfers.length > 0 ? suggestedTransfers[0] : null;
 
     return (
@@ -8985,8 +8995,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           {/* Header */}
           <div className="px-6 py-4 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center shrink-0">
             <div>
-              <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Settle Up</h3>
-              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium">Record a 1-on-1 settlement payment</p>
+              <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100">Settle Up Balances</h3>
+              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium">Select a roommate to settle debts instantly</p>
             </div>
             <button onClick={() => setIsSettleModalOpen(false)} className="p-1.5 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400">
               <X className="w-5 h-5" />
@@ -8995,14 +9005,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
           <form onSubmit={handleRecordPayment} className="p-6 space-y-4 overflow-y-auto flex-1">
             
-            {/* 1-Tap Quick Settle Card if balances exist */}
+            {/* 1-Tap Smart Suggestion Banner */}
             {topTransfer && (
-              <div className="bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
+              <div className="bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/40 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs">
                 <div>
-                  <span className="text-[9px] font-extrabold text-[#166534] dark:text-[#A3E635] uppercase tracking-wider block mb-0.5">⚡ QUICK SETTLE SUGGESTION</span>
-                  <p className="text-xs font-bold text-[#0F172A] dark:text-slate-100 leading-snug">
-                    <span className="text-rose-600 font-extrabold">{topTransfer.fromUid === currentUid ? 'You' : topTransfer.fromName}</span> owes{' '}
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-extrabold">{topTransfer.toUid === currentUid ? 'You' : topTransfer.toName}</span>:{' '}
+                  <span className="text-[9px] font-extrabold text-[#166534] dark:text-[#A3E635] uppercase tracking-wider block mb-0.5">⚡ SMART SUGGESTION</span>
+                  <p className="text-xs font-bold text-[#0F172A] dark:text-slate-100 leading-tight">
+                    <span className="text-rose-600 font-black">{topTransfer.fromUid === currentUid ? 'You' : topTransfer.fromName}</span> owes{' '}
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">{topTransfer.toUid === currentUid ? 'You' : topTransfer.toName}</span>:{' '}
                     <span className="font-black text-[#1A3827] dark:text-white">{formatINR(topTransfer.amount)}</span>
                   </p>
                 </div>
@@ -9015,84 +9025,115 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   }}
                   className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-3 py-1.5 rounded-xl text-xs font-black shrink-0 hover:opacity-90 active:scale-95 transition-all shadow-xs"
                 >
-                  Auto Fill
+                  1-Tap Fill
                 </button>
               </div>
             )}
 
-            {/* Quick Direction Toggle (I Paid vs Someone Paid Me) */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 block uppercase tracking-wide">Payment Direction</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettlePayer(currentUid);
-                    const firstOther = members.find(m => m.uid !== currentUid);
-                    if (firstOther) setSettleReceiver(firstOther.uid);
-                  }}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                    settlePayer === currentUid
-                      ? 'bg-[#1A3827] border-[#1A3827] text-white dark:bg-[#A3E635] dark:border-[#A3E635] dark:text-slate-950 shadow-xs'
-                      : 'border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <span>💸 I Paid Money</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettleReceiver(currentUid);
-                    const firstOther = members.find(m => m.uid !== currentUid);
-                    if (firstOther) setSettlePayer(firstOther.uid);
-                  }}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                    settleReceiver === currentUid
-                      ? 'bg-[#1A3827] border-[#1A3827] text-white dark:bg-[#A3E635] dark:border-[#A3E635] dark:text-slate-950 shadow-xs'
-                      : 'border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <span>📥 I Received Money</span>
-                </button>
+            {/* Step 1: Select Roommate (Visual Avatar Cards Grid) */}
+            <div className="space-y-2">
+              <label className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 block uppercase tracking-wide">
+                1. Select Roommate ({otherMembers.length})
+              </label>
+              
+              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                {otherMembers.map(m => {
+                  const isSelected = targetMember && m.uid === targetMember.uid;
+                  const bal = computedStats?.balances?.[m.uid] || 0;
+                  return (
+                    <button
+                      key={m.uid}
+                      type="button"
+                      onClick={() => {
+                        if (isCurrentUserPayer) {
+                          setSettleReceiver(m.uid);
+                        } else {
+                          setSettlePayer(m.uid);
+                        }
+                        if (Math.abs(bal) > 0.01) {
+                          setSettleAmount(Math.abs(bal).toFixed(2));
+                        }
+                      }}
+                      className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all ${
+                        isSelected
+                          ? 'border-[#1A3827] bg-[#1A3827]/5 dark:bg-[#A3E635]/10 dark:border-[#A3E635] shadow-xs'
+                          : 'border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-[#F6F8F6] dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-full font-black text-xs flex items-center justify-center shrink-0 ${
+                        isSelected ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950' : 'bg-[#E3E8E3] text-[#1A3827] dark:bg-slate-800 dark:text-slate-200'
+                      }`}>
+                        {m.nickname ? m.nickname.charAt(0).toUpperCase() : '?'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}</p>
+                        <p className={`text-[10px] font-semibold truncate ${bal < 0 ? 'text-rose-600' : bal > 0 ? 'text-emerald-600 dark:text-[#A3E635]' : 'text-slate-400'}`}>
+                          {bal < 0 ? `Owes ${formatINR(Math.abs(bal))}` : bal > 0 ? `Gets ${formatINR(bal)}` : 'Settled'}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Roommate Selection */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Step 2: Payment Direction Switcher */}
+            {targetMember && (
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400 block">Payer (Who paid)</label>
-                <select
-                  value={settlePayer}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setSettlePayer(val);
-                    if (settleReceiver === val) {
-                      const firstOther = members.find(m => m.uid !== val);
-                      setSettleReceiver(firstOther ? firstOther.uid : '');
-                    }
-                  }}
-                  className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white font-bold focus:outline-none"
-                >
-                  {members.map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
-                </select>
+                <label className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 block uppercase tracking-wide">
+                  2. Direction
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettlePayer(currentUid);
+                      setSettleReceiver(targetMember.uid);
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      isCurrentUserPayer
+                        ? 'bg-[#1A3827] border-[#1A3827] text-white dark:bg-[#A3E635] dark:border-[#A3E635] dark:text-slate-950 shadow-xs'
+                        : 'border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    💸 You paid {targetMember.nickname}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettlePayer(targetMember.uid);
+                      setSettleReceiver(currentUid);
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      !isCurrentUserPayer
+                        ? 'bg-[#1A3827] border-[#1A3827] text-white dark:bg-[#A3E635] dark:border-[#A3E635] dark:text-slate-950 shadow-xs'
+                        : 'border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    📥 {targetMember.nickname} paid You
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Settlement Amount & Quick Preset Chips */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 block uppercase tracking-wide">
+                  3. Amount (₹)
+                </label>
+                {targetMember && Math.abs(targetBalance) > 0.01 && (
+                  <button
+                    type="button"
+                    onClick={() => setSettleAmount(Math.abs(targetBalance).toFixed(2))}
+                    className="text-[10px] font-extrabold text-[#166534] dark:text-[#A3E635] hover:underline"
+                  >
+                    Full Balance: {formatINR(Math.abs(targetBalance))}
+                  </button>
+                )}
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400 block">Receiver (Paid to)</label>
-                <select
-                  value={settleReceiver}
-                  onChange={e => setSettleReceiver(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white font-bold focus:outline-none"
-                >
-                  {members.filter(m => m.uid !== settlePayer).map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Amount Field */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 block uppercase tracking-wide">Settlement Amount (₹)</label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-[#1A3827] dark:text-[#A3E635] font-black">₹</span>
                 <input
@@ -9103,23 +9144,34 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   className="w-full pl-9 pr-4 py-3 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl text-base font-extrabold focus:outline-none focus:ring-2 focus:ring-[#1A3827] dark:focus:ring-[#A3E635] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
                 />
               </div>
+
+              {/* Quick Amount Chips */}
+              <div className="flex gap-1.5 flex-wrap pt-1">
+                {[100, 200, 500, 1000].map(amt => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setSettleAmount(String(amt))}
+                    className="px-2.5 py-1 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 active:scale-95 transition-all"
+                  >
+                    +₹{amt}
+                  </button>
+                ))}
+              </div>
             </div>
             
-            {/* UPI Payment integration (If current user is paying) */}
-            {settlePayer === currentUid && receiver && (
-              <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/60 dark:bg-slate-950 space-y-3">
+            {/* UPI QR Payment Integration */}
+            {isCurrentUserPayer && targetMember && (
+              <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3.5 bg-[#F6F8F6]/60 dark:bg-slate-950 space-y-2.5">
                 <div className="flex items-center gap-2 text-xs font-extrabold text-[#1A3827] dark:text-[#A3E635]">
                   <QrCode className="w-4 h-4" />
-                  <span>PAY VIA UPI / QR CODE (OPTIONAL)</span>
+                  <span>PAY VIA UPI APP / QR (OPTIONAL)</span>
                 </div>
                 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block uppercase">
-                    {receiver.nickname}'s UPI ID
-                  </label>
                   <input
                     type="text"
-                    placeholder="e.g. username@bank or mobile@upi"
+                    placeholder={`Enter ${targetMember.nickname}'s UPI ID (e.g. name@upi)`}
                     value={settleUpiId}
                     onChange={e => setSettleUpiId(e.target.value)}
                     className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
@@ -9127,19 +9179,19 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 </div>
 
                 {settleUpiId && settleUpiId.includes('@') && settleAmount && Number(settleAmount) > 0 && (
-                  <div className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-900 rounded-xl border border-[#E3E8E3] dark:border-slate-800 space-y-2.5 animate-fade-in">
+                  <div className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-900 rounded-xl border border-[#E3E8E3] dark:border-slate-800 space-y-2 animate-fade-in">
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
                         `upi://pay?pa=${settleUpiId.trim()}&pn=${encodeURIComponent(
-                          receiver.nickname
+                          targetMember.nickname
                         )}&am=${settleAmount}&cu=INR`
                       )}`}
                       alt="UPI QR Code"
-                      className="w-36 h-36 object-contain p-2 bg-white rounded-lg border border-slate-100"
+                      className="w-32 h-32 object-contain p-1.5 bg-white rounded-lg border border-slate-100"
                     />
                     <a
                       href={`upi://pay?pa=${settleUpiId.trim()}&pn=${encodeURIComponent(
-                        receiver.nickname
+                        targetMember.nickname
                       )}&am=${settleAmount}&cu=INR`}
                       className="inline-flex items-center gap-1.5 justify-center w-full py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl font-extrabold text-xs shadow-xs hover:opacity-90 active:scale-98 transition-all text-center"
                     >
