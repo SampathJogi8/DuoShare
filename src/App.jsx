@@ -2909,7 +2909,38 @@ export default function App() {
       introText = `A settlement payment of <strong>${formattedAmount}</strong> (ID: <strong>${txIdFormatted}</strong>) was recorded in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>. Here are the settlement details:`;
     }
 
-    const messageText = `Tallyin Alert [${actionTitle}] (ID: ${txIdFormatted}): "${txTitle}" of ${formattedAmount} by ${txPaidBy} in Room ${roomDisplayName} on ${txDateTime}. Category: ${txCategory}, Split: ${txSplit}.`;
+    let messageText = `Tallyin Alert [${actionTitle}] (ID: ${txIdFormatted}): "${txTitle}" of ${formattedAmount} by ${txPaidBy} in Room ${roomDisplayName} on ${txDateTime}. Category: ${txCategory}, Split: ${txSplit}.`;
+
+    // Extract & resolve receipt files attached to this transaction
+    let receiptImages = [];
+    if (Array.isArray(transaction?.receiptImages) && transaction.receiptImages.length > 0) {
+      receiptImages = transaction.receiptImages;
+    } else if (transaction?.imageUrl) {
+      receiptImages = getImages(transaction.imageUrl);
+    } else {
+      let receiptDateStr = '';
+      if (txDate) {
+        const parts = txDate.split('-');
+        if (parts.length === 3) {
+          const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          if (!isNaN(dateObj.getTime())) {
+            receiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
+          }
+        }
+      }
+      const matchingReceipt = receipts.find(r =>
+        r.title === txTitle &&
+        Number(r.amount) === amountVal &&
+        (!receiptDateStr || r.date === receiptDateStr)
+      );
+      if (matchingReceipt && matchingReceipt.imageUrl) {
+        receiptImages = getImages(matchingReceipt.imageUrl);
+      }
+    }
+
+    if (receiptImages && receiptImages.length > 0) {
+      messageText += ` [Receipt Attached: ${receiptImages.length} file(s)]`;
+    }
 
     // 1. Get emails from React state
     const stateEmails = members
@@ -2994,6 +3025,89 @@ export default function App() {
           <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
             ${rows}
           </table>
+        </div>
+      `;
+    }
+
+    // Generate Attached Receipt Proofs HTML
+    let receiptRowsHtml = '';
+    if (receiptImages && receiptImages.length > 0) {
+      const itemsHtml = receiptImages.map((fileData, idx) => {
+        if (!fileData) return '';
+        const isPdf = typeof fileData === 'string' && (fileData.startsWith('data:application/pdf') || fileData.toLowerCase().endsWith('.pdf'));
+        const isExcel = typeof fileData === 'string' && (fileData.includes('spreadsheet') || fileData.includes('excel') || fileData.toLowerCase().endsWith('.xlsx') || fileData.toLowerCase().endsWith('.xls'));
+        
+        if (isPdf) {
+          return `
+            <div style="background-color: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 14px; padding: 14px 18px; margin-top: 10px; text-align: left;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="width: 36px; vertical-align: middle;">
+                    <div style="background-color: #DBEAFE; color: #1E40AF; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 13px;">PDF</div>
+                  </td>
+                  <td style="padding-left: 10px; vertical-align: middle;">
+                    <div style="font-size: 13px; font-weight: 700; color: #1E40AF;">Receipt Document #${idx + 1} (PDF File)</div>
+                    <div style="font-size: 11px; color: #3B82F6;">PDF file attached to expense entry</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          `;
+        }
+        if (isExcel) {
+          return `
+            <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 14px; padding: 14px 18px; margin-top: 10px; text-align: left;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="width: 36px; vertical-align: middle;">
+                    <div style="background-color: #DCFCE7; color: #166534; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 13px;">XLS</div>
+                  </td>
+                  <td style="padding-left: 10px; vertical-align: middle;">
+                    <div style="font-size: 13px; font-weight: 700; color: #166534;">Receipt Spreadsheet #${idx + 1}</div>
+                    <div style="font-size: 11px; color: #15803D;">Spreadsheet file attached to expense entry</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          `;
+        }
+
+        // Image file preview
+        if (typeof fileData === 'string' && fileData.startsWith('data:')) {
+          return `
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 14px 18px; margin-top: 10px; text-align: left;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="width: 36px; vertical-align: middle;">
+                    <div style="background-color: #DCFCE7; color: #166534; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 13px;">IMG</div>
+                  </td>
+                  <td style="padding-left: 10px; vertical-align: middle;">
+                    <div style="font-size: 13px; font-weight: 700; color: #0F172A;">Receipt Photo #${idx + 1} (Image File)</div>
+                    <div style="font-size: 11px; color: #64748B;">Receipt image attached to email (see attached files)</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          `;
+        }
+
+        return `
+          <div style="margin-top: 12px; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 14px; padding: 12px; text-align: center; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+            <div style="font-size: 10px; font-weight: 800; color: #64748B; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Receipt Proof Image #${idx + 1}</div>
+            <a href="${fileData}" target="_blank" style="display: block; text-decoration: none;">
+              <img src="${fileData}" alt="Receipt Proof Image #${idx + 1}" style="max-width: 100%; max-height: 380px; border-radius: 10px; object-fit: contain; display: block; margin: 0 auto; border: 1px solid #F1F5F9;" />
+            </a>
+          </div>
+        `;
+      }).filter(Boolean).join('');
+
+      receiptRowsHtml = `
+        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px 24px; margin-bottom: 28px;">
+          <div style="font-size: 10px; font-weight: 800; color: #1A3827; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">
+            ATTACHED RECEIPT PROOF (${receiptImages.length} ${receiptImages.length === 1 ? 'FILE' : 'FILES'})
+          </div>
+          <div style="font-size: 12px; color: #64748B; margin-bottom: 4px;">The following receipt document(s) were attached to this transaction:</div>
+          ${itemsHtml}
         </div>
       `;
     }
@@ -3101,6 +3215,9 @@ export default function App() {
             <!-- Roommate Share Breakdown -->
             ${splitRowsHtml}
 
+            <!-- Attached Receipt Proofs -->
+            ${receiptRowsHtml}
+
             <!-- CTA -->
             <div style="text-align: center; margin-top: 32px;">
               <a href="https://tallyin.vercel.app" style="background-color: #1A3827; color: #ffffff; padding: 14px 32px; border-radius: 12px; font-weight: 800; font-size: 14px; text-decoration: none; display: inline-block; box-shadow: 0 4px 12px rgba(26, 56, 39, 0.2);">Open Tallyin Room Ledger</a>
@@ -3120,6 +3237,91 @@ export default function App() {
       </div>
     `;
 
+    // Format attachments array with client-side compressed base64 for Google Apps Script
+    const emailAttachments = [];
+    if (receiptImages && receiptImages.length > 0) {
+      for (let idx = 0; idx < receiptImages.length; idx++) {
+        let fileData = receiptImages[idx];
+        if (typeof fileData === 'string' && fileData.startsWith('data:image/')) {
+          try {
+            fileData = await new Promise((resolve) => {
+              if (fileData.length < 100000) return resolve(fileData);
+              let resolved = false;
+              const timer = setTimeout(() => {
+                if (!resolved) {
+                  resolved = true;
+                  resolve(fileData);
+                }
+              }, 1500);
+
+              const img = new Image();
+              img.onload = () => {
+                if (resolved) return;
+                resolved = true;
+                clearTimeout(timer);
+                try {
+                  let w = img.width;
+                  let h = img.height;
+                  const maxDim = 800;
+                  if (w > maxDim || h > maxDim) {
+                    if (w > h) {
+                      h = Math.round((h * maxDim) / w);
+                      w = maxDim;
+                    } else {
+                      w = Math.round((w * maxDim) / h);
+                      h = maxDim;
+                    }
+                  }
+                  const canvas = document.createElement('canvas');
+                  canvas.width = w;
+                  canvas.height = h;
+                  const ctx = canvas.getContext('2d');
+                  ctx.drawImage(img, 0, 0, w, h);
+                  resolve(canvas.toDataURL('image/jpeg', 0.6));
+                } catch (err) {
+                  resolve(fileData);
+                }
+              };
+              img.onerror = () => {
+                if (resolved) return;
+                resolved = true;
+                clearTimeout(timer);
+                resolve(fileData);
+              };
+              img.src = fileData;
+            });
+          } catch (e) {
+            console.warn('Canvas receipt compression error:', e);
+          }
+        }
+
+        if (typeof fileData === 'string' && fileData.startsWith('data:')) {
+          try {
+            const parts = fileData.split(',');
+            if (parts.length === 2) {
+              const header = parts[0];
+              const base64Data = parts[1];
+              let mimeType = header.split(';')[0].replace('data:', '') || 'image/png';
+              if (header.includes('image/')) mimeType = 'image/jpeg';
+              
+              let ext = 'jpg';
+              if (mimeType.includes('pdf')) ext = 'pdf';
+              else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) ext = 'xlsx';
+              else if (mimeType.includes('png')) ext = 'png';
+
+              emailAttachments.push({
+                filename: `receipt_${idx + 1}.${ext}`,
+                mimeType: mimeType,
+                base64: base64Data
+              });
+            }
+          } catch (e) {
+            console.warn('Failed to parse base64 receipt attachment:', e);
+          }
+        }
+      }
+    }
+
     const activeScriptUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
 
     try {
@@ -3134,12 +3336,13 @@ export default function App() {
             to: email,
             subject: subjectText,
             htmlBody: htmlBody,
-            textBody: messageText
+            textBody: messageText,
+            attachments: emailAttachments
           })
         })
       );
       await Promise.all(promises);
-      console.log(`Central Tallyin email notification (${actionType}) sent successfully to:`, emailList);
+      console.log(`Central Tallyin email notification (${actionType}) sent successfully with ${emailAttachments.length} attachment(s) to:`, emailList);
     } catch (err) {
       console.error(`Failed to send central email notification (${actionType}):`, err);
     }
@@ -3330,6 +3533,7 @@ export default function App() {
   // Add expense handler to Firestore
   const handleAddExpense = async (e) => {
     e.preventDefault();
+    const activeReceiptImages = Array.isArray(formReceiptImages) ? [...formReceiptImages] : [];
     if (!formFor || !formAmount) {
       triggerToast('Please fill out the description and amount.');
       return;
@@ -3522,7 +3726,7 @@ export default function App() {
 
       if (newPayload.isShared) {
         const newReceiptDateStr = new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' });
-        const serializedImages = formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null;
+        const serializedImages = activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null;
         
         setReceipts(prev => {
           let found = false;
@@ -3541,7 +3745,7 @@ export default function App() {
             return r;
           });
           
-          if (!found && formReceiptImages.length > 0) {
+          if (!found && activeReceiptImages.length > 0) {
             const bgColors = [
               'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
               'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
@@ -3574,7 +3778,7 @@ export default function App() {
 
       // Fire update email notification immediately & independently with transaction ID
       if (notificationMethod !== 'none') {
-        sendEmailNotification({ ...newPayload, id: editingTransaction.id }, 'update').catch(err => {
+        sendEmailNotification({ ...newPayload, id: editingTransaction.id, receiptImages: activeReceiptImages }, 'update').catch(err => {
           console.warn('Update email notification failed silently:', err);
         });
       }
@@ -3612,7 +3816,7 @@ export default function App() {
                 amount: amountNum,
                 category: formCategory,
                 date: newReceiptDateStr,
-                image_url: formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null
+                image_url: activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null
               })
               .eq('room_id', currentRoom)
               .eq('title', editingTransaction.title)
@@ -3644,7 +3848,7 @@ export default function App() {
                   date: newReceiptDateStr,
                   bg_class: randomBg,
                   rotation: randomRot,
-                  image_url: formReceiptImages.length > 0 ? JSON.stringify(formReceiptImages) : null
+                  image_url: activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null
                 });
               if (insertError) throw insertError;
             }
@@ -3714,7 +3918,7 @@ export default function App() {
         if (txError) throw txError;
 
         const realTxId = insertedTx ? insertedTx.id : optimisticId;
-        const txForEmail = { ...newPayload, id: realTxId };
+        const txForEmail = { ...newPayload, id: realTxId, receiptImages: activeReceiptImages };
 
         // Replace optimistic entry with real DB row (has real id)
         if (insertedTx) {
@@ -3748,7 +3952,7 @@ export default function App() {
           triggerToast(`Also added to fund "${myFunds.find(f => String(f.id) === String(formFundId))?.title || 'Fund'}"`);
         }
 
-        if (newPayload.isShared && formReceiptImages.length > 0) {
+        if (newPayload.isShared && activeReceiptImages.length > 0) {
           const bgColors = [
             'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
             'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
@@ -3767,7 +3971,7 @@ export default function App() {
             date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
             bgClass: randomBg,
             rotation: randomRot,
-            imageUrl: JSON.stringify(formReceiptImages)
+            imageUrl: JSON.stringify(activeReceiptImages)
           };
           setReceipts(prev => [newReceipt, ...prev]);
           
@@ -3781,7 +3985,7 @@ export default function App() {
               date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
               bg_class: randomBg,
               rotation: randomRot,
-              image_url: JSON.stringify(formReceiptImages)
+              image_url: JSON.stringify(activeReceiptImages)
             })
             .then(({ error: receiptError }) => {
               if (receiptError) {
@@ -3804,7 +4008,7 @@ export default function App() {
         triggerToast(`Saved locally (DB sync failed: ${error.message || 'database error'}).`);
         // Still attempt email even if DB had issues
         if (notificationMethod !== 'none') {
-          sendEmailNotification({ ...newPayload, id: optimisticId }, 'add').catch(err => console.warn('Email failed:', err));
+          sendEmailNotification({ ...newPayload, id: optimisticId, receiptImages: activeReceiptImages }, 'add').catch(err => console.warn('Email failed:', err));
         }
       }
     }
