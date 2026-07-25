@@ -3086,10 +3086,30 @@ export default function App() {
           `;
         }
 
-        const isPdf = typeof fileData === 'string' && (fileData.startsWith('data:application/pdf') || fileData.includes('pdf'));
-        const isExcel = typeof fileData === 'string' && (fileData.includes('spreadsheet') || fileData.includes('excel'));
+        let isPdf = false;
+        let isExcel = false;
+        let isImage = false;
+
+        if (typeof fileData === 'string') {
+          if (fileData.startsWith('data:application/pdf') || fileData.startsWith('data:pdf/')) {
+            isPdf = true;
+          } else if (fileData.startsWith('data:image/')) {
+            isImage = true;
+          } else if (fileData.startsWith('data:application/vnd') || fileData.startsWith('data:application/spreadsheet')) {
+            isExcel = true;
+          } else {
+            // Check base64 magic bytes
+            if (fileData.startsWith('JVBERi0')) {
+              isPdf = true;
+            } else if (fileData.startsWith('/9j/') || fileData.startsWith('iVBORw0KGgo') || fileData.startsWith('R0lGOD') || fileData.startsWith('UklGR')) {
+              isImage = true;
+            } else {
+              isImage = true;
+            }
+          }
+        }
         
-        let labelText = `Receipt Image #${idx + 1} (Photo File)`;
+        let labelText = `Receipt Photo #${idx + 1} (JPG/PNG Image)`;
         let badgeText = '📷';
         let badgeBg = '#DCFCE7';
         let badgeColor = '#166534';
@@ -3128,7 +3148,7 @@ export default function App() {
           <div style="font-size: 10px; font-weight: 800; color: #1A3827; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">
             ATTACHED RECEIPT PROOF (${receiptImages.length} ${receiptImages.length === 1 ? 'FILE' : 'FILES'})
           </div>
-          <div style="font-size: 12px; color: #64748B; margin-bottom: 4px;">The following receipt image(s) were attached to this transaction:</div>
+          <div style="font-size: 12px; color: #64748B; margin-bottom: 4px;">The following receipt document(s) & photo(s) were attached to this transaction:</div>
           ${itemsHtml}
         </div>
       `;
@@ -3338,26 +3358,45 @@ export default function App() {
           }
         }
 
-        if (typeof fileData === 'string' && fileData.startsWith('data:')) {
+        if (typeof fileData === 'string' && fileData.length > 50) {
           try {
-            const parts = fileData.split(',');
-            if (parts.length === 2) {
-              const header = parts[0];
-              const base64Data = parts[1];
-              const mimeType = header.split(';')[0].replace('data:', '') || 'image/png';
-              
-              let ext = 'png';
-              if (mimeType.includes('pdf')) ext = 'pdf';
-              else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = 'jpg';
-              else if (mimeType.includes('png')) ext = 'png';
-              else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) ext = 'xlsx';
+            let base64Data = fileData;
+            let mimeType = 'image/jpeg';
+            let ext = 'jpg';
 
-              emailAttachments.push({
-                filename: `receipt_${idx + 1}.${ext}`,
-                mimeType: mimeType,
-                base64: base64Data
-              });
+            if (fileData.startsWith('data:')) {
+              const parts = fileData.split(',');
+              if (parts.length === 2) {
+                const header = parts[0];
+                base64Data = parts[1];
+                mimeType = header.split(';')[0].replace('data:', '') || 'image/jpeg';
+              }
             }
+
+            if (mimeType.includes('pdf') || base64Data.startsWith('JVBERi0')) {
+              ext = 'pdf';
+              mimeType = 'application/pdf';
+            } else if (mimeType.includes('png') || base64Data.startsWith('iVBORw0KGgo')) {
+              ext = 'png';
+              mimeType = 'image/png';
+            } else if (mimeType.includes('jpeg') || mimeType.includes('jpg') || base64Data.startsWith('/9j/')) {
+              ext = 'jpg';
+              mimeType = 'image/jpeg';
+            } else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) {
+              ext = 'xlsx';
+              mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            }
+
+            const cleanTxTitle = (txTitle || 'Receipt').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
+            const attachmentName = `Receipt_${idx + 1}_${cleanTxTitle}.${ext}`;
+
+            emailAttachments.push({
+              filename: attachmentName,
+              name: attachmentName,
+              fileName: attachmentName,
+              mimeType: mimeType,
+              base64: base64Data
+            });
           } catch (e) {
             console.warn('Failed to parse base64 receipt attachment:', e);
           }
