@@ -2942,21 +2942,52 @@ export default function App() {
       messageText += ` [Receipt Attached: ${receiptImages.length} file(s)]`;
     }
 
-    // 1. Get emails from React state
-    const stateEmails = members
+    // 1. Determine target members for notification (for 1-on-1 settlements, only notify Payer & Receiver)
+    let targetMembers = members;
+    let payerUid = transaction?.paidByUid || transaction?.paid_by_uid;
+    let payerName = transaction?.paidBy || transaction?.paid_by;
+    let receiverUid = '';
+    let receiverName = '';
+
+    if (isSettlement) {
+      const splitsArr = Array.isArray(transaction?.splits) ? transaction.splits : [];
+      const receiverMember = splitsArr.find(s => (s.uid && s.uid !== payerUid) || (s.nickname && s.nickname !== payerName) || (s.amount ?? 0) > 0);
+      receiverUid = receiverMember?.uid || '';
+      receiverName = receiverMember?.nickname || (txTitle.includes(' to ') ? txTitle.split(' to ')[1]?.trim() : '');
+
+      const filtered = members.filter(m => {
+        const isPayer = (payerUid && m.uid === payerUid) || (payerName && m.nickname === payerName);
+        const isReceiver = (receiverUid && m.uid === receiverUid) || (receiverName && m.nickname === receiverName);
+        return isPayer || isReceiver;
+      });
+
+      if (filtered.length > 0) {
+        targetMembers = filtered;
+      }
+    }
+
+    const stateEmails = targetMembers
       .map(m => m.email)
       .filter(e => e && typeof e === 'string' && e.includes('@'));
 
-    // 2. Fetch fresh emails from Supabase DB to ensure no roommate is missed
+    // 2. Fetch fresh emails from Supabase DB
     let dbEmails = [];
     if (activeRoomId && activeRoomId !== 'TL-ROOM') {
       try {
         const { data: dbMembers } = await supabase
           .from('members')
-          .select('email')
+          .select('email, uid, nickname')
           .eq('room_id', activeRoomId);
         if (dbMembers) {
-          dbEmails = dbMembers
+          let filteredDb = dbMembers;
+          if (isSettlement) {
+            filteredDb = dbMembers.filter(m => {
+              const isPayer = (payerUid && m.uid === payerUid) || (payerName && m.nickname === payerName);
+              const isReceiver = (receiverUid && m.uid === receiverUid) || (receiverName && m.nickname === receiverName);
+              return isPayer || isReceiver;
+            });
+          }
+          dbEmails = filteredDb
             .map(m => m.email)
             .filter(e => e && typeof e === 'string' && e.includes('@'));
         }
@@ -2965,13 +2996,15 @@ export default function App() {
       }
     }
 
-    // 3. Include active user's own email & stored codeLoginEmail if valid
-    const currentUserEmail = (user?.email && typeof user.email === 'string' && user.email.includes('@')) ? user.email : '';
-    const storedCodeEmail = (codeLoginEmail && typeof codeLoginEmail === 'string' && codeLoginEmail.includes('@')) ? codeLoginEmail.trim() : '';
-
     const emailSet = new Set([...stateEmails, ...dbEmails]);
-    if (currentUserEmail) emailSet.add(currentUserEmail);
-    if (storedCodeEmail) emailSet.add(storedCodeEmail);
+
+    // For general room expenses, ensure current user/login emails are included
+    if (!isSettlement) {
+      const currentUserEmail = (user?.email && typeof user.email === 'string' && user.email.includes('@')) ? user.email : '';
+      const storedCodeEmail = (codeLoginEmail && typeof codeLoginEmail === 'string' && codeLoginEmail.includes('@')) ? codeLoginEmail.trim() : '';
+      if (currentUserEmail) emailSet.add(currentUserEmail);
+      if (storedCodeEmail) emailSet.add(storedCodeEmail);
+    }
     const emailList = [...emailSet].map(e => e.trim()).filter(Boolean);
 
     console.log('[Tallyin Email Debug] Action Type:', actionType, 'Tx ID:', txIdFormatted);
