@@ -3034,37 +3034,18 @@ export default function App() {
     if (receiptImages && receiptImages.length > 0) {
       const itemsHtml = receiptImages.map((fileData, idx) => {
         if (!fileData) return '';
-        const isPdf = typeof fileData === 'string' && (fileData.startsWith('data:application/pdf') || fileData.toLowerCase().endsWith('.pdf'));
-        const isExcel = typeof fileData === 'string' && (fileData.includes('spreadsheet') || fileData.includes('excel') || fileData.toLowerCase().endsWith('.xlsx') || fileData.toLowerCase().endsWith('.xls'));
         
-        if (isPdf) {
+        if (typeof fileData === 'string' && (fileData.startsWith('http://') || fileData.startsWith('https://'))) {
           return `
-            <div style="background-color: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 14px; padding: 14px 18px; margin-top: 10px; text-align: left;">
+            <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 16px; margin-top: 10px;">
               <table style="width: 100%; border-collapse: collapse;">
                 <tr>
                   <td style="width: 36px; vertical-align: middle;">
-                    <div style="background-color: #DBEAFE; color: #1E40AF; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 13px;">PDF</div>
+                    <div style="background-color: #DCFCE7; color: #166534; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 11px;">LINK</div>
                   </td>
                   <td style="padding-left: 10px; vertical-align: middle;">
-                    <div style="font-size: 13px; font-weight: 700; color: #1E40AF;">Receipt Document #${idx + 1} (PDF File)</div>
-                    <div style="font-size: 11px; color: #3B82F6;">PDF file attached to expense entry</div>
-                  </td>
-                </tr>
-              </table>
-            </div>
-          `;
-        }
-        if (isExcel) {
-          return `
-            <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 14px; padding: 14px 18px; margin-top: 10px; text-align: left;">
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="width: 36px; vertical-align: middle;">
-                    <div style="background-color: #DCFCE7; color: #166534; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 13px;">XLS</div>
-                  </td>
-                  <td style="padding-left: 10px; vertical-align: middle;">
-                    <div style="font-size: 13px; font-weight: 700; color: #166534;">Receipt Spreadsheet #${idx + 1}</div>
-                    <div style="font-size: 11px; color: #15803D;">Spreadsheet file attached to expense entry</div>
+                    <div style="font-size: 13px; font-weight: 700; color: #0F172A;">Hosted Receipt Link #${idx + 1}</div>
+                    <a href="${fileData}" target="_blank" style="font-size: 11px; color: #166534; text-decoration: underline;">Open Receipt Link</a>
                   </td>
                 </tr>
               </table>
@@ -3072,31 +3053,39 @@ export default function App() {
           `;
         }
 
-        // Image file preview
-        if (typeof fileData === 'string' && fileData.startsWith('data:')) {
-          return `
-            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 14px 18px; margin-top: 10px; text-align: left;">
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="width: 36px; vertical-align: middle;">
-                    <div style="background-color: #DCFCE7; color: #166534; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 13px;">IMG</div>
-                  </td>
-                  <td style="padding-left: 10px; vertical-align: middle;">
-                    <div style="font-size: 13px; font-weight: 700; color: #0F172A;">Receipt Photo #${idx + 1} (Image File)</div>
-                    <div style="font-size: 11px; color: #64748B;">Receipt image attached to email (see attached files)</div>
-                  </td>
-                </tr>
-              </table>
-            </div>
-          `;
+        const isPdf = typeof fileData === 'string' && (fileData.includes('application/pdf') || fileData.includes('pdf'));
+        const isExcel = typeof fileData === 'string' && (fileData.includes('spreadsheet') || fileData.includes('excel'));
+        
+        let labelText = `Receipt Photo #${idx + 1} (Image File)`;
+        let badgeText = 'IMG';
+        let badgeBg = '#DCFCE7';
+        let badgeColor = '#166534';
+
+        if (isPdf) {
+          labelText = `Receipt Document #${idx + 1} (PDF File)`;
+          badgeText = 'PDF';
+          badgeBg = '#DBEAFE';
+          badgeColor = '#1E40AF';
+        } else if (isExcel) {
+          labelText = `Receipt Spreadsheet #${idx + 1} (Excel File)`;
+          badgeText = 'XLS';
+          badgeBg = '#FEF08A';
+          badgeColor = '#854D0E';
         }
 
         return `
-          <div style="margin-top: 12px; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 14px; padding: 12px; text-align: center; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
-            <div style="font-size: 10px; font-weight: 800; color: #64748B; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Receipt Proof Image #${idx + 1}</div>
-            <a href="${fileData}" target="_blank" style="display: block; text-decoration: none;">
-              <img src="${fileData}" alt="Receipt Proof Image #${idx + 1}" style="max-width: 100%; max-height: 380px; border-radius: 10px; object-fit: contain; display: block; margin: 0 auto; border: 1px solid #F1F5F9;" />
-            </a>
+          <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 16px; margin-top: 10px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="width: 36px; vertical-align: middle;">
+                  <div style="background-color: ${badgeBg}; color: ${badgeColor}; width: 32px; height: 32px; border-radius: 8px; text-align: center; line-height: 32px; font-weight: 800; font-size: 11px;">${badgeText}</div>
+                </td>
+                <td style="padding-left: 10px; vertical-align: middle;">
+                  <div style="font-size: 13px; font-weight: 700; color: #0F172A;">${labelText}</div>
+                  <div style="font-size: 11px; color: #64748B;">File attached to this email (see downloadable attachments below)</div>
+                </td>
+              </tr>
+            </table>
           </div>
         `;
       }).filter(Boolean).join('');
@@ -3301,13 +3290,13 @@ export default function App() {
             if (parts.length === 2) {
               const header = parts[0];
               const base64Data = parts[1];
-              let mimeType = header.split(';')[0].replace('data:', '') || 'image/png';
-              if (header.includes('image/')) mimeType = 'image/jpeg';
+              const mimeType = header.split(';')[0].replace('data:', '') || 'image/png';
               
-              let ext = 'jpg';
+              let ext = 'png';
               if (mimeType.includes('pdf')) ext = 'pdf';
-              else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) ext = 'xlsx';
+              else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = 'jpg';
               else if (mimeType.includes('png')) ext = 'png';
+              else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) ext = 'xlsx';
 
               emailAttachments.push({
                 filename: `receipt_${idx + 1}.${ext}`,
@@ -4153,6 +4142,17 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         if (uploadError) throw uploadError;
         setReceipts(prev => [newReceipt, ...prev]);
         triggerToast(`Receipt uploaded! 📧 Notification sent to roommates.`);
+
+        if (notificationMethod !== 'none') {
+          sendEmailNotification({
+            title: newReceipt.title,
+            amount: newReceipt.amount,
+            category: newReceipt.category,
+            date: newReceipt.date,
+            paidBy: userNickname,
+            receiptImages: [base64Data]
+          }, 'add').catch(err => console.warn('Standalone receipt email failed:', err));
+        }
       } catch (err) {
         console.error(err);
         triggerToast(`Failed to upload: ${err.message || 'database error'}`);
@@ -4225,8 +4225,20 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
         if (error) throw error;
 
+        const targetReceipt = receipts.find(r => r.id === receiptId);
         setReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, imageUrl: serializedImages } : r));
         triggerToast(`Successfully attached ${loadedImages.length} receipt file(s)!`);
+
+        if (notificationMethod !== 'none' && targetReceipt) {
+          sendEmailNotification({
+            title: targetReceipt.title,
+            amount: targetReceipt.amount,
+            category: targetReceipt.category,
+            date: targetReceipt.date,
+            paidBy: userNickname,
+            receiptImages: loadedImages
+          }, 'update').catch(err => console.warn('Attach receipt email failed:', err));
+        }
       } catch (err) {
         console.error("Error attaching receipt:", err);
         triggerToast(`Failed to attach file: ${err.message}`);
