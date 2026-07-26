@@ -816,19 +816,81 @@ export default function App() {
     setFormReceiptImages(prev => [...prev, ...loadedImages]);
   };
 
+  const preprocessImageForOcr = (dataUrl) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        // Scale up if image resolution is low for better OCR text recognition
+        const MIN_WIDTH = 1200;
+        if (width < MIN_WIDTH && width > 0) {
+          const scale = MIN_WIDTH / width;
+          width = MIN_WIDTH;
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        try {
+          const imgData = ctx.getImageData(0, 0, width, height);
+          const data = imgData.data;
+          // Grayscale & contrast enhancement
+          for (let i = 0; i < data.length; i += 4) {
+            const avg = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            const factor = 1.3;
+            let val = factor * (avg - 128) + 128;
+            val = Math.min(255, Math.max(0, val));
+            data[i] = val;
+            data[i + 1] = val;
+            data[i + 2] = val;
+          }
+          ctx.putImageData(imgData, 0, 0);
+          resolve(canvas.toDataURL('image/jpeg', 0.9));
+        } catch (e) {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
+  const parseNumberValue = (numStr) => {
+    if (!numStr) return null;
+    let clean = numStr.trim();
+    // Handle comma as thousands separator (e.g., "1,250.50" or "12,500")
+    if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(clean)) {
+      clean = clean.replace(/,/g, '');
+    } else if (/^\d+,\d{2}$/.test(clean)) {
+      // European decimal comma (e.g., "450,50")
+      clean = clean.replace(',', '.');
+    } else {
+      clean = clean.replace(/,/g, '');
+    }
+    const val = parseFloat(clean);
+    return isNaN(val) ? null : val;
+  };
+
   const handleReceiptOcr = async () => {
     if (formReceiptImages.length === 0) {
       triggerToast('Please upload a receipt image first.');
       return;
     }
-    const imgUrl = formReceiptImages[0];
-    if (!imgUrl.startsWith('data:image/')) {
+    const rawImgUrl = formReceiptImages[0];
+    if (!rawImgUrl.startsWith('data:image/')) {
       triggerToast('OCR only supports image files (PNG, JPG, HEIC).');
       return;
     }
 
     setIsOcrLoading(true);
-    triggerToast('Analyzing receipt with Tesseract OCR... Please wait.');
+    triggerToast('Analyzing receipt with AI OCR... Please wait.');
 
     try {
       if (!window.Tesseract) {
@@ -841,41 +903,126 @@ export default function App() {
         });
       }
 
+      // Preprocess image for maximum OCR accuracy
+      const imgUrl = await preprocessImageForOcr(rawImgUrl);
+
       const worker = await window.Tesseract.createWorker('eng');
       const ret = await worker.recognize(imgUrl);
       await worker.terminate();
 
       const text = ret.data.text || '';
-      const lines = text.split('\n');
-      let bestMatch = null;
-      const totalKeywords = ['total', 'amount', 'due', 'paid', 'rs', 'inr', 'net', 'grand total', 'subtotal'];
-      
-      for (const line of lines) {
-        const lower = line.toLowerCase();
-        if (totalKeywords.some(k => lower.includes(k))) {
-          const matches = line.match(/\d+[\.,]\d{2}/) || line.match(/\d+/);
-          if (matches) {
-            const val = parseFloat(matches[0].replace(',', '.'));
-            if (val > 0 && (!bestMatch || val > bestMatch)) {
-              bestMatch = val;
-            }
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      const totalLines = lines.length;
+
+      const candidates = [];
+
+      const highKeywords = /\b(grand\s*total|total\s*amount|net\s*payable|amount\s*payable|total\s*due|final\s*total|balance\s*due|pay\s*total|total\s*to\s*pay|bill\s*amount|total\s*rs|total\s*inr|total\s*₹|amount\s*paid|paid\s*amount)\b/i;
+      const medKeywords = /\b(total|net\s*amt|amount|payable|balance|paid)\b/i;
+      const subtotalKeywords = /\b(subtotal|sub-total|sub\s*total)\b/i;
+      const currencySymbolRegex = /(₹|rs\.?|inr|\$|€|£)/i;
+      const penaltyRegex = /\b(phone|mobile|tel|contact|gstin|fssai|tin|cin|pan|date|time|invoice|receipt|order|table|token|discount|tax|gst|cgst|sgst|change|cash\s*tendered|cashier|item|qty|quantity)\b/i;
+
+      // Extract candidate numbers line by line with context scoring
+      lines.forEach((lineText, lineIdx) => {
+        const lower = lineText.toLowerCase();
+
+        // Match price patterns: e.g. ₹1,250.00 or Rs 450 or 450.50
+        const numberMatches = lineText.match(/(?:₹|rs\.?|inr|\$|€|£)?\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[\.,]\d{1,2})?)/gi) || [];
+
+        numberMatches.forEach(rawMatch => {
+          // Extract the digits part
+          const matchValStr = rawMatch.replace(/^(?:₹|rs\.?|inr|\$|€|£)\s*/i, '');
+          const val = parseNumberValue(matchValStr);
+          if (val === null || val <= 0 || val > 500000) return;
+
+          // Reject 10-12 digit numbers (Phone numbers, GSTINs, Barcodes, Order IDs)
+          if (val >= 1000000000 || /^\d{10,12}$/.test(matchValStr.replace(/[\.,]/g, ''))) return;
+
+          // Reject dates (e.g. 2020 to 2035) unless line has explicit currency
+          if (val >= 2020 && val <= 2035 && !currencySymbolRegex.test(lineText) && /date/i.test(lineText)) return;
+
+          // Reject postal pin codes (6-digit numbers e.g. 560038)
+          if (val >= 100000 && val <= 999999 && (lower.includes('pin') || lower.includes('bangalore') || lower.includes('mumbai') || lower.includes('delhi'))) return;
+
+          let score = 0;
+
+          if (highKeywords.test(lineText)) {
+            score += 100;
+          } else if (medKeywords.test(lineText)) {
+            score += 50;
+          } else if (subtotalKeywords.test(lineText)) {
+            score += 25;
           }
+
+          if (currencySymbolRegex.test(lineText)) {
+            score += 20;
+          }
+
+          if (penaltyRegex.test(lineText) && !highKeywords.test(lineText)) {
+            score -= 70;
+          }
+
+          // Bottom half of receipt bonus (totals usually appear near bottom)
+          if (totalLines > 0 && lineIdx / totalLines > 0.5) {
+            score += 15;
+          }
+
+          candidates.push({ val, score, lineIdx, rawMatch, lineText });
+        });
+      });
+
+      // Sort candidates by score (descending), then by lineIdx (descending, lower in receipt preferred)
+      candidates.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return b.lineIdx - a.lineIdx;
+      });
+
+      const bestCandidate = candidates.length > 0 ? candidates[0] : null;
+
+      // Extract Merchant Name from top lines
+      let detectedMerchant = '';
+      const headerLines = lines.slice(0, 6);
+      for (const hLine of headerLines) {
+        const hLower = hLine.toLowerCase();
+        if (
+          !/\b(tax|invoice|cash|receipt|original|copy|bill|welcome|gstin|date|time|tel|phone|customer)\b/i.test(hLower) &&
+          hLine.length >= 3 &&
+          /[a-zA-Z]/.test(hLine)
+        ) {
+          // Clean up merchant name
+          detectedMerchant = hLine.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9\s\.\&\-]+$/g, '').trim();
+          break;
         }
       }
 
-      if (!bestMatch) {
-        const allNumbers = text.match(/\d+[\.,]\d{2}/g);
-        if (allNumbers && allNumbers.length > 0) {
-          const parsed = allNumbers.map(n => parseFloat(n.replace(',', '.')));
-          bestMatch = Math.max(...parsed);
-        }
+      // Auto detect category
+      let detectedCategory = null;
+      if (detectedMerchant) {
+        detectedCategory = smartDetectCategory(detectedMerchant);
+      }
+      if (!detectedCategory) {
+        detectedCategory = smartDetectCategory(text);
       }
 
-      if (bestMatch && bestMatch > 0) {
-        setFormAmount(String(bestMatch));
-        triggerToast(`Success! Detected amount: ${formatINR(bestMatch)}`);
+      if (bestCandidate && bestCandidate.val > 0) {
+        setFormAmount(String(bestCandidate.val));
+        
+        // Auto-fill title (formFor) if currently empty
+        if (!formFor && detectedMerchant) {
+          setFormFor(detectedMerchant);
+        }
+
+        // Auto-fill category if detected & not manually modified
+        if (detectedCategory && !isCategoryManuallyModified) {
+          setFormCategory(detectedCategory);
+          setSuggestedCategory(detectedCategory);
+        }
+
+        const categoryText = detectedCategory ? ` (${detectedCategory})` : '';
+        const merchantText = detectedMerchant ? ` from ${detectedMerchant}` : '';
+        triggerToast(`Success! Detected ${formatINR(bestCandidate.val)}${merchantText}${categoryText}`);
       } else {
-        triggerToast('Could not confidently detect total amount. Please enter manually.');
+        triggerToast('Could not detect total amount automatically. Please enter manually.');
       }
     } catch (err) {
       console.error("OCR analysis failed:", err);
@@ -910,13 +1057,15 @@ export default function App() {
   const [splitShoppingPayer, setSplitShoppingPayer] = useState('');
   const [splitShoppingMembers, setSplitShoppingMembers] = useState({});
 
-  // Chores Board States
-  const [isAddChoreOpen, setIsAddChoreOpen] = useState(false);
-  const [choreTitle, setChoreTitle] = useState('');
-  const [choreAssignee, setChoreAssignee] = useState('');
-  const [choreInterval, setChoreInterval] = useState('7'); // frequency in days (default 7)
-  const [choreRotate, setChoreRotate] = useState(true); // automatic rotation
-  const [choreDueDate, setChoreDueDate] = useState(() => getLocalDateStr());
+  // Bills & Subscriptions Module States
+  const [isAddBillOpen, setIsAddBillOpen] = useState(false);
+  const [billTitle, setBillTitle] = useState('');
+  const [billAmount, setBillAmount] = useState('');
+  const [billCategory, setBillCategory] = useState('Utilities');
+  const [billAssignee, setBillAssignee] = useState('');
+  const [billInterval, setBillInterval] = useState('30'); // frequency in days (default 30 / monthly)
+  const [billDueDate, setBillDueDate] = useState(() => getLocalDateStr());
+  const [billIsShared, setBillIsShared] = useState(true);
 
   // Smart category keyword map
   const CATEGORY_KEYWORDS = {
@@ -1340,10 +1489,14 @@ export default function App() {
           createdBy: t.created_by
         }))
         .filter(t => {
+          const currentUid = user?.id || auth.currentUser?.uid || 'anonymous';
           // Fund tracker logs (__FUND_INIT__, __FUND_SPEND__) are shown only to their creator/payer
-          // and hidden from other roommates.
           if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__') {
-            return t.paidByUid === (user?.id || 'anonymous');
+            return t.paidByUid === currentUid || t.createdBy === currentUid;
+          }
+          // Private bills (__BILL__, __CHORE__) with isShared === false are shown only to their creator/payer
+          if ((t.category === '__BILL__' || t.category === '__CHORE__') && t.isShared === false) {
+            return t.paidByUid === currentUid || t.createdBy === currentUid;
           }
           return true;
         });
@@ -1618,7 +1771,7 @@ export default function App() {
 
             const newTx = payload.new;
             const currentUid = user?.id || 'anonymous';
-            if (newTx.paid_by_uid !== currentUid && newTx.category !== '__FUND_INIT__' && newTx.category !== '__FUND_SPEND__' && newTx.category !== '__SHOPPING__' && newTx.category !== '__CHORE__') {
+            if (newTx.paid_by_uid !== currentUid && newTx.category !== '__FUND_INIT__' && newTx.category !== '__FUND_SPEND__' && newTx.category !== '__SHOPPING__' && newTx.category !== '__BILL__' && newTx.category !== '__CHORE__') {
               if (Notification.permission === 'granted' && localStorage.getItem('pushNotificationsEnabled') === 'true') {
                 try {
                   new Notification("New Room Expense Logged", {
@@ -2551,7 +2704,7 @@ export default function App() {
 
   // Dynamically calculated values based on synced transactions state
   const computedStats = useMemo(() => {
-    const data = transactions.filter(t => t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__' && t.category !== '__DELETE_PROPOSAL__');
+    const data = transactions.filter(t => t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__BILL__' && t.category !== '__CHORE__' && t.category !== '__DELETE_PROPOSAL__');
     const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
 
     // Calculate totals
@@ -5310,7 +5463,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     try {
       // 1. Email Room Shared Ledger
       const roomTxs = transactions.filter(t => {
-        if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__' || t.category === 'Payment') return false;
+        if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__BILL__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__' || t.category === 'Payment') return false;
         const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
         return t.isShared && matchesMonth;
       });
@@ -5366,7 +5519,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
   const filteredTransactions = useMemo(() => {
     const currentUid = user?.id || 'anonymous';
     const activeTxList = transactions.filter(t => {
-      if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__') return false;
+      if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__BILL__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__') return false;
       if (t.isShared) return true; // always show shared bills
       // For personal expenses: hide if the expense belongs solely to the current user
       const isMineOnly =
@@ -5452,18 +5605,32 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     return transactions.filter(t => t.category === '__SHOPPING__' && t.splitType === 'pending').length;
   }, [transactions]);
 
-  const pendingChoresCount = useMemo(() => {
-    const currentUid = auth.currentUser?.uid || 'anonymous';
-    return transactions.filter(t => t.category === '__CHORE__' && t.splitType === currentUid && t.split === 'pending').length;
-  }, [transactions, auth.currentUser]);
+  const pendingBillsCount = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return transactions.filter(t => {
+      if (t.category !== '__BILL__' && t.category !== '__CHORE__') return false;
+      if (t.split === 'paid') return false;
+      if (!t.date) return false;
+      const due = new Date(t.date);
+      due.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays <= 3;
+    }).length;
+  }, [transactions]);
 
   const shoppingItems = useMemo(() => {
     return transactions.filter(t => t.category === '__SHOPPING__');
   }, [transactions]);
 
-  const choresList = useMemo(() => {
-    return transactions.filter(t => t.category === '__CHORE__');
-  }, [transactions]);
+  const billsList = useMemo(() => {
+    const currentUid = user?.id || auth.currentUser?.uid || 'anonymous';
+    return transactions.filter(t => {
+      if (t.category !== '__BILL__' && t.category !== '__CHORE__') return false;
+      if (t.isShared === false && t.createdBy !== currentUid && t.paidByUid !== currentUid) return false;
+      return true;
+    });
+  }, [transactions, user, auth.currentUser]);
 
   const filteredPersonalExpenses = useMemo(() => {
     return myPersonalExpenses.filter(t => {
@@ -5500,7 +5667,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     const personalPercentage = Math.min((monthlyPersonalTotal / personalCap) * 100, 100);
 
     const monthSharedSpend = transactions
-      .filter(t => t.isShared && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__' && t.category !== 'Payment' && t.date && t.date.startsWith(activeMonth))
+      .filter(t => t.isShared && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__BILL__' && t.category !== '__CHORE__' && t.category !== 'Payment' && t.date && t.date.startsWith(activeMonth))
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
     const isLowBalance = monthlyBudget > 0 && monthSharedSpend > (monthlyBudget * 0.9);
@@ -6450,51 +6617,72 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     }
   };
 
-  const handleCompleteChore = async (chore) => {
+  const handlePayAndLogBill = async (bill) => {
     try {
-      let nextAssigneeUid = chore.splitType;
-      
-      if (chore.time === 'rotate' && members.length > 1) {
-        const currentIndex = members.findIndex(m => m.uid === chore.splitType);
-        const nextIndex = (currentIndex + 1) % members.length;
-        nextAssigneeUid = members[nextIndex].uid;
+      const currentUid = auth.currentUser?.uid || 'anonymous';
+      const payerMember = members.find(m => m.uid === (bill.splitType || currentUid));
+      const payerName = payerMember?.nickname || userNickname;
+      const amountVal = Number(bill.amount) || 0;
+      const billCat = (bill.imageUrl && bill.imageUrl !== 'null') ? bill.imageUrl : 'Utilities';
+
+      // 1. Log actual expense into room ledger
+      const { error: txErr } = await supabase
+        .from('transactions')
+        .insert({
+          room_id: userRoomId,
+          title: `${bill.title} (Bill Payment)`,
+          amount: amountVal,
+          category: billCat,
+          date: getLocalDateStr(),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          paid_by: payerName,
+          paid_by_uid: bill.splitType || currentUid,
+          is_shared: bill.isShared !== false,
+          split_type: bill.isShared !== false ? 'equal' : (bill.splitType || currentUid),
+          split: bill.isShared !== false ? '50/50' : 'personal',
+          splits: [],
+          created_by: currentUid
+        });
+
+      if (txErr) throw txErr;
+
+      // 2. Advance due date if recurring
+      const daysToAdd = Number(bill.time) || 30; // e.g. 30 for monthly, 7 for weekly
+      if (daysToAdd > 0) {
+        const currentDueDate = bill.date ? new Date(bill.date) : new Date();
+        currentDueDate.setDate(currentDueDate.getDate() + daysToAdd);
+        const nextDueDateStr = currentDueDate.toISOString().split('T')[0];
+
+        await supabase
+          .from('transactions')
+          .update({
+            date: nextDueDateStr,
+            split: 'pending'
+          })
+          .eq('id', bill.id);
+
+        triggerToast(`Paid ${formatINR(amountVal)} for "${bill.title}" & logged to Room Ledger! Next due: ${nextDueDateStr}`);
+      } else {
+        await supabase
+          .from('transactions')
+          .update({ split: 'paid' })
+          .eq('id', bill.id);
+
+        triggerToast(`Bill "${bill.title}" paid & ${formatINR(amountVal)} logged to Room Ledger!`);
       }
 
-      const daysToAdd = Number(chore.amount) || 1;
-      const currentDueDate = chore.date ? new Date(chore.date) : new Date();
-      currentDueDate.setDate(currentDueDate.getDate() + daysToAdd);
-      const nextDueDateStr = currentDueDate.toISOString().split('T')[0];
-
-      const nextAssigneeName = members.find(m => m.uid === nextAssigneeUid)?.nickname || 'Roommate';
-
-      const { error } = await supabase
-        .from('transactions')
-        .update({
-          split_type: nextAssigneeUid,
-          date: nextDueDateStr,
-          split: 'pending'
-        })
-        .eq('id', chore.id);
-
-      if (error) throw error;
-
-      await logActivity('chore_complete', `${userNickname} completed chore "${chore.title}". Next up: ${nextAssigneeName} on ${nextDueDateStr}`);
-      triggerToast(`Chore "${chore.title}" marked as complete!`);
+      await logActivity('bill_paid', `${userNickname} paid bill "${bill.title}" (${formatINR(amountVal)}) and logged it to room expenses.`);
       fetchTransactions(userRoomId);
     } catch (err) {
       console.error(err);
-      triggerToast('Failed to complete chore.');
+      triggerToast('Failed to log bill payment.');
     }
   };
 
-  const handleSaveChore = async (e) => {
+  const handleSaveBill = async (e) => {
     e.preventDefault();
-    if (!choreTitle.trim()) {
-      triggerToast('Please enter a chore title.');
-      return;
-    }
-    if (!choreAssignee) {
-      triggerToast('Please select an assignee.');
+    if (!billTitle.trim()) {
+      triggerToast('Please enter a bill title.');
       return;
     }
 
@@ -6504,48 +6692,51 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         .from('transactions')
         .insert({
           room_id: userRoomId,
-          title: choreTitle.trim(),
-          amount: Number(choreInterval) || 0,
-          category: '__CHORE__',
-          date: choreDueDate,
-          time: choreRotate ? 'rotate' : 'none',
+          title: billTitle.trim(),
+          amount: Number(billAmount) || 0,
+          category: '__BILL__',
+          date: billDueDate,
+          time: String(billInterval || '30'),
           paid_by: userNickname,
           paid_by_uid: currentUid,
-          is_shared: true,
-          split_type: choreAssignee,
+          is_shared: billIsShared,
+          split_type: billAssignee || currentUid,
           split: 'pending',
+          imageUrl: billCategory, // Store category/icon key in imageUrl
           splits: [],
           created_by: currentUid
         });
 
       if (error) throw error;
 
-      triggerToast('Chore added!');
-      setIsAddChoreOpen(false);
-      setChoreTitle('');
-      setChoreInterval('7');
-      setChoreRotate(true);
+      triggerToast('Bill reminder added!');
+      setIsAddBillOpen(false);
+      setBillTitle('');
+      setBillAmount('');
+      setBillCategory('Utilities');
+      setBillInterval('30');
+      setBillDueDate(getLocalDateStr());
       fetchTransactions(userRoomId);
     } catch (err) {
       console.error(err);
-      triggerToast('Failed to add chore.');
+      triggerToast('Failed to add bill.');
     }
   };
 
-  const handleDeleteChore = async (chore) => {
-    const confirm = window.confirm(`Remove chore "${chore.title}" permanently?`);
+  const handleDeleteBill = async (bill) => {
+    const confirm = window.confirm(`Remove bill reminder "${bill.title}"?`);
     if (!confirm) return;
     try {
       const { error } = await supabase
         .from('transactions')
         .delete()
-        .eq('id', chore.id);
+        .eq('id', bill.id);
       if (error) throw error;
-      triggerToast('Chore deleted.');
+      triggerToast('Bill deleted.');
       fetchTransactions(userRoomId);
     } catch (err) {
       console.error(err);
-      triggerToast('Failed to delete chore.');
+      triggerToast('Failed to delete bill.');
     }
   };
 
@@ -7219,20 +7410,20 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </button>
 
             <button 
-              onClick={() => navigateTo('chores')}
+              onClick={() => navigateTo('bills')}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm ${
-                currentView === 'chores' 
+                currentView === 'bills' 
                   ? 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 font-bold' 
                   : 'text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200'
               }`}
             >
               <div className="flex items-center gap-3">
-                <CheckSquare className="w-4 h-4" />
-                <span>Chores</span>
+                <FileText className="w-4 h-4" />
+                <span>Bills & Subscriptions</span>
               </div>
-              {pendingChoresCount > 0 && (
-                <span className="px-2 py-0.5 text-[10px] font-black bg-rose-500 text-white rounded-full">
-                  {pendingChoresCount}
+              {pendingBillsCount > 0 && (
+                <span className="px-2 py-0.5 text-[10px] font-black bg-amber-500 text-slate-950 rounded-full">
+                  {pendingBillsCount}
                 </span>
               )}
             </button>
@@ -7430,7 +7621,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {currentView === 'insights' && <ViewRenderer render={renderInsights} />}
             {currentView === 'receipts' && <ViewRenderer render={renderReceipts} />}
             {currentView === 'shopping-board' && <ViewRenderer render={renderShoppingBoard} />}
-            {currentView === 'chores' && <ViewRenderer render={renderChores} />}
+            {currentView === 'bills' && <ViewRenderer render={renderBills} />}
             {currentView === 'settings' && <ViewRenderer render={renderSettings} />}
           </ErrorBoundary>
         </main>
@@ -7440,7 +7631,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {isAddExpenseOpen && renderAddExpenseModal()}
         {isAddShoppingOpen && renderAddShoppingModal()}
         {isSplitShoppingOpen && renderSplitShoppingModal()}
-        {isAddChoreOpen && renderAddChoreModal()}
+        {isAddBillOpen && renderAddBillModal()}
         
         {/* Custom Invite Roommate Share Modal */}
         {isInviteModalOpen && renderInviteModal()}
@@ -7766,7 +7957,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               const monthName = activeDateObj.toLocaleString('default', { month: 'long' });
 
               const monthlyRoomSpend = transactions
-                .filter(t => t.isShared && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__CHORE__' && t.category !== 'Payment' && t.date && t.date.startsWith(activeMonth))
+                .filter(t => t.isShared && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__BILL__' && t.category !== '__CHORE__' && t.category !== 'Payment' && t.date && t.date.startsWith(activeMonth))
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
               const budgetPct = Math.min(100, Math.round((monthlyRoomSpend / monthlyBudget) * 100)) || 0;
@@ -10848,7 +11039,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {(() => {
           // Use the FULL unfiltered source arrays (not targetTransactions which is already month-scoped)
           // so each bar reflects real spending for that calendar month regardless of the month filter
-          const excludedCats = new Set(['__FUND_INIT__', '__FUND_SPEND__', '__SHOPPING__', '__CHORE__', 'Payment']);
+          const excludedCats = new Set(['__FUND_INIT__', '__FUND_SPEND__', '__SHOPPING__', '__BILL__', '__CHORE__', 'Payment']);
           const trendSource = isPersonalTab
             ? myPersonalExpenses
             : transactions.filter(t => t.isShared && !excludedCats.has(t.category));
@@ -11969,8 +12160,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // ==========================================
   // PAGE 8: CHORES ROTATOR / ROTATION BOARD
   // ==========================================
-  function renderChores() {
-    const getChoreStatus = (dueDateStr) => {
+  // ==========================================
+  // PAGE 8: BILLS & RECURRING SUBSCRIPTIONS BOARD
+  // ==========================================
+  function renderBills() {
+    const getBillStatus = (dueDateStr, isPaid) => {
+      if (isPaid) return { text: 'Paid & Settled', color: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 dark:text-[#A3E635] font-black' };
       if (!dueDateStr) return { text: 'No due date', color: 'text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-400' };
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -11991,70 +12186,133 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       }
     };
 
+    const getFrequencyLabel = (intervalStr) => {
+      const val = String(intervalStr);
+      if (val === '7') return 'Weekly';
+      if (val === '14') return 'Fortnightly';
+      if (val === '30') return 'Monthly';
+      if (val === '60') return 'Bi-Monthly';
+      if (val === '90') return 'Quarterly';
+      if (val === '365') return 'Yearly';
+      if (val === '0') return 'One-Time';
+      return `Every ${val}d`;
+    };
+
+    const getCategoryIcon = (cat) => {
+      const lower = String(cat || '').toLowerCase();
+      if (lower.includes('wifi') || lower.includes('internet') || lower.includes('broadband') || lower.includes('utilities')) return '📶';
+      if (lower.includes('electric') || lower.includes('power')) return '⚡';
+      if (lower.includes('water')) return '💧';
+      if (lower.includes('rent') || lower.includes('flat')) return '🏠';
+      if (lower.includes('movie') || lower.includes('ott') || lower.includes('netflix') || lower.includes('entertainment')) return '📺';
+      if (lower.includes('maid') || lower.includes('clean') || lower.includes('cook') || lower.includes('services')) return '🧹';
+      if (lower.includes('gas') || lower.includes('lpg') || lower.includes('fuel')) return '⛽';
+      return '📄';
+    };
+
+    const totalMonthlyAmount = billsList.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+    const urgentCount = billsList.filter(b => {
+      if (b.split === 'paid') return false;
+      if (!b.date) return false;
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const due = new Date(b.date); due.setHours(0, 0, 0, 0);
+      return due.getTime() <= today.getTime();
+    }).length;
+
     return (
       <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto animate-fade-in pb-12">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Household Operations</p>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Chore Rotation</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Assign flat responsibilities and automatically rotate them on completion.</p>
+            <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Household Recurring Expenses</p>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Bills & Subscriptions</h1>
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Track upcoming flat bills, subscriptions, and log payments straight into room expenses.</p>
           </div>
           <button 
             onClick={() => {
               if (members.length > 0) {
-                setChoreAssignee(members[0].uid);
+                setBillAssignee(members[0].uid);
               }
-              setIsAddChoreOpen(true);
+              setIsAddBillOpen(true);
             }}
             className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all flex items-center justify-center gap-2 active:scale-98 self-start sm:self-auto shadow-sm"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Chore Task</span>
+            <span>Add Bill Reminder</span>
           </button>
+        </div>
+
+        {/* Summary Stats Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-5 rounded-2xl shadow-sm space-y-1">
+            <p className="text-[10px] uppercase tracking-wider font-extrabold text-[#5C6E5C] dark:text-slate-400">Tracked Monthly Bills</p>
+            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(totalMonthlyAmount)}</p>
+          </div>
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-5 rounded-2xl shadow-sm space-y-1">
+            <p className="text-[10px] uppercase tracking-wider font-extrabold text-[#5C6E5C] dark:text-slate-400">Action Needed (Due/Overdue)</p>
+            <p className={`text-xl sm:text-2xl font-black ${urgentCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-[#1A3827] dark:text-slate-100'}`}>
+              {urgentCount} {urgentCount === 1 ? 'Bill' : 'Bills'}
+            </p>
+          </div>
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-5 rounded-2xl shadow-sm space-y-1">
+            <p className="text-[10px] uppercase tracking-wider font-extrabold text-[#5C6E5C] dark:text-slate-400">Active Bill Reminders</p>
+            <p className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{billsList.length} Total</p>
+          </div>
         </div>
 
         {/* List Layout */}
         <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 shadow-sm transition-colors duration-300">
-          {choresList.length === 0 ? (
+          {billsList.length === 0 ? (
             <div className="text-center py-12 space-y-4">
               <div className="w-12 h-12 rounded-full bg-[#F6F8F6] dark:bg-slate-850 flex items-center justify-center mx-auto text-[#1A3827] dark:text-[#A3E635]">
-                <CheckSquare className="w-6 h-6" />
+                <FileText className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-bold text-[#1A3827] dark:text-slate-100">No chores set up</h3>
-                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">Keep your flat organized by planning recurring roommates tasks.</p>
+                <h3 className="text-sm font-bold text-[#1A3827] dark:text-slate-100">No bills added yet</h3>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">Add WiFi, Rent, Electricity, or OTT subscriptions to stay on top of flat due dates.</p>
               </div>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-              {choresList.map(chore => {
-                const assigneeMember = members.find(m => m.uid === chore.splitType);
-                const status = getChoreStatus(chore.date);
-                const isRotating = chore.time === 'rotate';
+              {billsList.map(bill => {
+                const assigneeMember = members.find(m => m.uid === bill.splitType);
+                const isPaid = bill.split === 'paid';
+                const status = getBillStatus(bill.date, isPaid);
+                const freqText = getFrequencyLabel(bill.time);
+                const iconEmoji = getCategoryIcon(bill.imageUrl || bill.category || bill.title);
 
                 return (
                   <div 
-                    key={chore.id}
+                    key={bill.id}
                     className="flex flex-col justify-between p-5 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl bg-[#F6F8F6]/20 dark:bg-slate-950/20 hover:border-[#1A3827]/30 dark:hover:border-slate-700 transition-all space-y-4"
                   >
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       <div className="flex justify-between items-start gap-2">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wide font-black ${status.color}`}>
-                          {status.text}
-                        </span>
-                        {isRotating && (
-                          <span className="flex items-center gap-1 text-[9px] text-emerald-700 dark:text-[#A3E635] font-black bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full">
-                            <RefreshCw className="w-2.5 h-2.5" />
-                            <span>ROTATES</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-lg">{iconEmoji}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wide font-black ${status.color}`}>
+                            {status.text}
                           </span>
-                        )}
+                          {!bill.isShared && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wide font-black text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/50">
+                              🔒 Private
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-extrabold text-[#5C6E5C] dark:text-slate-400 bg-[#EAF0EC] dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                          {freqText}
+                        </span>
                       </div>
                       
-                      <h3 className="text-xs sm:text-sm font-black text-[#1A3827] dark:text-slate-100 line-clamp-2 leading-snug">{chore.title}</h3>
+                      <div>
+                        <h3 className="text-sm sm:text-base font-black text-[#1A3827] dark:text-slate-100 line-clamp-1 leading-snug">{bill.title}</h3>
+                        <p className="text-base font-black text-[#1A3827] dark:text-[#A3E635] mt-0.5">
+                          {formatINR(Number(bill.amount) || 0)}
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="pt-2 border-t border-[#F6F8F6] dark:border-slate-800/80 flex items-center justify-between">
+                    <div className="pt-3 border-t border-[#F6F8F6] dark:border-slate-800/80 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {assigneeMember?.photo_url ? (
                           <img 
@@ -12068,23 +12326,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           </div>
                         )}
                         <div className="leading-tight">
-                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">Assigned to</p>
-                          <p className="text-[11px] text-[#1A3827] dark:text-slate-200 font-bold truncate max-w-[80px]">{assigneeMember?.nickname || 'Unassigned'}</p>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">Payer / Split</p>
+                          <p className="text-[11px] text-[#1A3827] dark:text-slate-200 font-bold truncate max-w-[95px]">
+                            {assigneeMember?.nickname || 'Me'} {bill.isShared ? '(50/50)' : '(🔒 Private)'}
+                          </p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
-                          onClick={() => handleCompleteChore(chore)}
-                          className="p-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl hover:opacity-90 active:scale-90 transition-all shadow-sm"
-                          title="Mark Completed"
+                          onClick={() => handlePayAndLogBill(bill)}
+                          className="px-2.5 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl hover:opacity-90 active:scale-95 transition-all text-[10px] font-extrabold flex items-center gap-1 shadow-sm"
+                          title="Pay and log expense directly to Room Ledger"
                         >
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          <Check className="w-3 h-3 stroke-[3]" />
+                          <span>Pay & Log</span>
                         </button>
                         <button
-                          onClick={() => handleDeleteChore(chore)}
+                          onClick={() => handleDeleteBill(bill)}
                           className="p-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl transition-all"
-                          title="Delete Chore"
+                          title="Delete Bill Reminder"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -12100,33 +12361,66 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     );
   }
 
-  function renderAddChoreModal() {
+  function renderAddBillModal() {
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
         <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-xl border border-[#E3E8E3] dark:border-slate-800 p-6 space-y-4 transition-colors duration-300">
           <div className="flex justify-between items-center pb-2 border-b border-[#E3E8E3] dark:border-slate-800">
-            <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Add Chore Task</h3>
-            <button onClick={() => setIsAddChoreOpen(false)} className="p-1 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"><X className="w-4 h-4" /></button>
+            <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Add Bill Reminder</h3>
+            <button onClick={() => setIsAddBillOpen(false)} className="p-1 rounded-full hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"><X className="w-4 h-4" /></button>
           </div>
-          <form onSubmit={handleSaveChore} className="space-y-4 text-left">
+          <form onSubmit={handleSaveBill} className="space-y-4 text-left">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Chore Name</label>
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Bill Name</label>
               <input
                 type="text"
                 required
-                placeholder="e.g. Take out recycling bins"
-                value={choreTitle}
-                onChange={e => setChoreTitle(e.target.value)}
+                placeholder="e.g. WiFi Fiber Broadband, Electricity"
+                value={billTitle}
+                onChange={e => setBillTitle(e.target.value)}
                 className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Assign Roommate</label>
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Expected Amount (₹)</label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  placeholder="e.g. 999"
+                  value={billAmount}
+                  onChange={e => setBillAmount(e.target.value)}
+                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Category</label>
                 <select
-                  value={choreAssignee}
-                  onChange={e => setChoreAssignee(e.target.value)}
+                  value={billCategory}
+                  onChange={e => setBillCategory(e.target.value)}
+                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-[#1A3827] dark:text-white focus:outline-none font-semibold"
+                >
+                  <option value="Utilities">📶 Utilities / WiFi</option>
+                  <option value="Electricity">⚡ Electricity</option>
+                  <option value="Rent">🏠 House Rent</option>
+                  <option value="Entertainment">📺 OTT / Streaming</option>
+                  <option value="Services">🧹 Maid / Services</option>
+                  <option value="Food">🍕 Mess / Tiffin</option>
+                  <option value="Shopping">🛍️ Shopping / Supplies</option>
+                  <option value="Other">📄 Other Bill</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Payer / Responsible</label>
+                <select
+                  value={billAssignee}
+                  onChange={e => setBillAssignee(e.target.value)}
                   className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-[#1A3827] dark:text-white focus:outline-none"
                 >
                   {members.map(m => <option key={m.uid} value={m.uid}>{m.nickname}</option>)}
@@ -12134,46 +12428,69 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Chore Frequency</label>
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Frequency</label>
                 <select
-                  value={choreInterval}
-                  onChange={e => setChoreInterval(e.target.value)}
-                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-[#1A3827] dark:text-white focus:outline-none"
+                  value={billInterval}
+                  onChange={e => setBillInterval(e.target.value)}
+                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-[#1A3827] dark:text-white focus:outline-none font-semibold"
                 >
-                  <option value="1">Daily</option>
-                  <option value="7">Weekly</option>
-                  <option value="14">Fortnightly (14d)</option>
-                  <option value="30">Monthly (30d)</option>
-                  <option value="0">One-Time / None</option>
+                  <option value="30">Monthly (30 days)</option>
+                  <option value="7">Weekly (7 days)</option>
+                  <option value="14">Fortnightly (14 days)</option>
+                  <option value="60">Bi-Monthly (60 days)</option>
+                  <option value="90">Quarterly (90 days)</option>
+                  <option value="365">Yearly (365 days)</option>
+                  <option value="0">One-Time Only</option>
                 </select>
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">First Due Date</label>
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Next Due Date</label>
               <input
                 type="date"
                 required
-                value={choreDueDate}
-                onChange={e => setChoreDueDate(e.target.value)}
+                value={billDueDate}
+                onChange={e => setBillDueDate(e.target.value)}
                 className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold cursor-pointer"
               />
             </div>
 
-            <label className="flex items-center gap-2 py-1 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={choreRotate}
-                onChange={e => setChoreRotate(e.target.checked)}
-                className="w-4 h-4 text-[#1A3827] focus:ring-[#1A3827] accent-[#1A3827] border-[#E3E8E3] rounded"
-              />
-              <span className="text-xs text-[#5C6E5C] dark:text-slate-400 font-bold">Rotate assignee automatically on completion</span>
-            </label>
+            <div className="space-y-1.5 pt-1">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Bill Privacy & Sharing</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBillIsShared(true)}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    billIsShared
+                      ? 'border-[#1A3827] bg-[#EAF0EC] dark:bg-slate-800 dark:border-[#A3E635] text-[#1A3827] dark:text-slate-100 font-bold'
+                      : 'border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <p className="text-xs font-black">👥 Shared Bill</p>
+                  <p className="text-[9px] opacity-75 mt-0.5">Visible to room, split 50/50 when logged</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBillIsShared(false)}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    !billIsShared
+                      ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-400 text-amber-900 dark:text-amber-300 font-bold'
+                      : 'border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <p className="text-xs font-black">🔒 Private Bill</p>
+                  <p className="text-[9px] opacity-75 mt-0.5">Hidden from room, visible ONLY to you</p>
+                </button>
+              </div>
+            </div>
 
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setIsAddChoreOpen(false)}
+                onClick={() => setIsAddBillOpen(false)}
                 className="flex-1 py-2 rounded-xl border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800"
               >
                 Cancel
@@ -12182,7 +12499,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 type="submit"
                 className="flex-1 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all shadow-sm"
               >
-                Save Chore
+                Save Bill
               </button>
             </div>
           </form>
@@ -13074,7 +13391,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         // 1. Exclude system categories
         // 2. Filter by selectedMonth if not 'All'
         const filteredTx = transactions.filter(t => {
-          if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__' || t.category === 'Payment') return false;
+          if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__BILL__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__' || t.category === 'Payment') return false;
           return selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
         });
 
