@@ -46,17 +46,19 @@ exports.onNewExpenseAdded = functions.firestore
 
     // 1. Send Email Notifications
     const emailPromises = roommates.map((rm) => {
+      const rmName = rm.nickname || rm.name || rm.displayName || "Roommate";
+      const greeting = rmName && rmName !== "Roommate" ? `Hello ${rmName},` : "Hello Roommate,";
       const mailOptions = {
         from: '"Duo Room Sync" <duoroom.notifications@gmail.com>',
         to: rm.email,
         subject: `New Room Expense: ${title} (${formattedAmount})`,
-        text: messageText,
+        text: `${greeting}\n\n${messageText}`,
         html: `
           <div style="font-family: sans-serif; padding: 20px; background-color: #F6F8F6; color: #1A3827; border-radius: 12px; border: 1px solid #E3E8E3;">
             <h2 style="color: #1A3827; margin-bottom: 5px;">Duo Room Expense Tracker</h2>
             <p style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #5C6E5C; margin-top: 0;">Shared Notification</p>
             <hr style="border: 0; border-top: 1px solid #E3E8E3; margin: 15px 0;" />
-            <p style="font-size: 14px; font-weight: bold;">Hi Roommate,</p>
+            <p style="font-size: 14px; font-weight: bold;">${greeting}</p>
             <p style="font-size: 14px; line-height: 1.6;">
               A new shared bill was logged in your room:
             </p>
