@@ -3048,15 +3048,19 @@ export default function App() {
       return;
     }
 
+    const activeScriptUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+
     try {
-      const res = await fetch('https://tallyin-api.vercel.app/api/whatsapp-dispatch', {
+      const res = await fetch(activeScriptUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
+          actionType: 'whatsapp_alert',
           room_id: userRoomId,
           recipients: phoneList,
           message: messageText,
-          app_url: window.location.origin
+          app_url: window.location.origin,
+          subject: '[DuoShare WhatsApp Alert]'
         })
       });
       console.log('[Tallyin Central WhatsApp] Automated background message dispatched:', res.status);
@@ -13076,6 +13080,23 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     Tallyin's central messaging system dispatches background WhatsApp alerts directly to your number. Multiple numbers can be separated by commas (e.g. 9876543210, 9123456789).
                   </p>
                 </div>
+
+                <button
+                  onClick={() => {
+                    const testMsg = `🔔 *Tallyin Automated WhatsApp Test*\n\n` +
+                                    `📌 *Bill:* WiFi Fiber Broadband\n` +
+                                    `💰 *Amount:* ${formatINR(999)}\n` +
+                                    `📅 *Due Date:* ${getLocalDateStr()} (TODAY)\n` +
+                                    `👤 *Payer:* ${userNickname || 'Roommate'}\n\n` +
+                                    `👉 Tallyin Central Dispatch System working!`;
+                    dispatchAutoWhatsAppMessage(testMsg);
+                    triggerToast('Central WhatsApp alert payload dispatched!');
+                  }}
+                  className="px-4 py-2 bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Test Automated WhatsApp Alert</span>
+                </button>
               </div>
             )}
           </div>
