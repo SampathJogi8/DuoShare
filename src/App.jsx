@@ -3024,6 +3024,65 @@ export default function App() {
     setTimeout(() => setRoomCodeCopied(false), 2000);
   };
 
+  // 💬 WhatsApp Alert & Share Dispatcher Helper
+  const sendWhatsAppAlert = (options = {}) => {
+    const { type, bill, transaction, roomId, phone } = options;
+    const activeRoomId = roomId || userRoomId || localStorage.getItem('userRoomId') || 'DUOSHARE';
+    const baseUrl = window.location.origin;
+
+    let text = '';
+
+    if (type === 'bill_due' || type === 'bill_due_today') {
+      const bTitle = bill?.title || 'Flat Bill';
+      const bAmt = formatINR(Number(bill?.amount) || 0);
+      const bDate = bill?.date || getLocalDateStr();
+      const payer = bill?.paidBy || userNickname || 'Roommate';
+
+      text = `🔔 *DuoShare Flat Bill Alert*\n\n` +
+             `📌 *Bill:* ${bTitle}\n` +
+             `💰 *Amount:* ${bAmt}\n` +
+             `📅 *Due Date:* ${bDate} (TODAY)\n` +
+             `👤 *Responsible/Payer:* ${payer}\n\n` +
+             `👉 Pay & log on DuoShare: ${baseUrl}`;
+    } else if (type === 'bill_2days' || type === 'bill_due_2days') {
+      const bTitle = bill?.title || 'Flat Bill';
+      const bAmt = formatINR(Number(bill?.amount) || 0);
+      const bDate = bill?.date || getLocalDateStr();
+
+      text = `⏳ *DuoShare Bill Reminder*\n\n` +
+             `📌 *Bill:* ${bTitle}\n` +
+             `💰 *Amount:* ${bAmt}\n` +
+             `📅 *Due Date:* ${bDate} (in 2 days)\n\n` +
+             `👉 Check bill status: ${baseUrl}`;
+    } else if (type === 'expense') {
+      const title = transaction?.title || 'Expense';
+      const amt = formatINR(Number(transaction?.amount) || 0);
+      const payer = transaction?.paidBy || userNickname;
+
+      text = `💸 *DuoShare Expense Logged*\n\n` +
+             `📌 *Title:* ${title}\n` +
+             `💰 *Amount:* ${amt}\n` +
+             `👤 *Paid By:* ${payer}\n` +
+             `🏠 *Room Code:* ${activeRoomId}\n\n` +
+             `👉 View Room Ledger: ${baseUrl}`;
+    } else if (type === 'invite') {
+      text = `🏠 *Join my DuoShare Flat Room!*\n\n` +
+             `Hey! Join our shared flat room on DuoShare to track expenses, flat bills, and settlements together.\n\n` +
+             `🔑 *Room Code:* ${activeRoomId}\n` +
+             `🔗 *Instant Join Link:* ${baseUrl}?join=${activeRoomId}`;
+    } else {
+      text = `📢 *DuoShare Notification*\n\nRoom: ${activeRoomId}\n${baseUrl}`;
+    }
+
+    const cleanPhone = phone ? String(phone).replace(/\D/g, '') : '';
+    const whatsappUrl = cleanPhone 
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+
+    window.open(whatsappUrl, '_blank');
+    triggerToast('Opening WhatsApp...');
+  };
+
   // Client-Side Email Notification Dispatcher
   const sendEmailNotification = async (transaction, actionType = 'add') => {
     if (notificationMethod === 'none') return;
@@ -12437,6 +12496,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
+                          onClick={() => sendWhatsAppAlert({ type: 'bill_due', bill })}
+                          className="p-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl active:scale-95 transition-all shadow-sm"
+                          title="Share bill reminder on WhatsApp"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => handlePayAndLogBill(bill)}
                           className="px-2.5 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl hover:opacity-90 active:scale-95 transition-all text-[10px] font-extrabold flex items-center gap-1 shadow-sm"
                           title="Pay and log expense directly to Room Ledger"
@@ -13444,6 +13510,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => sendWhatsAppAlert({ type: 'invite' })}
+                    className="w-full py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    Share via WhatsApp
+                  </button>
                   <button
                     onClick={() => { navigator.clipboard.writeText(inviteLink); triggerToast('Invite link copied!'); }}
                     className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2"
