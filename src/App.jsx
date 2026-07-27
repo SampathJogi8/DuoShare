@@ -12336,11 +12336,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
       if (diffDays < 0) {
-        return { text: `Overdue by ${Math.abs(diffDays)}d`, color: 'text-red-700 bg-red-50 dark:bg-red-950/20 dark:text-red-400 font-black' };
+        return { text: `🚨 OVERDUE (${Math.abs(diffDays)}d late)`, color: 'text-rose-700 bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 font-black border border-rose-300 dark:border-rose-800 shadow-sm animate-pulse' };
       } else if (diffDays === 0) {
-        return { text: 'Due Today', color: 'text-amber-700 bg-amber-50 dark:bg-amber-950/20 dark:text-amber-400 font-black animate-pulse' };
+        return { text: '⚡ Due Today', color: 'text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 font-black border border-amber-300/60 shadow-sm animate-pulse' };
       } else if (diffDays === 1) {
-        return { text: 'Due Tomorrow', color: 'text-blue-700 bg-blue-50 dark:bg-blue-950/20 dark:text-blue-400 font-bold' };
+        return { text: 'Due Tomorrow', color: 'text-blue-700 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400 font-bold' };
       } else {
         return { text: `Due in ${diffDays}d`, color: 'text-[#1A3827] bg-[#F6F8F6] dark:bg-slate-800 dark:text-slate-300 font-semibold' };
       }
@@ -12487,7 +12487,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           </div>
                         )}
                         <div className="leading-tight">
-                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">Payer / Split</p>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">Assigned Payer</p>
                           <p className="text-[11px] text-[#1A3827] dark:text-slate-200 font-bold truncate max-w-[95px]">
                             {assigneeMember?.nickname || 'Me'} {bill.isShared ? '(50/50)' : '(🔒 Private)'}
                           </p>
@@ -12585,7 +12585,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Payer / Responsible</label>
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Assigned Payer (Who pays vendor)</label>
                 <select
                   value={billAssignee}
                   onChange={e => setBillAssignee(e.target.value)}
