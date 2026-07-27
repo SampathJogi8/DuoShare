@@ -582,10 +582,6 @@ export default function App() {
   // Notification Config States
   const [notificationMethod, setNotificationMethod] = useState(() => localStorage.getItem('notificationMethod') || 'tallyin');
   const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(() => localStorage.getItem('pushNotificationsEnabled') === 'true');
-  const [whatsappAutoEnabled, setWhatsappAutoEnabled] = useState(() => localStorage.getItem('whatsappAutoEnabled') === 'true');
-  const [whatsappPhoneNumbers, setWhatsappPhoneNumbers] = useState(() => localStorage.getItem('whatsappPhoneNumbers') || '');
-  const [whatsappPhoneId, setWhatsappPhoneId] = useState(() => localStorage.getItem('whatsappPhoneId') || '');
-  const [whatsappApiToken, setWhatsappApiToken] = useState(() => localStorage.getItem('whatsappApiToken') || '');
   
   // Log download states
   const [logStartDate, setLogStartDate] = useState('');
@@ -3028,146 +3024,7 @@ export default function App() {
     setTimeout(() => setRoomCodeCopied(false), 2000);
   };
 
-  // 💬 Meta WhatsApp Cloud API Direct Background Dispatcher (Option 2)
-  const dispatchAutoWhatsAppMessage = async (messageText, targetPhones = null) => {
-    if (localStorage.getItem('whatsappAutoEnabled') === 'false') return;
 
-    const myNumber = localStorage.getItem('whatsappPhoneNumbers') || '';
-    const memberNumbers = (members || []).map(m => m.phone || m.mobileNumber).filter(Boolean);
-    const rawPhones = targetPhones || [myNumber, ...memberNumbers].join(',');
-
-    const phoneList = Array.from(new Set(
-      rawPhones
-        .split(',')
-        .map(p => p.trim().replace(/\D/g, ''))
-        .filter(p => p.length >= 10)
-    ));
-
-    if (phoneList.length === 0) {
-      triggerToast('Please enter at least one 10-digit WhatsApp number in Settings.');
-      return;
-    }
-
-    const phoneId = localStorage.getItem('whatsappPhoneId');
-    const apiToken = localStorage.getItem('whatsappApiToken');
-
-    if (phoneId && apiToken) {
-      // 🚀 Direct Meta WhatsApp Cloud API (1,000 Free Messages/Month)
-      let sentCount = 0;
-      for (const phone of phoneList) {
-        const recipient = phone.length === 10 ? `91${phone}` : phone;
-        try {
-          const res = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              messaging_product: 'whatsapp',
-              to: recipient,
-              type: 'text',
-              text: { body: messageText }
-            })
-          });
-          const data = await res.json();
-          if (data.messages && data.messages.length > 0) {
-            sentCount++;
-            console.log(`[Meta Cloud API] Message delivered to ${recipient}:`, data);
-          } else {
-            console.warn(`[Meta Cloud API] Meta response for ${recipient}:`, data);
-            if (data.error) {
-              triggerToast(`Meta Error: ${data.error.message || 'Invalid Token or Phone ID'}`);
-            }
-          }
-        } catch (err) {
-          console.error(`[Meta Cloud API] Exception for ${recipient}:`, err);
-        }
-      }
-      if (sentCount > 0) {
-        triggerToast(`🚀 Meta WhatsApp background message sent to ${sentCount} number(s)!`);
-      }
-    } else {
-      // Fallback Relay Log
-      const activeScriptUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
-      try {
-        await fetch(activeScriptUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            actionType: 'whatsapp_alert',
-            room_id: userRoomId,
-            recipients: phoneList,
-            message: messageText,
-            app_url: window.location.origin,
-            subject: '[DuoShare WhatsApp Alert]'
-          })
-        });
-        triggerToast('Please enter your Meta Phone ID & Access Token in Settings to enable direct WhatsApp delivery.');
-      } catch (err) {
-        console.warn('[Tallyin Relay] Exception:', err);
-      }
-    }
-  };
-
-  // 💬 WhatsApp Alert & Share Dispatcher Helper
-  const sendWhatsAppAlert = (options = {}) => {
-    const { type, bill, transaction, roomId, phone } = options;
-    const activeRoomId = roomId || userRoomId || localStorage.getItem('userRoomId') || 'DUOSHARE';
-    const baseUrl = window.location.origin;
-
-    let text = '';
-
-    if (type === 'bill_due' || type === 'bill_due_today') {
-      const bTitle = bill?.title || 'Flat Bill';
-      const bAmt = formatINR(Number(bill?.amount) || 0);
-      const bDate = bill?.date || getLocalDateStr();
-      const payer = bill?.paidBy || userNickname || 'Roommate';
-
-      text = `🔔 *DuoShare Flat Bill Alert*\n\n` +
-             `📌 *Bill:* ${bTitle}\n` +
-             `💰 *Amount:* ${bAmt}\n` +
-             `📅 *Due Date:* ${bDate} (TODAY)\n` +
-             `👤 *Responsible/Payer:* ${payer}\n\n` +
-             `👉 Pay & log on DuoShare: ${baseUrl}`;
-    } else if (type === 'bill_2days' || type === 'bill_due_2days') {
-      const bTitle = bill?.title || 'Flat Bill';
-      const bAmt = formatINR(Number(bill?.amount) || 0);
-      const bDate = bill?.date || getLocalDateStr();
-
-      text = `⏳ *DuoShare Bill Reminder*\n\n` +
-             `📌 *Bill:* ${bTitle}\n` +
-             `💰 *Amount:* ${bAmt}\n` +
-             `📅 *Due Date:* ${bDate} (in 2 days)\n\n` +
-             `👉 Check bill status: ${baseUrl}`;
-    } else if (type === 'expense') {
-      const title = transaction?.title || 'Expense';
-      const amt = formatINR(Number(transaction?.amount) || 0);
-      const payer = transaction?.paidBy || userNickname;
-
-      text = `💸 *DuoShare Expense Logged*\n\n` +
-             `📌 *Title:* ${title}\n` +
-             `💰 *Amount:* ${amt}\n` +
-             `👤 *Paid By:* ${payer}\n` +
-             `🏠 *Room Code:* ${activeRoomId}\n\n` +
-             `👉 View Room Ledger: ${baseUrl}`;
-    } else if (type === 'invite') {
-      text = `🏠 *Join my DuoShare Flat Room!*\n\n` +
-             `Hey! Join our shared flat room on DuoShare to track expenses, flat bills, and settlements together.\n\n` +
-             `🔑 *Room Code:* ${activeRoomId}\n` +
-             `🔗 *Instant Join Link:* ${baseUrl}?join=${activeRoomId}`;
-    } else {
-      text = `📢 *DuoShare Notification*\n\nRoom: ${activeRoomId}\n${baseUrl}`;
-    }
-
-    const cleanPhone = phone ? String(phone).replace(/\D/g, '') : '';
-    const whatsappUrl = cleanPhone 
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-
-    window.open(whatsappUrl, '_blank');
-    triggerToast('Opening WhatsApp...');
-  };
 
   // Client-Side Email Notification Dispatcher
   const sendEmailNotification = async (transaction, actionType = 'add') => {
@@ -5828,60 +5685,14 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           }
 
           if (notificationMethod !== 'none') {
-            sendEmailNotification(bill, 'bill_due_today').catch(err => {
-              console.warn("Failed to send bill due today email:", err);
-            });
-          }
-
-          // 3. Automated Background WhatsApp Message (No click needed)
-          if (localStorage.getItem('whatsappAutoEnabled') === 'true') {
-            const waMsg = `🔔 *DuoShare Flat Bill Alert*\n\n` +
-                          `📌 *Bill:* ${bill.title}\n` +
-                          `💰 *Amount:* ${formattedAmt}\n` +
-                          `📅 *Due Date:* ${todayStr} (TODAY)\n` +
-                          `👤 *Payer:* ${bill.paidBy || userNickname || 'Roommate'}\n\n` +
-                          `👉 Pay & log on DuoShare: ${window.location.origin}`;
-            dispatchAutoWhatsAppMessage(waMsg);
-          }
-        }
-      }
-
-      // 2. Bill Due in 2 DAYS Notification
-      if (dueStr === dueIn2DaysStr) {
-        const notifKey2Days = `bill_notif_2days_${billId}_${dueStr}`;
-        if (!localStorage.getItem(notifKey2Days)) {
-          localStorage.setItem(notifKey2Days, 'true');
-
-          if (Notification.permission === 'granted' && localStorage.getItem('pushNotificationsEnabled') === 'true') {
-            try {
-              new Notification("⏳ Bill Due in 2 Days", {
-                body: `Reminder: "${bill.title}" (${formattedAmt}) is due on ${dueStr} (in 2 days).`,
-                icon: logoIcon || '/favicon.ico'
-              });
-            } catch (e) {
-              console.warn("Failed browser notification:", e);
-            }
-          }
-
-          if (notificationMethod !== 'none') {
             sendEmailNotification(bill, 'bill_due_2days').catch(err => {
               console.warn("Failed to send bill due in 2 days email:", err);
             });
           }
-
-          // Automated Background WhatsApp Message (2 Days Before)
-          if (localStorage.getItem('whatsappAutoEnabled') === 'true') {
-            const waMsg = `⏳ *DuoShare Bill Reminder*\n\n` +
-                          `📌 *Bill:* ${bill.title}\n` +
-                          `💰 *Amount:* ${formattedAmt}\n` +
-                          `📅 *Due Date:* ${dueStr} (in 2 days)\n\n` +
-                          `👉 View bill status on DuoShare: ${window.location.origin}`;
-            dispatchAutoWhatsAppMessage(waMsg);
-          }
         }
       }
     });
-  }, [billsList, notificationMethod, pushNotificationsEnabled, whatsappAutoEnabled]);
+  }, [billsList, notificationMethod, pushNotificationsEnabled]);
 
   const filteredPersonalExpenses = useMemo(() => {
     return myPersonalExpenses.filter(t => {
@@ -12603,13 +12414,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
-                          onClick={() => sendWhatsAppAlert({ type: 'bill_due', bill })}
-                          className="p-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl active:scale-95 transition-all shadow-sm"
-                          title="Share bill reminder on WhatsApp"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                        </button>
-                        <button
                           onClick={() => handlePayAndLogBill(bill)}
                           className="px-2.5 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl hover:opacity-90 active:scale-95 transition-all text-[10px] font-extrabold flex items-center gap-1 shadow-sm"
                           title="Pay and log expense directly to Room Ledger"
@@ -13071,114 +12875,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 )}
               </div>
               
-          {/* Option 2: Meta WhatsApp Business Cloud API */}
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
-            <div className="flex items-center justify-between pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
-              <div>
-                <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight flex items-center gap-2">
-                  <span className="text-base">🤖</span> Meta WhatsApp Cloud API (100% Free - Option 2)
-                </h3>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 font-medium">
-                  Direct background WhatsApp delivery via official Meta Cloud API (Includes 1,000 FREE messages/month).
-                </p>
-              </div>
-              <button 
-                onClick={() => {
-                  const nextVal = !whatsappAutoEnabled;
-                  setWhatsappAutoEnabled(nextVal);
-                  localStorage.setItem('whatsappAutoEnabled', String(nextVal));
-                  triggerToast(nextVal ? 'Meta WhatsApp background alerts enabled!' : 'WhatsApp background alerts disabled.');
-                }}
-                className={`w-12 h-6 rounded-full p-1 transition-all duration-200 cursor-pointer shrink-0 ${
-                  whatsappAutoEnabled ? 'bg-[#25D366]' : 'bg-[#E3E8E3] dark:bg-slate-800'
-                }`}
-              >
-                <div 
-                  className={`w-4 h-4 rounded-full bg-white transition-all duration-200 ${
-                    whatsappAutoEnabled ? 'translate-x-6' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
 
-            {whatsappAutoEnabled && (
-              <div className="space-y-4 pt-2 animate-fade-in text-left">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
-                    1. Recipient WhatsApp Mobile Number(s)
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="e.g. 9876543210"
-                    value={whatsappPhoneNumbers}
-                    onChange={(e) => {
-                      setWhatsappPhoneNumbers(e.target.value);
-                      localStorage.setItem('whatsappPhoneNumbers', e.target.value);
-                    }}
-                    className="w-full sm:w-80 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 font-mono text-[#1A3827] dark:text-white focus:outline-none font-bold tracking-wider"
-                  />
-                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
-                    Separate multiple roommate WhatsApp numbers with commas.
-                  </p>
-                </div>
-
-                <div className="space-y-3 pt-3 border-t border-[#F6F8F6] dark:border-slate-800">
-                  <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">
-                    2. Meta Developer Credentials (Free 1,000 Msgs/Month)
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-[#5C6E5C] dark:text-slate-400">Meta Phone Number ID</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 104829104857"
-                        value={whatsappPhoneId}
-                        onChange={(e) => {
-                          setWhatsappPhoneId(e.target.value);
-                          localStorage.setItem('whatsappPhoneId', e.target.value);
-                        }}
-                        className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-[#1A3827] dark:text-white focus:outline-none font-mono"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-[#5C6E5C] dark:text-slate-400">Meta Access Token (Bearer)</label>
-                      <input
-                        type="password"
-                        placeholder="EAAG..."
-                        value={whatsappApiToken}
-                        onChange={(e) => {
-                          setWhatsappApiToken(e.target.value);
-                          localStorage.setItem('whatsappApiToken', e.target.value);
-                        }}
-                        className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-[#1A3827] dark:text-white focus:outline-none font-mono"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                    💡 <b>How to get Meta keys for free:</b> Go to <a href="https://developers.facebook.com" target="_blank" rel="noreferrer" className="underline font-bold text-[#25D366]">developers.facebook.com</a> → Create App → Select WhatsApp → Copy your <b>Phone Number ID</b> and <b>Temporary Access Token</b>.
-                  </p>
-                </div>
-
-                <div className="pt-2 flex items-center gap-3">
-                  <button
-                    onClick={() => {
-                      const testMsg = `🔔 *DuoShare Meta WhatsApp Test*\n\n` +
-                                      `📌 *Bill:* WiFi Broadband\n` +
-                                      `💰 *Amount:* ${formatINR(999)}\n` +
-                                      `📅 *Due Date:* ${getLocalDateStr()} (TODAY)\n` +
-                                      `👤 *Payer:* ${userNickname || 'Roommate'}\n\n` +
-                                      `👉 Automated background Meta Cloud API working!`;
-                      dispatchAutoWhatsAppMessage(testMsg);
-                    }}
-                    className="px-4 py-2 bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    <span>Send Test Meta Background WhatsApp</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
 
               <button
                 onClick={() => setIsInviteModalOpen(true)}
@@ -13727,13 +13424,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => sendWhatsAppAlert({ type: 'invite' })}
-                    className="w-full py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    Share via WhatsApp
-                  </button>
                   <button
                     onClick={() => { navigator.clipboard.writeText(inviteLink); triggerToast('Invite link copied!'); }}
                     className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2"
