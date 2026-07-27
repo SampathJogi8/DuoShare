@@ -3028,63 +3028,40 @@ export default function App() {
     setTimeout(() => setRoomCodeCopied(false), 2000);
   };
 
-  // 💬 100% Automated Background WhatsApp Dispatcher
+  // 💬 Tallyin Central Automated WhatsApp Dispatcher (Zero-Setup System)
   const dispatchAutoWhatsAppMessage = async (messageText, targetPhones = null) => {
-    if (localStorage.getItem('whatsappAutoEnabled') !== 'true') return;
+    if (localStorage.getItem('whatsappAutoEnabled') === 'false') return;
 
-    const rawPhones = targetPhones || localStorage.getItem('whatsappPhoneNumbers') || '';
-    const phoneList = rawPhones
-      .split(',')
-      .map(p => p.trim().replace(/\D/g, ''))
-      .filter(p => p.length >= 10);
+    const myNumber = localStorage.getItem('whatsappPhoneNumbers') || '';
+    const memberNumbers = (members || []).map(m => m.phone || m.mobileNumber).filter(Boolean);
+    const rawPhones = targetPhones || [myNumber, ...memberNumbers].join(',');
+
+    const phoneList = Array.from(new Set(
+      rawPhones
+        .split(',')
+        .map(p => p.trim().replace(/\D/g, ''))
+        .filter(p => p.length >= 10)
+    ));
 
     if (phoneList.length === 0) {
-      console.warn('[WhatsApp Auto] No valid recipient phone numbers configured.');
+      console.log('[Tallyin Central WhatsApp] No mobile numbers registered for automated dispatch.');
       return;
     }
 
-    const apiToken = localStorage.getItem('whatsappApiToken');
-    const phoneId = localStorage.getItem('whatsappPhoneId');
-
-    // Option A: Direct Meta WhatsApp Cloud API if credentials provided
-    if (apiToken && phoneId) {
-      for (const phone of phoneList) {
-        try {
-          const res = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              messaging_product: 'whatsapp',
-              to: phone.length === 10 ? `91${phone}` : phone,
-              type: 'text',
-              text: { body: messageText }
-            })
-          });
-          const data = await res.json();
-          console.log(`[Meta WhatsApp Cloud API] Sent to ${phone}:`, data);
-        } catch (err) {
-          console.error(`[Meta WhatsApp Cloud API] Failed for ${phone}:`, err);
-        }
-      }
-    } else {
-      // Option B: Central Relay Gateway (Default Fallback)
-      try {
-        const res = await fetch('https://tallyin-api.vercel.app/api/whatsapp-relay', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            room_id: userRoomId,
-            recipients: phoneList,
-            message: messageText
-          })
-        });
-        console.log('[Central WhatsApp Relay] Payload dispatched:', res.status);
-      } catch (err) {
-        console.warn('[Central WhatsApp Relay] Background dispatch logged:', err);
-      }
+    try {
+      const res = await fetch('https://tallyin-api.vercel.app/api/whatsapp-dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: userRoomId,
+          recipients: phoneList,
+          message: messageText,
+          app_url: window.location.origin
+        })
+      });
+      console.log('[Tallyin Central WhatsApp] Automated background message dispatched:', res.status);
+    } catch (err) {
+      console.warn('[Tallyin Central WhatsApp] Automated dispatch logged:', err);
     }
   };
 
@@ -13049,90 +13026,59 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 )}
               </div>
               
-              {/* WhatsApp Alerts & Sharing */}
-              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
-                <div className="flex items-center justify-between pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
-                  <div>
-                    <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight flex items-center gap-2">
-                      <span className="text-base">💬</span> Automated WhatsApp Messages (Background API)
-                    </h3>
-                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 font-medium">
-                      Automatically send background WhatsApp messages for 2-day advance bill reminders & due dates without clicking any links.
-                    </p>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      const nextVal = !whatsappAutoEnabled;
-                      setWhatsappAutoEnabled(nextVal);
-                      localStorage.setItem('whatsappAutoEnabled', String(nextVal));
-                      triggerToast(nextVal ? 'Automated WhatsApp alerts enabled!' : 'Automated WhatsApp alerts disabled.');
-                    }}
-                    className={`w-12 h-6 rounded-full p-1 transition-all duration-200 cursor-pointer shrink-0 ${
-                      whatsappAutoEnabled ? 'bg-[#25D366]' : 'bg-[#E3E8E3] dark:bg-slate-800'
-                    }`}
-                  >
-                    <div 
-                      className={`w-4 h-4 rounded-full bg-white transition-all duration-200 ${
-                        whatsappAutoEnabled ? 'translate-x-6' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {whatsappAutoEnabled && (
-                  <div className="space-y-4 pt-2 animate-fade-in text-left">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
-                        Recipient WhatsApp Phone Numbers (Comma-separated)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 9876543210, 9123456789"
-                        value={whatsappPhoneNumbers}
-                        onChange={(e) => {
-                          setWhatsappPhoneNumbers(e.target.value);
-                          localStorage.setItem('whatsappPhoneNumbers', e.target.value);
-                        }}
-                        className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 font-mono text-[#1A3827] dark:text-white focus:outline-none font-semibold"
-                      />
-                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
-                        Enter the WhatsApp phone numbers of roommates who should receive automated background alerts.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2 pt-2 border-t border-[#F6F8F6] dark:border-slate-800">
-                      <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">
-                        Optional: Meta WhatsApp Cloud API Credentials
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <input
-                          type="text"
-                          placeholder="Phone Number ID (e.g. 10482...)"
-                          value={whatsappPhoneId}
-                          onChange={(e) => {
-                            setWhatsappPhoneId(e.target.value);
-                            localStorage.setItem('whatsappPhoneId', e.target.value);
-                          }}
-                          className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-[#1A3827] dark:text-white focus:outline-none"
-                        />
-                        <input
-                          type="password"
-                          placeholder="Access Token (Bearer EAAG...)"
-                          value={whatsappApiToken}
-                          onChange={(e) => {
-                            setWhatsappApiToken(e.target.value);
-                            localStorage.setItem('whatsappApiToken', e.target.value);
-                          }}
-                          className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 text-[#1A3827] dark:text-white focus:outline-none"
-                        />
-                      </div>
-                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
-                        Leave blank to use the default Central DuoShare Relay Gateway, or enter your own Meta Cloud API credentials for custom business messaging.
-                      </p>
-                    </div>
-                  </div>
-                )}
+          {/* Tallyin Central Automated WhatsApp Messaging System */}
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
+            <div className="flex items-center justify-between pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
+              <div>
+                <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight flex items-center gap-2">
+                  <span className="text-base">💬</span> Tallyin Central Automated WhatsApp Messaging
+                </h3>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 font-medium">
+                  Zero setup required! Enter your 10-digit WhatsApp mobile number below to automatically receive 2-day advance bill reminders & due-date alerts.
+                </p>
               </div>
+              <button 
+                onClick={() => {
+                  const nextVal = !whatsappAutoEnabled;
+                  setWhatsappAutoEnabled(nextVal);
+                  localStorage.setItem('whatsappAutoEnabled', String(nextVal));
+                  triggerToast(nextVal ? 'Tallyin WhatsApp alerts enabled!' : 'Tallyin WhatsApp alerts disabled.');
+                }}
+                className={`w-12 h-6 rounded-full p-1 transition-all duration-200 cursor-pointer shrink-0 ${
+                  whatsappAutoEnabled ? 'bg-[#25D366]' : 'bg-[#E3E8E3] dark:bg-slate-800'
+                }`}
+              >
+                <div 
+                  className={`w-4 h-4 rounded-full bg-white transition-all duration-200 ${
+                    whatsappAutoEnabled ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {whatsappAutoEnabled && (
+              <div className="space-y-4 pt-2 animate-fade-in text-left">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                    Your 10-Digit WhatsApp Mobile Number
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. 9876543210"
+                    value={whatsappPhoneNumbers}
+                    onChange={(e) => {
+                      setWhatsappPhoneNumbers(e.target.value);
+                      localStorage.setItem('whatsappPhoneNumbers', e.target.value);
+                    }}
+                    className="w-full sm:w-72 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs bg-white dark:bg-slate-950 font-mono text-[#1A3827] dark:text-white focus:outline-none font-bold tracking-wider"
+                  />
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                    Tallyin's central messaging system dispatches background WhatsApp alerts directly to your number. Multiple numbers can be separated by commas (e.g. 9876543210, 9123456789).
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
 
               <button
                 onClick={() => setIsInviteModalOpen(true)}
