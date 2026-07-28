@@ -47,7 +47,10 @@ import {
   FileSpreadsheet,
   MessageSquare,
   Bell,
-  Mail
+  Mail,
+  HandCoins,
+  CheckCircle2,
+  ArrowLeftRight
 } from 'lucide-react';
 
 import { supabase } from './supabase';
@@ -583,6 +586,13 @@ export default function App() {
   const [notificationMethod, setNotificationMethod] = useState(() => localStorage.getItem('notificationMethod') || 'tallyin');
   const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(() => localStorage.getItem('pushNotificationsEnabled') === 'true');
   
+  // Settlement Record States
+  const [settlementSearchQuery, setSettlementSearchQuery] = useState('');
+  const [settlementRoommateFilter, setSettlementRoommateFilter] = useState('all');
+  const [settlementMonthFilter, setSettlementMonthFilter] = useState('all');
+  const [selectedSettlementDetail, setSelectedSettlementDetail] = useState(null);
+  const [isSettlementDetailOpen, setIsSettlementDetailOpen] = useState(false);
+
   // Log download states
   const [logStartDate, setLogStartDate] = useState('');
   const [logEndDate, setLogEndDate] = useState('');
@@ -2814,6 +2824,38 @@ export default function App() {
 
     const currentUserBalance = roomBalances[currentUid] || 0;
 
+    // Settlement Statistics
+    const settlementTransactions = data.filter(t => t.category === 'Payment' || t.splitType === 'settlement' || (t.title && t.title.startsWith('Payment:')));
+    const settlementCount = settlementTransactions.length;
+    const totalSettledAmount = Math.round(settlementTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0) * 100) / 100;
+
+    let mySettlementsPaid = 0;
+    let mySettlementsReceived = 0;
+
+    settlementTransactions.forEach(t => {
+      const amt = Number(t.amount) || 0;
+      let payerUid = t.paidByUid;
+      if (!payerUid) {
+        payerUid = t.paidBy === userNickname ? currentUid : 'roommate';
+      }
+      if (payerUid === currentUid) {
+        mySettlementsPaid += amt;
+      }
+
+      let isReceiver = false;
+      if (t.splits && Array.isArray(t.splits)) {
+        isReceiver = t.splits.some(s => s.uid === currentUid && Number(s.amount) > 0);
+      } else if (payerUid !== currentUid) {
+        isReceiver = true;
+      }
+      if (isReceiver && payerUid !== currentUid) {
+        mySettlementsReceived += amt;
+      }
+    });
+
+    mySettlementsPaid = Math.round(mySettlementsPaid * 100) / 100;
+    mySettlementsReceived = Math.round(mySettlementsReceived * 100) / 100;
+
     return {
       totalSpend,
       totalRoomSpend,
@@ -2824,7 +2866,11 @@ export default function App() {
       totalCount: data.length,
       juneSpend: totalSpend,
       totalShared: sharedSpend,
-      personalPaidAlex: personalSpend
+      personalPaidAlex: personalSpend,
+      settlementCount,
+      totalSettledAmount,
+      mySettlementsPaid,
+      mySettlementsReceived
     };
   }, [transactions, members, userNickname, auth.currentUser]);
 
@@ -7472,6 +7518,23 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </button>
 
             <button 
+              onClick={() => navigateTo('settlement-records')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-xs sm:text-[13px] ${
+                currentView === 'settlement-records' 
+                  ? 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 font-bold' 
+                  : 'text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <HandCoins className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="whitespace-nowrap">Settlement Record</span>
+              </div>
+              <span className="px-2 py-0.5 text-xs font-bold bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full">
+                {computedStats.settlementCount || 0}
+              </span>
+            </button>
+
+            <button 
               onClick={() => navigateTo('personal-expenses')}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-xs sm:text-[13px] ${
                 currentView === 'personal-expenses' 
@@ -7762,6 +7825,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {currentView === 'personal-expenses' && <ViewRenderer render={renderPersonalExpenses} />}
             {currentView === 'fund-tracker' && <ViewRenderer render={renderFundTracker} />}
             {currentView === 'insights' && <ViewRenderer render={renderInsights} />}
+            {currentView === 'settlement-records' && <ViewRenderer render={renderSettlementRecords} />}
             {currentView === 'receipts' && <ViewRenderer render={renderReceipts} />}
             {currentView === 'shopping-board' && <ViewRenderer render={renderShoppingBoard} />}
             {currentView === 'bills' && <ViewRenderer render={renderBills} />}
@@ -7781,6 +7845,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Settle Up Modal */}
         {isSettleModalOpen && renderSettleModal()}
+        {isSettlementDetailOpen && renderSettlementDetailModal()}
 
         {/* Manage Room Modal */}
         {isManageRoomOpen && renderManageRoomModal()}
@@ -8904,6 +8969,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           )}
                         </h4>
                         <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
+                          <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Transaction ID">
+                            {formatTxId(t.id)}
+                          </span>
                           <span className="text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0">
                             {t.category}
                           </span>
@@ -9834,25 +9902,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         if (error) throw error;
         
-        if (data && data[0]) {
-          const newTx = {
-            id: data[0].id,
-            roomId: data[0].room_id,
-            title: data[0].title,
-            amount: Number(data[0].amount) || 0,
-            category: data[0].category,
-            date: data[0].date,
-            time: data[0].time,
-            paidBy: data[0].paid_by,
-            paidByUid: data[0].paid_by_uid,
-            isShared: data[0].is_shared,
-            splitType: data[0].split_type,
-            split: data[0].split,
-            splits: data[0].splits,
-            createdBy: data[0].created_by
-          };
-          setTransactions(prev => [newTx, ...prev]);
-        }
+        const txId = (data && data[0] && data[0].id) ? data[0].id : `optimistic-fund-${Date.now()}`;
+        const newTx = {
+          id: txId,
+          roomId: userRoomId,
+          title: payload.title,
+          amount: payload.amount,
+          category: payload.category,
+          date: payload.date,
+          time: payload.time,
+          paidBy: payload.paid_by,
+          paidByUid: payload.paid_by_uid,
+          isShared: payload.is_shared,
+          splitType: payload.split_type,
+          split: payload.split,
+          splits: payload.splits,
+          createdBy: currentUid
+        };
+        setTransactions(prev => [newTx, ...prev.filter(t => t.id !== txId)]);
         triggerToast('Fund created successfully.');
       }
       setIsAddFundModalOpen(false);
@@ -9980,25 +10047,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         if (error) throw error;
         
-        if (data && data[0]) {
-          const newTx = {
-            id: data[0].id,
-            roomId: data[0].room_id,
-            title: data[0].title,
-            amount: Number(data[0].amount) || 0,
-            category: data[0].category,
-            date: data[0].date,
-            time: data[0].time,
-            paidBy: data[0].paid_by,
-            paidByUid: data[0].paid_by_uid,
-            isShared: data[0].is_shared,
-            splitType: data[0].split_type,
-            split: data[0].split,
-            splits: data[0].splits,
-            createdBy: data[0].created_by
-          };
-          setTransactions(prev => [newTx, ...prev]);
-        }
+        const txId = (data && data[0] && data[0].id) ? data[0].id : `optimistic-spend-${Date.now()}`;
+        const newTx = {
+          id: txId,
+          roomId: userRoomId,
+          title: payload.title,
+          amount: payload.amount,
+          category: payload.category,
+          date: payload.date,
+          time: payload.time,
+          paidBy: payload.paid_by,
+          paidByUid: payload.paid_by_uid,
+          isShared: payload.is_shared,
+          splitType: payload.split_type,
+          split: payload.split,
+          splits: payload.splits,
+          createdBy: currentUid
+        };
+        setTransactions(prev => [newTx, ...prev.filter(t => t.id !== txId)]);
         triggerToast('Payment recorded successfully.');
 
         if (notificationMethod !== 'none') {
@@ -10532,7 +10598,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           </td>
                         )}
                         <td className="py-4 px-3">
-                          <p className="font-bold text-sm text-[#1A3827] dark:text-slate-100">{s.title}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Payment ID">
+                              {formatTxId(s.id)}
+                            </span>
+                            <p className="font-bold text-sm text-[#1A3827] dark:text-slate-100">{s.title}</p>
+                          </div>
                         </td>
                         <td className="py-4 px-3">
                           <div className="flex flex-wrap gap-1.5 items-center">
@@ -10660,7 +10731,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <div key={f.id} className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between min-h-[220px]">
                   <div className="space-y-1">
                     <div className="flex justify-between items-start">
-                      <h3 className="font-extrabold text-base text-[#1A3827] dark:text-slate-100 line-clamp-1">{f.title}</h3>
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <h3 className="font-extrabold text-base text-[#1A3827] dark:text-slate-100 line-clamp-1">{f.title}</h3>
+                        <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] border border-[#E3E8E3]/60 dark:border-slate-800 shrink-0" title="Fund ID">
+                          {formatTxId(f.id)}
+                        </span>
+                      </div>
                       <div className="flex items-center gap-1 shrink-0 ml-2">
                         <button
                           onClick={(e) => {
@@ -11644,6 +11720,480 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         </div>
 
+      </div>
+    );
+  }
+
+  // ==========================================
+  // PAGE: SETTLEMENT RECORD
+  // ==========================================
+  function renderSettlementRecords() {
+    const rawSettlements = transactions.filter(t => 
+      t.category === 'Payment' || 
+      t.splitType === 'settlement' || 
+      (t.title && t.title.startsWith('Payment:'))
+    );
+
+    // Apply filters
+    const filteredSettlements = rawSettlements.filter(t => {
+      const amtStr = (t.amount || 0).toString();
+      const titleLower = (t.title || '').toLowerCase();
+      const payerLower = (t.paidBy || '').toLowerCase();
+      const query = settlementSearchQuery.trim().toLowerCase();
+
+      // Search match
+      const matchesQuery = !query || 
+        titleLower.includes(query) || 
+        payerLower.includes(query) || 
+        amtStr.includes(query);
+
+      // Roommate filter match
+      const currentUid = auth.currentUser ? auth.currentUser.uid : '';
+      let payerUid = t.paidByUid;
+      if (!payerUid) {
+        payerUid = t.paidBy === userNickname ? currentUid : 'roommate';
+      }
+      let receiverUid = '';
+      if (t.splits && Array.isArray(t.splits)) {
+        const receiverObj = t.splits.find(s => s.uid !== payerUid || Number(s.amount) > 0);
+        if (receiverObj) receiverUid = receiverObj.uid;
+      }
+
+      let matchesRoommate = true;
+      if (settlementRoommateFilter === 'me') {
+        matchesRoommate = payerUid === currentUid || receiverUid === currentUid;
+      } else if (settlementRoommateFilter === 'paid_by_me') {
+        matchesRoommate = payerUid === currentUid;
+      } else if (settlementRoommateFilter === 'received_by_me') {
+        matchesRoommate = receiverUid === currentUid;
+      } else if (settlementRoommateFilter !== 'all') {
+        matchesRoommate = payerUid === settlementRoommateFilter || receiverUid === settlementRoommateFilter;
+      }
+
+      // Month filter match
+      let matchesMonth = true;
+      if (settlementMonthFilter !== 'all') {
+        matchesMonth = t.date && t.date.startsWith(settlementMonthFilter);
+      }
+
+      return matchesQuery && matchesRoommate && matchesMonth;
+    });
+
+    return (
+      <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
+        
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-gradient-to-br from-[#1A3827] via-[#244A34] to-[#132A1D] dark:from-slate-900 dark:via-slate-800 dark:to-slate-950 p-6 sm:p-8 rounded-3xl text-white shadow-xl relative overflow-hidden">
+          <div className="absolute -right-8 -bottom-8 w-48 h-48 bg-[#A3E635]/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="relative z-10">
+            <div className="flex items-center gap-2 text-[#A3E635] text-xs font-bold uppercase tracking-widest mb-1">
+              <HandCoins className="w-4 h-4" />
+              <span>Room Debt Audit Log</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Settlement Records</h1>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
+              Complete history of roommate payments, direct transfers, and debt settlements logged in your room.
+            </p>
+          </div>
+
+          <button 
+            onClick={handleSettleUp}
+            className="relative z-10 flex items-center justify-center gap-2 bg-[#A3E635] hover:bg-[#b2f048] text-slate-950 px-6 py-3 rounded-2xl font-bold transition-all duration-200 text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Settle Up Now</span>
+          </button>
+        </div>
+
+        {/* Dashboard Overview Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider">Total Settled</span>
+              <HandCoins className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <p className="text-lg sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">
+              {formatINR(computedStats.totalSettledAmount || 0)}
+            </p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+              {computedStats.settlementCount || 0} completed transfers
+            </p>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider">Total Count</span>
+              <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <p className="text-lg sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">
+              {computedStats.settlementCount || 0}
+            </p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+              Recorded in room ledger
+            </p>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider">My Payments Out</span>
+              <Send className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            </div>
+            <p className="text-lg sm:text-2xl font-black text-amber-600 dark:text-amber-400">
+              {formatINR(computedStats.mySettlementsPaid || 0)}
+            </p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+              Paid by you to others
+            </p>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider">My Payments In</span>
+              <UserCheck className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+            </div>
+            <p className="text-lg sm:text-2xl font-black text-teal-600 dark:text-teal-400">
+              {formatINR(computedStats.mySettlementsReceived || 0)}
+            </p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+              Received by you
+            </p>
+          </div>
+        </div>
+
+        {/* Filter Toolbar */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 rounded-2xl shadow-sm space-y-3 sm:space-y-0 sm:flex sm:items-center sm:gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Search settlements by name or amount..."
+              value={settlementSearchQuery}
+              onChange={(e) => setSettlementSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1A3827] dark:focus:ring-[#A3E635] text-slate-800 dark:text-slate-100"
+            />
+            {settlementSearchQuery && (
+              <button 
+                onClick={() => setSettlementSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Roommate Filter */}
+          <div className="flex items-center gap-2">
+            <select
+              value={settlementRoommateFilter}
+              onChange={(e) => setSettlementRoommateFilter(e.target.value)}
+              className="px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium focus:outline-none"
+            >
+              <option value="all">All Roommates</option>
+              <option value="me">Involving Me</option>
+              <option value="paid_by_me">Paid by Me</option>
+              <option value="received_by_me">Received by Me</option>
+              {members.map(m => (
+                <option key={m.uid} value={m.uid}>{m.nickname}</option>
+              ))}
+            </select>
+
+            {/* Month Filter */}
+            <select
+              value={settlementMonthFilter}
+              onChange={(e) => setSettlementMonthFilter(e.target.value)}
+              className="px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium focus:outline-none"
+            >
+              <option value="all">All Time</option>
+              {availableMonths.map(m => (
+                <option key={m} value={m}>
+                  {new Date(`${m}-01`).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Settlements Timeline List */}
+        {filteredSettlements.length === 0 ? (
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-12 text-center shadow-sm">
+            <div className="w-12 h-12 bg-emerald-50 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <HandCoins className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-[#1A3827] dark:text-slate-100">No Settlement Records Found</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+              {rawSettlements.length === 0 
+                ? "No debt settlements have been recorded in this room yet. Use 'Settle Up Now' to log payments between roommates."
+                : "No settlements match your current search or filter criteria. Try resetting your filters."}
+            </p>
+            {rawSettlements.length === 0 && (
+              <button
+                onClick={handleSettleUp}
+                className="mt-4 inline-flex items-center gap-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-[#255038] dark:hover:bg-[#b2f048] transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Record First Settlement</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredSettlements.map((st) => {
+              const currentUid = auth.currentUser ? auth.currentUser.uid : '';
+              let payerUid = st.paidByUid;
+              if (!payerUid) {
+                payerUid = st.paidBy === userNickname ? currentUid : 'roommate';
+              }
+              const payerMember = members.find(m => m.uid === payerUid) || { nickname: st.paidBy || 'Roommate' };
+
+              let receiverMember = null;
+              if (st.splits && Array.isArray(st.splits)) {
+                const rSplit = st.splits.find(s => s.uid !== payerUid || Number(s.amount) > 0);
+                if (rSplit) {
+                  receiverMember = members.find(m => m.uid === rSplit.uid) || { nickname: rSplit.nickname || 'Roommate' };
+                }
+              }
+              if (!receiverMember) {
+                if (st.title && st.title.includes(' to ')) {
+                  const parts = st.title.replace('Payment: ', '').split(' to ');
+                  if (parts[1]) {
+                    receiverMember = { nickname: parts[1] };
+                  }
+                }
+              }
+              if (!receiverMember) {
+                receiverMember = { nickname: 'Roommate' };
+              }
+
+              const isUserPayer = payerUid === currentUid;
+              const isUserReceiver = receiverMember && receiverMember.uid === currentUid;
+
+              return (
+                <div 
+                  key={st.id} 
+                  className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm hover:border-emerald-200 dark:hover:border-slate-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                  {/* Left Column: Payer -> Receiver */}
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    {/* Avatar Payer */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-bold text-xs flex items-center justify-center border border-amber-200 dark:border-amber-800">
+                        {payerMember.nickname ? payerMember.nickname.charAt(0).toUpperCase() : 'P'}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{payerMember.nickname}</p>
+                        <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">Payer</span>
+                      </div>
+                    </div>
+
+                    {/* Arrow */}
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0">
+                      <ArrowRight className="w-4 h-4" />
+                    </div>
+
+                    {/* Avatar Receiver */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center justify-center border border-emerald-200 dark:border-emerald-800">
+                        {receiverMember.nickname ? receiverMember.nickname.charAt(0).toUpperCase() : 'R'}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{receiverMember.nickname}</p>
+                        <span className="text-[9px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Receiver</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Middle Column: Badges & Info */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Transaction ID">
+                      {formatTxId(st.id)}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Direct Settlement</span>
+                    </span>
+
+                    {isUserPayer && (
+                      <span className="text-[10px] font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-md">
+                        You Paid
+                      </span>
+                    )}
+                    {isUserReceiver && (
+                      <span className="text-[10px] font-bold bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400 px-2 py-0.5 rounded-md">
+                        You Received
+                      </span>
+                    )}
+
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 ml-auto sm:ml-0">
+                      <Calendar className="w-3 h-3" />
+                      <span>{st.date}</span>
+                      {st.time && <span>• {st.time}</span>}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Amount & Actions */}
+                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800">
+                    <span className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+                      {formatINR(st.amount)}
+                    </span>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setSelectedSettlementDetail(st);
+                          setIsSettlementDetailOpen(true);
+                        }}
+                        className="p-2 text-slate-500 hover:text-[#1A3827] dark:hover:text-[#A3E635] hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all"
+                        title="View Digital Receipt"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={async () => {
+                          if (window.confirm(`Delete settlement record of ${formatINR(st.amount)}? This will recalculate room balances.`)) {
+                            try {
+                              const { error: delErr } = await supabase
+                                .from('transactions')
+                                .delete()
+                                .eq('id', st.id);
+                              if (delErr) throw delErr;
+                              setTransactions(prev => prev.filter(item => item.id !== st.id));
+                              triggerToast('Settlement record deleted.');
+                            } catch (err) {
+                              console.error(err);
+                              triggerToast('Failed to delete settlement record.');
+                            }
+                          }
+                        }}
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all"
+                        title="Delete Record"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ==========================================
+  // MODAL: DIGITAL SETTLEMENT RECEIPT CERTIFICATE
+  // ==========================================
+  function renderSettlementDetailModal() {
+    if (!selectedSettlementDetail) return null;
+    const st = selectedSettlementDetail;
+
+    const currentUid = auth.currentUser ? auth.currentUser.uid : '';
+    let payerUid = st.paidByUid;
+    if (!payerUid) {
+      payerUid = st.paidBy === userNickname ? currentUid : 'roommate';
+    }
+    const payerMember = members.find(m => m.uid === payerUid) || { nickname: st.paidBy || 'Roommate' };
+
+    let receiverMember = null;
+    if (st.splits && Array.isArray(st.splits)) {
+      const rSplit = st.splits.find(s => s.uid !== payerUid || Number(s.amount) > 0);
+      if (rSplit) {
+        receiverMember = members.find(m => m.uid === rSplit.uid) || { nickname: rSplit.nickname || 'Roommate' };
+      }
+    }
+    if (!receiverMember && st.title && st.title.includes(' to ')) {
+      const parts = st.title.replace('Payment: ', '').split(' to ');
+      if (parts[1]) receiverMember = { nickname: parts[1] };
+    }
+    if (!receiverMember) receiverMember = { nickname: 'Roommate' };
+
+    const handleCopyReceiptText = () => {
+      const text = `🧾 TALLYIN SETTLEMENT RECEIPT\nRoom: ${userRoomId}\nDate: ${st.date} ${st.time || ''}\nPayer: ${payerMember.nickname}\nReceiver: ${receiverMember.nickname}\nAmount Settled: ${formatINR(st.amount)}\nStatus: Verified & Settled`;
+      navigator.clipboard.writeText(text);
+      triggerToast('Settlement receipt summary copied to clipboard!');
+    };
+
+    return (
+      <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+          {/* Close button */}
+          <button
+            onClick={() => {
+              setIsSettlementDetailOpen(false);
+              setSelectedSettlementDetail(null);
+            }}
+            className="absolute right-4 top-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {/* Receipt Header */}
+          <div className="text-center pb-6 border-b border-dashed border-slate-200 dark:border-slate-800">
+            <div className="w-12 h-12 bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-md">
+              <HandCoins className="w-6 h-6" />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">OFFICIAL SETTLEMENT RECEIPT</p>
+            <h3 className="text-xl font-extrabold text-[#1A3827] dark:text-slate-100 mt-0.5">Payment Certificate</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Receipt ID: {formatTxId(st.id)}</p>
+          </div>
+
+          {/* Main Amount Callout */}
+          <div className="my-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-slate-800 dark:to-slate-850 p-5 rounded-2xl text-center border border-emerald-100 dark:border-slate-700">
+            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">Settled Amount</span>
+            <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+              {formatINR(st.amount)}
+            </div>
+            <div className="inline-flex items-center gap-1.5 mt-2 bg-emerald-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full shadow-sm">
+              <CheckCircle2 className="w-3 h-3" />
+              <span>ROOM BALANCE BALANCED</span>
+            </div>
+          </div>
+
+          {/* Details Table */}
+          <div className="space-y-3 text-xs">
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Payer (Sent From)</span>
+              <span className="font-bold text-slate-800 dark:text-slate-100">{payerMember.nickname}</span>
+            </div>
+
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Receiver (Sent To)</span>
+              <span className="font-bold text-slate-800 dark:text-slate-100">{receiverMember.nickname}</span>
+            </div>
+
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Date & Time</span>
+              <span className="font-bold text-slate-800 dark:text-slate-100">{st.date} {st.time || ''}</span>
+            </div>
+
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Room ID</span>
+              <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{userRoomId}</span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={handleCopyReceiptText}
+              className="flex-1 flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 py-3 rounded-xl font-bold text-xs hover:bg-[#255038] dark:hover:bg-[#b2f048] transition-all shadow-sm"
+            >
+              <Copy className="w-4 h-4" />
+              <span>Copy Receipt</span>
+            </button>
+            <button
+              onClick={() => {
+                setIsSettlementDetailOpen(false);
+                setSelectedSettlementDetail(null);
+              }}
+              className="px-5 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
