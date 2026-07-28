@@ -8510,67 +8510,72 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Every expense, clearly accounted for.</p>
           </div>
           
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
-            {/* Export Dropdown */}
-            <div className="relative flex-1 sm:flex-none">
-              <button 
-                onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                className="w-full flex items-center justify-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export</span>
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-              
-              {isExportDropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
-                    <button 
-                      onClick={() => { exportToCSV(filteredTransactions); setIsExportDropdownOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
-                    >
-                      <FileText className="w-4 h-4 text-emerald-700" />
-                      <span>Export to CSV</span>
-                    </button>
-                    <button 
-                      onClick={() => { exportToExcel(filteredTransactions); setIsExportDropdownOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
-                    >
-                      <Sliders className="w-4 h-4 text-blue-600" />
-                      <span>Export to Excel</span>
-                    </button>
-                    <button 
-                      onClick={() => { exportToPDF(filteredTransactions); setIsExportDropdownOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-500" />
-                      <span>Download PDF</span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <button 
-              onClick={() => navigateTo('settlement-records')}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] border border-[#1A3827]/15 dark:border-slate-700 px-4 py-2.5 rounded-xl font-bold hover:bg-emerald-100 dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
-              title="View Settlement History"
-            >
-              <HandCoins className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
-              <span>Settlement Records</span>
-              <span className="px-2 py-0.5 text-xs font-bold bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full">
-                {computedStats.settlementCount || 0}
-              </span>
-            </button>
-
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+            {/* Primary Action on Mobile: Add Expense (Full width on mobile, auto on desktop) */}
             <button 
               onClick={() => openAddExpenseModal()}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
+              className="order-1 sm:order-3 w-full sm:w-auto flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-3 rounded-2xl font-black hover:bg-[#255038] dark:hover:bg-[#BEF264] transition-all duration-200 text-xs sm:text-sm shadow-md active:scale-98"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 stroke-[3]" />
               <span>Add expense</span>
             </button>
+
+            {/* Secondary Actions on Mobile: 2 Equal Columns for Export & Settlement Records */}
+            <div className="order-2 flex items-center gap-2 w-full sm:w-auto">
+              {/* Export Dropdown */}
+              <div className="relative flex-1 sm:flex-none">
+                <button 
+                  onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                  className="w-full flex items-center justify-center gap-1.5 border border-[#E3E8E3] dark:border-[#1E282C] hover:bg-[#F6F8F6] dark:hover:bg-[#161D20] text-[#1A3827] dark:text-slate-200 px-3.5 py-2.5 rounded-xl font-bold transition-all text-xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>Export</span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                </button>
+                
+                {isExportDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
+                    <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-44 bg-white dark:bg-[#0E1315] border border-[#E3E8E3] dark:border-[#1E282C] rounded-2xl shadow-xl py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+                      <button 
+                        onClick={() => { exportToCSV(filteredTransactions); setIsExportDropdownOpen(false); }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <FileText className="w-4 h-4 text-emerald-700 dark:text-[#A3E635]" />
+                        <span>Export to CSV</span>
+                      </button>
+                      <button 
+                        onClick={() => { exportToExcel(filteredTransactions); setIsExportDropdownOpen(false); }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <Sliders className="w-4 h-4 text-blue-600" />
+                        <span>Export to Excel</span>
+                      </button>
+                      <button 
+                        onClick={() => { exportToPDF(filteredTransactions); setIsExportDropdownOpen(false); }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                        <span>Download PDF</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Settlement Records Button */}
+              <button 
+                onClick={() => navigateTo('settlement-records')}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-[#EAF0EC] dark:bg-[#161D20] text-[#1A3827] dark:text-[#A3E635] border border-[#1A3827]/15 dark:border-[#1E282C] px-3.5 py-2.5 rounded-xl font-bold hover:bg-emerald-100 dark:hover:bg-slate-800 transition-all duration-200 text-xs shadow-sm"
+                title="View Settlement History"
+              >
+                <HandCoins className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0" />
+                <span className="truncate">Settlements</span>
+                <span className="px-1.5 py-0.5 text-[10px] font-black bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full shrink-0">
+                  {computedStats.settlementCount || 0}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
 
