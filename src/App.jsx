@@ -8426,7 +8426,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // PAGE 2: THE LEDGER
   // ==========================================
   function renderLedger() {
-    const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'People'];
+    const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'People', 'Payment'];
     
     const totalFilteredSpend = filteredTransactions.filter(t => t.category !== 'Payment').reduce((sum, t) => sum + t.amount, 0);
     const totalFilteredShared = filteredTransactions.filter(t => t.isShared && t.category !== 'Payment').reduce((sum, t) => sum + t.amount, 0);
@@ -8491,6 +8491,18 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 </>
               )}
             </div>
+
+            <button 
+              onClick={() => navigateTo('settlement-records')}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] border border-[#1A3827]/15 dark:border-slate-700 px-4 py-2.5 rounded-xl font-bold hover:bg-emerald-100 dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
+              title="View Settlement History"
+            >
+              <HandCoins className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+              <span>Settlement Records</span>
+              <span className="px-2 py-0.5 text-xs font-bold bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full">
+                {computedStats.settlementCount || 0}
+              </span>
+            </button>
 
             <button 
               onClick={() => openAddExpenseModal()}
@@ -8561,7 +8573,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         </div>
 
         {/* Summary Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">{activeMonthLabel} SPEND</p>
             <p className="text-base sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{formatINR(totalFilteredSpend)}</p>
@@ -8577,6 +8589,21 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">TRANSACTIONS</p>
             <p className="text-base sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{filteredTransactions.length}</p>
+          </div>
+          <div 
+            onClick={() => navigateTo('settlement-records')}
+            className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm hover:border-emerald-400 dark:hover:border-emerald-600 transition-all duration-200 cursor-pointer group col-span-2 md:col-span-1"
+            title="Click to view Settlement Records"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-[9px] sm:text-[10px] font-bold text-emerald-700 dark:text-[#A3E635] tracking-wider uppercase flex items-center gap-1">
+                <HandCoins className="w-3.5 h-3.5" />
+                <span>SETTLEMENTS</span>
+              </p>
+              <ArrowRight className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <p className="text-base sm:text-2xl font-black text-emerald-700 dark:text-[#A3E635] mt-1 truncate">{formatINR(computedStats.totalSettledAmount || 0)}</p>
+            <p className="text-[9px] text-slate-500 dark:text-slate-400 mt-0.5 font-semibold">{computedStats.settlementCount || 0} records →</p>
           </div>
         </div>
 
