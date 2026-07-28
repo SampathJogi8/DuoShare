@@ -7362,7 +7362,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // MAIN RUNNING APP
 
   return (
-    <div className={`h-screen flex overflow-hidden bg-[#F6F8F6] dark:bg-slate-950 transition-colors duration-300 ${isDarkMode ? 'dark text-slate-100' : 'text-[#1A3827]'}`}>
+    <div className={`h-screen flex overflow-hidden bg-[#F4F7F4] dark:bg-[#080B0C] transition-colors duration-300 ${isDarkMode ? 'dark text-slate-100' : 'text-[#1A3827]'}`}>
       
       {/* Hidden File Input for Receipt Upload */}
       <input 
@@ -7390,7 +7390,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       )}
 
       {/* Sidebar Navigation */}
-      <aside className={`w-64 border-r border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between fixed top-0 bottom-0 left-0 h-full z-40 transition-transform duration-300 overflow-y-auto ${
+      <aside className={`w-64 border-r border-[#E3E8E3]/60 dark:border-[#1E282C] bg-white/80 dark:bg-[#0E1315]/80 backdrop-blur-xl flex flex-col justify-between fixed top-0 bottom-0 left-0 h-full z-40 transition-transform duration-300 overflow-y-auto ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       }`}>
         <div className="p-6">
@@ -7704,7 +7704,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="flex-1 flex flex-col pl-0 md:pl-64 h-screen min-w-0 overflow-hidden">
         
         {/* Top Navbar */}
-        <header className="h-16 border-b border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between px-4 sm:px-8 fixed top-0 right-0 left-0 md:left-64 z-20 transition-colors duration-300">
+        <header className="h-16 border-b border-[#E3E8E3]/60 dark:border-[#1E282C] bg-white/80 dark:bg-[#0E1315]/80 backdrop-blur-xl flex items-center justify-between px-4 sm:px-8 fixed top-0 right-0 left-0 md:left-64 z-20 transition-all duration-300 shadow-sm">
           <div className="flex items-center gap-1">
             <button 
               onClick={() => setIsMobileMenuOpen(true)}
@@ -7717,14 +7717,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <img 
                 src={faviconLogo} 
                 alt="Tallyin Logo" 
-                className="w-7 h-7 object-cover rounded-lg hidden sm:block flex-shrink-0"
+                className="w-7 h-7 object-cover rounded-lg hidden sm:block flex-shrink-0 shadow-sm"
               />
               <div>
-                <h2 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 leading-tight">{roomName}</h2>
-                <div className="flex items-center gap-1">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isDbSynced ? 'bg-[#A3E635]' : 'bg-amber-500 animate-pulse'}`}></span>
-                  <span className="text-[8px] sm:text-[9px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">
-                    ROOM • {userRoomId} {isDbSynced ? '(Live Sync)' : '(Offline Cache)'}
+                <h2 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 leading-tight tracking-tight">{roomName}</h2>
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${isDbSynced ? 'bg-[#A3E635] shadow-[0_0_8px_#A3E635]' : 'bg-amber-500 animate-pulse'}`}></span>
+                  <span className="text-[8px] sm:text-[9px] font-extrabold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">
+                    ROOM • {userRoomId} {isDbSynced ? '(LIVE SYNC)' : '(OFFLINE CACHE)'}
                   </span>
                 </div>
               </div>
@@ -8002,16 +8002,19 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         })()}
 
         {/* Main Balance Card */}
-        <div className="bg-[#1A3827] dark:bg-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-md border border-white/5 dark:border-slate-800 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300">
-          <div className="absolute right-0 top-0 w-96 h-96 bg-[#A3E635] opacity-5 blur-3xl rounded-full -mr-20 -mt-20"></div>
+        <div className="bg-gradient-to-br from-[#1A3827] via-[#244A34] to-[#132A1D] dark:from-[#0E1315] dark:via-[#161D20] dark:to-[#080B0C] text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-[#A3E635]/20 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300">
+          <div className="absolute right-0 top-0 w-96 h-96 bg-[#A3E635]/10 blur-3xl rounded-full -mr-20 -mt-20 pointer-events-none"></div>
           
           <div className="space-y-4 max-w-md z-10">
             <div>
-              <p className="text-[10px] tracking-widest font-bold uppercase text-[#A3E635]/80">CURRENT BALANCE</p>
-              <h3 className="text-xs text-white/70 mt-0.5">
+              <div className="flex items-center gap-2 text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-0.5">
+                <span className="w-2 h-2 rounded-full bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-pulse"></span>
+                <span>CURRENT NET BALANCE</span>
+              </div>
+              <h3 className="text-xs text-slate-300 font-medium mt-0.5">
                 {myBalance > 0 ? 'You are owed' : myBalance < 0 ? 'You owe' : 'All settled up'}
               </h3>
-              <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1">
+              <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1 drop-shadow-sm">
                 {formatINR(Math.abs(myBalance))}
               </h2>
             </div>

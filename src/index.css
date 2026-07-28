@@ -1,55 +1,82 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
-  font-family: 'Inter', sans-serif;
-  @apply bg-[#F6F8F6] text-[#1A3827] antialiased transition-colors duration-300;
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  @apply bg-[#F4F7F4] text-[#1A3827] antialiased transition-colors duration-300;
 }
 
 body.dark {
-  @apply bg-black text-slate-100;
+  @apply bg-[#080B0C] text-slate-100;
 }
 
-/* Pitch black overrides for slate dark classes */
+/* Pitch black & deep slate overrides for dark mode */
 .dark .dark\:bg-slate-950 {
-  background-color: #000000 !important;
+  background-color: #06090A !important;
 }
 .dark .dark\:bg-slate-900 {
-  background-color: #0d0d0d !important;
+  background-color: #0E1315 !important;
 }
 .dark .dark\:bg-slate-800 {
-  background-color: #181818 !important;
+  background-color: #161D20 !important;
 }
 .dark .dark\:bg-slate-800\/20 {
-  background-color: rgba(24, 24, 24, 0.2) !important;
+  background-color: rgba(22, 29, 32, 0.2) !important;
 }
 .dark .dark\:bg-slate-800\/40 {
-  background-color: rgba(24, 24, 24, 0.4) !important;
+  background-color: rgba(22, 29, 32, 0.4) !important;
 }
 .dark .dark\:border-slate-800 {
-  border-color: #262626 !important;
+  border-color: #1E282C !important;
 }
 .dark .dark\:bg-slate-950\/20 {
-  background-color: rgba(0, 0, 0, 0.2) !important;
+  background-color: rgba(6, 9, 10, 0.2) !important;
 }
 .dark .dark\:bg-slate-950\/10 {
-  background-color: rgba(0, 0, 0, 0.1) !important;
+  background-color: rgba(6, 9, 10, 0.1) !important;
 }
 .dark .dark\:bg-slate-950\/40 {
-  background-color: rgba(0, 0, 0, 0.4) !important;
+  background-color: rgba(6, 9, 10, 0.4) !important;
+}
+
+/* Glassmorphism & Soft Glow Utilities */
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(227, 232, 227, 0.7);
+}
+
+.dark .glass-card {
+  background: rgba(14, 19, 21, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glow-accent-lime {
+  box-shadow: 0 0 25px -5px rgba(163, 230, 53, 0.25);
+}
+
+.glow-accent-emerald {
+  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
+}
+
+.glow-accent-rose {
+  box-shadow: 0 0 25px -5px rgba(244, 63, 94, 0.22);
 }
 
 /* Custom Red alert toast styles override */
 .toast-red {
-  background-color: #dc2626 !important; /* bg-red-600 */
-  border-color: rgba(239, 68, 68, 0.3) !important; /* border-red-500/30 */
+  background-color: #dc2626 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
   color: #ffffff !important;
 }
 .dark .toast-red {
-  background-color: #7f1d1d !important; /* bg-red-950 */
+  background-color: #7f1d1d !important;
   border-color: rgba(239, 68, 68, 0.2) !important;
 }
 
@@ -68,19 +95,27 @@ body.dark {
   border-radius: 4px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #1E282C;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: #C4C9C4;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #2C3A40;
 }
 
 /* Animations */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px) scale(0.99);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -97,7 +132,7 @@ body.dark {
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-scan {
@@ -106,12 +141,13 @@ body.dark {
 
 /* Custom styles for scale effect */
 .hover-scale-effect {
-  @apply transition-all duration-200 hover:scale-[1.01] active:scale-[0.99];
+  @apply transition-all duration-200 hover:scale-[1.015] active:scale-[0.985];
 }
 
-/* Prevent mobile browser auto-zooming on input focus (requires minimum 16px font-size) */
+/* Prevent mobile browser auto-zooming on input focus */
 @media (max-width: 767px) {
   input, select, textarea {
     font-size: 16px !important;
   }
 }
+
