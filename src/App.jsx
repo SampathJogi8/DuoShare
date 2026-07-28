@@ -7518,23 +7518,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </button>
 
             <button 
-              onClick={() => navigateTo('settlement-records')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-xs sm:text-[13px] ${
-                currentView === 'settlement-records' 
-                  ? 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 font-bold' 
-                  : 'text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <HandCoins className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="whitespace-nowrap">Settlement Record</span>
-              </div>
-              <span className="px-2 py-0.5 text-xs font-bold bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full">
-                {computedStats.settlementCount || 0}
-              </span>
-            </button>
-
-            <button 
               onClick={() => navigateTo('personal-expenses')}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-xs sm:text-[13px] ${
                 currentView === 'personal-expenses' 
