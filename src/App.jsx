@@ -7439,7 +7439,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // MAIN RUNNING APP
 
   return (
-    <div className={`h-screen flex overflow-hidden bg-[#F4F7F4] dark:bg-[#080B0C] transition-colors duration-300 ${isDarkMode ? 'dark text-slate-100' : 'text-[#1A3827]'}`}>
+    <div className={`h-screen flex overflow-hidden bg-[#F0F4F1] dark:bg-[#060809] transition-colors duration-300 ${isDarkMode ? 'dark text-slate-100' : 'text-[#1A3827]'}`}>
       
       {/* Hidden File Input for Receipt Upload */}
       <input 
@@ -7467,7 +7467,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       )}
 
       {/* Sidebar Navigation */}
-      <aside className={`w-64 border-r border-[#E3E8E3]/60 dark:border-[#1E282C] bg-white/80 dark:bg-[#0E1315]/80 backdrop-blur-xl flex flex-col justify-between fixed top-0 bottom-0 left-0 h-full z-40 transition-transform duration-300 overflow-y-auto ${
+      <aside className={`w-64 border-r border-[#DCE4DC]/80 dark:border-[#1C2428] bg-white/90 dark:bg-[#0C1012]/90 backdrop-blur-2xl flex flex-col justify-between fixed top-0 bottom-0 left-0 h-full z-40 transition-transform duration-300 overflow-y-auto ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       }`}>
         <div className="p-6">
@@ -8062,7 +8062,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         })()}
 
         {/* Main Balance Card */}
-        <div className="bg-gradient-to-br from-[#1A3827] via-[#244A34] to-[#132A1D] dark:from-[#0E1315] dark:via-[#161D20] dark:to-[#080B0C] text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-[#A3E635]/20 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300">
+        <div className="bg-gradient-to-br from-[#1A3827] via-[#204530] to-[#0D1E14] dark:from-[#0C1012] dark:via-[#141A1D] dark:to-[#060809] text-white p-6 sm:p-8 rounded-3xl hud-glow-lime border border-[#A3E635]/30 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300">
           <div className="absolute right-0 top-0 w-96 h-96 bg-[#A3E635]/10 blur-3xl rounded-full -mr-20 -mt-20 pointer-events-none"></div>
           
           <div className="space-y-4 max-w-md z-10">
