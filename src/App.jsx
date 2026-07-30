@@ -7963,22 +7963,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {currentView === 'ledger' && <ViewRenderer render={renderLedger} />}
             {currentView === 'personal-expenses' && <ViewRenderer render={renderPersonalExpenses} />}
             {(currentView === 'funds' || currentView === 'fund-tracker') && (
-              <FundTracker
-                members={members}
-                userNickname={userNickname}
-                triggerToast={triggerToast}
-              />
+              <ViewRenderer render={renderFundTracker} />
             )}
             {currentView === 'insights' && (
-              <InsightsView
-                transactions={transactions}
-                members={members}
-                userNickname={userNickname}
-                computedStats={computedStats}
-                personalCap={personalCap}
-                monthlyBudget={monthlyBudget}
-              />
+              <ViewRenderer render={renderInsights} />
             )}
+
             {currentView === 'settlement-records' && <ViewRenderer render={renderSettlementRecords} />}
             {currentView === 'receipts' && <ViewRenderer render={renderReceipts} />}
             {currentView === 'shopping-board' && <ViewRenderer render={renderShoppingBoard} />}
