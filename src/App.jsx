@@ -7958,7 +7958,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 setActiveReceiptZoom={setActiveReceiptZoom}
                 handleDeleteTransaction={handleDeleteTransaction}
                 handleEditTransaction={handleEditTransaction}
+                setCurrentView={setCurrentView}
               />
+
             )}
             {currentView === 'ledger' && <ViewRenderer render={renderLedger} />}
             {currentView === 'personal-expenses' && <ViewRenderer render={renderPersonalExpenses} />}

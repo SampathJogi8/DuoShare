@@ -15,7 +15,9 @@ import {
   ChevronRight,
   Eye,
   Trash2,
-  Pencil
+  PieChart,
+  ShieldCheck,
+  ArrowRight
 } from 'lucide-react';
 
 export default function DashboardHome({
@@ -32,7 +34,8 @@ export default function DashboardHome({
   setSettleAmount,
   setActiveReceiptZoom,
   handleDeleteTransaction,
-  handleEditTransaction
+  handleEditTransaction,
+  setCurrentView
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
@@ -55,9 +58,32 @@ export default function DashboardHome({
     });
   }, [transactions, searchQuery, selectedCategoryFilter]);
 
+  // Display only top 8 recent transactions on dashboard
+  const recentTransactions = useMemo(() => {
+    return filteredTransactions.slice(0, 8);
+  }, [filteredTransactions]);
+
+  // Compute top spending categories
+  const topCategories = useMemo(() => {
+    const map = {};
+    (transactions || []).forEach(tx => {
+      const cat = tx.category || 'General';
+      const amt = Number(tx.amount || 0);
+      map[cat] = (map[cat] || 0) + amt;
+    });
+    return Object.entries(map)
+      .map(([name, amount]) => ({ name, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 3);
+  }, [transactions]);
+
   const netBalance = computedStats?.currentUserBalance || 0;
   const isOwed = netBalance > 0;
   const isSettled = Math.abs(netBalance) < 0.01;
+
+  const roomTotal = computedStats?.totalRoomSpend || 0;
+  const budgetLimit = monthlyBudget || 22000;
+  const budgetPercent = Math.min(Math.round((roomTotal / budgetLimit) * 100), 100);
 
   return (
     <div className="space-y-6 animate-fade-in text-left">
@@ -122,7 +148,7 @@ export default function DashboardHome({
             <div className="space-y-0.5">
               <span className="text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400 block">Total Room Spend</span>
               <p className="text-base font-black text-[#1A3827] dark:text-slate-200">
-                ₹{(computedStats?.totalRoomSpend || 0).toLocaleString('en-IN')}
+                ₹{roomTotal.toLocaleString('en-IN')}
               </p>
             </div>
 
@@ -190,7 +216,68 @@ export default function DashboardHome({
         </div>
       </div>
 
-      {/* 2. Transaction Controls & Search Bar */}
+      {/* 2. Room Health & Quick Category Snapshot Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        
+        {/* Card A: Room Monthly Budget Meter */}
+        <div className="hud-card rounded-3xl p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+              Shared Room Budget Progress
+            </span>
+            <span className="text-xs font-extrabold text-[#5C6E5C] dark:text-slate-400">
+              {budgetPercent}% used
+            </span>
+          </div>
+
+          <div className="w-full bg-[#EAF0EC] dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all duration-500 ${
+                budgetPercent > 90 ? 'bg-rose-500' : budgetPercent > 75 ? 'bg-amber-500' : 'bg-emerald-500'
+              }`}
+              style={{ width: `${budgetPercent}%` }}
+            ></div>
+          </div>
+
+          <div className="flex justify-between items-center text-xs font-bold text-[#5C6E5C] dark:text-slate-400">
+            <span>Spent: ₹{roomTotal.toLocaleString('en-IN')}</span>
+            <span>Limit: ₹{budgetLimit.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+
+        {/* Card B: Top Category Spending Snapshot */}
+        <div className="hud-card rounded-3xl p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-1.5">
+              <PieChart className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              Top Room Categories
+            </span>
+            <span className="text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400">
+              Breakdown
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {topCategories.length === 0 ? (
+              <span className="text-xs text-[#5C6E5C] dark:text-slate-400">No expenses recorded yet.</span>
+            ) : (
+              topCategories.map(cat => (
+                <div 
+                  key={cat.name}
+                  className="px-3 py-1.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 flex items-center gap-2 shrink-0"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200 capitalize">{cat.name}</span>
+                  <span className="text-xs font-black text-emerald-700 dark:text-[#A3E635]">₹{cat.amount.toLocaleString('en-IN')}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Transaction Controls & Search Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-[#5C6E5C] dark:text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -221,16 +308,31 @@ export default function DashboardHome({
         </div>
       </div>
 
-      {/* 3. Recent Transactions Feed */}
+      {/* 4. Recent Transactions Feed (Limited to 8 Recent Items) */}
       <div className="hud-card rounded-3xl p-4 sm:p-6 space-y-4">
         <div className="flex items-center justify-between pb-2 border-b border-[#E3E8E3] dark:border-slate-800">
-          <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
-            Expense Transactions ({filteredTransactions.length})
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+              Recent Transactions
+            </h3>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
+              Showing {recentTransactions.length} of {filteredTransactions.length}
+            </span>
+          </div>
+
+          {setCurrentView && filteredTransactions.length > 8 && (
+            <button 
+              onClick={() => setCurrentView('ledger')}
+              className="text-xs font-extrabold text-[#1A3827] dark:text-[#A3E635] hover:underline flex items-center gap-1"
+            >
+              <span>View All</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        {filteredTransactions.length === 0 ? (
+        {recentTransactions.length === 0 ? (
           <div className="py-12 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-[#EAF0EC] dark:bg-slate-800 flex items-center justify-center mx-auto text-[#5C6E5C]">
               <FileText className="w-6 h-6" />
@@ -241,7 +343,7 @@ export default function DashboardHome({
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredTransactions.map(tx => {
+            {recentTransactions.map(tx => {
               const txTitle = tx.title || tx.description || 'Expense';
               const txPayer = tx.paidBy || tx.paid_by || 'Roommate';
               const txCategory = tx.category || 'General';
@@ -315,9 +417,23 @@ export default function DashboardHome({
             })}
           </div>
         )}
+
+        {/* View All Ledger Button at bottom of feed */}
+        {setCurrentView && filteredTransactions.length > 8 && (
+          <div className="pt-2 text-center">
+            <button
+              onClick={() => setCurrentView('ledger')}
+              className="w-full sm:w-auto px-6 py-2.5 bg-[#F6F8F6] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 hover:bg-[#EAF0EC] dark:hover:bg-slate-700 font-extrabold text-xs rounded-2xl border border-[#E3E8E3] dark:border-slate-700 transition-all inline-flex items-center justify-center gap-2"
+            >
+              <span>View All {filteredTransactions.length} Transactions in Full Ledger</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
     </div>
   );
 }
+
 
