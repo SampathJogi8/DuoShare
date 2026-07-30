@@ -8972,33 +8972,49 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   function openAddPersonalExpense() {
     setEditingTransaction(null);
     setIsAddExpenseOpen(true);
-    const currentUid = auth.currentUser?.uid || 'anonymous';
-    setFormPaidBy(currentUid);
+    const currentUid = auth.currentUser?.uid || user?.id || user?.uid || 'anonymous';
+    
+    let targetUid = currentUid;
+    if (selectedPersonalMemberUid !== 'all' && selectedPersonalMemberUid !== 'me') {
+      const activeMem = (members || []).find(m => 
+        (m.uid && String(m.uid) === String(selectedPersonalMemberUid)) || 
+        (m.id && String(m.id) === String(selectedPersonalMemberUid)) || 
+        (m.nickname && m.nickname === selectedPersonalMemberUid)
+      );
+      if (activeMem) {
+        targetUid = activeMem.uid || activeMem.id || activeMem.nickname;
+      } else {
+        targetUid = selectedPersonalMemberUid;
+      }
+    }
+
+    setFormPaidBy(targetUid);
     const newSplits = {};
-    members.forEach(m => {
-      newSplits[m.uid] = m.uid === currentUid;
+    (members || []).forEach(m => {
+      const mId = m.uid || m.id || m.nickname;
+      newSplits[mId] = String(mId) === String(targetUid) || (m.nickname && m.nickname === targetUid);
     });
     setSelectedSplitMembers(newSplits);
   }
 
   function renderPersonalExpenses() {
     const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'People'];
-    const activeMemberObj = members.find(m => m.uid === selectedPersonalMemberUid);
+    const activeMemberObj = (members || []).find(m => 
+      (m.uid && String(m.uid) === String(selectedPersonalMemberUid)) || 
+      (m.id && String(m.id) === String(selectedPersonalMemberUid)) || 
+      (m.nickname && m.nickname === selectedPersonalMemberUid)
+    );
     const activeMemberName = selectedPersonalMemberUid === 'all' 
       ? 'All Roommates (Combined)' 
       : selectedPersonalMemberUid === 'me' 
       ? `You (${userNickname})` 
-      : (activeMemberObj?.nickname || 'Member');
+      : (activeMemberObj?.nickname || selectedPersonalMemberUid || 'Member');
     const activeCapLimit = selectedPersonalMemberUid === 'all'
       ? personalCap * (members.length || 1)
       : personalCap;
     const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
-    const monthlyPersonalTotal = selectedMonth === 'All'
-      ? filteredPersonalExpenses.reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
-      : filteredPersonalExpenses.filter(t => t.date && t.date.startsWith(activeMonth)).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const monthlyPersonalTotal = filteredPersonalExpenses.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const personalPercentage = Math.min((monthlyPersonalTotal / (activeCapLimit || 1)) * 100, 100);
-
-
 
     const exportDisplayTitle = selectedPersonalMemberUid === 'all'
       ? 'Personal_Expenses_All_Roommates'
