@@ -40,10 +40,15 @@ export default function DashboardHome({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
 
-  // Filtered transactions list (excl. internal system markers)
+  // Filtered transactions list (excl. internal system markers & private personal expenses)
   const filteredTransactions = useMemo(() => {
     return (transactions || []).filter(tx => {
-      // Exclude internal fund/system tags from room expenses feed
+      // 1. Exclude private personal expenses from shared home feed
+      if (tx.isShared === false) {
+        return false;
+      }
+
+      // 2. Exclude internal fund/system tags from room expenses feed
       if (
         tx.category === '__FUND_INIT__' ||
         tx.category === '__FUND_SPEND__' ||
@@ -58,6 +63,7 @@ export default function DashboardHome({
       const titleStr = tx.title || tx.description || '';
       const payerStr = tx.paidBy || tx.paid_by || '';
       const catStr = tx.category || '';
+
 
       const matchesSearch = 
         titleStr.toLowerCase().includes(searchQuery.toLowerCase()) ||
