@@ -8934,11 +8934,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
   function renderPersonalExpenses() {
     const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'People'];
+    const activeMemberObj = members.find(m => m.uid === selectedPersonalMemberUid);
+    const activeMemberName = selectedPersonalMemberUid === 'me' ? 'Your' : `${activeMemberObj?.nickname || 'Member'}'s`;
     const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
     const monthlyPersonalTotal = selectedMonth === 'All'
-      ? myPersonalExpenses.reduce((sum, t) => sum + t.amount, 0)
-      : myPersonalExpenses.filter(t => t.date && t.date.startsWith(activeMonth)).reduce((sum, t) => sum + t.amount, 0);
+      ? filteredPersonalExpenses.reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+      : filteredPersonalExpenses.filter(t => t.date && t.date.startsWith(activeMonth)).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const personalPercentage = Math.min((monthlyPersonalTotal / personalCap) * 100, 100);
+
 
     return (
       <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
@@ -9195,17 +9198,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800">
-            {myPersonalExpenses.length === 0 ? (
-              <div className="text-center py-12 text-[#5C6E5C] dark:text-slate-400">
-                <p className="text-xs sm:text-sm font-semibold">No personal expenses logged yet.</p>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-505 mt-1">Add a bill split with only yourself to track it here.</p>
-              </div>
-            ) : filteredPersonalExpenses.length === 0 ? (
-              <div className="text-center py-12 text-[#5C6E5C] dark:text-slate-400">
-                <p className="text-xs sm:text-sm font-semibold">No personal transactions match your filters.</p>
+            {filteredPersonalExpenses.length === 0 ? (
+              <div className="text-center py-12 text-[#5C6E5C] dark:text-slate-400 space-y-1">
+                <p className="text-xs sm:text-sm font-semibold">No personal expenses logged for {selectedPersonalMemberUid === 'me' ? 'you' : activeMemberObj?.nickname || 'this member'}.</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-500">Personal transactions created for this member will appear here.</p>
               </div>
             ) : (
               filteredPersonalExpenses.map((t) => {
+
                 const isCreator = !t.createdBy || t.createdBy === 'anonymous' || t.createdBy === auth.currentUser?.uid;
                 return (
                   <div key={t.id} className="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100 gap-2 sm:gap-4">
