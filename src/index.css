@@ -42,40 +42,64 @@ body.dark {
   background-color: rgba(6, 8, 9, 0.4) !important;
 }
 
-/* Obsidian Glass HUD Cards & Panels */
+/* Glassmorphism Panels & Cards */
 .hud-card {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(220, 228, 220, 0.8);
+  border: 1px solid rgba(220, 228, 220, 0.85);
+  box-shadow: 0 4px 20px -2px rgba(26, 56, 39, 0.05);
 }
 
 .dark .hud-card {
-  background: rgba(12, 16, 18, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(12, 16, 18, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.4);
 }
 
 .hud-card-interactive {
-  @apply hud-card transition-all duration-300 hover:border-[#A3E635]/50 hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99];
+  @apply hud-card transition-all duration-300 hover:border-[#A3E635]/60 hover:shadow-xl hover:shadow-black/10 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99];
 }
 
 /* Glowing Neon Accents */
 .hud-glow-lime {
-  box-shadow: 0 0 30px -5px rgba(163, 230, 53, 0.3);
+  box-shadow: 0 0 35px -5px rgba(163, 230, 53, 0.35);
 }
 
 .hud-glow-emerald {
-  box-shadow: 0 0 30px -5px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 35px -5px rgba(16, 185, 129, 0.35);
 }
 
 .hud-glow-rose {
-  box-shadow: 0 0 30px -5px rgba(244, 63, 94, 0.25);
+  box-shadow: 0 0 35px -5px rgba(244, 63, 94, 0.3);
 }
 
 .hud-glow-indigo {
-  box-shadow: 0 0 30px -5px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 0 35px -5px rgba(99, 102, 241, 0.35);
+}
+
+/* Shimmer Loading Skeleton */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(226, 232, 226, 0.6) 25%, rgba(240, 244, 241, 0.9) 50%, rgba(226, 232, 226, 0.6) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite ease-in-out;
+}
+
+.dark .skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(20, 26, 29, 0.6) 25%, rgba(28, 36, 40, 0.9) 50%, rgba(20, 26, 29, 0.6) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite ease-in-out;
 }
 
 /* Custom Red Alert Toast Override */
@@ -157,5 +181,6 @@ body.dark {
     font-size: 16px !important;
   }
 }
+
 
 
