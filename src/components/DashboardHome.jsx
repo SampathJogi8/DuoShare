@@ -40,9 +40,21 @@ export default function DashboardHome({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
 
-  // Filtered transactions list
+  // Filtered transactions list (excl. internal system markers)
   const filteredTransactions = useMemo(() => {
     return (transactions || []).filter(tx => {
+      // Exclude internal fund/system tags from room expenses feed
+      if (
+        tx.category === '__FUND_INIT__' ||
+        tx.category === '__FUND_SPEND__' ||
+        tx.category === '__SHOPPING__' ||
+        tx.category === '__BILL__' ||
+        tx.category === '__CHORE__' ||
+        tx.category === '__DELETE_PROPOSAL__'
+      ) {
+        return false;
+      }
+
       const titleStr = tx.title || tx.description || '';
       const payerStr = tx.paidBy || tx.paid_by || '';
       const catStr = tx.category || '';
@@ -63,10 +75,21 @@ export default function DashboardHome({
     return filteredTransactions.slice(0, 8);
   }, [filteredTransactions]);
 
-  // Compute top spending categories
+  // Compute top spending categories (excl. system tags)
   const topCategories = useMemo(() => {
     const map = {};
     (transactions || []).forEach(tx => {
+      if (
+        tx.category === '__FUND_INIT__' ||
+        tx.category === '__FUND_SPEND__' ||
+        tx.category === '__SHOPPING__' ||
+        tx.category === '__BILL__' ||
+        tx.category === '__CHORE__' ||
+        tx.category === '__DELETE_PROPOSAL__' ||
+        tx.category === 'Payment'
+      ) {
+        return;
+      }
       const cat = tx.category || 'General';
       const amt = Number(tx.amount || 0);
       map[cat] = (map[cat] || 0) + amt;
@@ -76,6 +99,7 @@ export default function DashboardHome({
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 3);
   }, [transactions]);
+
 
   const netBalance = computedStats?.currentUserBalance || 0;
   const isOwed = netBalance > 0;
