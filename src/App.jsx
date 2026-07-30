@@ -73,6 +73,8 @@ import AddExpenseModal from './components/AddExpenseModal';
 import SettleUpModal from './components/SettleUpModal';
 import InsightsView from './components/InsightsView';
 import FundTracker from './components/FundTracker';
+import InstallAppModal from './components/InstallAppModal';
+
 
 
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v3.1.8';
@@ -8054,8 +8056,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           <span className="text-xs sm:text-sm">Quick add</span>
         </button>
       </div>
+
+      {/* PWA Install App Popup */}
+      <InstallAppModal triggerToast={triggerToast} />
     </div>
   );
+
+
 
   // ==========================================
   // PAGE 1: HOME (DASHBOARD)
