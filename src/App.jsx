@@ -8997,313 +8997,314 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   }
 
   function renderPersonalExpenses() {
-    const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'People'];
-    const activeMemberObj = (members || []).find(m => 
-      (m.uid && String(m.uid) === String(selectedPersonalMemberUid)) || 
-      (m.id && String(m.id) === String(selectedPersonalMemberUid)) || 
+    const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'People', 'Groceries', 'Fuel', 'Other'];
+    const currentUid = user?.id || user?.uid || auth?.currentUser?.uid || 'anonymous';
+    const activeMemberObj = (members || []).find(m =>
+      (m.uid && String(m.uid) === String(selectedPersonalMemberUid)) ||
+      (m.id && String(m.id) === String(selectedPersonalMemberUid)) ||
       (m.nickname && m.nickname === selectedPersonalMemberUid)
     );
-    const activeMemberName = selectedPersonalMemberUid === 'all' 
-      ? 'All Roommates (Combined)' 
-      : selectedPersonalMemberUid === 'me' 
-      ? `You (${userNickname})` 
-      : (activeMemberObj?.nickname || selectedPersonalMemberUid || 'Member');
-    const activeCapLimit = selectedPersonalMemberUid === 'all'
-      ? personalCap * (members.length || 1)
-      : personalCap;
-    const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
-    const monthlyPersonalTotal = filteredPersonalExpenses.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const personalPercentage = Math.min((monthlyPersonalTotal / (activeCapLimit || 1)) * 100, 100);
-
-    const exportDisplayTitle = selectedPersonalMemberUid === 'all'
-      ? 'Personal_Expenses_All_Roommates'
+    const activeMemberName = selectedPersonalMemberUid === 'all'
+      ? 'All Roommates'
       : selectedPersonalMemberUid === 'me'
-      ? `Personal_Expenses_${userNickname || 'You'}`
-      : `Personal_Expenses_${activeMemberObj?.nickname || 'Member'}`;
+      ? (userNickname || 'You')
+      : (activeMemberObj?.nickname || 'Member');
+
+    const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
+    const activeMonthLabel = (() => {
+      const [y, m] = activeMonth.split('-');
+      return new Date(Number(y), Number(m) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+    })();
+
+    const monthTotal = filteredPersonalExpenses.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const activeCapLimit = selectedPersonalMemberUid === 'all' ? personalCap * (members.length || 1) : personalCap;
+    const capPct = Math.min((monthTotal / (activeCapLimit || 1)) * 100, 100);
+
+    const exportTitle = selectedPersonalMemberUid === 'all'
+      ? 'Personal_All_Roommates'
+      : selectedPersonalMemberUid === 'me'
+      ? `Personal_${userNickname || 'You'}`
+      : `Personal_${activeMemberObj?.nickname || 'Member'}`;
+
+    /* ── Transaction row renderer ─────────────────── */
+    const renderTxRow = (t) => {
+      const isCreator = !t.createdBy || t.createdBy === 'anonymous' ||
+        (currentUid && (t.createdBy === currentUid || t.paidByUid === currentUid));
+      return (
+        <div key={t.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors rounded-xl mx-2 mb-0.5">
+          {/* Icon */}
+          <div className="w-9 h-9 rounded-xl bg-[#F0F4F1] dark:bg-slate-800 flex items-center justify-center shrink-0">
+            {getCategoryIcon(t.category)}
+          </div>
+
+          {/* Title + meta */}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-[#1A3827] dark:text-slate-100 truncate">
+              {t.title}
+              {t.isEdited && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); setActiveEditHistoryTx(t); }}
+                  className="ml-1.5 text-[9px] text-rose-500 italic cursor-pointer hover:underline"
+                >(edited)</span>
+              )}
+            </p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1.5">
+              <span className="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded text-[9px] font-mono">{formatTxId(t.id)}</span>
+              <span>{t.category}</span>
+              <span className="opacity-40">·</span>
+              <span>{t.date}{t.time ? ` · ${parseTimeAndHistory(t.time).time}` : ''}</span>
+            </p>
+          </div>
+
+          {/* Amount + actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-sm font-black text-rose-600 dark:text-rose-400">-{formatINR(t.amount)}</span>
+            {isCreator && (
+              <div className="flex items-center gap-0.5">
+                <button onClick={() => handleEditTransaction(t)} className="p-1.5 text-slate-400 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-all">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => handleDeleteTransaction(t)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-all">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
 
     return (
-      <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
-        
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+      <div className="max-w-3xl mx-auto space-y-5 animate-fade-in pb-10">
+
+        {/* ── Top bar ──────────────────────────────── */}
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Personal expenses</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Private ledgers separated member-by-member.</p>
+            <h1 className="text-xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Personal Expenses</h1>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Private ledger · per member</p>
           </div>
-          
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
-            {/* Export Dropdown */}
-            <div className="relative flex-1 sm:flex-none">
-              <button 
+          <div className="flex items-center gap-2">
+            {/* Export */}
+            <div className="relative">
+              <button
                 onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                className="w-full flex items-center justify-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm"
+                className="flex items-center gap-1.5 border border-[#E3E8E3] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-300 px-3 py-2 rounded-xl text-xs font-bold transition-all"
               >
-                <Download className="w-4 h-4" />
-                <span>Export</span>
-                <ChevronDown className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Export</span>
+                <ChevronDown className="w-3 h-3" />
               </button>
-              
               {isExportDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
-                    <button 
-                      onClick={() => { exportToCSV(filteredPersonalExpenses, exportDisplayTitle); setIsExportDropdownOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
-                    >
-                      <FileText className="w-4 h-4 text-emerald-700" />
-                      <span>Export to CSV</span>
-                    </button>
-                    <button 
-                      onClick={() => { exportToExcel(filteredPersonalExpenses, exportDisplayTitle); setIsExportDropdownOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
-                    >
-                      <Sliders className="w-4 h-4 text-blue-600" />
-                      <span>Export to Excel</span>
-                    </button>
-                    <button 
-                      onClick={() => { exportToPDF(filteredPersonalExpenses, exportDisplayTitle); setIsExportDropdownOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-500" />
-                      <span>Download PDF</span>
-                    </button>
+                  <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl shadow-xl py-1.5 z-40 text-xs font-bold text-slate-700 dark:text-slate-200">
+                    <button onClick={() => { exportToCSV(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-emerald-600" /> CSV</button>
+                    <button onClick={() => { exportToExcel(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"><Sliders className="w-3.5 h-3.5 text-blue-500" /> Excel</button>
+                    <button onClick={() => { exportToPDF(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-amber-500" /> PDF</button>
                   </div>
                 </>
               )}
             </div>
-
-
-            <button 
+            {/* Add */}
+            <button
               onClick={openAddPersonalExpense}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
+              className="flex items-center gap-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#255038] dark:hover:bg-[#BEF264] transition-all shadow-sm"
             >
-              <Plus className="w-4 h-4" />
-              <span>Add personal expense</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Expense</span>
             </button>
           </div>
         </div>
 
-        {/* Member Selector Filter Bar */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-[#E3E8E3] dark:border-slate-800">
+        {/* ── Member tabs ──────────────────────────── */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+          {/* All */}
           <button
             onClick={() => setSelectedPersonalMemberUid('all')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 ${
               selectedPersonalMemberUid === 'all'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-800 hover:text-[#1A3827]'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700'
             }`}
           >
-            <Users className="w-3.5 h-3.5" />
-            <span>All Roommates (Separate Lists)</span>
+            <Users className="w-3.5 h-3.5" /> All
           </button>
 
+          {/* Me */}
           <button
             onClick={() => setSelectedPersonalMemberUid('me')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 ${
               selectedPersonalMemberUid === 'me'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-800 hover:text-[#1A3827]'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700'
             }`}
           >
-            <User className="w-3.5 h-3.5" />
-            <span>My Expenses (You)</span>
+            <User className="w-3.5 h-3.5" /> Me ({userNickname?.split(' ')[0] || 'You'})
           </button>
-          
+
+          {/* Other members */}
           {(members || []).map(m => {
-            const currentUid = user?.id || user?.uid || auth?.currentUser?.uid || 'anonymous';
             const isMe = (m.uid && m.uid === currentUid) || (m.id && m.id === currentUid) || (m.nickname && userNickname && m.nickname.toLowerCase() === userNickname.toLowerCase());
             if (isMe) return null;
-            const memberId = m.uid || m.id || m.nickname;
+            const mId = m.uid || m.id || m.nickname;
             return (
               <button
-                key={memberId}
-                onClick={() => setSelectedPersonalMemberUid(memberId)}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-                  selectedPersonalMemberUid === memberId
-                    ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                    : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-800 hover:text-[#1A3827]'
+                key={mId}
+                onClick={() => setSelectedPersonalMemberUid(mId)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 ${
+                  selectedPersonalMemberUid === mId
+                    ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                    : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700'
                 }`}
               >
-                <User className="w-3.5 h-3.5" />
-                <span>{m.nickname}'s Expenses</span>
+                <User className="w-3.5 h-3.5" /> {m.nickname?.split(' ')[0] || m.nickname}
               </button>
             );
           })}
         </div>
 
-        {/* Scope Mode Selector (Private Personal vs All Paid by Member) */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold gap-1 shadow-sm">
-          <button
-            onClick={() => setPersonalFilterScope('personal')}
-            className={`flex-1 py-2 px-3 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 ${
-              personalFilterScope === 'personal'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm font-black'
-                : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827]'
-            }`}
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span>Private Personal Expenses Only</span>
-          </button>
-
-          <button
-            onClick={() => setPersonalFilterScope('all_paid')}
-            className={`flex-1 py-2 px-3 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 ${
-              personalFilterScope === 'all_paid'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm font-black'
-                : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827]'
-            }`}
-          >
-            <CreditCard className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
-            <span>All Expenses Paid by Member (Includes Shared)</span>
-          </button>
-        </div>
-
-        {/* Expense Meter */}
-        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm space-y-3 transition-colors duration-300">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[10px] sm:text-xs font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">
-                Expense Meter ({activeMemberName}) — {selectedMonth === 'All' ? 'All Time' : (() => {
-                  const [year, month] = activeMonth.split('-');
-                  const dateObj = new Date(Number(year), Number(month) - 1, 1);
-                  return dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
-                })()}
-              </p>
-              <p className="text-lg sm:text-xl font-extrabold text-[#1A3827] dark:text-slate-100 mt-1">
-                {formatINR(monthlyPersonalTotal)} / {formatINR(activeCapLimit)}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                personalPercentage >= 90 ? 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-rose-500' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'
-              }`}>
-                {personalPercentage.toFixed(0)}% Used
-              </span>
-              <button
-                onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }}
-                className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all"
-                title="Edit personal spending limit"
-              >
-                <Pencil className="w-3.5 h-3.5 text-[#5C6E5C] dark:text-slate-400" />
-              </button>
-            </div>
-          </div>
-
-          {isEditingPersonalCap && (
-            <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
-              <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">Set limit (₹)</span>
-              <input
-                type="number"
-                min="0"
-                value={personalCapInput}
-                onChange={e => setPersonalCapInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    const val = Number(personalCapInput);
-                    if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); }
-                    setIsEditingPersonalCap(false);
-                  }
-                  if (e.key === 'Escape') setIsEditingPersonalCap(false);
-                }}
-                className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0"
-                autoFocus
-              />
-              <button
-                onClick={() => {
-                  const val = Number(personalCapInput);
-                  if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); }
-                  setIsEditingPersonalCap(false);
-                }}
-                className="text-[10px] font-black bg-[#1A3827] text-white px-3 py-1 rounded-lg hover:bg-[#255038] transition-all"
-              >Save</button>
-              <button
-                onClick={() => setIsEditingPersonalCap(false)}
-                className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 transition-all"
-              >Cancel</button>
-            </div>
-          )}
-          
-          <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 rounded-full h-2 overflow-hidden border border-[#E3E8E3]/50 dark:border-slate-800">
-            <div 
-              className={`h-full rounded-full transition-all duration-300 ${
-                personalPercentage >= 90 ? 'bg-red-600' : 'bg-[#1A3827] dark:bg-[#A3E635]'
+        {/* ── Scope + Month filters ─────────────────── */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          {/* Scope toggle */}
+          <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 gap-1 flex-1">
+            <button
+              onClick={() => setPersonalFilterScope('personal')}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
+                personalFilterScope === 'personal'
+                  ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-sm'
+                  : 'text-slate-400 dark:text-slate-500'
               }`}
-              style={{ width: `${personalPercentage}%` }}
-            />
-          </div>
-          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
-            {personalPercentage >= 100 
-              ? "⚠️ Spending limit reached!" 
-              : `You have ${formatINR(activeCapLimit - monthlyPersonalTotal)} remaining before reaching ${formatINR(activeCapLimit)} limit.`}
-          </p>
-        </div>
-
-        {/* Search & Filter Bar */}
-        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center gap-3 justify-between transition-colors duration-300">
-          <div className="flex-1 relative">
-            <Search className="w-4 h-4 text-[#5C6E5C] absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input 
-              type="text" 
-              placeholder="Search title, TX ID, category..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
-            />
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 w-full md:w-auto">
-            <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:items-center sm:gap-3 sm:w-auto">
-              <select 
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3.5 py-2.5 text-base sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-semibold cursor-pointer"
-              >
-                {categories.map((c) => (
-                  <option key={c} value={c}>{c === 'All' ? 'All categories' : c}</option>
-                ))}
-              </select>
-
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="w-full border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3.5 py-2.5 text-base sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-semibold cursor-pointer"
-              >
-                <option value="All">All months</option>
-                {availableMonths.map((m) => {
-                  const [year, month] = m.split('-');
-                  const dateObj = new Date(Number(year), Number(month) - 1, 1);
-                  const monthName = dateObj.toLocaleString('default', { month: 'long' });
-                  return (
-                    <option key={m} value={m}>
-                      📅 {monthName} {year}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            <button 
-              onClick={() => {
-                setSearchQuery('');
-                setCategoryFilter('All');
-                setSelectedMonth(getLocalMonthStr());
-                triggerToast('Search filter reset.');
-              }}
-              className="w-full sm:w-auto bg-[#1A3827] dark:bg-slate-800 text-white px-4 py-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all text-center"
             >
-              Reset
+              <Lock className="w-3 h-3" /> Private only
+            </button>
+            <button
+              onClick={() => setPersonalFilterScope('all_paid')}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
+                personalFilterScope === 'all_paid'
+                  ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-sm'
+                  : 'text-slate-400 dark:text-slate-500'
+              }`}
+            >
+              <CreditCard className="w-3 h-3" /> All paid by member
             </button>
           </div>
+
+          {/* Month select */}
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 focus:outline-none cursor-pointer"
+          >
+            <option value="All">All months</option>
+            {availableMonths.map(m => {
+              const [y, mo] = m.split('-');
+              const label = new Date(Number(y), Number(mo) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+              return <option key={m} value={m}>{label}</option>;
+            })}
+          </select>
+
+          {/* Category select */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 focus:outline-none cursor-pointer"
+          >
+            {categories.map(c => <option key={c} value={c}>{c === 'All' ? 'All categories' : c}</option>)}
+          </select>
         </div>
 
-        {/* Transaction list panels (Separate per roommate when 'all' is selected) */}
+        {/* ── Summary cards ─────────────────────────── */}
+        {selectedPersonalMemberUid !== 'all' && (
+          <div className="grid grid-cols-3 gap-3">
+            {/* Total spent */}
+            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl px-4 py-3.5">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Spent</p>
+              <p className="text-lg font-black text-rose-600 dark:text-rose-400 mt-0.5">{formatINR(monthTotal)}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{activeMonthLabel}</p>
+            </div>
+            {/* Budget remaining */}
+            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl px-4 py-3.5">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Remaining</p>
+              <p className={`text-lg font-black mt-0.5 ${capPct >= 100 ? 'text-red-600' : 'text-emerald-600 dark:text-[#A3E635]'}`}>
+                {formatINR(Math.max(activeCapLimit - monthTotal, 0))}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">of {formatINR(activeCapLimit)} limit</p>
+            </div>
+            {/* Transactions count */}
+            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl px-4 py-3.5">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Entries</p>
+              <p className="text-lg font-black text-[#1A3827] dark:text-slate-100 mt-0.5">{filteredPersonalExpenses.length}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">transactions</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Budget meter (single member) ─────────── */}
+        {selectedPersonalMemberUid !== 'all' && (
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl px-4 py-3 flex items-center gap-4">
+            <div className="flex-1">
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly limit</span>
+                <button onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }} className="text-[10px] text-slate-400 hover:text-[#1A3827] dark:hover:text-white font-bold transition-colors flex items-center gap-1">
+                  <Pencil className="w-2.5 h-2.5" /> Edit
+                </button>
+              </div>
+              {isEditingPersonalCap ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-bold">₹</span>
+                  <input
+                    type="number" min="0" value={personalCapInput}
+                    onChange={e => setPersonalCapInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { const v = Number(personalCapInput); if (v > 0) { setPersonalCap(v); localStorage.setItem('personalCap', v); } setIsEditingPersonalCap(false); }
+                      if (e.key === 'Escape') setIsEditingPersonalCap(false);
+                    }}
+                    className="flex-1 bg-slate-50 dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-lg px-2 py-1 text-sm font-bold text-[#1A3827] dark:text-white outline-none"
+                    autoFocus
+                  />
+                  <button onClick={() => { const v = Number(personalCapInput); if (v > 0) { setPersonalCap(v); localStorage.setItem('personalCap', v); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#1A3827] text-white px-2.5 py-1 rounded-lg">Save</button>
+                  <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] font-bold text-slate-400 px-2 py-1">Cancel</button>
+                </div>
+              ) : (
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-500 ${capPct >= 90 ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`}
+                    style={{ width: `${capPct}%` }}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="text-right shrink-0">
+              <p className={`text-xs font-black ${capPct >= 90 ? 'text-rose-500' : 'text-[#1A3827] dark:text-[#A3E635]'}`}>{capPct.toFixed(0)}%</p>
+              <p className="text-[10px] text-slate-400">used</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Search bar ───────────────────────────── */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search expenses..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-xl text-sm text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-[#1A3827]/30"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* ── Transaction list ─────────────────────── */}
         {selectedPersonalMemberUid === 'all' ? (
-          <div className="space-y-6">
-            {(members || []).map((m) => {
-              const currentUid = user?.id || user?.uid || auth?.currentUser?.uid || 'anonymous';
+          /* Separate sections per member */
+          <div className="space-y-4">
+            {(members || []).map(m => {
               const isMe = (m.uid && m.uid === currentUid) || (m.id && m.id === currentUid) || (m.nickname && userNickname && m.nickname.toLowerCase() === userNickname.toLowerCase());
-              const mNick = isMe ? `${userNickname || 'You'} (You)` : m.nickname || 'Member';
+              const mNick = isMe ? (userNickname || 'You') : (m.nickname || 'Member');
               const mNickNorm = m.nickname ? m.nickname.trim().toLowerCase() : '';
               const mFirst = mNickNorm.split(' ')[0] || '';
 
@@ -9311,243 +9312,85 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 const payer = (t.paidBy || '').trim().toLowerCase();
                 const payerUid = t.paidByUid ? String(t.paidByUid) : '';
                 const payerFirst = payer.split(' ')[0] || '';
-                
-                if (isMe) {
-                  return payerUid === currentUid || t.createdBy === currentUid || payer === userNickname?.toLowerCase();
-                }
-
-                if (payerUid && (m.uid || m.id)) {
-                  if (payerUid === String(m.uid || m.id)) return true;
-                }
-
-                if (payer && mNickNorm) {
-                  return payer === mNickNorm || payer.includes(mNickNorm) || mNickNorm.includes(payer) || (payerFirst && mFirst && payerFirst === mFirst);
-                }
-
+                if (isMe) return payerUid === currentUid || t.createdBy === currentUid || payer === (userNickname || '').toLowerCase();
+                if (payerUid && (m.uid || m.id) && payerUid === String(m.uid || m.id)) return true;
+                if (payer && mNickNorm) return payer === mNickNorm || payer.includes(mNickNorm) || mNickNorm.includes(payer) || (payerFirst && mFirst && payerFirst === mFirst);
                 return false;
               });
 
-              const mTotal = mTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+              const mTotal = mTxns.reduce((s, t) => s + (Number(t.amount) || 0), 0);
 
               return (
-                <div key={m.uid || m.id || m.nickname} className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-colors duration-300">
-                  <div className="px-6 py-4 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center bg-[#F6F8F6]/40 dark:bg-slate-950/40">
+                <div key={m.uid || m.id || m.nickname} className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden">
+                  {/* Member header */}
+                  <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#F0F4F1] dark:border-slate-800">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-2xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs flex items-center justify-center shadow-sm">
+                      <div className="w-8 h-8 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-[11px] font-black flex items-center justify-center shrink-0">
                         {fmtInitials(m.nickname || 'M')}
                       </div>
                       <div>
-                        <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">
-                          {mNick}’s Personal Expenses
-                        </h3>
-                        <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">{mTxns.length} personal transactions</p>
+                        <p className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100">{mNick}</p>
+                        <p className="text-[10px] text-slate-400">{mTxns.length} transactions</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider block">Total Spent</span>
-                      <span className="text-base sm:text-lg font-black text-rose-600 dark:text-rose-400">{formatINR(mTotal)}</span>
+                      <p className="text-sm font-black text-rose-600 dark:text-rose-400">{formatINR(mTotal)}</p>
+                      <p className="text-[10px] text-slate-400">spent</p>
                     </div>
                   </div>
 
-                  <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800">
+                  {/* Transactions */}
+                  <div className="py-1.5">
                     {mTxns.length === 0 ? (
-                      <div className="text-center py-8 text-[#5C6E5C] dark:text-slate-400 space-y-1">
-                        <p className="text-xs font-semibold">No personal expenses logged for {m.nickname}.</p>
+                      <div className="text-center py-6 text-slate-400 text-xs">
+                        No expenses — <button onClick={() => setPersonalFilterScope('all_paid')} className="underline font-bold text-[#1A3827] dark:text-[#A3E635]">show all paid by {mNick}</button>
                       </div>
-                    ) : (
-                      mTxns.map((t) => {
-                        const currentUid = user?.id || user?.uid || auth?.currentUser?.uid;
-                        const isCreator = !t.createdBy || t.createdBy === 'anonymous' || (currentUid && (t.createdBy === currentUid || t.paidByUid === currentUid));
-
-                        return (
-                          <div key={t.id} className="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100 gap-2 sm:gap-4">
-                            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 flex items-center justify-center border border-[#E3E8E3]/20 shrink-0">
-                                {getCategoryIcon(t.category)}
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">
-                                  {t.title}
-                                  {t.isEdited && (
-                                    <span 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveEditHistoryTx(t);
-                                      }}
-                                      className="ml-1.5 text-[9px] text-rose-500 dark:text-rose-400 italic font-bold tracking-wide cursor-pointer hover:underline"
-                                      title="Click to view edit history"
-                                    >
-                                      (Edited)
-                                    </span>
-                                  )}
-                                </h4>
-                                <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
-                                  <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800">
-                                    {formatTxId(t.id)}
-                                  </span>
-                                  <span className="text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0">
-                                    {t.category}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 border-t border-dashed border-[#F6F8F6] dark:border-slate-800 sm:border-t-0 pt-2.5 sm:pt-0">
-                              <div className="text-left sm:text-right">
-                                <p className="font-black text-xs sm:text-sm text-red-700 dark:text-rose-500">
-                                  -{formatINR(t.amount)}
-                                </p>
-                                <div className="flex items-center gap-1.5 mt-0.5 sm:justify-end text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
-                                  <Calendar className="w-3 h-3 hidden sm:block" />
-                                  <span>{t.date} {t.time && `• ${parseTimeAndHistory(t.time).time}`}</span>
-                                </div>
-                              </div>
-
-                              {isCreator && (
-                                <div className="flex items-center gap-1 border-l border-slate-150 dark:border-slate-800 pl-3">
-                                  <button 
-                                    onClick={() => handleEditTransaction(t)}
-                                    className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-                                    title="Edit transaction"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button 
-                                    onClick={() => handleDeleteTransaction(t)}
-                                    className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
-                                    title="Delete transaction"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
+                    ) : mTxns.map(renderTxRow)}
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-colors duration-300">
-            <div className="px-6 py-5 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center bg-[#F6F8F6]/30 dark:bg-slate-950/20">
-              <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">
-                {selectedMonth === 'All' ? `${activeMemberName}’s Personal Expenses` : (() => {
-                  const [year, month] = activeMonth.split('-');
-                  const dateObj = new Date(Number(year), Number(month) - 1, 1);
-                  return `${activeMemberName} — ${dateObj.toLocaleString('default', { month: 'long', year: 'numeric' })}`;
-                })()}
-              </h3>
-              <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">
-                {filteredPersonalExpenses.length} transactions
+          /* Single member list */
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#F0F4F1] dark:border-slate-800">
+              <div>
+                <p className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100">{activeMemberName}'s expenses</p>
+                <p className="text-[10px] text-slate-400">{selectedMonth === 'All' ? 'All time' : activeMonthLabel}</p>
+              </div>
+              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">
+                {filteredPersonalExpenses.length} items
               </span>
             </div>
 
-            <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800">
+            <div className="py-1.5">
               {filteredPersonalExpenses.length === 0 ? (
-                <div className="text-center py-10 px-6 text-[#5C6E5C] dark:text-slate-400 space-y-3">
-                  <div className="w-12 h-12 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center text-xl mx-auto border border-amber-200/60 dark:border-amber-900/50 shadow-sm">
-                    💡
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm font-extrabold text-[#1A3827] dark:text-slate-200">
-                      No private personal expenses logged for {selectedPersonalMemberUid === 'me' ? 'you' : activeMemberObj?.nickname || 'this member'}.
-                    </p>
-                    <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-1 max-w-md mx-auto leading-relaxed">
-                      If {selectedPersonalMemberUid === 'me' ? 'you' : activeMemberObj?.nickname || 'this member'} paid for room bills (e.g. Liquor, Petrol, Pizza, Groceries, Rent), those are logged as <strong>Shared Room Expenses</strong> in <strong>The Ledger</strong>.
-                    </p>
-                  </div>
+                <div className="text-center py-10 px-6 space-y-3">
+                  <p className="text-2xl">💡</p>
+                  <p className="text-sm font-bold text-[#1A3827] dark:text-slate-200">No {personalFilterScope === 'personal' ? 'private' : ''} expenses found</p>
+                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                    Shared room bills (Groceries, Rent, Utilities) are in <strong>The Ledger</strong>, not here.
+                  </p>
                   {personalFilterScope === 'personal' && (
                     <button
                       onClick={() => setPersonalFilterScope('all_paid')}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-xs font-black hover:bg-[#255038] dark:hover:bg-[#BEF264] transition-all shadow-sm"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-xs font-black hover:opacity-90 transition-all"
                     >
                       <CreditCard className="w-3.5 h-3.5" />
-                      <span>View All Expenses Paid by {activeMemberName} →</span>
+                      Show all expenses paid by {activeMemberName} →
                     </button>
                   )}
                 </div>
-              ) : (
-                filteredPersonalExpenses.map((t) => {
-                  const currentUid = user?.id || user?.uid || auth?.currentUser?.uid;
-                  const isCreator = !t.createdBy || t.createdBy === 'anonymous' || (currentUid && (t.createdBy === currentUid || t.paidByUid === currentUid));
-
-                  return (
-                    <div key={t.id} className="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100 gap-2 sm:gap-4">
-                      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 flex items-center justify-center border border-[#E3E8E3]/20 shrink-0">
-                          {getCategoryIcon(t.category)}
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">
-                            {t.title}
-                            {t.isEdited && (
-                              <span 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveEditHistoryTx(t);
-                                }}
-                                className="ml-1.5 text-[9px] text-rose-500 dark:text-rose-400 italic font-bold tracking-wide cursor-pointer hover:underline"
-                                title="Click to view edit history"
-                              >
-                                (Edited)
-                              </span>
-                            )}
-                          </h4>
-                          <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
-                            <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800">
-                              {formatTxId(t.id)}
-                            </span>
-                            <span className="text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0">
-                              {t.category}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 border-t border-dashed border-[#F6F8F6] dark:border-slate-800 sm:border-t-0 pt-2.5 sm:pt-0">
-                        <div className="text-left sm:text-right">
-                          <p className="font-black text-xs sm:text-sm text-red-700 dark:text-rose-500">
-                            -{formatINR(t.amount)}
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-0.5 sm:justify-end text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
-                            <Calendar className="w-3 h-3 hidden sm:block" />
-                            <span>{t.date} {t.time && `• ${parseTimeAndHistory(t.time).time}`}</span>
-                          </div>
-                        </div>
-
-                        {isCreator && (
-                          <div className="flex items-center gap-1 border-l border-slate-150 dark:border-slate-800 pl-3">
-                            <button 
-                              onClick={() => handleEditTransaction(t)}
-                              className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-                              title="Edit transaction"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteTransaction(t)}
-                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
-                              title="Delete transaction"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+              ) : filteredPersonalExpenses.map(renderTxRow)}
             </div>
           </div>
         )}
+
       </div>
     );
   }
+
 
   // ==========================================
   // PAGE 3: ADD EXPENSE MODAL (OVERLAY)
