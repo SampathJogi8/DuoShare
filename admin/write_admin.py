@@ -160,7 +160,6 @@ HTML = r"""<!DOCTYPE html>
       const [annTitle, setAnnTitle] = useState('');
       const [annBody, setAnnBody] = useState('');
       const [annType, setAnnType] = useState('info');
-      const [maintTxId, setMaintTxId] = useState(null);
 
       // Edit Room Modal State
       const [editRoom, setEditRoom] = useState(null);
@@ -199,12 +198,16 @@ HTML = r"""<!DOCTYPE html>
           setTxns(txnList);
           setLogs(logList);
 
-          // Check maintenance state from transactions
-          const sysTx = txnList.find(t => t.category === '__SYSTEM_MAINTENANCE__');
+          // Get latest maintenance row sorted by created_at / date
+          const sysTx = txnList
+            .filter(t => t.category === '__SYSTEM_MAINTENANCE__')
+            .sort((a, b) => new Date(b.created_at || b.date) - new Date(a.created_at || a.date))[0];
+
           if (sysTx) {
-            setMaintTxId(sysTx.id);
             setIsSiteDown(sysTx.title === 'DOWN' || sysTx.split_type === 'down');
             setMaintMessage(sysTx.paid_by || 'Tallyin is undergoing scheduled maintenance.');
+          } else {
+            setIsSiteDown(false);
           }
         } catch (err) {
           toast.error('Failed to load portal data: ' + err.message);
@@ -217,9 +220,9 @@ HTML = r"""<!DOCTYPE html>
         if (user) fetchAllData();
       }, [user, fetchAllData]);
 
-      // TOGGLE SITE UP / DOWN
+      // TOGGLE SITE UP / DOWN - ATOMIC AT ALL TIMES
       const handleToggleSiteStatus = async (turnDown) => {
-        const actionLabel = turnDown ? 'TAKE SITE DOWN (Lockdown)' : 'RESTORE SITE ONLINE';
+        const actionLabel = turnDown ? 'TAKE SITE DOWN (LOCKDOWN)' : 'RESTORE SITE ONLINE';
         if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
 
         const targetRoomId = (rooms && rooms[0] && rooms[0].id) ? rooms[0].id : 'DUO-KLIZ-2508';
@@ -228,32 +231,25 @@ HTML = r"""<!DOCTYPE html>
         const timeStr = now.toTimeString().slice(0, 8);
 
         try {
-          if (maintTxId) {
-            const { error } = await db.from('transactions').update({
-              title: turnDown ? 'DOWN' : 'UP',
-              split_type: turnDown ? 'down' : 'up',
-              paid_by: maintMessage,
-              date: dateStr,
-              time: timeStr
-            }).eq('id', maintTxId);
-            if (error) throw error;
-          } else {
-            const { data, error } = await db.from('transactions').insert({
-              room_id: targetRoomId,
-              title: turnDown ? 'DOWN' : 'UP',
-              category: '__SYSTEM_MAINTENANCE__',
-              split_type: turnDown ? 'down' : 'up',
-              paid_by: maintMessage,
-              paid_by_uid: 'system',
-              created_by: 'system',
-              amount: 0,
-              is_shared: false,
-              date: dateStr,
-              time: timeStr
-            }).select();
-            if (error) throw error;
-            if (data && data[0]) setMaintTxId(data[0].id);
-          }
+          // 1. Delete any existing maintenance rows to keep exactly 1 canonical status row
+          await db.from('transactions').delete().eq('category', '__SYSTEM_MAINTENANCE__');
+
+          // 2. Insert new status row
+          const { error } = await db.from('transactions').insert({
+            room_id: targetRoomId,
+            title: turnDown ? 'DOWN' : 'UP',
+            category: '__SYSTEM_MAINTENANCE__',
+            split_type: turnDown ? 'down' : 'up',
+            paid_by: maintMessage,
+            paid_by_uid: 'system',
+            created_by: 'system',
+            amount: 0,
+            is_shared: false,
+            date: dateStr,
+            time: timeStr
+          });
+
+          if (error) throw error;
 
           setIsSiteDown(turnDown);
           toast.success(`SITE STATUS UPDATED: ${turnDown ? 'OFFLINE (LOCKDOWN)' : 'ONLINE'}`);
@@ -679,4 +675,4 @@ HTML = r"""<!DOCTYPE html>
 out = os.path.join(os.path.dirname(__file__), "index.html")
 with open(out, "w", encoding="utf-8") as f:
     f.write(HTML)
-print("Updated admin HTML with all NOT NULL fields!")
+print("Updated admin HTML with atomic delete-before-insert toggle!")
