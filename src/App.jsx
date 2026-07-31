@@ -2776,102 +2776,128 @@ export default function App() {
     );
     const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
 
+    // Helper to resolve any UID / ID / Nickname string to a canonical member UID
+    const resolveUid = (rawVal) => {
+      if (!rawVal) return currentUid;
+      const str = String(rawVal).trim().toLowerCase();
+      const match = (members || []).find(m => 
+        (m.uid && String(m.uid).trim().toLowerCase() === str) ||
+        (m.id && String(m.id).trim().toLowerCase() === str) ||
+        (m.nickname && String(m.nickname).trim().toLowerCase() === str)
+      );
+      if (match) return match.uid || match.id || match.nickname;
+      if (userNickname && userNickname.trim().toLowerCase() === str) return currentUid;
+      return rawVal;
+    };
+
     // Calculate totals
     let totalSpend = 0;
     let totalRoomSpend = 0;
     let personalSpend = 0;
     let sharedSpend = 0;
-    
+
     // Map of member uid to net balance: paid - share
     const roomBalances = {};
-    
-    // Initialize balances for all current members
-    members.forEach(m => {
-      roomBalances[m.uid] = 0;
+    (members || []).forEach(m => {
+      const key = m.uid || m.id || m.nickname;
+      if (key) roomBalances[key] = 0;
     });
-    
-    // Default fallback if members list is empty
-    if (members.length === 0) {
+    if (Object.keys(roomBalances).length === 0) {
       roomBalances[currentUid] = 0;
-      roomBalances['roommate'] = 0;
     }
 
     data.forEach(t => {
       const amount = Number(t.amount) || 0;
-      const isPayment = t.category === 'Payment';
-      
-      if (!isPayment) {
-        totalSpend += amount;
-        if (t.isShared) {
-          totalRoomSpend += amount;
+      if (amount <= 0) return;
+
+      const isPayment = t.category === 'Payment' || (t.title && t.title.startsWith('Payment:'));
+      const isSharedTx = Boolean(t.isShared);
+      const payerUid = resolveUid(t.paidByUid || (t.paidBy === userNickname ? currentUid : t.paidBy));
+
+      // ── 1. PAYMENT / SETTLEMENT ──────────────────────────────────────────
+      if (isPayment) {
+        // Payment transfers money from payer to receiver to settle debt.
+        // Payer's balance gets credited (+amount), Receiver's balance gets debited (-amount).
+        if (roomBalances[payerUid] !== undefined) {
+          roomBalances[payerUid] += amount;
+        } else {
+          roomBalances[payerUid] = amount;
         }
+
+        let receiverUid = null;
+        if (t.splits && Array.isArray(t.splits)) {
+          const recSplit = t.splits.find(s => resolveUid(s.uid || s.nickname) !== payerUid && Number(s.amount) > 0);
+          if (recSplit) receiverUid = resolveUid(recSplit.uid || recSplit.nickname);
+        }
+        if (!receiverUid) {
+          const otherMember = (members || []).find(m => resolveUid(m.uid || m.id || m.nickname) !== payerUid);
+          receiverUid = otherMember ? (otherMember.uid || otherMember.id || otherMember.nickname) : null;
+        }
+
+        if (receiverUid) {
+          if (roomBalances[receiverUid] !== undefined) {
+            roomBalances[receiverUid] -= amount;
+          } else {
+            roomBalances[receiverUid] = -amount;
+          }
+        }
+        return; // Settlement done — don't add to spend totals
       }
 
-      // Determine payer UID
-      let payerUid = t.paidByUid;
-      if (!payerUid) {
-        const isSelf = t.paidBy === userNickname;
-        payerUid = isSelf ? currentUid : 'roommate';
+      // ── 2. PERSONAL EXPENSES (NOT SHARED) ─────────────────────────────
+      if (!isSharedTx) {
+        totalSpend += amount;
+        if (payerUid === currentUid) {
+          personalSpend += amount;
+        }
+        // Personal expenses do NOT affect room balances!
+        return;
       }
 
-      // Add paid amount to payer's balance
+      // ── 3. ROOM SHARED EXPENSES ─────────────────────────────────────────
+      totalSpend += amount;
+      totalRoomSpend += amount;
+
+      // Payer paid full amount out of pocket -> credit payer
       if (roomBalances[payerUid] !== undefined) {
         roomBalances[payerUid] += amount;
       } else {
         roomBalances[payerUid] = amount;
       }
 
-      // Subtract split shares from everyone
-      if (t.splits && Array.isArray(t.splits)) {
+      // Subtract split shares from participants
+      if (t.splits && Array.isArray(t.splits) && t.splits.length > 0) {
         t.splits.forEach(split => {
-          let splitUid = split.uid;
-          if (!splitUid) {
-            const isSelf = split.nickname === userNickname || (split.uid && split.uid === currentUid);
-            splitUid = isSelf ? currentUid : 'roommate';
-          }
-          
+          const splitUid = resolveUid(split.uid || split.nickname);
+          const shareAmt = Number(split.amount) || 0;
+
           if (roomBalances[splitUid] !== undefined) {
-            roomBalances[splitUid] -= Number(split.amount) || 0;
+            roomBalances[splitUid] -= shareAmt;
           } else {
-            roomBalances[splitUid] = -(Number(split.amount) || 0);
+            roomBalances[splitUid] = -shareAmt;
           }
 
-          // Accumulate spend categories for the current logged-in user based on their share:
-          if (splitUid === currentUid && !isPayment) {
-            const shareAmt = Number(split.amount) || 0;
-            if (t.isShared) {
-              sharedSpend += shareAmt;
-            } else {
-              personalSpend += shareAmt;
-            }
+          if (splitUid === currentUid) {
+            sharedSpend += shareAmt;
           }
         });
       } else {
-        // Legacy splits fallback (50/50 shared vs 100% personal)
-        if (t.isShared) {
-          if (!isPayment) {
-            sharedSpend += amount;
-          }
-          const halfShare = amount / 2;
-          roomBalances[currentUid] -= halfShare;
-          const roommateUid = members.find(m => m.uid !== currentUid)?.uid || 'roommate';
-          if (roomBalances[roommateUid] !== undefined) {
-            roomBalances[roommateUid] -= halfShare;
+        // Fallback: 50/50 split among members
+        const activeMembers = members && members.length > 0 ? members : [{ uid: currentUid }, { uid: 'roommate' }];
+        const sharePerMember = amount / activeMembers.length;
+        activeMembers.forEach(m => {
+          const mKey = m.uid || m.id || m.nickname;
+          if (roomBalances[mKey] !== undefined) {
+            roomBalances[mKey] -= sharePerMember;
           } else {
-            roomBalances[roommateUid] = -halfShare;
+            roomBalances[mKey] = -sharePerMember;
           }
-        } else {
-          if (payerUid === currentUid && !isPayment) {
-            personalSpend += amount;
-          }
-          roomBalances[payerUid] -= amount;
-        }
+        });
+        sharedSpend += sharePerMember;
       }
     });
 
-    // Round values to 2 decimal places
-
-    // Round values to 2 decimal places to avoid floating-point math issues (e.g. -0.00 owes)
+    // Round values to 2 decimal places to avoid floating-point math issues
     Object.keys(roomBalances).forEach(uid => {
       roomBalances[uid] = Math.round(roomBalances[uid] * 100) / 100;
     });
