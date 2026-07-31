@@ -6,7 +6,7 @@ HTML = r"""<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tallyin — Full Control Admin Portal</title>
-  <meta name="description" content="Centralized admin control panel with full site maintenance and room management."/>
+  <meta name="description" content="Centralized admin control panel for site maintenance and broadcasts."/>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -103,7 +103,7 @@ HTML = r"""<!DOCTYPE html>
           localStorage.setItem('tallyin_admin_session', 'true');
           onLogin(data.user);
         } catch (e2) {
-          setErr(e2.message || 'Invalid credentials. Use Master Key: ' + MASTER_KEY);
+          setErr(e2.message || 'Invalid credentials');
         } finally {
           setLoading(false);
         }
@@ -160,13 +160,6 @@ HTML = r"""<!DOCTYPE html>
       const [annBody, setAnnBody] = useState('');
       const [annType, setAnnType] = useState('info');
 
-      // Edit Room Modal State
-      const [editRoom, setEditRoom] = useState(null);
-      const [roomNameInput, setRoomNameInput] = useState('');
-      const [roomCodeInput, setRoomCodeInput] = useState('');
-      const [roomBudgetInput, setRoomBudgetInput] = useState('');
-      const [roomCapInput, setRoomCapInput] = useState('');
-
       // Edit Txn Modal State
       const [editTxn, setEditTxn] = useState(null);
       const [txnTitleInput, setTxnTitleInput] = useState('');
@@ -219,7 +212,7 @@ HTML = r"""<!DOCTYPE html>
         if (user) fetchAllData();
       }, [user, fetchAllData]);
 
-      // TOGGLE SITE UP / DOWN - ATOMIC AT ALL TIMES
+      // TOGGLE SITE UP / DOWN - ATOMIC CLEANUP
       const handleToggleSiteStatus = async (turnDown) => {
         const actionLabel = turnDown ? 'TAKE SITE DOWN (LOCKDOWN)' : 'RESTORE SITE ONLINE';
         if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
@@ -258,7 +251,7 @@ HTML = r"""<!DOCTYPE html>
         }
       };
 
-      // BROADCAST ANNOUNCEMENT
+      // BROADCAST ANNOUNCEMENT TO ALL USERS
       const handleSendBroadcast = async () => {
         if (!annTitle.trim() || !annBody.trim()) { toast.error('Title and message required'); return; }
         const targetRoomId = (rooms && rooms[0] && rooms[0].id) ? rooms[0].id : 'DUO-KLIZ-2508';
@@ -281,57 +274,11 @@ HTML = r"""<!DOCTYPE html>
             time: timeStr
           });
           if (error) throw error;
-          toast.success('Broadcast sent to all users!');
+          toast.success('📢 Broadcast sent live to all app users!');
           setAnnTitle(''); setAnnBody('');
           fetchAllData();
         } catch (err) {
           toast.error('Broadcast failed: ' + err.message);
-        }
-      };
-
-      // EDIT ROOM
-      const handleSaveRoom = async () => {
-        if (!editRoom) return;
-        try {
-          const { error } = await db.from('rooms').update({
-            name: roomNameInput,
-            code: roomCodeInput,
-            monthly_budget: Number(roomBudgetInput) || 0,
-            personal_cap: Number(roomCapInput) || 0
-          }).eq('id', editRoom.id);
-          if (error) throw error;
-          toast.success(`Room "${roomNameInput}" updated!`);
-          setEditRoom(null);
-          fetchAllData();
-        } catch (err) {
-          toast.error('Update room failed: ' + err.message);
-        }
-      };
-
-      // DELETE ROOM
-      const handleDeleteRoom = async (room) => {
-        if (!window.confirm(`PERMANENTLY DELETE room "${room.name}" and ALL its transactions?`)) return;
-        try {
-          await db.from('transactions').delete().eq('room_id', room.id);
-          const { error } = await db.from('rooms').delete().eq('id', room.id);
-          if (error) throw error;
-          toast.success(`Room "${room.name}" deleted`);
-          fetchAllData();
-        } catch (err) {
-          toast.error('Delete failed: ' + err.message);
-        }
-      };
-
-      // CLEAR ROOM TRANSACTIONS
-      const handleClearRoomTxns = async (room) => {
-        if (!window.confirm(`Wipe all transactions for room "${room.name}"?`)) return;
-        try {
-          const { error } = await db.from('transactions').delete().eq('room_id', room.id);
-          if (error) throw error;
-          toast.success(`Transactions cleared for ${room.name}`);
-          fetchAllData();
-        } catch (err) {
-          toast.error('Clear failed: ' + err.message);
         }
       };
 
@@ -381,10 +328,9 @@ HTML = r"""<!DOCTYPE html>
         toast.success(`Exported ${dataList.length} records`);
       };
 
-      if (authLoading) return <div className="p-8 text-center text-slate-400 font-bold">Loading Full Control Center...</div>;
+      if (authLoading) return <div className="p-8 text-center text-slate-400 font-bold">Loading Control Center...</div>;
       if (!user) return <><ToastProvider/><LoginView onLogin={setUser}/></>;
 
-      const filteredRooms = rooms.filter(r => (r.name && r.name.toLowerCase().includes(search.toLowerCase())) || (r.code && r.code.toLowerCase().includes(search.toLowerCase())));
       const filteredTxns = txns.filter(t => !t.category?.startsWith('__SYSTEM_') && ((t.title && t.title.toLowerCase().includes(search.toLowerCase())) || (t.paid_by && t.paid_by.toLowerCase().includes(search.toLowerCase()))));
       const broadcastList = txns.filter(t => t.category === '__SYSTEM_ANNOUNCEMENT__');
 
@@ -430,9 +376,8 @@ HTML = r"""<!DOCTYPE html>
             <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-[#E3E8E3] dark:border-slate-800">
               {[
                 { id: 'site-control', label: '🚨 Emergency Site Controls' },
-                { id: 'rooms-control', label: `🏠 Room Manager (${rooms.length})` },
+                { id: 'broadcasts', label: `📢 Broadcast System (${broadcastList.length})` },
                 { id: 'txns-control', label: `💸 Transaction Manager (${filteredTxns.length})` },
-                { id: 'broadcasts', label: `📢 Broadcasts (${broadcastList.length})` },
                 { id: 'logs', label: `📋 Audit Logs (${logs.length})` }
               ].map(t => (
                 <button key={t.id} onClick={() => setTab(t.id)} className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 ${
@@ -510,40 +455,23 @@ HTML = r"""<!DOCTYPE html>
               </div>
             )}
 
-            {/* TAB 2: ROOM MANAGEMENT */}
-            {tab === 'rooms-control' && (
-              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-                <div className="p-4 sm:p-5 border-b border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between">
-                  <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">All Rooms ({rooms.length})</h3>
-                  <input type="text" placeholder="Search rooms..." value={search} onChange={e => setSearch(e.target.value)} className="px-3 py-1.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-xs font-semibold outline-none" />
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[#F6F8F6] dark:bg-slate-950 text-[#5C6E5C] dark:text-slate-400 font-extrabold uppercase tracking-wider border-b border-[#E3E8E3] dark:border-slate-800">
-                      <tr>
-                        <th className="p-4">Room Name</th>
-                        <th className="p-4">Code</th>
-                        <th className="p-4">Monthly Budget</th>
-                        <th className="p-4">Personal Cap</th>
-                        <th className="p-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E3E8E3] dark:divide-slate-800 font-semibold">
-                      {filteredRooms.map(r => (
-                        <tr key={r.id} className="hover:bg-[#F6F8F6]/50 dark:hover:bg-slate-800/40">
-                          <td className="p-4 font-extrabold text-[#1A3827] dark:text-slate-100">{r.name || 'Unnamed'}</td>
-                          <td className="p-4 font-mono text-emerald-600 font-bold">{r.code}</td>
-                          <td className="p-4">{fmt.inr(r.monthly_budget)}</td>
-                          <td className="p-4">{fmt.inr(r.personal_cap)}</td>
-                          <td className="p-4 text-right space-x-2">
-                            <button onClick={() => { setEditRoom(r); setRoomNameInput(r.name||''); setRoomCodeInput(r.code||''); setRoomBudgetInput(r.monthly_budget||0); setRoomCapInput(r.personal_cap||0); }} className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold hover:bg-slate-200">Edit</button>
-                            <button onClick={() => handleClearRoomTxns(r)} className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 text-xs font-bold hover:bg-amber-100">Wipe Txns</button>
-                            <button onClick={() => handleDeleteRoom(r)} className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 text-xs font-bold hover:bg-rose-100">Delete Room</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            {/* TAB 2: BROADCASTS */}
+            {tab === 'broadcasts' && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+                <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">Active Platform Broadcasts ({broadcastList.length})</h3>
+                <div className="space-y-3">
+                  {broadcastList.map(b => (
+                    <div key={b.id} className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">{b.title}</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">{b.split_type}</span>
+                        </div>
+                        <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1">{b.paid_by}</p>
+                      </div>
+                      <button onClick={() => handleDeleteTxn(b)} className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-bold">Remove</button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -588,28 +516,7 @@ HTML = r"""<!DOCTYPE html>
               </div>
             )}
 
-            {/* TAB 4: BROADCASTS */}
-            {tab === 'broadcasts' && (
-              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
-                <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">Active Platform Broadcasts</h3>
-                <div className="space-y-3">
-                  {broadcastList.map(b => (
-                    <div key={b.id} className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">{b.title}</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">{b.split_type}</span>
-                        </div>
-                        <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1">{b.paid_by}</p>
-                      </div>
-                      <button onClick={() => handleDeleteTxn(b)} className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-bold">Remove</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* TAB 5: AUDIT LOGS */}
+            {/* TAB 4: AUDIT LOGS */}
             {tab === 'logs' && (
               <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
                 <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">System Audit Logs</h3>
@@ -625,25 +532,6 @@ HTML = r"""<!DOCTYPE html>
             )}
 
           </main>
-
-          {/* EDIT ROOM MODAL */}
-          {editRoom && (
-            <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
-                <h3 className="text-base font-extrabold text-[#1A3827] dark:text-slate-100">Edit Room: {editRoom.name}</h3>
-                <div className="space-y-3 text-xs">
-                  <div><label className="font-bold text-[#5C6E5C]">Room Name</label><input type="text" value={roomNameInput} onChange={e => setRoomNameInput(e.target.value)} className="w-full p-2.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 font-bold" /></div>
-                  <div><label className="font-bold text-[#5C6E5C]">Room Code</label><input type="text" value={roomCodeInput} onChange={e => setRoomCodeInput(e.target.value)} className="w-full p-2.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 font-mono font-bold" /></div>
-                  <div><label className="font-bold text-[#5C6E5C]">Monthly Budget (₹)</label><input type="number" value={roomBudgetInput} onChange={e => setRoomBudgetInput(e.target.value)} className="w-full p-2.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 font-bold" /></div>
-                  <div><label className="font-bold text-[#5C6E5C]">Personal Cap (₹)</label><input type="number" value={roomCapInput} onChange={e => setRoomCapInput(e.target.value)} className="w-full p-2.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 font-bold" /></div>
-                </div>
-                <div className="flex gap-2 justify-end pt-2">
-                  <button onClick={() => setEditRoom(null)} className="px-4 py-2 rounded-xl border font-bold text-xs">Cancel</button>
-                  <button onClick={handleSaveRoom} className="px-4 py-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-extrabold text-xs">Save Changes</button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* EDIT TXN MODAL */}
           {editTxn && (
@@ -674,4 +562,4 @@ HTML = r"""<!DOCTYPE html>
 out = os.path.join(os.path.dirname(__file__), "index.html")
 with open(out, "w", encoding="utf-8") as f:
     f.write(HTML)
-print("Updated admin HTML with atomic delete-before-insert toggle!")
+print("Updated admin HTML (Room Manager removed) successfully!")
