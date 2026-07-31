@@ -2799,7 +2799,7 @@ export default function App() {
     data.forEach(t => {
       const amount = Number(t.amount) || 0;
       const isPayment = t.category === 'Payment';
-
+      
       if (!isPayment) {
         totalSpend += amount;
         if (t.isShared) {
@@ -2814,46 +2814,6 @@ export default function App() {
         payerUid = isSelf ? currentUid : 'roommate';
       }
 
-      // ── PAYMENT / SETTLEMENT TRANSACTIONS ────────────────────────────────
-      // A Payment means A paid B a cash amount to settle debt.
-      // Effect on balances:
-      //   - The payer (A) already showed as "owed more" from previous expenses.
-      //     A paying B reduces A's surplus and cancels B's debt.
-      //   - We simply subtract the payment amount from A's net balance
-      //     and add it to B's net balance (B is the split receiver with amount > 0).
-      if (isPayment) {
-        // Deduct from payer: they used their surplus to pay someone
-        if (roomBalances[payerUid] !== undefined) {
-          roomBalances[payerUid] -= amount;
-        } else {
-          roomBalances[payerUid] = -amount;
-        }
-        // Credit the receiver (the split entry with amount > 0)
-        if (t.splits && Array.isArray(t.splits)) {
-          t.splits.forEach(split => {
-            const splitAmt = Number(split.amount) || 0;
-            if (splitAmt > 0) {
-              const receiverUid = split.uid || 'roommate';
-              if (roomBalances[receiverUid] !== undefined) {
-                roomBalances[receiverUid] += splitAmt;
-              } else {
-                roomBalances[receiverUid] = splitAmt;
-              }
-            }
-          });
-        } else {
-          // Legacy: no splits info — just find the other member
-          const receiverUid = members.find(m => m.uid !== payerUid)?.uid || 'roommate';
-          if (roomBalances[receiverUid] !== undefined) {
-            roomBalances[receiverUid] += amount;
-          } else {
-            roomBalances[receiverUid] = amount;
-          }
-        }
-        return; // done — skip normal expense processing below
-      }
-
-      // ── NORMAL EXPENSE TRANSACTIONS ──────────────────────────────────────
       // Add paid amount to payer's balance
       if (roomBalances[payerUid] !== undefined) {
         roomBalances[payerUid] += amount;
@@ -2869,7 +2829,7 @@ export default function App() {
             const isSelf = split.nickname === userNickname || (split.uid && split.uid === currentUid);
             splitUid = isSelf ? currentUid : 'roommate';
           }
-
+          
           if (roomBalances[splitUid] !== undefined) {
             roomBalances[splitUid] -= Number(split.amount) || 0;
           } else {
@@ -2877,7 +2837,7 @@ export default function App() {
           }
 
           // Accumulate spend categories for the current logged-in user based on their share:
-          if (splitUid === currentUid) {
+          if (splitUid === currentUid && !isPayment) {
             const shareAmt = Number(split.amount) || 0;
             if (t.isShared) {
               sharedSpend += shareAmt;
@@ -2889,7 +2849,9 @@ export default function App() {
       } else {
         // Legacy splits fallback (50/50 shared vs 100% personal)
         if (t.isShared) {
-          sharedSpend += amount;
+          if (!isPayment) {
+            sharedSpend += amount;
+          }
           const halfShare = amount / 2;
           roomBalances[currentUid] -= halfShare;
           const roommateUid = members.find(m => m.uid !== currentUid)?.uid || 'roommate';
@@ -2899,13 +2861,15 @@ export default function App() {
             roomBalances[roommateUid] = -halfShare;
           }
         } else {
-          if (payerUid === currentUid) {
+          if (payerUid === currentUid && !isPayment) {
             personalSpend += amount;
           }
           roomBalances[payerUid] -= amount;
         }
       }
     });
+
+    // Round values to 2 decimal places
 
     // Round values to 2 decimal places to avoid floating-point math issues (e.g. -0.00 owes)
     Object.keys(roomBalances).forEach(uid => {
@@ -8311,65 +8275,39 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           {/* Right side roommate balance sheet */}
-          <div className="border-t md:border-t-0 md:border-l border-white/10 dark:border-slate-800 pt-5 md:pt-0 md:pl-10 space-y-3 flex-1 max-w-sm z-10 text-left flex flex-col justify-between">
+          <div className="border-t md:border-t-0 md:border-l border-white/10 dark:border-slate-800 pt-5 md:pt-0 md:pl-10 space-y-4 flex-1 max-w-sm z-10 text-left flex flex-col justify-between">
             <div>
-              <p className="text-[10px] font-bold text-white/50 dark:text-slate-400 tracking-wider uppercase mb-3">Who owes who</p>
-              <div className="space-y-2.5 max-h-32 overflow-y-auto pr-1">
+              <p className="text-[10px] font-bold text-white/50 dark:text-slate-400 tracking-wider uppercase">Roommate Balance Sheet</p>
+              <div className="space-y-2 max-h-28 overflow-y-auto pr-1 mt-2">
                 {members.length > 1 ? (
                   members.map(m => {
                     if (m.uid === currentUid) return null;
                     const bal = computedStats.balances[m.uid] || 0;
-                    const iOwe = bal < -0.01;
-                    const owesMe = bal > 0.01;
                     return (
-                      <div key={m.uid} className={`rounded-xl px-3 py-2.5 border ${
-                        owesMe ? 'bg-[#A3E635]/10 border-[#A3E635]/25' :
-                        iOwe   ? 'bg-rose-500/10 border-rose-500/25' :
-                        'bg-white/5 border-white/10'
-                      }`}>
-                        {owesMe ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-black text-white truncate max-w-[90px]">{m.nickname}</span>
-                            <span className="text-[10px] text-white/50">→</span>
-                            <span className="text-[11px] font-black text-[#A3E635]">You</span>
-                            <span className="ml-auto text-[11px] font-black text-[#A3E635] shrink-0">{formatINR(bal)}</span>
-                          </div>
-                        ) : iOwe ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-black text-white">You</span>
-                            <span className="text-[10px] text-white/50">→</span>
-                            <span className="text-[11px] font-black text-white truncate max-w-[90px]">{m.nickname}</span>
-                            <span className="ml-auto text-[11px] font-black text-rose-400 shrink-0">{formatINR(Math.abs(bal))}</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold text-white/60">{m.nickname}</span>
-                            <span className="text-[10px] font-bold text-white/30">All settled ✓</span>
-                          </div>
-                        )}
-                        <p className={`text-[9px] mt-0.5 font-semibold ${
-                          owesMe ? 'text-[#A3E635]/70' : iOwe ? 'text-rose-400/70' : 'text-white/25'
-                        }`}>
-                          {owesMe ? `${m.nickname} owes you ${formatINR(bal)}` : iOwe ? `You owe ${m.nickname} ${formatINR(Math.abs(bal))}` : ''}
-                        </p>
+                      <div key={m.uid} className="flex justify-between items-center text-xs font-semibold py-1 border-b border-white/5 last:border-b-0 gap-2">
+                        <span className="text-white/80 truncate max-w-[120px]">{m.nickname}</span>
+                        <span className={`shrink-0 ${bal > 0 ? 'text-[#A3E635] font-bold' : bal < 0 ? 'text-rose-400 font-bold' : 'text-white/40'}`}>
+                          {bal > 0 ? `is owed ${formatINR(bal)}` : bal < 0 ? `owes ${formatINR(Math.abs(bal))}` : 'settled up'}
+                        </span>
                       </div>
                     );
                   })
                 ) : (
-                  <p className="text-[11px] text-white/40 italic">Invite roommates to view balances.</p>
+                  <p className="text-[11px] text-white/40 italic">Invite roommates to view balance sheet.</p>
                 )}
               </div>
             </div>
             {suggestedTransfers.length > 0 && (
-              <div className="pt-3 border-t border-white/10 mt-1">
-                <p className="text-[10px] font-bold text-[#A3E635]/80 tracking-wider uppercase mb-2">Suggested transfers</p>
-                <div className="space-y-2 max-h-24 overflow-y-auto pr-1">
+              <div className="pt-3 border-t border-white/10 mt-2">
+                <p className="text-[10px] font-bold text-[#A3E635]/80 tracking-wider uppercase">Suggested Transfers</p>
+                <div className="space-y-1.5 mt-2 max-h-24 overflow-y-auto pr-1">
                   {suggestedTransfers.map((t, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5 text-[11px] font-bold">
-                      <span className="text-rose-400 shrink-0">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
-                      <ArrowRight className="w-3 h-3 text-white/30 shrink-0" />
-                      <span className="text-[#A3E635] shrink-0">{t.toUid === currentUid ? 'You' : t.toName}</span>
-                      <span className="ml-auto text-white/80 font-black shrink-0">{formatINR(t.amount)}</span>
+                    <div key={idx} className="text-[11px] text-white/90 leading-relaxed font-semibold flex flex-wrap items-center gap-1">
+                      <span className="text-rose-400 truncate max-w-[80px]">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
+                      <span className="text-white/45 font-normal">owes</span>
+                      <span className="text-[#A3E635] font-bold">{formatINR(t.amount)}</span>
+                      <span className="text-white/45 font-normal">to</span>
+                      <span className="text-[#A3E635] truncate max-w-[80px]">{t.toUid === currentUid ? 'You' : t.toName}</span>
                     </div>
                   ))}
                 </div>
@@ -9904,13 +9842,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">ROOMMATE BALANCES</span>
-                <span className="text-[9px] font-bold text-[#A3E635] uppercase">Both sides can settle</span>
-              </div>
-              <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl px-3 py-2">
-                <span className="text-sm shrink-0">💡</span>
-                <p className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold leading-relaxed">
-                  <strong>Either person</strong> can mark a payment — if you paid cash, tap <strong>"I Paid"</strong>. If you received cash, tap <strong>"Confirm Received"</strong>.
-                </p>
+                <span className="text-[9px] font-bold text-[#A3E635] uppercase">1-TAP PAY</span>
               </div>
 
               {members.length <= 1 ? (
@@ -9925,106 +9857,57 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   const owesMe = bal > 0.01;
 
                   return (
-                    <div
-                      key={m.uid}
-                      className={`border rounded-2xl p-4 shadow-sm transition-all ${
-                        owesMe ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50' :
-                        iOwe   ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/50' :
-                        'bg-white dark:bg-[#161D20] border-[#E3E8E3] dark:border-[#1E282C]'
-                      }`}
+                    <div 
+                      key={m.uid} 
+                      className="bg-white dark:bg-[#161D20] border border-[#E3E8E3] dark:border-[#1E282C] rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm hover:border-[#A3E635]/40 transition-all"
                     >
-                      {/* Who owes who — crystal clear row */}
-                      <div className="flex items-center gap-2 mb-3">
-                        {/* Payer side */}
-                        <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl ${
-                          iOwe ? 'bg-rose-100 dark:bg-rose-900/30' : 'bg-slate-100 dark:bg-slate-800'
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Avatar */}
+                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-black shrink-0 ${
+                          owesMe ? 'bg-emerald-500/10 text-emerald-600 dark:text-[#A3E635] border border-emerald-500/30' :
+                          iOwe ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30' :
+                          'bg-slate-100 dark:bg-slate-800 text-slate-400'
                         }`}>
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 ${
-                            iOwe ? 'bg-rose-500 text-white' : 'bg-[#1A3827] text-white'
-                          }`}>
-                            {iOwe ? 'Y' : m.nickname.charAt(0).toUpperCase()}
-                          </div>
-                          <span className={`text-xs font-black ${
-                            iOwe ? 'text-rose-700 dark:text-rose-300' : 'text-[#1A3827] dark:text-slate-200'
-                          }`}>{iOwe ? 'You' : m.nickname}</span>
+                          {m.nickname.charAt(0).toUpperCase()}
                         </div>
 
-                        {/* Arrow + amount */}
-                        <div className="flex flex-col items-center flex-1">
-                          <div className={`text-[10px] font-black ${
+                        <div className="min-w-0">
+                          <h4 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}</h4>
+                          <p className={`text-[11px] font-semibold truncate mt-0.5 ${
                             owesMe ? 'text-emerald-600 dark:text-[#A3E635]' :
-                            iOwe   ? 'text-rose-500' :
-                            'text-slate-300'
+                            iOwe ? 'text-rose-500' :
+                            'text-slate-400'
                           }`}>
-                            {owesMe || iOwe ? formatINR(Math.abs(bal)) : '—'}
-                          </div>
-                          <div className={`flex items-center gap-0.5 text-[9px] font-bold ${
-                            owesMe || iOwe ? 'text-slate-400' : 'text-slate-300'
-                          }`}>
-                            <span>—</span>
-                            <ArrowRight className="w-3 h-3" />
-                          </div>
-                        </div>
-
-                        {/* Receiver side */}
-                        <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl ${
-                          owesMe ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-slate-100 dark:bg-slate-800'
-                        }`}>
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 ${
-                            owesMe ? 'bg-emerald-600 text-white' : 'bg-[#1A3827] text-white'
-                          }`}>
-                            {owesMe ? 'Y' : m.nickname.charAt(0).toUpperCase()}
-                          </div>
-                          <span className={`text-xs font-black ${
-                            owesMe ? 'text-emerald-700 dark:text-emerald-300' : 'text-[#1A3827] dark:text-slate-200'
-                          }`}>{owesMe ? 'You' : iOwe ? m.nickname : m.nickname}</span>
+                            {owesMe ? `Owes you ${formatINR(bal)}` : iOwe ? `You owe ${formatINR(Math.abs(bal))}` : 'All settled up'}
+                          </p>
                         </div>
                       </div>
 
-                      {/* Status label + action */}
-                      <div className="flex items-center justify-between">
-                        <p className={`text-xs font-extrabold ${
-                          owesMe ? 'text-emerald-600 dark:text-[#A3E635]' :
-                          iOwe   ? 'text-rose-500 dark:text-rose-400' :
-                          'text-slate-400'
-                        }`}>
-                          {owesMe ? `${m.nickname} owes you ${formatINR(bal)}` :
-                           iOwe   ? `You owe ${m.nickname} ${formatINR(Math.abs(bal))}` :
-                           '✓ All settled up'}
-                        </p>
-
-                        {/* 1-Tap Action Buttons */}
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
-                          {iOwe ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => executeQuickSettle(currentUid, m.uid, Math.abs(bal))}
-                                className="px-3.5 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs rounded-xl hover:scale-105 active:scale-95 transition-all shadow-md flex items-center gap-1.5"
-                              >
-                                <Zap className="w-3.5 h-3.5 fill-current" />
-                                <span>I Paid {formatINR(Math.abs(bal))}</span>
-                              </button>
-                              <span className="text-[9px] text-slate-400 font-semibold">Tap when you've paid {m.nickname}</span>
-                            </>
-                          ) : owesMe ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => executeQuickSettle(m.uid, currentUid, bal)}
-                                className="px-3.5 py-2 bg-emerald-600 dark:bg-emerald-500 text-white font-black text-xs rounded-xl hover:scale-105 active:scale-95 transition-all shadow-md flex items-center gap-1.5"
-                              >
-                                <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                <span>Confirm Received</span>
-                              </button>
-                              <span className="text-[9px] text-slate-400 font-semibold">Tap when {m.nickname} has paid you</span>
-                            </>
-                          ) : (
-                            <span className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-bold rounded-xl">
-                              Settled ✓
-                            </span>
-                          )}
-                        </div>
+                      {/* 1-Tap Action Buttons */}
+                      <div className="shrink-0">
+                        {iOwe ? (
+                          <button
+                            type="button"
+                            onClick={() => executeQuickSettle(currentUid, m.uid, Math.abs(bal))}
+                            className="px-3.5 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs rounded-xl hover:scale-105 active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+                          >
+                            <Zap className="w-3.5 h-3.5 fill-current" />
+                            <span>Pay {formatINR(Math.abs(bal))}</span>
+                          </button>
+                        ) : owesMe ? (
+                          <button
+                            type="button"
+                            onClick={() => executeQuickSettle(m.uid, currentUid, bal)}
+                            className="px-3.5 py-2 bg-emerald-600 dark:bg-emerald-500 text-white dark:text-slate-950 font-black text-xs rounded-xl hover:scale-105 active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            <span>Mark {formatINR(bal)} Paid</span>
+                          </button>
+                        ) : (
+                          <span className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-bold rounded-xl">
+                            Settled
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
