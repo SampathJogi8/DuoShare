@@ -56,6 +56,7 @@ import {
   ArrowLeftRight,
   Wrench,
   Lock,
+  CreditCard,
   ShieldAlert,
   Hammer
 } from 'lucide-react';
@@ -184,6 +185,12 @@ class ErrorBoundary extends React.Component {
 
   reportIssue = () => {
     const err = this.state.error;
+    const errText = `Error: ${err?.toString() || 'Unknown'}\nStack:\n${err?.stack || 'N/A'}\nURL: ${window.location.href}`;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(errText).catch(() => {});
+    }
+
     const subject = encodeURIComponent(`[Tallyin Bug] ${err?.name || 'Error'}`);
     const body = encodeURIComponent(
       `Hi Tallyin Support,\n\nI ran into a bug. Here are the details:\n\n` +
@@ -192,10 +199,15 @@ class ErrorBoundary extends React.Component {
       `App Version: ${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown'}\n` +
       `Page URL: ${window.location.href}\n` +
       `Timestamp: ${new Date().toISOString()}\n` +
-      `Browser: ${navigator.userAgent}\n\n` +
-      `Steps to reproduce:\n[Please describe what you were doing]\n`
+      `Browser: ${navigator.userAgent}\n\n`
     );
-    window.open(`mailto:support@tallyin.app?subject=${subject}&body=${body}`, '_blank');
+
+    try {
+      window.location.href = `mailto:support@tallyin.app?subject=${subject}&body=${body}`;
+    } catch {
+      window.open(`mailto:support@tallyin.app?subject=${subject}&body=${body}`, '_blank');
+    }
+
     this.setState({ isReporting: true });
   };
 
@@ -204,28 +216,32 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="p-6 max-w-xl mx-auto my-10 bg-red-50 border border-red-200 rounded-2xl dark:bg-red-950/20 dark:border-red-900/30 text-red-800 dark:text-red-300 shadow-lg">
           <h2 className="text-lg font-bold">Something went wrong rendering this view.</h2>
-          <p className="text-sm mt-2 font-mono bg-red-100 dark:bg-red-900/40 p-4 rounded-xl overflow-auto max-h-60">
+          <p className="text-sm mt-2 font-mono bg-red-100 dark:bg-red-900/40 p-4 rounded-xl overflow-auto max-h-60 selection:bg-red-200">
             {this.state.error?.toString()}
           </p>
-          <div className="flex gap-2 mt-4">
+          <div className="flex flex-wrap gap-2 mt-4">
             <button 
-              onClick={() => this.setState({ hasError: false, error: null })}
-              className="px-4 py-2 bg-[#1A3827] text-white hover:bg-[#255038] rounded-xl text-xs font-bold transition-all"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                window.location.reload();
+              }}
+              className="px-4 py-2.5 bg-[#1A3827] text-white hover:bg-[#255038] rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
             >
-              Try Again
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Try Again (Reload App)</span>
             </button>
             <button
               onClick={this.reportIssue}
               disabled={this.state.isReporting}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm ${
                 this.state.isReporting
                   ? 'bg-emerald-600 text-white'
                   : 'bg-red-600 text-white hover:bg-red-700'
               }`}
             >
               {this.state.isReporting
-                ? <><span>✓</span> Email opened — thank you!</>
-                : <><AlertCircle className="w-3 h-3" /> Report Issue</>
+                ? <><span>✓</span> Details copied & mail opened!</>
+                : <><AlertCircle className="w-3.5 h-3.5" /> Report Issue (Copy & Email)</>
               }
             </button>
           </div>
