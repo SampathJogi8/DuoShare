@@ -203,8 +203,8 @@ HTML = r"""<!DOCTYPE html>
           const sysTx = txnList.find(t => t.category === '__SYSTEM_MAINTENANCE__');
           if (sysTx) {
             setMaintTxId(sysTx.id);
-            setIsSiteDown(sysTx.title === 'DOWN' || sysTx.splitType === 'down');
-            setMaintMessage(sysTx.paidBy || 'Tallyin is undergoing scheduled maintenance.');
+            setIsSiteDown(sysTx.title === 'DOWN' || sysTx.split_type === 'down');
+            setMaintMessage(sysTx.paid_by || 'Tallyin is undergoing scheduled maintenance.');
           }
         } catch (err) {
           toast.error('Failed to load portal data: ' + err.message);
@@ -226,8 +226,8 @@ HTML = r"""<!DOCTYPE html>
           if (maintTxId) {
             const { error } = await db.from('transactions').update({
               title: turnDown ? 'DOWN' : 'UP',
-              splitType: turnDown ? 'down' : 'up',
-              paidBy: maintMessage,
+              split_type: turnDown ? 'down' : 'up',
+              paid_by: maintMessage,
               date: new Date().toISOString()
             }).eq('id', maintTxId);
             if (error) throw error;
@@ -235,10 +235,10 @@ HTML = r"""<!DOCTYPE html>
             const { data, error } = await db.from('transactions').insert({
               title: turnDown ? 'DOWN' : 'UP',
               category: '__SYSTEM_MAINTENANCE__',
-              splitType: turnDown ? 'down' : 'up',
-              paidBy: maintMessage,
+              split_type: turnDown ? 'down' : 'up',
+              paid_by: maintMessage,
               amount: 0,
-              isShared: false,
+              is_shared: false,
               date: new Date().toISOString()
             }).select();
             if (error) throw error;
@@ -260,10 +260,10 @@ HTML = r"""<!DOCTYPE html>
           const { error } = await db.from('transactions').insert({
             title: annTitle.trim(),
             category: '__SYSTEM_ANNOUNCEMENT__',
-            splitType: annType,
-            paidBy: annBody.trim(),
+            split_type: annType,
+            paid_by: annBody.trim(),
             amount: 0,
-            isShared: false,
+            is_shared: false,
             date: new Date().toISOString()
           });
           if (error) throw error;
@@ -299,7 +299,6 @@ HTML = r"""<!DOCTYPE html>
         if (!window.confirm(`PERMANENTLY DELETE room "${room.name}" and ALL its transactions?`)) return;
         try {
           await db.from('transactions').delete().eq('room_id', room.id);
-          await db.from('room_members').delete().eq('room_id', room.id);
           const { error } = await db.from('rooms').delete().eq('id', room.id);
           if (error) throw error;
           toast.success(`Room "${room.name}" deleted`);
@@ -329,7 +328,7 @@ HTML = r"""<!DOCTYPE html>
           const { error } = await db.from('transactions').update({
             title: txnTitleInput,
             amount: Number(txnAmtInput) || 0,
-            paidBy: txnPaidByInput
+            paid_by: txnPaidByInput
           }).eq('id', editTxn.id);
           if (error) throw error;
           toast.success('Transaction updated');
@@ -585,9 +584,9 @@ HTML = r"""<!DOCTYPE html>
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">{b.title}</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">{b.splitType}</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">{b.split_type}</span>
                         </div>
-                        <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1">{b.paidBy}</p>
+                        <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1">{b.paid_by}</p>
                       </div>
                       <button onClick={() => handleDeleteTxn(b)} className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-bold">Remove</button>
                     </div>
@@ -661,4 +660,4 @@ HTML = r"""<!DOCTYPE html>
 out = os.path.join(os.path.dirname(__file__), "index.html")
 with open(out, "w", encoding="utf-8") as f:
     f.write(HTML)
-print("Updated admin HTML with Full Master Control!")
+print("Updated admin HTML with snake_case column names!")
