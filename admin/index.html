@@ -1,1163 +1,697 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Tallyin Admin Portal</title>
-<meta name="description" content="Centralized admin control panel for Tallyin — manage rooms, users, transactions, and platform settings."/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<style>
-:root{
-  --bg:#0a0f0d;--bg2:#0f1a14;--card:#121d17;--card2:#172412;
-  --bdr:#1e3025;--bdr2:#253d2d;
-  --acc:#1a7a3f;--acc2:#22c55e;
-  --txt:#e8f5ee;--txt2:#8aad98;--txt3:#4a7558;
-  --red:#ef4444;--redbg:rgba(239,68,68,.1);
-  --yel:#f59e0b;--yelbg:rgba(245,158,11,.1);
-  --blu:#3b82f6;--blubg:rgba(59,130,246,.1);
-  --pur:#a855f7;--purbg:rgba(168,85,247,.1);
-  --r:12px;--rs:8px;--rl:16px;
-  --font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--font);background:var(--bg);color:var(--txt);min-height:100vh;line-height:1.5;overflow-x:hidden}
-body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 20% 20%,rgba(26,122,63,.06),transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(34,197,94,.04),transparent 60%);pointer-events:none;z-index:0}
-#root{position:relative;z-index:1}
-::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:var(--acc)}
-@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-@keyframes spin{to{transform:rotate(360deg)}}
-@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
-@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(34,197,94,.1)}50%{box-shadow:0 0 40px rgba(34,197,94,.25)}}
-@keyframes toastIn{from{opacity:0;transform:translateX(100px)}to{opacity:1;transform:translateX(0)}}
-/* LOGIN */
-.lw{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse at center,#0f2018,#0a0f0d 70%)}
-.lc{background:var(--card);border:1px solid var(--bdr2);border-radius:24px;padding:48px;width:100%;max-width:440px;box-shadow:0 4px 24px rgba(0,0,0,.4),0 0 40px rgba(34,197,94,.08);animation:glow 3s ease-in-out infinite}
-.ll{display:flex;flex-direction:column;align-items:center;gap:16px;margin-bottom:40px}
-.li{width:72px;height:72px;background:linear-gradient(135deg,#1a7a3f,#0d5c2e);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 0 30px rgba(34,197,94,.3)}
-.ll h1{font-size:26px;font-weight:800;letter-spacing:-.5px}
-.ll p{font-size:12px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px;text-transform:uppercase;margin-top:-8px}
-.fg{margin-bottom:20px}
-.fl{display:block;font-size:12px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
-.fi{width:100%;padding:14px 16px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);color:var(--txt);font-family:var(--font);font-size:14px;outline:none;transition:all .2s}
-.fi:focus{border-color:var(--acc2);box-shadow:0 0 0 3px rgba(34,197,94,.15)}
-.fi::placeholder{color:var(--txt3)}
-.bp{width:100%;padding:16px;background:linear-gradient(135deg,#1a7a3f,#15633a);border:none;border-radius:var(--r);color:#fff;font-family:var(--font);font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
-.bp:hover{background:linear-gradient(135deg,#22c55e,#1a7a3f);transform:translateY(-1px);box-shadow:0 8px 24px rgba(34,197,94,.3)}
-.bp:disabled{opacity:.6;cursor:not-allowed;transform:none}
-.bs{padding:8px 16px;background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--rs);color:var(--txt2);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
-.bs:hover{border-color:var(--acc);color:var(--txt);background:var(--card2)}
-.bd{padding:8px 16px;background:var(--redbg);border:1px solid rgba(239,68,68,.3);border-radius:var(--rs);color:var(--red);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
-.bd:hover{background:var(--red);color:#fff}
-.eb{background:var(--redbg);border:1px solid rgba(239,68,68,.3);border-radius:var(--rs);padding:12px 16px;font-size:13px;color:var(--red);margin-bottom:16px;display:flex;align-items:center;gap:8px}
-/* LAYOUT */
-.al{display:flex;min-height:100vh}
-/* SIDEBAR */
-.sb{width:260px;min-height:100vh;background:var(--card);border-right:1px solid var(--bdr);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100}
-.slg{padding:24px 20px 20px;border-bottom:1px solid var(--bdr)}
-.sli{display:flex;align-items:center;gap:12px}
-.slic{width:40px;height:40px;background:linear-gradient(135deg,#1a7a3f,#0d5c2e);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 0 16px rgba(34,197,94,.25);flex-shrink:0}
-.slg h2{font-size:16px;font-weight:800}
-.slg span{font-size:10px;font-family:var(--mono);color:var(--acc2);letter-spacing:1px;text-transform:uppercase;display:block}
-.sn{flex:1;padding:16px 12px;overflow-y:auto}
-.nsl{font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:1.5px;padding:8px 8px 4px;margin-top:8px}
-.ni{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--rs);cursor:pointer;transition:all .15s;font-size:13px;font-weight:500;color:var(--txt2);margin-bottom:2px;border:1px solid transparent}
-.ni:hover{background:var(--card2);color:var(--txt);border-color:var(--bdr)}
-.ni.active{background:linear-gradient(135deg,rgba(26,122,63,.2),rgba(13,92,46,.1));color:var(--acc2);border-color:rgba(34,197,94,.2)}
-.sf{padding:16px;border-top:1px solid var(--bdr)}
-.su{display:flex;align-items:center;gap:10px;padding:10px;border-radius:var(--rs);background:var(--bg2);margin-bottom:8px}
-.ua{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#1a7a3f,#22c55e);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0}
-.ui{flex:1;overflow:hidden}
-.un{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ur{font-size:10px;font-family:var(--mono);color:var(--acc2)}
-/* MAIN */
-.mc{margin-left:260px;flex:1;min-height:100vh}
-/* TOPBAR */
-.tb{padding:16px 32px;border-bottom:1px solid var(--bdr);background:rgba(10,15,13,.8);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
-.tbh h1{font-size:22px;font-weight:800;letter-spacing:-.5px}
-.tbh p{font-size:12px;color:var(--txt3);margin-top:2px}
-.tbr{display:flex;align-items:center;gap:12px}
-.stb{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9999px;font-size:12px;font-weight:600}
-.stb.on{background:rgba(34,197,94,.1);color:var(--acc2);border:1px solid rgba(34,197,94,.2)}
-.stb.mt{background:var(--yelbg);color:var(--yel);border:1px solid rgba(245,158,11,.2)}
-.stbd{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s ease-in-out infinite}
-/* PAGE */
-.pc{padding:32px;animation:fadeIn .3s ease}
-/* STATS GRID */
-.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px}
-.sc{background:var(--card);border:1px solid var(--bdr);border-radius:var(--rl);padding:24px;position:relative;overflow:hidden;transition:all .2s}
-.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
-.sc.g::before{background:linear-gradient(90deg,var(--acc),var(--acc2))}
-.sc.b::before{background:linear-gradient(90deg,#3b82f6,#60a5fa)}
-.sc.p::before{background:linear-gradient(90deg,#a855f7,#c084fc)}
-.sc.r::before{background:linear-gradient(90deg,#ef4444,#f87171)}
-.sc.y::before{background:linear-gradient(90deg,#f59e0b,#fbbf24)}
-.sc.t::before{background:linear-gradient(90deg,#14b8a6,#2dd4bf)}
-.sc:hover{border-color:var(--bdr2);transform:translateY(-2px);box-shadow:0 4px 24px rgba(0,0,0,.4)}
-.sch{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
-.sic{width:44px;height:44px;border-radius:var(--rs);display:flex;align-items:center;justify-content:center;font-size:20px}
-.sic.g{background:rgba(34,197,94,.1)}.sic.b{background:var(--blubg)}.sic.p{background:var(--purbg)}.sic.r{background:var(--redbg)}.sic.y{background:var(--yelbg)}.sic.t{background:rgba(20,184,166,.1)}
-.sv{font-size:28px;font-weight:800;letter-spacing:-1px}
-.sl2{font-size:12px;font-weight:500;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
-.sd{font-size:11px;font-weight:600;padding:3px 8px;border-radius:9999px;margin-top:8px;display:inline-block}
-.sd.u{background:rgba(34,197,94,.1);color:var(--acc2)}.sd.n{background:var(--blubg);color:var(--blu)}
-/* TABLES */
-.tw{background:var(--card);border:1px solid var(--bdr);border-radius:var(--rl);overflow:hidden}
-.th2{padding:20px 24px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
-.ttl{font-size:16px;font-weight:700}
-.tst{font-size:12px;color:var(--txt3);margin-top:2px}
-.ta{display:flex;align-items:center;gap:8px}
-.si{padding:9px 14px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);font-family:var(--font);font-size:13px;outline:none;width:220px;transition:all .2s}
-.si:focus{border-color:var(--acc);width:280px}
-.si::placeholder{color:var(--txt3)}
-.dt{width:100%;border-collapse:collapse}
-.dt th{padding:12px 20px;text-align:left;font-size:11px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:1px;background:var(--bg2);border-bottom:1px solid var(--bdr);white-space:nowrap}
-.dt td{padding:14px 20px;font-size:13px;color:var(--txt2);border-bottom:1px solid rgba(30,48,37,.5);vertical-align:middle}
-.dt tr:last-child td{border-bottom:none}
-.dt tr:hover td{background:var(--card2);color:var(--txt)}
-.cp{color:var(--txt);font-weight:500}
-.cm{font-family:var(--mono);font-size:12px}
-/* BADGES */
-.bx{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:9999px;font-size:11px;font-weight:600;white-space:nowrap}
-.bg2{background:rgba(34,197,94,.1);color:var(--acc2);border:1px solid rgba(34,197,94,.2)}
-.bb{background:var(--blubg);color:var(--blu);border:1px solid rgba(59,130,246,.2)}
-.by{background:var(--yelbg);color:var(--yel);border:1px solid rgba(245,158,11,.2)}
-.br{background:var(--redbg);color:var(--red);border:1px solid rgba(239,68,68,.2)}
-.bpu{background:var(--purbg);color:var(--pur);border:1px solid rgba(168,85,247,.2)}
-.bgr{background:rgba(100,116,139,.1);color:#64748b;border:1px solid rgba(100,116,139,.2)}
-/* TOGGLE */
-.tsw{position:relative;width:44px;height:24px;cursor:pointer}
-.tsw input{opacity:0;width:0;height:0}
-.tsl{position:absolute;inset:0;background:var(--bdr2);border-radius:9999px;transition:all .3s}
-.tsl::before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:all .3s}
-input:checked+.tsl{background:var(--acc)}
-input:checked+.tsl::before{transform:translateX(20px)}
-/* SPINNER */
-.sp{width:20px;height:20px;border:2px solid var(--bdr2);border-top-color:var(--acc2);border-radius:50%;animation:spin .8s linear infinite;display:inline-block}
-.ls{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:60px;color:var(--txt3)}
-.es{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:60px;color:var(--txt3);font-size:14px}
-/* CARDS */
-.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px;margin-bottom:24px}
-.cd{background:var(--card);border:1px solid var(--bdr);border-radius:var(--rl);overflow:hidden}
-.cdh{padding:20px 24px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between}
-.cdt{font-size:15px;font-weight:700}
-.cdb{padding:20px 24px}
-.ch{position:relative;height:200px}
-/* MODAL */
-.mo{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px;animation:fadeIn .2s ease}
-.mb{background:var(--card);border:1px solid var(--bdr2);border-radius:var(--rl);padding:32px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto;animation:fadeIn .2s ease}
-.mt2{font-size:18px;font-weight:800;margin-bottom:8px}
-.ms2{font-size:13px;color:var(--txt3);margin-bottom:24px}
-.mf{display:flex;gap:12px;margin-top:24px}
-/* TOAST */
-.tc{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
-.tst2{padding:14px 20px;border-radius:var(--r);font-size:13px;font-weight:500;display:flex;align-items:center;gap:10px;min-width:280px;animation:toastIn .3s ease;box-shadow:0 4px 24px rgba(0,0,0,.4)}
-.ts2{background:var(--card);border:1px solid rgba(34,197,94,.4);color:var(--acc2)}
-.te{background:var(--card);border:1px solid rgba(239,68,68,.4);color:var(--red)}
-.ti{background:var(--card);border:1px solid rgba(59,130,246,.4);color:var(--blu)}
-/* SKELETON */
-.sk{background:linear-gradient(90deg,var(--bg2) 25%,var(--bdr) 50%,var(--bg2) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--rs)}
-/* SECTION */
-.sech{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-.sect{font-size:18px;font-weight:800}
-.secst{font-size:13px;color:var(--txt3);margin-top:4px}
-/* DETAIL ROWS */
-.dr{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:10px 0;border-bottom:1px solid var(--bdr)}
-.dr:last-child{border-bottom:none}
-.dk{font-size:12px;font-weight:600;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
-.dv{font-size:13px;color:var(--txt2);text-align:right;word-break:break-all}
-.dv.pr{color:var(--txt);font-weight:600}
-/* MAINT BANNER */
-.mbn{background:linear-gradient(90deg,rgba(245,158,11,.1),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.3);border-radius:var(--r);padding:16px 20px;display:flex;align-items:center;gap:12px;margin-bottom:24px}
-/* ACTION BTNS */
-.ag{display:flex;gap:6px;flex-wrap:wrap}
-.bi{width:32px;height:32px;border-radius:var(--rs);border:1px solid var(--bdr);background:var(--bg2);color:var(--txt3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s}
-.bi:hover{border-color:var(--acc);color:var(--acc2)}
-.bir:hover{border-color:var(--red) !important;color:var(--red) !important;background:var(--redbg) !important}
-/* TEXTAREA */
-.fta{width:100%;padding:14px 16px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);color:var(--txt);font-family:var(--font);font-size:14px;resize:vertical;min-height:100px;outline:none;transition:all .2s}
-.fta:focus{border-color:var(--acc2);box-shadow:0 0 0 3px rgba(34,197,94,.15)}
-/* PROGRESS */
-.pb{background:var(--bg2);border-radius:9999px;height:6px;overflow:hidden;margin-top:8px}
-.pbf{height:100%;border-radius:9999px;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .5s ease}
-/* LOGS */
-.le{display:flex;gap:16px;padding:14px 24px;border-bottom:1px solid rgba(30,48,37,.4);transition:background .15s}
-.le:hover{background:var(--card2)}
-.ld{width:8px;height:8px;border-radius:50%;margin-top:6px;flex-shrink:0}
-.ld.g{background:var(--acc2)}.ld.r{background:var(--red)}.ld.b{background:var(--blu)}.ld.y{background:var(--yel)}.ld.p{background:var(--pur)}
-.la{font-size:13px;color:var(--txt);font-weight:500}
-.lm{font-size:11px;color:var(--txt3);margin-top:2px;font-family:var(--mono)}
-/* REFRESH BTN */
-.br2{width:34px;height:34px;border:1px solid var(--bdr);border-radius:var(--rs);background:var(--bg2);color:var(--txt3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .2s}
-.br2:hover{border-color:var(--acc);color:var(--acc2);transform:rotate(90deg)}
-/* SETTINGS */
-.ss{margin-bottom:32px}
-.ssc{background:var(--card);border:1px solid var(--bdr);border-radius:var(--rl);overflow:hidden}
-.ssr{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid rgba(30,48,37,.5)}
-.ssr:last-child{border-bottom:none}
-.ssri{flex:1}
-.ssrl{font-size:14px;font-weight:600}
-.ssrd{font-size:12px;color:var(--txt3);margin-top:2px}
-/* SELECT */
-.fse{padding:9px 14px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);font-family:var(--font);font-size:13px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none}
-.fse:focus{border-color:var(--acc)}
-@media(max-width:768px){.sb{transform:translateX(-100%)}.mc{margin-left:0}.pc{padding:16px}.tb{padding:12px 16px}.sg{grid-template-columns:1fr 1fr}}
-</style>
-</head>
-<body>
-<div id="root"></div>
-<script type="text/babel">
-const{useState,useEffect,useCallback,useRef,useMemo}=React;
-const SUPABASE_URL='https://mphuwixprztbzrxndqsl.supabase.co';
-const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1waHV3aXhwcnp0YnpyeG5kcXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNzA5NjEsImV4cCI6MjA5NzY0Njk2MX0.ZRkGOUewER5uCMeohVGAnOvmI9faSZazAy2p4NNcUow';
-const ADMIN_EMAIL='tallyin.alerts@gmail.com';
-const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-
-const fmt={
-  inr:n=>`\u20B9${Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2})}`,
-  num:n=>Number(n||0).toLocaleString('en-IN'),
-  date:d=>{if(!d)return'\u2014';try{return new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}catch{return d}},
-  time:d=>{if(!d)return'\u2014';try{return new Date(d).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true})}catch{return d}},
-  init:e=>(e||'').slice(0,2).toUpperCase()
-};
-
-let _ts=null;
-const toast={
-  success:m=>_ts&&_ts({m,t:'s',id:Date.now()}),
-  error:m=>_ts&&_ts({m,t:'e',id:Date.now()}),
-  info:m=>_ts&&_ts({m,t:'i',id:Date.now()})
-};
-
-function ToastProvider(){
-  const[toasts,setToasts]=useState([]);
-  _ts=t=>setToasts(p=>[...p.slice(-4),t]);
-  useEffect(()=>{
-    if(!toasts.length)return;
-    const x=setTimeout(()=>setToasts(p=>p.slice(1)),4000);
-    return()=>clearTimeout(x);
-  },[toasts]);
-  const tc={s:'ts2',e:'te',i:'ti'};
-  const ic={s:'\u2705',e:'\u274C',i:'\u2139\uFE0F'};
-  return React.createElement('div',{className:'tc'},
-    toasts.map(t=>React.createElement('div',{key:t.id,className:`tst2 ${tc[t.t]}`},
-      React.createElement('span',null,ic[t.t]),
-      React.createElement('span',null,t.m)
-    ))
-  );
-}
-
-function LoginView({onLogin}){
-  const[email,setEmail]=useState(ADMIN_EMAIL);
-  const[pwd,setPwd]=useState('');
-  const[loading,setLoading]=useState(false);
-  const[err,setErr]=useState('');
-  const[magic,setMagic]=useState(false);
-
-  const doLogin=async e=>{
-    e.preventDefault();
-    if(!email||!pwd){setErr('Email and password are required.');return;}
-    setLoading(true);setErr('');
-    try{
-      const{data,error}=await db.auth.signInWithPassword({email,password:pwd});
-      if(error)throw error;
-      if(data&&data.user&&data.user.email!==ADMIN_EMAIL){
-        await db.auth.signOut();
-        throw new Error('Access denied. Only the admin account can log in here.');
-      }
-      onLogin(data.user);
-    }catch(e2){setErr(e2.message||'Login failed.');}
-    finally{setLoading(false);}
-  };
-
-  const doMagic=async()=>{
-    setLoading(true);setErr('');
-    try{
-      const{error}=await db.auth.signInWithOtp({email,options:{emailRedirectTo:window.location.href}});
-      if(error)throw error;
-      setMagic(true);
-    }catch(e2){setErr(e2.message||'Failed to send.');}
-    finally{setLoading(false);}
-  };
-
-  if(magic) return(
-    <div className="lw">
-      <div className="lc">
-        <div className="ll"><div className="li">\uD83D\uDEE1\uFE0F</div><div style={{textAlign:'center'}}><h1>Tallyin Admin</h1><p>SECURE CONTROL PANEL</p></div></div>
-        <div style={{textAlign:'center',padding:'20px 0'}}>
-          <div style={{fontSize:'48px',marginBottom:'16px'}}>\uD83D\uDCE7</div>
-          <h3 style={{color:'var(--acc2)',marginBottom:'8px'}}>Magic link sent!</h3>
-          <p style={{color:'var(--txt3)',fontSize:'13px'}}>Check <strong style={{color:'var(--txt2)'}}>{email}</strong> for the login link.</p>
-          <button className="bs" style={{marginTop:'20px'}} onClick={()=>setMagic(false)}>Use password instead</button>
-        </div>
-        <p style={{textAlign:'center',fontSize:'11px',color:'var(--txt3)',marginTop:'24px',fontFamily:'var(--mono)'}}>\uD83D\uDD12 Protected \u00B7 Tallyin Admin Portal v1.0</p>
-      </div>
-    </div>
-  );
-
-  return(
-    <div className="lw">
-      <div className="lc">
-        <div className="ll"><div className="li">\uD83D\uDEE1\uFE0F</div><div style={{textAlign:'center'}}><h1>Tallyin Admin</h1><p>SECURE CONTROL PANEL</p></div></div>
-        <form onSubmit={doLogin}>
-          {err&&<div className="eb"><span>\u26A0\uFE0F</span>{err}</div>}
-          <div className="fg"><label className="fl">Admin Email</label><input className="fi" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tallyin.alerts@gmail.com"/></div>
-          <div className="fg"><label className="fl">Password</label><input className="fi" type="password" value={pwd} onChange={e=>setPwd(e.target.value)} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"/></div>
-          <button className="bp" type="submit" disabled={loading}>{loading?React.createElement('span',{className:'sp'}):'\uD83D\uDD11'}{loading?'Authenticating...':'Sign In'}</button>
-          <div style={{textAlign:'center',marginTop:'16px'}}>
-            <button type="button" className="bs" onClick={doMagic} disabled={loading} style={{fontSize:'12px',width:'100%'}}>\u2709\uFE0F Send Magic Link Instead</button>
-          </div>
-        </form>
-        <p style={{textAlign:'center',fontSize:'11px',color:'var(--txt3)',marginTop:'24px',fontFamily:'var(--mono)'}}>\uD83D\uDD12 Protected \u00B7 Tallyin Admin Portal v1.0</p>
-      </div>
-    </div>
-  );
-}
-
-const NAV=[
-  {id:'dashboard',label:'Dashboard',icon:'\uD83D\uDCCA',sec:'OVERVIEW'},
-  {id:'rooms',label:'Rooms',icon:'\uD83C\uDFE0',sec:'MANAGEMENT'},
-  {id:'users',label:'Users',icon:'\uD83D\uDC65',sec:'MANAGEMENT'},
-  {id:'transactions',label:'Transactions',icon:'\uD83D\uDCB8',sec:'MANAGEMENT'},
-  {id:'activity',label:'Activity Logs',icon:'\uD83D\uDCCB',sec:'MANAGEMENT'},
-  {id:'announcements',label:'Announcements',icon:'\uD83D\uDCE2',sec:'TOOLS'},
-  {id:'settings',label:'Platform Settings',icon:'\u2699\uFE0F',sec:'TOOLS'},
-];
-
-function Sidebar({active,onNav,user,onLogout}){
-  const secs=[...new Set(NAV.map(n=>n.sec))];
-  return(
-    <aside className="sb">
-      <div className="slg"><div className="sli"><div className="slic">\uD83D\uDEE1\uFE0F</div><div><h2>Tallyin</h2><span>Admin Portal</span></div></div></div>
-      <nav className="sn">
-        {secs.map(s=>(
-          <div key={s}>
-            <div className="nsl">{s}</div>
-            {NAV.filter(n=>n.sec===s).map(item=>(
-              <div key={item.id} className={`ni${active===item.id?' active':''}`} onClick={()=>onNav(item.id)}>
-                <span style={{width:'20px',textAlign:'center'}}>{item.icon}</span>{item.label}
-              </div>
-            ))}
-          </div>
-        ))}
-      </nav>
-      <div className="sf">
-        <div className="su"><div className="ua">{fmt.init(user&&user.email)}</div><div className="ui"><div className="un">{user&&user.email&&user.email.split('@')[0]}</div><div className="ur">SUPER ADMIN</div></div></div>
-        <button className="bs" style={{width:'100%',fontSize:'12px'}} onClick={onLogout}>\uD83D\uDEAA Sign Out</button>
-      </div>
-    </aside>
-  );
-}
-
-function Topbar({view,mm}){
-  const map={
-    dashboard:{h:'Dashboard',p:'Platform overview and key metrics'},
-    rooms:{h:'Rooms',p:'Manage all rooms on Tallyin'},
-    users:{h:'Users',p:'View all registered users and members'},
-    transactions:{h:'Transactions',p:'Browse and manage all transactions'},
-    activity:{h:'Activity Logs',p:'Platform-wide audit trail'},
-    announcements:{h:'Announcements',p:'Post and manage platform-wide broadcasts'},
-    settings:{h:'Platform Settings',p:'Configure global platform options'},
-  };
-  const info=map[view]||{h:view,p:''};
-  const now=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
-  return(
-    <div className="tb">
-      <div className="tbh"><h1>{info.h}</h1><p>{info.p}</p></div>
-      <div className="tbr">
-        <div className={`stb ${mm?'mt':'on'}`}><span className="stbd"/>{mm?'Maintenance Mode':'System Online'}</div>
-        <div style={{fontSize:'12px',color:'var(--txt3)',fontFamily:'var(--mono)'}}>{now}</div>
-      </div>
-    </div>
-  );
-}
-
-function Dashboard({stats,loading,onRefresh,mm}){
-  const chartRef=useRef(null);
-  const instRef=useRef(null);
-
-  useEffect(()=>{
-    if(!chartRef.current||!stats||!stats.monthly)return;
-    if(instRef.current)instRef.current.destroy();
-    const ctx=chartRef.current.getContext('2d');
-    instRef.current=new Chart(ctx,{
-      type:'bar',
-      data:{
-        labels:stats.monthly.map(m=>m.month),
-        datasets:[
-          {label:'Volume (\u20B9)',data:stats.monthly.map(m=>m.amount),backgroundColor:'rgba(34,197,94,.25)',borderColor:'#22c55e',borderWidth:2,borderRadius:6},
-          {label:'New Rooms x\u20B91k',data:stats.monthly.map(m=>m.rooms*1000),backgroundColor:'rgba(59,130,246,.2)',borderColor:'#3b82f6',borderWidth:2,borderRadius:6}
-        ]
-      },
-      options:{
-        responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{labels:{color:'#8aad98',font:{size:11}}}},
-        scales:{
-          x:{ticks:{color:'#4a7558'},grid:{color:'rgba(30,48,37,.4)'}},
-          y:{ticks:{color:'#4a7558',callback:v=>v>=1000?`\u20B9${(v/1000).toFixed(0)}k`:v},grid:{color:'rgba(30,48,37,.4)'}}
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tallyin — Centralized Admin Portal</title>
+  <meta name="description" content="Official admin dashboard for Tallyin platform management."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          },
+          colors: {
+            brand: {
+              50: '#F4F7F5',
+              100: '#EAF0EC',
+              200: '#D5E1D9',
+              500: '#3A7050',
+              800: '#1A3827',
+              900: '#0F2318',
+              lime: '#A3E635'
+            }
+          }
         }
       }
-    });
-    return()=>{if(instRef.current)instRef.current.destroy();};
-  },[stats&&stats.monthly]);
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-[#F6F8F6] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased min-h-screen selection:bg-brand-lime selection:text-slate-950">
+  <div id="root"></div>
 
-  const cards=[
-    {l:'Total Rooms',v:fmt.num(stats&&stats.rooms),i:'\uD83C\uDFE0',c:'g',d:'All time'},
-    {l:'Total Users',v:fmt.num(stats&&stats.users),i:'\uD83D\uDC65',c:'b',d:'Registered'},
-    {l:'Transactions',v:fmt.num(stats&&stats.transactions),i:'\uD83D\uDCB8',c:'p',d:'All time'},
-    {l:'Total Volume',v:fmt.inr(stats&&stats.volume),i:'\uD83D\uDCB0',c:'y',d:'Sum of all'},
-    {l:'Active Rooms',v:fmt.num(stats&&stats.activeRooms),i:'\u2705',c:'t',d:'This month'},
-    {l:'Avg per Room',v:fmt.inr(stats&&stats.avgPerRoom),i:'\uD83D\uDCC8',c:'r',d:'Average'},
-  ];
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef, useMemo } = React;
+    const SUPABASE_URL = 'https://mphuwixprztbzrxndqsl.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1waHV3aXhwcnp0YnpyeG5kcXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNzA5NjEsImV4cCI6MjA5NzY0Njk2MX0.ZRkGOUewER5uCMeohVGAnOvmI9faSZazAy2p4NNcUow';
+    const ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  return(
-    <div className="pc">
-      {mm&&(
-        <div className="mbn">
-          <span style={{fontSize:'20px'}}>\uD83D\uDEA7</span>
-          <div>
-            <strong style={{fontSize:'14px',color:'var(--yel)',display:'block'}}>Maintenance Mode is ON</strong>
-            <span style={{fontSize:'12px',color:'var(--txt3)'}}>Users currently see a maintenance screen.</span>
-          </div>
-        </div>
-      )}
-      <div className="sech">
-        <div><div className="sect">Platform Overview</div><div className="secst">Live data from Supabase \u00B7 {fmt.time(new Date())}</div></div>
-        <button className="br2" onClick={onRefresh} title="Refresh">\uD83D\uDD04</button>
-      </div>
-      {loading?(
-        <div className="sg">{[...Array(6)].map((_,i)=><div key={i} className="sc" style={{height:'120px'}}><div className="sk" style={{height:'100%',borderRadius:'12px'}}/></div>)}</div>
-      ):(
-        <div className="sg">
-          {cards.map(s=>(
-            <div key={s.l} className={`sc ${s.c}`}>
-              <div className="sch">
-                <div><div className="sv">{s.v}</div><div className="sl2">{s.l}</div></div>
-                <div className={`sic ${s.c}`}>{s.i}</div>
-              </div>
-              <div className={`sd ${s.c==='y'||s.c==='r'?'n':'u'}`}>{s.d}</div>
+    const fmt = {
+      inr: n => `\u20B9${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`,
+      num: n => Number(n || 0).toLocaleString('en-IN'),
+      date: d => { if (!d) return '\u2014'; try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return d; } },
+      time: d => { if (!d) return '\u2014'; try { return new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }); } catch { return d; } },
+      init: e => (e || '?').slice(0, 2).toUpperCase()
+    };
+
+    let _ts = null;
+    const toast = {
+      success: m => _ts && _ts({ m, t: 's', id: Date.now() }),
+      error: m => _ts && _ts({ m, t: 'e', id: Date.now() }),
+      info: m => _ts && _ts({ m, t: 'i', id: Date.now() })
+    };
+
+    function ToastProvider() {
+      const [toasts, setToasts] = useState([]);
+      _ts = t => setToasts(p => [...p.slice(-4), t]);
+      useEffect(() => {
+        if (!toasts.length) return;
+        const x = setTimeout(() => setToasts(p => p.slice(1)), 4000);
+        return () => clearTimeout(x);
+      }, [toasts]);
+      return (
+        <div className="fixed top-5 right-5 z-[9999] flex flex-col gap-2 pointer-events-none">
+          {toasts.map(t => (
+            <div key={t.id} className={`pointer-events-auto px-4 py-3 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-3 shadow-xl border backdrop-blur-md transition-all transform animate-bounce-short ${
+              t.t === 's' ? 'bg-emerald-950/90 text-emerald-200 border-emerald-800' :
+              t.t === 'e' ? 'bg-rose-950/90 text-rose-200 border-rose-800' :
+              'bg-slate-900/90 text-slate-200 border-slate-700'
+            }`}>
+              <span>{t.t === 's' ? '✅' : t.t === 'e' ? '❌' : 'ℹ️'}</span>
+              <span>{t.m}</span>
             </div>
           ))}
         </div>
-      )}
-      <div className="cg" style={{gridTemplateColumns:'1fr'}}>
-        <div className="cd">
-          <div className="cdh"><div><div className="cdt">Monthly Activity</div><div style={{fontSize:'12px',color:'var(--txt3)',marginTop:'2px'}}>Transaction volume and new rooms \u2014 last 6 months</div></div></div>
-          <div className="cdb"><div className="ch">{loading?<div className="sk" style={{height:'100%',borderRadius:'8px'}}/>:<canvas ref={chartRef}/>}</div></div>
-        </div>
-      </div>
-      <div className="cg">
-        <div className="cd">
-          <div className="cdh"><div className="cdt">\u26A1 Quick Actions</div></div>
-          <div className="cdb">
-            <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
-              {[{i:'\uD83D\uDCE2',l:'Send Announcement',d:'Broadcast message to all users'},{i:'\uD83D\uDD04',l:'Force Data Refresh',d:'Sync platform statistics'},{i:'\uD83D\uDCCA',l:'Export Reports',d:'Download CSV of all data'}].map(a=>(
-                <div key={a.l} style={{display:'flex',alignItems:'center',gap:'12px',padding:'12px',background:'var(--bg2)',borderRadius:'var(--rs)',cursor:'pointer',border:'1px solid var(--bdr)',transition:'all .15s'}}
-                  onMouseEnter={e=>e.currentTarget.style.borderColor='var(--acc)'}
-                  onMouseLeave={e=>e.currentTarget.style.borderColor='var(--bdr)'}>
-                  <span style={{fontSize:'20px'}}>{a.i}</span>
-                  <div><div style={{fontSize:'13px',fontWeight:'600'}}>{a.l}</div><div style={{fontSize:'11px',color:'var(--txt3)'}}>{a.d}</div></div>
+      );
+    }
+
+    function LoginView({ onLogin }) {
+      const [email, setEmail] = useState(ADMIN_EMAIL);
+      const [pwd, setPwd] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [err, setErr] = useState('');
+      const [magic, setMagic] = useState(false);
+
+      const doLogin = async e => {
+        e.preventDefault();
+        if (!email || !pwd) { setErr('Email and password are required.'); return; }
+        setLoading(true); setErr('');
+        try {
+          const { data, error } = await db.auth.signInWithPassword({ email, password: pwd });
+          if (error) throw error;
+          if (data && data.user && data.user.email !== ADMIN_EMAIL) {
+            await db.auth.signOut();
+            throw new Error('Access denied. Only tallyin.alerts@gmail.com can log in here.');
+          }
+          onLogin(data.user);
+        } catch (e2) { setErr(e2.message || 'Login failed.'); }
+        finally { setLoading(false); }
+      };
+
+      const doMagic = async () => {
+        setLoading(true); setErr('');
+        try {
+          const { error } = await db.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+          if (error) throw error;
+          setMagic(true);
+        } catch (e2) { setErr(e2.message || 'Failed to send magic link.'); }
+        finally { setLoading(false); }
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4 bg-[#F6F8F6] dark:bg-slate-950">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-8 shadow-xl">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-2xl flex items-center justify-center text-3xl font-extrabold mx-auto mb-4 shadow-md">
+                🛡️
+              </div>
+              <h1 className="text-2xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Tallyin Admin</h1>
+              <p className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400 mt-1 uppercase tracking-widest">Centralized Control Portal</p>
+            </div>
+
+            {magic ? (
+              <div className="text-center py-6">
+                <div className="text-5xl mb-4">📫</div>
+                <h3 className="text-lg font-bold text-emerald-600 dark:text-[#A3E635] mb-2">Magic link sent!</h3>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">Check <strong className="text-slate-800 dark:text-slate-200">{email}</strong> for the one-click login link.</p>
+                <button onClick={() => setMagic(false)} className="mt-6 text-xs font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline">Back to password login</button>
+              </div>
+            ) : (
+              <form onSubmit={doLogin} className="space-y-4">
+                {err && (
+                  <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                    <span>⚠️</span> <span>{err}</span>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[11px] font-black uppercase text-[#5C6E5C] dark:text-slate-400 mb-1.5 tracking-wider">Admin Email</label>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="tallyin.alerts@gmail.com" className="w-full px-4 py-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-sm font-semibold outline-none focus:border-[#1A3827] dark:focus:border-[#A3E635] transition-all" />
                 </div>
-              ))}
+                <div>
+                  <label className="block text-[11px] font-black uppercase text-[#5C6E5C] dark:text-slate-400 mb-1.5 tracking-wider">Password</label>
+                  <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-sm font-semibold outline-none focus:border-[#1A3827] dark:focus:border-[#A3E635] transition-all" />
+                </div>
+                <button type="submit" disabled={loading} className="w-full py-3.5 px-4 bg-[#1A3827] hover:bg-[#255038] dark:bg-[#A3E635] dark:hover:bg-lime-400 text-white dark:text-slate-950 font-extrabold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50">
+                  {loading ? 'Authenticating...' : 'Sign In to Admin Portal'}
+                </button>
+                <div className="text-center pt-2">
+                  <button type="button" onClick={doMagic} disabled={loading} className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-[#A3E635] transition-all">
+                    ✉️ Send Magic Login Link Instead
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="mt-8 pt-6 border-t border-[#E3E8E3] dark:border-slate-800 text-center">
+              <p className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-500 uppercase tracking-widest">
+                Protected Portal &bull; Tallyin v3.2
+              </p>
             </div>
           </div>
         </div>
-        <div className="cd">
-          <div className="cdh"><div className="cdt">\uD83D\uDCCA Top Categories</div></div>
-          <div className="cdb">
-            {loading?<div style={{display:'flex',flexDirection:'column',gap:'10px'}}>{[...Array(5)].map((_,i)=><div key={i} className="sk" style={{height:'28px'}}/>)}</div>:(
-              <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
-                {((stats&&stats.categories)||[]).map(c=>(
-                  <div key={c.name}>
-                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:'4px'}}>
-                      <span style={{fontSize:'12px',color:'var(--txt2)'}}>{c.name}</span>
-                      <span style={{fontSize:'12px',fontWeight:'600'}}>{fmt.inr(c.amount)}</span>
-                    </div>
-                    <div className="pb"><div className="pbf" style={{width:`${c.pct}%`}}/></div>
+      );
+    }
+
+    function App() {
+      const [user, setUser] = useState(null);
+      const [authLoading, setAuthLoading] = useState(true);
+      const [tab, setTab] = useState('overview');
+      const [stats, setStats] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [search, setSearch] = useState('');
+      const [rooms, setRooms] = useState([]);
+      const [members, setMembers] = useState([]);
+      const [txns, setTxns] = useState([]);
+      const [announcements, setAnns] = useState([]);
+      const [mm, setMm] = useState(() => localStorage.getItem('admin_mm') === 'true');
+      const [annTitle, setAnnTitle] = useState('');
+      const [annBody, setAnnBody] = useState('');
+      const [annType, setAnnType] = useState('info');
+      const [sendingAnn, setSendingAnn] = useState(false);
+      const [selectedRoom, setSelectedRoom] = useState(null);
+
+      useEffect(() => {
+        db.auth.getSession().then(({ data }) => {
+          if (data && data.session && data.session.user && data.session.user.email === ADMIN_EMAIL) {
+            setUser(data.session.user);
+          }
+          setAuthLoading(false);
+        });
+        const { data: { subscription } } = db.auth.onAuthStateChange((_, session) => {
+          if (session && session.user && session.user.email === ADMIN_EMAIL) setUser(session.user);
+          else setUser(null);
+          setAuthLoading(false);
+        });
+        return () => subscription && subscription.unsubscribe();
+      }, []);
+
+      const fetchAllData = useCallback(async () => {
+        setLoading(true);
+        try {
+          const [rr, mr, tr, ar] = await Promise.all([
+            db.from('rooms').select('*').order('created_at', { ascending: false }),
+            db.from('room_members').select('*, rooms(name, code)').order('created_at', { ascending: false }),
+            db.from('transactions').select('*, rooms(name, code)').order('created_at', { ascending: false }).limit(500),
+            db.from('announcements').select('*').order('created_at', { ascending: false }).limit(50)
+          ]);
+
+          const roomList = rr.data || [];
+          const memberList = mr.data || [];
+          const txnList = tr.data || [];
+          const annList = ar.data || [];
+
+          setRooms(roomList);
+          setMembers(memberList);
+          setTxns(txnList);
+          setAnns(annList);
+
+          const uniqUsers = new Set(memberList.map(m => m.uid)).size;
+          const totalVol = txnList.reduce((s, t) => s + Number(t.amount || 0), 0);
+          const activeThisMonth = new Set(txnList.filter(t => t.date && t.date.startsWith(new Date().toISOString().slice(0, 7))).map(t => t.room_id)).size;
+
+          setStats({
+            rooms: roomList.length,
+            users: uniqUsers,
+            memberships: memberList.length,
+            transactions: txnList.length,
+            volume: totalVol,
+            activeRooms: activeThisMonth,
+            avgBudget: roomList.length ? roomList.reduce((s, r) => s + (r.monthly_budget || 0), 0) / roomList.length : 0
+          });
+        } catch (err) {
+          toast.error('Failed to load data: ' + err.message);
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      useEffect(() => {
+        if (user) fetchAllData();
+      }, [user, fetchAllData]);
+
+      const toggleMaintenance = () => {
+        const next = !mm;
+        setMm(next);
+        localStorage.setItem('admin_mm', String(next));
+        db.from('platform_settings').upsert({ key: 'maintenance_mode', value: String(next), updated_at: new Date().toISOString() }).then(() => {});
+        toast.success(`Maintenance Mode is now ${next ? 'ON' : 'OFF'}`);
+      };
+
+      const handleSendAnnouncement = async () => {
+        if (!annTitle.trim() || !annBody.trim()) { toast.error('Title and message are required'); return; }
+        setSendingAnn(true);
+        try {
+          const { error } = await db.from('announcements').insert({
+            title: annTitle.trim(),
+            body: annBody.trim(),
+            type: annType,
+            created_at: new Date().toISOString(),
+            created_by: 'admin',
+            is_active: true
+          });
+          if (error) throw error;
+          toast.success('Announcement broadcasted!');
+          setAnnTitle(''); setAnnBody('');
+          fetchAllData();
+        } catch (err) {
+          toast.error('Error sending announcement: ' + err.message);
+        } finally {
+          setSendingAnn(false);
+        }
+      };
+
+      const handleDeleteRoom = async (room) => {
+        if (!window.confirm(`Permanently delete room "${room.name}" and all associated transactions?`)) return;
+        try {
+          await db.from('transactions').delete().eq('room_id', room.id);
+          await db.from('room_members').delete().eq('room_id', room.id);
+          const { error } = await db.from('rooms').delete().eq('id', room.id);
+          if (error) throw error;
+          toast.success(`Room "${room.name}" deleted.`);
+          fetchAllData();
+        } catch (err) {
+          toast.error('Delete failed: ' + err.message);
+        }
+      };
+
+      const handleDeleteTxn = async (txn) => {
+        if (!window.confirm(`Delete transaction "${txn.title}"?`)) return;
+        try {
+          const { error } = await db.from('transactions').delete().eq('id', txn.id);
+          if (error) throw error;
+          toast.success('Transaction deleted');
+          fetchAllData();
+        } catch (err) {
+          toast.error('Delete failed: ' + err.message);
+        }
+      };
+
+      const exportCSV = (tableData, filename) => {
+        if (!tableData || !tableData.length) { toast.info('No data to export'); return; }
+        const csv = [
+          Object.keys(tableData[0]).join(','),
+          ...tableData.map(r => Object.values(r).map(v => typeof v === 'object' ? `"${JSON.stringify(v).replace(/"/g, '""')}"` : `"${String(v || '').replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `tallyin_${filename}_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        toast.success(`Exported ${tableData.length} records`);
+      };
+
+      if (authLoading) {
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-[#F6F8F6] dark:bg-slate-950 text-[#5C6E5C] dark:text-slate-400 font-bold text-sm">
+            Loading Admin Control Panel...
+          </div>
+        );
+      }
+
+      if (!user) {
+        return (
+          <>
+            <ToastProvider />
+            <LoginView onLogin={setUser} />
+          </>
+        );
+      }
+
+      const filteredRooms = rooms.filter(r => (r.name && r.name.toLowerCase().includes(search.toLowerCase())) || (r.code && r.code.toLowerCase().includes(search.toLowerCase())) || (r.id && r.id.toLowerCase().includes(search.toLowerCase())));
+      const filteredMembers = members.filter(m => (m.nickname && m.nickname.toLowerCase().includes(search.toLowerCase())) || (m.email && m.email.toLowerCase().includes(search.toLowerCase())) || (m.uid && m.uid.toLowerCase().includes(search.toLowerCase())));
+      const filteredTxns = txns.filter(t => (t.title && t.title.toLowerCase().includes(search.toLowerCase())) || (t.category && t.category.toLowerCase().includes(search.toLowerCase())) || (t.paid_by && t.paid_by.toLowerCase().includes(search.toLowerCase())));
+
+      return (
+        <div className="min-h-screen bg-[#F6F8F6] dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+          <ToastProvider />
+
+          {/* Top Bar */}
+          <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-[#E3E8E3] dark:border-slate-800">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-2xl flex items-center justify-center text-xl font-extrabold shadow-sm">
+                  🛡️
+                </div>
+                <div>
+                  <h1 className="text-base sm:text-lg font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight flex items-center gap-2">
+                    Tallyin Admin
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">SUPERADMIN</span>
+                  </h1>
+                  <p className="text-[11px] font-semibold text-[#5C6E5C] dark:text-slate-400">tallyin.alerts@gmail.com</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button onClick={toggleMaintenance} className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${mm ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'}`}>
+                  <span>{mm ? '🚨 Maintenance ON' : '✅ System Normal'}</span>
+                </button>
+                <button onClick={fetchAllData} className="p-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all text-xs font-bold" title="Refresh Data">
+                  🔄
+                </button>
+                <button onClick={() => db.auth.signOut()} className="px-3.5 py-2 rounded-xl border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all">
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            
+            {/* Maintenance Mode Alert Banner */}
+            {mm && (
+              <div className="p-4 rounded-3xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🚨</span>
+                  <div>
+                    <h4 className="text-sm font-extrabold">Maintenance Mode Active</h4>
+                    <p className="text-xs font-medium opacity-90">All regular room users see a maintenance block screen while administrative edits are underway.</p>
                   </div>
-                ))}
+                </div>
+                <button onClick={toggleMaintenance} className="px-4 py-2 rounded-xl bg-amber-600 text-white font-extrabold text-xs shadow-sm hover:bg-amber-700 transition-all">
+                  Turn Off
+                </button>
               </div>
             )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function RoomsView(){
-  const[rooms,setRooms]=useState([]);
-  const[loading,setLoading]=useState(true);
-  const[search,setSearch]=useState('');
-  const[sel,setSel]=useState(null);
-  const[delId,setDelId]=useState(null);
-  const[conf,setConf]=useState(null);
-
-  const fetchRooms=useCallback(async()=>{
-    setLoading(true);
-    try{
-      const{data,error}=await db.from('rooms').select('*').order('created_at',{ascending:false});
-      if(error)throw error;
-      setRooms(data||[]);
-    }catch(e){toast.error('Rooms load failed: '+e.message);}
-    finally{setLoading(false);}
-  },[]);
-
-  useEffect(()=>{fetchRooms();},[fetchRooms]);
-
-  const doDelete=async room=>{
-    setDelId(room.id);
-    try{
-      await db.from('transactions').delete().eq('room_id',room.id);
-      await db.from('room_members').delete().eq('room_id',room.id);
-      const{error}=await db.from('rooms').delete().eq('id',room.id);
-      if(error)throw error;
-      toast.success('Room "'+room.name+'" deleted.');
-      setRooms(p=>p.filter(r=>r.id!==room.id));
-      setConf(null);setSel(null);
-    }catch(e){toast.error('Delete failed: '+e.message);}
-    finally{setDelId(null);}
-  };
-
-  const filtered=rooms.filter(r=>
-    (r.name&&r.name.toLowerCase().includes(search.toLowerCase()))||
-    (r.code&&r.code.toLowerCase().includes(search.toLowerCase()))||
-    (r.id&&r.id.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  return(
-    <div className="pc">
-      <div className="sech">
-        <div><div className="sect">\uD83C\uDFE0 Rooms</div><div className="secst">{fmt.num(rooms.length)} total rooms on the platform</div></div>
-        <button className="br2" onClick={fetchRooms}>\uD83D\uDD04</button>
-      </div>
-      <div className="tw">
-        <div className="th2">
-          <div><div className="ttl">All Rooms</div><div className="tst">{filtered.length} showing</div></div>
-          <div className="ta"><input className="si" placeholder="\uD83D\uDD0D Search rooms..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-        </div>
-        {loading?<div className="ls"><div className="sp" style={{width:'32px',height:'32px'}}/><span>Loading rooms...</span></div>
-        :filtered.length===0?<div className="es"><div style={{fontSize:'40px'}}>\uD83C\uDFDA\uFE0F</div><span>No rooms found</span></div>
-        :(
-          <div style={{overflowX:'auto'}}>
-            <table className="dt">
-              <thead><tr><th>Room Name</th><th>Code</th><th>Budget</th><th>Created</th><th>Actions</th></tr></thead>
-              <tbody>
-                {filtered.map(r=>(
-                  <tr key={r.id}>
-                    <td>
-                      <div className="cp" style={{cursor:'pointer'}} onClick={()=>setSel(r)}>\uD83C\uDFE0 {r.name||'Unnamed'}</div>
-                      <div className="cm" style={{fontSize:'11px',marginTop:'2px',color:'var(--txt3)'}}>{r.id}</div>
-                    </td>
-                    <td><span className="bx bg2 cm">{r.code||'\u2014'}</span></td>
-                    <td className="cp">{fmt.inr(r.monthly_budget)}</td>
-                    <td>{fmt.date(r.created_at)}</td>
-                    <td>
-                      <div className="ag">
-                        <button className="bi" onClick={()=>setSel(r)}>\uD83D\uDC41\uFE0F</button>
-                        <button className="bi bir" onClick={()=>setConf(r)}>\uD83D\uDDD1\uFE0F</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      {sel&&(
-        <div className="mo" onClick={()=>setSel(null)}>
-          <div className="mb" onClick={e=>e.stopPropagation()}>
-            <div className="mt2">\uD83C\uDFE0 {sel.name||'Unnamed Room'}</div>
-            <div className="ms2">Room details and metadata</div>
-            {[{k:'Room ID',v:sel.id,p:true},{k:'Code',v:sel.code||'\u2014',p:true},{k:'Name',v:sel.name||'\u2014'},{k:'Monthly Budget',v:fmt.inr(sel.monthly_budget)},{k:'Personal Cap',v:fmt.inr(sel.personal_cap)},{k:'Created By',v:sel.created_by||'\u2014'},{k:'Created At',v:fmt.time(sel.created_at)}].map(r=>(
-              <div key={r.k} className="dr"><span className="dk">{r.k}</span><span className={`dv${r.p?' pr':''}`}>{r.v}</span></div>
-            ))}
-            <div className="mf">
-              <button className="bs" style={{flex:1}} onClick={()=>setSel(null)}>Close</button>
-              <button className="bd" onClick={()=>{setSel(null);setConf(sel);}}>Delete Room</button>
+            {/* Admin Filter Tabs Bar */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-[#E3E8E3] dark:border-slate-800">
+              {[
+                { id: 'overview', label: '📊 Platform Overview' },
+                { id: 'rooms', label: `🏠 Rooms (${rooms.length})` },
+                { id: 'users', label: `👥 Users & Members (${members.length})` },
+                { id: 'txns', label: `💸 Transactions (${txns.length})` },
+                { id: 'broadcasts', label: '📢 Broadcasts' },
+                { id: 'export', label: '📥 Data Export' }
+              ].map(t => (
+                <button key={t.id} onClick={() => setTab(t.id)} className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${tab === t.id ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md' : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-800 hover:text-[#1A3827]'}`}>
+                  {t.label}
+                </button>
+              ))}
             </div>
-          </div>
-        </div>
-      )}
-      {conf&&(
-        <div className="mo" onClick={()=>setConf(null)}>
-          <div className="mb" onClick={e=>e.stopPropagation()} style={{maxWidth:'400px',textAlign:'center'}}>
-            <div style={{fontSize:'48px',marginBottom:'12px'}}>\u26A0\uFE0F</div>
-            <div className="mt2">Delete Room?</div>
-            <div className="ms2">Permanently delete <strong style={{color:'var(--txt)'}}>{conf.name}</strong> and ALL its transactions and members. Cannot be undone.</div>
-            <div className="mf">
-              <button className="bs" style={{flex:1}} onClick={()=>setConf(null)}>Cancel</button>
-              <button className="bd" style={{flex:1}} onClick={()=>doDelete(conf)} disabled={!!delId}>{delId===conf.id?'\u23F3 Deleting...':'\uD83D\uDDD1\uFE0F Yes, Delete'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
-function UsersView(){
-  const[members,setMembers]=useState([]);
-  const[loading,setLoading]=useState(true);
-  const[search,setSearch]=useState('');
-
-  const fetchMembers=useCallback(async()=>{
-    setLoading(true);
-    try{
-      const{data,error}=await db.from('room_members').select('*,rooms(name,code)').order('created_at',{ascending:false});
-      if(error)throw error;
-      setMembers(data||[]);
-    }catch(e){toast.error('Users load failed: '+e.message);}
-    finally{setLoading(false);}
-  },[]);
-
-  useEffect(()=>{fetchMembers();},[fetchMembers]);
-
-  const uniq=useMemo(()=>{
-    const map=new Map();
-    members.forEach(x=>{
-      if(x.uid&&!map.has(x.uid))map.set(x.uid,Object.assign({},x,{roomCount:0}));
-      if(x.uid)map.get(x.uid).roomCount++;
-    });
-    return[...map.values()];
-  },[members]);
-
-  const filtered=members.filter(m=>
-    (m.nickname&&m.nickname.toLowerCase().includes(search.toLowerCase()))||
-    (m.email&&m.email.toLowerCase().includes(search.toLowerCase()))||
-    (m.uid&&m.uid.toLowerCase().includes(search.toLowerCase()))||
-    (m.rooms&&m.rooms.name&&m.rooms.name.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  return(
-    <div className="pc">
-      <div className="sech">
-        <div><div className="sect">\uD83D\uDC65 Users</div><div className="secst">{fmt.num(uniq.length)} unique users \u00B7 {fmt.num(members.length)} memberships</div></div>
-        <button className="br2" onClick={fetchMembers}>\uD83D\uDD04</button>
-      </div>
-      <div className="tw">
-        <div className="th2">
-          <div><div className="ttl">All Room Members</div><div className="tst">{filtered.length} showing</div></div>
-          <div className="ta"><input className="si" placeholder="\uD83D\uDD0D Search users..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-        </div>
-        {loading?<div className="ls"><div className="sp" style={{width:'32px',height:'32px'}}/><span>Loading users...</span></div>
-        :filtered.length===0?<div className="es"><div style={{fontSize:'40px'}}>\uD83D\uDC64</div><span>No users found</span></div>
-        :(
-          <div style={{overflowX:'auto'}}>
-            <table className="dt">
-              <thead><tr><th>User</th><th>UID</th><th>Room</th><th>Role</th><th>Joined</th></tr></thead>
-              <tbody>
-                {filtered.slice(0,100).map(m=>(
-                  <tr key={m.id}>
-                    <td>
-                      <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
-                        <div style={{width:'32px',height:'32px',borderRadius:'50%',background:'linear-gradient(135deg,#1a7a3f,#22c55e)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'13px',fontWeight:'700',color:'#fff',flexShrink:0}}>
-                          {((m.nickname||m.email||'?')[0]||'?').toUpperCase()}
-                        </div>
-                        <div><div className="cp">{m.nickname||'\u2014'}</div><div style={{fontSize:'11px',color:'var(--txt3)'}}>{m.email||'\u2014'}</div></div>
-                      </div>
-                    </td>
-                    <td><span className="bx bgr cm">{m.uid?m.uid.slice(0,12)+'\u2026':'\u2014'}</span></td>
-                    <td>
-                      <div className="cp">{m.rooms&&m.rooms.name||'\u2014'}</div>
-                      <div className="cm" style={{fontSize:'11px',color:'var(--txt3)'}}>{m.rooms&&m.rooms.code}</div>
-                    </td>
-                    <td><span className={`bx ${m.role==='host'?'by':'bb'}`}>{m.role==='host'?'\uD83D\uDC51 Host':'\uD83D\uDC64 Member'}</span></td>
-                    <td>{fmt.date(m.created_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TransactionsView(){
-  const[txns,setTxns]=useState([]);
-  const[loading,setLoading]=useState(true);
-  const[search,setSearch]=useState('');
-  const[filter,setFilter]=useState('all');
-  const[sel,setSel]=useState(null);
-
-  const fetchTxns=useCallback(async()=>{
-    setLoading(true);
-    try{
-      const{data,error}=await db.from('transactions').select('*,rooms(name,code)').order('created_at',{ascending:false}).limit(500);
-      if(error)throw error;
-      setTxns(data||[]);
-    }catch(e){toast.error('Transactions load failed: '+e.message);}
-    finally{setLoading(false);}
-  },[]);
-
-  useEffect(()=>{fetchTxns();},[fetchTxns]);
-
-  const filtered=txns.filter(t=>{
-    const ms=(t.title&&t.title.toLowerCase().includes(search.toLowerCase()))||
-      (t.category&&t.category.toLowerCase().includes(search.toLowerCase()))||
-      (t.paid_by&&t.paid_by.toLowerCase().includes(search.toLowerCase()))||
-      (t.rooms&&t.rooms.name&&t.rooms.name.toLowerCase().includes(search.toLowerCase()));
-    const mf=filter==='all'||(filter==='shared'?t.is_shared:!t.is_shared);
-    return ms&&mf;
-  });
-
-  const total=filtered.reduce((s,t)=>s+Number(t.amount||0),0);
-
-  const doDelete=async tx=>{
-    if(!window.confirm('Delete "'+tx.title+'"? Cannot be undone.'))return;
-    try{
-      const{error}=await db.from('transactions').delete().eq('id',tx.id);
-      if(error)throw error;
-      toast.success('Transaction deleted.');
-      setTxns(p=>p.filter(t=>t.id!==tx.id));
-      if(sel&&sel.id===tx.id)setSel(null);
-    }catch(e){toast.error('Delete failed: '+e.message);}
-  };
-
-  return(
-    <div className="pc">
-      <div className="sech">
-        <div><div className="sect">\uD83D\uDCB8 Transactions</div><div className="secst">Last 500 \u00B7 Total shown: {fmt.inr(total)}</div></div>
-        <button className="br2" onClick={fetchTxns}>\uD83D\uDD04</button>
-      </div>
-      <div className="tw">
-        <div className="th2">
-          <div><div className="ttl">All Transactions</div><div className="tst">{fmt.num(filtered.length)} of {fmt.num(txns.length)} loaded</div></div>
-          <div className="ta">
-            <select className="fse" value={filter} onChange={e=>setFilter(e.target.value)}>
-              <option value="all">All Types</option>
-              <option value="shared">Shared Only</option>
-              <option value="personal">Personal Only</option>
-            </select>
-            <input className="si" placeholder="\uD83D\uDD0D Search..." value={search} onChange={e=>setSearch(e.target.value)}/>
-          </div>
-        </div>
-        {loading?<div className="ls"><div className="sp" style={{width:'32px',height:'32px'}}/><span>Loading transactions...</span></div>
-        :filtered.length===0?<div className="es"><div style={{fontSize:'40px'}}>\uD83D\uDCB8</div><span>No transactions found</span></div>
-        :(
-          <div style={{overflowX:'auto'}}>
-            <table className="dt">
-              <thead><tr><th>Title</th><th>Amount</th><th>Category</th><th>Room</th><th>Date</th><th>Type</th><th>Actions</th></tr></thead>
-              <tbody>
-                {filtered.slice(0,200).map(t=>(
-                  <tr key={t.id}>
-                    <td><div className="cp" style={{cursor:'pointer',maxWidth:'180px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} onClick={()=>setSel(t)}>{t.title}</div></td>
-                    <td><span style={{color:'var(--acc2)',fontWeight:'700'}}>{fmt.inr(t.amount)}</span></td>
-                    <td><span className="bx bpu">{t.category||'\u2014'}</span></td>
-                    <td><div className="cp">{t.rooms&&t.rooms.name||'\u2014'}</div></td>
-                    <td>{fmt.date(t.date)}</td>
-                    <td><span className={`bx ${t.is_shared?'bg2':'bb'}`}>{t.is_shared?'\uD83E\uDD1D Shared':'\uD83D\uDC64 Personal'}</span></td>
-                    <td>
-                      <div className="ag">
-                        <button className="bi" onClick={()=>setSel(t)}>\uD83D\uDC41\uFE0F</button>
-                        <button className="bi bir" onClick={()=>doDelete(t)}>\uD83D\uDDD1\uFE0F</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      {sel&&(
-        <div className="mo" onClick={()=>setSel(null)}>
-          <div className="mb" onClick={e=>e.stopPropagation()}>
-            <div className="mt2">\uD83D\uDCB8 {sel.title}</div>
-            <div className="ms2">{fmt.inr(sel.amount)} \u00B7 {sel.category}</div>
-            {[{k:'ID',v:sel.id},{k:'Amount',v:fmt.inr(sel.amount),p:true},{k:'Category',v:sel.category||'\u2014'},{k:'Room',v:(sel.rooms&&sel.rooms.name)||sel.room_id},{k:'Date',v:fmt.date(sel.date)},{k:'Paid By',v:sel.paid_by||'\u2014'},{k:'Type',v:sel.is_shared?'\uD83E\uDD1D Shared':'\uD83D\uDC64 Personal'},{k:'Split Type',v:sel.split_type||'equal'},{k:'Created At',v:fmt.time(sel.created_at)}].map(r=>(
-              <div key={r.k} className="dr"><span className="dk">{r.k}</span><span className={`dv${r.p?' pr':''}`}>{r.v}</span></div>
-            ))}
-            <div className="mf">
-              <button className="bs" style={{flex:1}} onClick={()=>setSel(null)}>Close</button>
-              <button className="bd" onClick={()=>doDelete(sel)}>\uD83D\uDDD1\uFE0F Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ActivityLogsView(){
-  const[logs,setLogs]=useState([]);
-  const[loading,setLoading]=useState(true);
-  const[search,setSearch]=useState('');
-
-  const fetchLogs=useCallback(async()=>{
-    setLoading(true);
-    try{
-      const{data,error}=await db.from('activity_logs').select('*').order('created_at',{ascending:false}).limit(200);
-      if(error)throw error;
-      setLogs(data||[]);
-    }catch(e){setLogs([]);}
-    finally{setLoading(false);}
-  },[]);
-
-  useEffect(()=>{fetchLogs();},[fetchLogs]);
-
-  const gc=a=>{
-    const x=(a||'').toLowerCase();
-    if(x.includes('delet')||x.includes('remov'))return'r';
-    if(x.includes('add')||x.includes('creat'))return'g';
-    if(x.includes('edit')||x.includes('updat'))return'b';
-    if(x.includes('settl')||x.includes('paid'))return'p';
-    return'g';
-  };
-
-  const filtered=logs.filter(l=>
-    (l.action&&l.action.toLowerCase().includes(search.toLowerCase()))||
-    (l.actor_nickname&&l.actor_nickname.toLowerCase().includes(search.toLowerCase()))||
-    (l.details&&l.details.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  return(
-    <div className="pc">
-      <div className="sech">
-        <div><div className="sect">\uD83D\uDCCB Activity Logs</div><div className="secst">Last 200 platform events</div></div>
-        <button className="br2" onClick={fetchLogs}>\uD83D\uDD04</button>
-      </div>
-      <div className="tw">
-        <div className="th2">
-          <div><div className="ttl">Audit Trail</div><div className="tst">{filtered.length} events</div></div>
-          <div className="ta"><input className="si" placeholder="\uD83D\uDD0D Search logs..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-        </div>
-        {loading?<div className="ls"><div className="sp" style={{width:'32px',height:'32px'}}/><span>Loading logs...</span></div>
-        :filtered.length===0?(
-          <div className="es">
-            <div style={{fontSize:'40px'}}>\uD83D\uDCCB</div>
-            <span>No activity logs found</span>
-            <span style={{fontSize:'11px',color:'var(--txt3)'}}>The activity_logs table may be empty or not yet created.</span>
-          </div>
-        ):filtered.map(log=>(
-          <div key={log.id} className="le">
-            <div className={`ld ${gc(log.action)}`}/>
-            <div>
-              <div className="la">
-                <strong style={{color:'var(--acc2)'}}>{log.actor_nickname||'System'}</strong>
-                {' '}{log.action||'performed an action'}
-                {log.details&&<span style={{color:'var(--txt3)'}}> \u2014 {log.details}</span>}
+            {/* Search Bar for List Views */}
+            {['rooms', 'users', 'txns'].includes(tab) && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 rounded-2xl shadow-sm flex items-center gap-3">
+                <span className="text-sm">🔍</span>
+                <input type="text" placeholder={`Search ${tab}...`} value={search} onChange={e => setSearch(e.target.value)} className="flex-1 bg-transparent text-sm font-semibold outline-none text-slate-800 dark:text-slate-200" />
+                {search && <button onClick={() => setSearch('')} className="text-xs font-bold text-[#5C6E5C] hover:text-slate-900 dark:hover:text-slate-100">Clear</button>}
               </div>
-              <div className="lm">
-                {fmt.time(log.created_at)}
-                {log.room_id&&<span style={{marginLeft:'8px',color:'var(--bdr2)'}}>Room: {log.room_id.slice(0,8)}\u2026</span>}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+            )}
 
-function AnnouncementsView(){
-  const[title,setTitle]=useState('');
-  const[body,setBody]=useState('');
-  const[type,setType]=useState('info');
-  const[sending,setSending]=useState(false);
-  const[anns,setAnns]=useState([]);
-  const[loading,setLoading]=useState(true);
-
-  const fetchAnns=useCallback(async()=>{
-    setLoading(true);
-    try{
-      const{data,error}=await db.from('announcements').select('*').order('created_at',{ascending:false}).limit(50);
-      if(error)throw error;
-      setAnns(data||[]);
-    }catch(e){setAnns([]);}
-    finally{setLoading(false);}
-  },[]);
-
-  useEffect(()=>{fetchAnns();},[fetchAnns]);
-
-  const doSend=async()=>{
-    if(!title.trim()||!body.trim()){toast.error('Title and message are required.');return;}
-    setSending(true);
-    try{
-      const{error}=await db.from('announcements').insert({
-        title:title.trim(),body:body.trim(),type,
-        created_at:new Date().toISOString(),created_by:'admin',is_active:true
-      });
-      if(error)throw error;
-      toast.success('Announcement posted!');
-      setTitle('');setBody('');
-      fetchAnns();
-    }catch(e){toast.error('Failed: '+e.message);}
-    finally{setSending(false);}
-  };
-
-  const doDelete=async id=>{
-    try{
-      const{error}=await db.from('announcements').delete().eq('id',id);
-      if(error)throw error;
-      toast.success('Removed.');
-      setAnns(p=>p.filter(a=>a.id!==id));
-    }catch(e){toast.error('Failed: '+e.message);}
-  };
-
-  const bc={info:'bb',warning:'by',success:'bg2',error:'br'};
-  const ic={info:'\u2139\uFE0F',warning:'\u26A0\uFE0F',success:'\u2705',error:'\uD83D\uDEA8'};
-
-  return(
-    <div className="pc">
-      <div className="sech"><div><div className="sect">\uD83D\uDCE2 Announcements</div><div className="secst">Broadcast platform-wide messages to all users</div></div></div>
-      <div className="cg" style={{gridTemplateColumns:'1fr 1fr'}}>
-        <div className="cd">
-          <div className="cdh"><div className="cdt">\u270F\uFE0F New Announcement</div></div>
-          <div className="cdb">
-            <div className="fg"><label className="fl">Title</label><input className="fi" placeholder="Announcement title..." value={title} onChange={e=>setTitle(e.target.value)}/></div>
-            <div className="fg"><label className="fl">Message</label><textarea className="fta" placeholder="Write your message..." value={body} onChange={e=>setBody(e.target.value)}/></div>
-            <div className="fg">
-              <label className="fl">Type</label>
-              <select className="fse" style={{width:'100%'}} value={type} onChange={e=>setType(e.target.value)}>
-                <option value="info">\u2139\uFE0F Info</option>
-                <option value="warning">\u26A0\uFE0F Warning</option>
-                <option value="success">\u2705 Success</option>
-                <option value="error">\uD83D\uDEA8 Alert</option>
-              </select>
-            </div>
-            <div style={{background:'var(--bg2)',border:'1px solid var(--bdr)',borderRadius:'var(--rs)',padding:'14px 16px',marginBottom:'16px'}}>
-              <div style={{fontSize:'11px',color:'var(--txt3)',marginBottom:'8px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px'}}>Preview</div>
-              <span className={`bx ${bc[type]}`} style={{marginBottom:'8px',display:'inline-block'}}>{ic[type]} {type.toUpperCase()}</span>
-              <div style={{fontSize:'14px',fontWeight:'700',marginBottom:'4px'}}>{title||'Title'}</div>
-              <div style={{fontSize:'13px',color:'var(--txt2)'}}>{body||'Your message...'}</div>
-            </div>
-            <button className="bp" onClick={doSend} disabled={sending}>
-              {sending?React.createElement('span',{className:'sp'}):'\uD83D\uDCE2'}
-              {sending?'Posting...':'Post Announcement'}
-            </button>
-          </div>
-        </div>
-        <div className="cd">
-          <div className="cdh"><div className="cdt">\uD83D\uDCCB Posted</div><button className="br2" onClick={fetchAnns} style={{width:'28px',height:'28px',fontSize:'12px'}}>\uD83D\uDD04</button></div>
-          <div style={{maxHeight:'500px',overflowY:'auto'}}>
-            {loading?<div className="ls" style={{padding:'40px'}}><div className="sp"/></div>
-            :anns.length===0?<div className="es" style={{padding:'40px'}}><div style={{fontSize:'40px'}}>\uD83D\uDCED</div><span>No announcements yet</span></div>
-            :anns.map(a=>(
-              <div key={a.id} style={{padding:'16px 20px',borderBottom:'1px solid rgba(30,48,37,.4)'}}>
-                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'8px',marginBottom:'6px'}}>
-                  <span className={`bx ${bc[a.type]||'bb'}`}>{ic[a.type]||'\u2139\uFE0F'} {a.type}</span>
-                  <button className="bi bir" style={{width:'24px',height:'24px',fontSize:'11px'}} onClick={()=>doDelete(a.id)}>\uD83D\uDDD1\uFE0F</button>
+            {/* TAB 1: OVERVIEW */}
+            {tab === 'overview' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                  {[
+                    { label: 'Total Rooms', val: fmt.num(stats?.rooms), icon: '🏠', color: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' },
+                    { label: 'Registered Users', val: fmt.num(stats?.users), icon: '👥', color: 'bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300' },
+                    { label: 'Memberships', val: fmt.num(stats?.memberships), icon: '📋', color: 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300' },
+                    { label: 'Transactions', val: fmt.num(stats?.transactions), icon: '💸', color: 'bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300' },
+                    { label: 'Total Volume', val: fmt.inr(stats?.volume), icon: '💰', color: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
+                    { label: 'Active (Month)', val: fmt.num(stats?.activeRooms), icon: '⚡', color: 'bg-lime-50 text-lime-800 dark:bg-lime-950/40 dark:text-lime-300' }
+                  ].map((s, i) => (
+                    <div key={i} className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 rounded-3xl shadow-sm space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">{s.label}</span>
+                        <span className={`text-base p-1.5 rounded-xl ${s.color}`}>{s.icon}</span>
+                      </div>
+                      <p className="text-xl sm:text-2xl font-extrabold text-[#1A3827] dark:text-slate-100">{s.val}</p>
+                    </div>
+                  ))}
                 </div>
-                <div style={{fontSize:'13px',fontWeight:'700',marginBottom:'4px'}}>{a.title}</div>
-                <div style={{fontSize:'12px',color:'var(--txt2)',marginBottom:'6px',lineHeight:'1.5'}}>{a.body}</div>
-                <div style={{fontSize:'11px',color:'var(--txt3)',fontFamily:'var(--mono)'}}>{fmt.time(a.created_at)}</div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Recent Rooms Quick Panel */}
+                  <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">Recent Rooms</h3>
+                      <button onClick={() => setTab('rooms')} className="text-xs font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline">View All &rarr;</button>
+                    </div>
+                    <div className="space-y-2">
+                      {rooms.slice(0, 5).map(r => (
+                        <div key={r.id} className="p-3 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-[#1A3827] dark:text-slate-100">{r.name || 'Unnamed Room'}</p>
+                            <p className="text-[11px] font-mono text-[#5C6E5C] dark:text-slate-400">Code: {r.code || 'N/A'} &bull; Budget: {fmt.inr(r.monthly_budget)}</p>
+                          </div>
+                          <button onClick={() => setSelectedRoom(r)} className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 text-xs font-bold border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#EAF0EC] transition-all">Details</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Broadcast Quick Panel */}
+                  <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
+                    <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">Quick Platform Announcement</h3>
+                    <div className="space-y-3">
+                      <input type="text" placeholder="Title" value={annTitle} onChange={e => setAnnTitle(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold outline-none" />
+                      <textarea placeholder="Message body..." value={annBody} onChange={e => setAnnBody(e.target.value)} rows={3} className="w-full px-4 py-2.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-xs font-medium outline-none resize-none" />
+                      <button onClick={handleSendAnnouncement} disabled={sendingAnn} className="w-full py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-xs font-black shadow-sm hover:opacity-90 transition-all">
+                        {sendingAnn ? 'Sending...' : '📢 Broadcast Announcement'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+            )}
 
-function SettingsView({mm,onToggleMM,user}){
-  const[exportLoading,setExportLoading]=useState(false);
-  const[note,setNote]=useState(()=>localStorage.getItem('admin_note')||'');
-
-  const doExport=async table=>{
-    setExportLoading(true);
-    try{
-      const{data,error}=await db.from(table).select('*').limit(1000);
-      if(error)throw error;
-      if(!data||!data.length){toast.info('No data to export.');return;}
-      const csv=[Object.keys(data[0]).join(','),...data.map(row=>
-        Object.values(row).map(v=>typeof v==='string'?'"'+v.replace(/"/g,'""')+'"':v).join(',')
-      )].join('\n');
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-      a.download='tallyin_'+table+'_'+new Date().toISOString().slice(0,10)+'.csv';
-      a.click();
-      toast.success('Exported '+data.length+' rows from '+table);
-    }catch(e){toast.error('Export failed: '+e.message);}
-    finally{setExportLoading(false);}
-  };
-
-  return(
-    <div className="pc">
-      <div className="sech"><div><div className="sect">\u2699\uFE0F Platform Settings</div><div className="secst">Global configuration and admin controls</div></div></div>
-      
-      <div className="ss">
-        <div style={{fontSize:'12px',fontWeight:'700',color:'var(--txt3)',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'12px'}}>\uD83D\uDD27 Platform Controls</div>
-        <div className="ssc">
-          <div className="ssr">
-            <div className="ssri"><div className="ssrl">\uD83D\uDEA7 Maintenance Mode</div><div className="ssrd">All users see a maintenance screen when ON. Admin retains full access.</div></div>
-            <label style={{display:'flex',alignItems:'center',gap:'10px',cursor:'pointer'}}>
-              <div className="tsw"><input type="checkbox" checked={mm} onChange={onToggleMM}/><span className="tsl"/></div>
-              <span style={{fontSize:'12px',color:mm?'var(--yel)':'var(--txt3)',fontWeight:'600'}}>{mm?'ON':'OFF'}</span>
-            </label>
-          </div>
-          <div className="ssr">
-            <div className="ssri"><div className="ssrl">\uD83D\uDCF1 App Version</div><div className="ssrd">Current production version of Tallyin</div></div>
-            <span className="bx bg2 cm">v3.2.34</span>
-          </div>
-          <div className="ssr">
-            <div className="ssri"><div className="ssrl">\uD83D\uDDC2\uFE0F Database</div><div className="ssrd">Supabase PostgreSQL \u00B7 {SUPABASE_URL.replace('https://','').split('.')[0]}</div></div>
-            <span className="bx bg2">\u2705 Connected</span>
-          </div>
-          <div className="ssr">
-            <div className="ssri"><div className="ssrl">\uD83D\uDC64 Admin Account</div><div className="ssrd">Currently signed in as super admin</div></div>
-            <span className="bx bpu">\uD83D\uDEE1\uFE0F {user&&user.email}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="ss">
-        <div style={{fontSize:'12px',fontWeight:'700',color:'var(--txt3)',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'12px'}}>\uD83D\uDCE6 Data Export</div>
-        <div className="ssc">
-          {['rooms','room_members','transactions','activity_logs'].map(t=>(
-            <div key={t} className="ssr">
-              <div className="ssri">
-                <div className="ssrl">Export <code style={{fontFamily:'var(--mono)',fontSize:'12px',background:'var(--bg2)',padding:'2px 6px',borderRadius:'4px'}}>{t}</code></div>
-                <div className="ssrd">Download all records as CSV file</div>
+            {/* TAB 2: ROOMS */}
+            {tab === 'rooms' && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+                <div className="p-4 sm:p-5 border-b border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between">
+                  <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">All Platform Rooms ({filteredRooms.length})</h3>
+                  <button onClick={() => exportCSV(rooms, 'rooms')} className="px-3 py-1.5 rounded-xl text-xs font-bold border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800">Export CSV</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#F6F8F6] dark:bg-slate-950 text-[#5C6E5C] dark:text-slate-400 font-extrabold uppercase tracking-wider border-b border-[#E3E8E3] dark:border-slate-800">
+                      <tr>
+                        <th className="p-4">Room Name</th>
+                        <th className="p-4">Code</th>
+                        <th className="p-4">Monthly Budget</th>
+                        <th className="p-4">Created Date</th>
+                        <th className="p-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E3E8E3] dark:divide-slate-800 font-semibold">
+                      {filteredRooms.map(r => (
+                        <tr key={r.id} className="hover:bg-[#F6F8F6]/50 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="p-4 text-sm font-extrabold text-[#1A3827] dark:text-slate-100">{r.name || 'Unnamed'}</td>
+                          <td className="p-4 font-mono font-bold text-emerald-700 dark:text-[#A3E635]">{r.code || 'N/A'}</td>
+                          <td className="p-4">{fmt.inr(r.monthly_budget)}</td>
+                          <td className="p-4 text-[#5C6E5C] dark:text-slate-400">{fmt.date(r.created_at)}</td>
+                          <td className="p-4 text-right space-x-2">
+                            <button onClick={() => setSelectedRoom(r)} className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold hover:bg-slate-200">View</button>
+                            <button onClick={() => handleDeleteRoom(r)} className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 text-xs font-bold hover:bg-rose-100">Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <button className="bs" onClick={()=>doExport(t)} disabled={exportLoading} style={{fontSize:'12px'}}>
-                {exportLoading?'\u23F3':'\u2B07\uFE0F'} Export CSV
-              </button>
+            )}
+
+            {/* TAB 3: USERS & MEMBERS */}
+            {tab === 'users' && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+                <div className="p-4 sm:p-5 border-b border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between">
+                  <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">All Room Members ({filteredMembers.length})</h3>
+                  <button onClick={() => exportCSV(members, 'members')} className="px-3 py-1.5 rounded-xl text-xs font-bold border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800">Export CSV</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#F6F8F6] dark:bg-slate-950 text-[#5C6E5C] dark:text-slate-400 font-extrabold uppercase tracking-wider border-b border-[#E3E8E3] dark:border-slate-800">
+                      <tr>
+                        <th className="p-4">User</th>
+                        <th className="p-4">Room</th>
+                        <th className="p-4">Role</th>
+                        <th className="p-4">Joined Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E3E8E3] dark:divide-slate-800 font-semibold">
+                      {filteredMembers.map(m => (
+                        <tr key={m.id} className="hover:bg-[#F6F8F6]/50 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="p-4 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 flex items-center justify-center font-extrabold text-xs">
+                              {fmt.init(m.nickname || m.email)}
+                            </div>
+                            <div>
+                              <p className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">{m.nickname || 'Anonymous'}</p>
+                              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">{m.email || m.uid}</p>
+                            </div>
+                          </td>
+                          <td className="p-4 font-bold">{m.rooms?.name || 'Unknown Room'}</td>
+                          <td className="p-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${m.role === 'host' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+                              {m.role || 'member'}
+                            </span>
+                          </td>
+                          <td className="p-4 text-[#5C6E5C] dark:text-slate-400">{fmt.date(m.created_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: TRANSACTIONS */}
+            {tab === 'txns' && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+                <div className="p-4 sm:p-5 border-b border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between">
+                  <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">All Room Transactions ({filteredTxns.length})</h3>
+                  <button onClick={() => exportCSV(txns, 'transactions')} className="px-3 py-1.5 rounded-xl text-xs font-bold border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800">Export CSV</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#F6F8F6] dark:bg-slate-950 text-[#5C6E5C] dark:text-slate-400 font-extrabold uppercase tracking-wider border-b border-[#E3E8E3] dark:border-slate-800">
+                      <tr>
+                        <th className="p-4">Title</th>
+                        <th className="p-4">Amount</th>
+                        <th className="p-4">Category</th>
+                        <th className="p-4">Paid By</th>
+                        <th className="p-4">Type</th>
+                        <th className="p-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E3E8E3] dark:divide-slate-800 font-semibold">
+                      {filteredTxns.map(t => (
+                        <tr key={t.id} className="hover:bg-[#F6F8F6]/50 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="p-4 font-extrabold text-[#1A3827] dark:text-slate-100">{t.title}</td>
+                          <td className="p-4 text-sm font-black text-emerald-700 dark:text-[#A3E635]">{fmt.inr(t.amount)}</td>
+                          <td className="p-4"><span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-bold">{t.category || 'General'}</span></td>
+                          <td className="p-4">{t.paid_by || 'Unknown'}</td>
+                          <td className="p-4"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${t.is_shared ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}>{t.is_shared ? 'Shared' : 'Personal'}</span></td>
+                          <td className="p-4 text-right">
+                            <button onClick={() => handleDeleteTxn(t)} className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 text-xs font-bold hover:bg-rose-100">Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: BROADCASTS */}
+            {tab === 'broadcasts' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
+                  <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">Send Platform Broadcast</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-[#5C6E5C] mb-1">Title</label>
+                      <input type="text" placeholder="Title" value={annTitle} onChange={e => setAnnTitle(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-[#5C6E5C] mb-1">Message Body</label>
+                      <textarea placeholder="Message body..." value={annBody} onChange={e => setAnnBody(e.target.value)} rows={4} className="w-full px-4 py-2.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-xs font-medium outline-none resize-none" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-[#5C6E5C] mb-1">Type</label>
+                      <select value={annType} onChange={e => setAnnType(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold outline-none">
+                        <option value="info">ℹ️ Info</option>
+                        <option value="warning">⚠️ Warning</option>
+                        <option value="success">✅ Success</option>
+                        <option value="error">🚨 Alert</option>
+                      </select>
+                    </div>
+                    <button onClick={handleSendAnnouncement} disabled={sendingAnn} className="w-full py-3 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-xs font-black shadow-sm hover:opacity-90 transition-all">
+                      {sendingAnn ? 'Broadcasting...' : '📢 Broadcast Message'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
+                  <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">Active Broadcasts ({announcements.length})</h3>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {announcements.map(a => (
+                      <div key={a.id} className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-[#1A3827] dark:text-slate-100">{a.title}</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800">{a.type}</span>
+                        </div>
+                        <p className="text-xs text-[#5C6E5C] dark:text-slate-400">{a.body}</p>
+                        <p className="text-[10px] font-mono text-slate-400 pt-1">{fmt.time(a.created_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 6: DATA EXPORT */}
+            {tab === 'export' && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+                <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">Export System Datasets (CSV)</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <button onClick={() => exportCSV(rooms, 'rooms')} className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-left hover:border-[#1A3827] transition-all space-y-1">
+                    <p className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">🏠 Rooms Dataset</p>
+                    <p className="text-xs text-[#5C6E5C]">{rooms.length} room entries</p>
+                  </button>
+                  <button onClick={() => exportCSV(members, 'members')} className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-left hover:border-[#1A3827] transition-all space-y-1">
+                    <p className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">👥 Members Dataset</p>
+                    <p className="text-xs text-[#5C6E5C]">{members.length} user memberships</p>
+                  </button>
+                  <button onClick={() => exportCSV(txns, 'transactions')} className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-left hover:border-[#1A3827] transition-all space-y-1">
+                    <p className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">💸 Transactions Dataset</p>
+                    <p className="text-xs text-[#5C6E5C]">{txns.length} transactions</p>
+                  </button>
+                </div>
+              </div>
+            )}
+
+          </main>
+
+          {/* Modal for Room Details */}
+          {selectedRoom && (
+            <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+                  <h3 className="text-base font-extrabold text-[#1A3827] dark:text-slate-100">Room Details: {selectedRoom.name}</h3>
+                  <button onClick={() => setSelectedRoom(null)} className="text-sm font-bold text-[#5C6E5C] hover:text-slate-900">✕</button>
+                </div>
+                <div className="space-y-2 text-xs font-semibold">
+                  <div className="flex justify-between py-1.5 border-b border-[#E3E8E3]/50 dark:border-slate-800"><span className="text-[#5C6E5C]">Room ID:</span> <span className="font-mono text-slate-900 dark:text-slate-100">{selectedRoom.id}</span></div>
+                  <div className="flex justify-between py-1.5 border-b border-[#E3E8E3]/50 dark:border-slate-800"><span className="text-[#5C6E5C]">Room Code:</span> <span className="font-mono font-bold text-emerald-600">{selectedRoom.code}</span></div>
+                  <div className="flex justify-between py-1.5 border-b border-[#E3E8E3]/50 dark:border-slate-800"><span className="text-[#5C6E5C]">Monthly Budget:</span> <span>{fmt.inr(selectedRoom.monthly_budget)}</span></div>
+                  <div className="flex justify-between py-1.5 border-b border-[#E3E8E3]/50 dark:border-slate-800"><span className="text-[#5C6E5C]">Created At:</span> <span>{fmt.time(selectedRoom.created_at)}</span></div>
+                </div>
+                <div className="pt-2 flex justify-end">
+                  <button onClick={() => setSelectedRoom(null)} className="px-4 py-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs">Close</button>
+                </div>
+              </div>
             </div>
-          ))}
+          )}
         </div>
-      </div>
+      );
+    }
 
-      <div className="ss">
-        <div style={{fontSize:'12px',fontWeight:'700',color:'var(--txt3)',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'12px'}}>\uD83D\uDCDD Admin Notes</div>
-        <div className="ssc">
-          <div style={{padding:'16px 24px'}}>
-            <textarea className="fta" placeholder="Private admin notes \u2014 only visible here, not synced to DB..." value={note}
-              onChange={e=>{setNote(e.target.value);localStorage.setItem('admin_note',e.target.value);}} style={{marginBottom:'8px'}}/>
-            <div style={{fontSize:'11px',color:'var(--txt3)'}}>Saved locally in browser. Not synced to database.</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="ss">
-        <div style={{fontSize:'12px',fontWeight:'700',color:'var(--txt3)',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'12px'}}>\u2139\uFE0F System Info</div>
-        <div className="ssc">
-          {[
-            {k:'Portal Version',v:'1.0.0'},
-            {k:'Supabase URL',v:SUPABASE_URL},
-            {k:'Admin Email',v:ADMIN_EMAIL},
-            {k:'Environment',v:window.location.hostname==='localhost'?'\uD83D\uDFE1 Development':'\uD83D\uDFE2 Production'},
-          ].map(r=>(
-            <div key={r.k} className="ssr">
-              <div className="ssri"><div className="ssrl">{r.k}</div></div>
-              <span className="cm" style={{fontSize:'12px',color:'var(--txt3)',wordBreak:'break-all',textAlign:'right',maxWidth:'300px'}}>{r.v}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function App(){
-  const[user,setUser]=useState(null);
-  const[authLoading,setAuthLoading]=useState(true);
-  const[view,setView]=useState('dashboard');
-  const[stats,setStats]=useState(null);
-  const[statsLoading,setStatsLoading]=useState(true);
-  const[mm,setMm]=useState(()=>localStorage.getItem('admin_mm')==='true');
-
-  useEffect(()=>{
-    db.auth.getSession().then(({data})=>{
-      if(data&&data.session&&data.session.user&&data.session.user.email===ADMIN_EMAIL)setUser(data.session.user);
-      setAuthLoading(false);
-    });
-    const{data:{subscription}}=db.auth.onAuthStateChange((_,session)=>{
-      if(session&&session.user&&session.user.email===ADMIN_EMAIL)setUser(session.user);
-      else setUser(null);
-      setAuthLoading(false);
-    });
-    return()=>subscription&&subscription.unsubscribe();
-  },[]);
-
-  const fetchStats=useCallback(async()=>{
-    setStatsLoading(true);
-    try{
-      const[rr,mr,tr]=await Promise.all([
-        db.from('rooms').select('id,created_at,monthly_budget'),
-        db.from('room_members').select('id,uid,created_at'),
-        db.from('transactions').select('id,amount,category,date,created_at,is_shared,room_id'),
-      ]);
-      const rooms=rr.data||[],members=mr.data||[],txns=tr.data||[];
-      const uniqU=new Set(members.map(m=>m.uid)).size;
-      const vol=txns.reduce((s,t)=>s+Number(t.amount||0),0);
-      const avg=rooms.length>0?vol/rooms.length:0;
-      const thisM=new Date().toISOString().slice(0,7);
-      const activeR=new Set(txns.filter(t=>t.date&&t.date.startsWith(thisM)).map(t=>t.room_id)).size;
-      const monthly=[];
-      for(let i=5;i>=0;i--){
-        const d=new Date();d.setMonth(d.getMonth()-i);
-        const p=d.toISOString().slice(0,7);
-        monthly.push({
-          month:d.toLocaleDateString('en-IN',{month:'short',year:'2-digit'}),
-          amount:txns.filter(t=>t.date&&t.date.startsWith(p)).reduce((s,t)=>s+Number(t.amount||0),0),
-          rooms:rooms.filter(r=>r.created_at&&r.created_at.startsWith(p)).length
-        });
-      }
-      const cm={};txns.forEach(t=>{const c=t.category||'Other';cm[c]=(cm[c]||0)+Number(t.amount||0);});
-      const sc=Object.entries(cm).sort((a,b)=>b[1]-a[1]).slice(0,6);
-      const mx=sc[0]?sc[0][1]:1;
-      const categories=sc.map(([name,amount])=>({name,amount,pct:Math.round((amount/mx)*100)}));
-      setStats({rooms:rooms.length,users:uniqU,transactions:txns.length,volume:vol,avgPerRoom:avg,activeRooms:activeR,monthly,categories});
-    }catch(e){toast.error('Stats error: '+e.message);}
-    finally{setStatsLoading(false);}
-  },[]);
-
-  useEffect(()=>{if(user)fetchStats();},[user,fetchStats]);
-
-  const doLogout=async()=>{await db.auth.signOut();setUser(null);toast.info('Signed out.');};
-
-  const toggleMM=()=>{
-    const n=!mm;setMm(n);
-    localStorage.setItem('admin_mm',String(n));
-    db.from('platform_settings').upsert({key:'maintenance_mode',value:String(n),updated_at:new Date().toISOString()}).then(()=>{});
-    toast.success('Maintenance mode '+(n?'ENABLED':'DISABLED'));
-  };
-
-  if(authLoading)return(
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',flexDirection:'column',gap:'16px'}}>
-      <div className="sp" style={{width:'40px',height:'40px'}}/>
-      <span style={{color:'var(--txt3)',fontSize:'14px'}}>Authenticating...</span>
-    </div>
-  );
-
-  if(!user)return(
-    <>
-      <ToastProvider/>
-      <LoginView onLogin={setUser}/>
-    </>
-  );
-
-  return(
-    <>
-      <ToastProvider/>
-      <div className="al">
-        <Sidebar active={view} onNav={setView} user={user} onLogout={doLogout}/>
-        <div className="mc">
-          <Topbar view={view} mm={mm}/>
-          {view==='dashboard'&&React.createElement(Dashboard,{stats,loading:statsLoading,onRefresh:fetchStats,mm})}
-          {view==='rooms'&&React.createElement(RoomsView,null)}
-          {view==='users'&&React.createElement(UsersView,null)}
-          {view==='transactions'&&React.createElement(TransactionsView,null)}
-          {view==='activity'&&React.createElement(ActivityLogsView,null)}
-          {view==='announcements'&&React.createElement(AnnouncementsView,null)}
-          {view==='settings'&&React.createElement(SettingsView,{mm,onToggleMM:toggleMM,user})}
-        </div>
-      </div>
-    </>
-  );
-}
-
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App,null));
-</script>
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App, null));
+  </script>
 </body>
 </html>

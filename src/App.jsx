@@ -7855,6 +7855,19 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <span>Settings</span>
               </div>
             </button>
+
+            <a
+              href="/admin/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 font-extrabold shadow-sm hover:opacity-95 mt-2"
+            >
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="w-4 h-4 text-[#A3E635] dark:text-slate-950" />
+                <span>Admin Portal</span>
+              </div>
+              <span className="text-xs">&rarr;</span>
+            </a>
           </nav>
         </div>
 
@@ -13596,6 +13609,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Stacked Cards */}
         <div className="space-y-6">
+
+          {/* Admin Control Portal Banner */}
+          <div className="bg-[#1A3827] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-white rounded-3xl p-5 sm:p-6 shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-[#A3E635]" />
+                <h3 className="font-extrabold text-sm sm:text-base tracking-tight text-white">Centralized Admin Portal</h3>
+              </div>
+              <p className="text-xs text-slate-300 dark:text-slate-400">Manage all rooms, users, transactions, broadcasts & system maintenance for <strong className="text-white">tallyin.alerts@gmail.com</strong>.</p>
+            </div>
+            <a 
+              href="/admin/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="shrink-0 px-4 py-2.5 bg-[#A3E635] text-slate-950 rounded-xl font-extrabold text-xs hover:bg-lime-400 transition-all shadow-sm flex items-center justify-center gap-2"
+            >
+              <span>Open Admin Portal</span>
+              <span>&rarr;</span>
+            </a>
+          </div>
           
           {/* Your Profile */}
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
