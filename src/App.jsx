@@ -28,8 +28,6 @@ import {
   Send,
   ArrowRight,
   User,
-  Users,
-
   Zap,
   Coffee,
   Lightbulb,
@@ -53,30 +51,13 @@ import {
   Mail,
   HandCoins,
   CheckCircle2,
-  ArrowLeftRight,
-  Wrench,
-  Lock,
-  CreditCard,
-  ShieldAlert,
-  Hammer
+  ArrowLeftRight
 } from 'lucide-react';
-
-const ALLOWED_MAINTENANCE_EMAIL = 'sampathjogipusala123@gmail.com';
-
 
 import { supabase } from './supabase';
 import logoIcon from './assets/logo_icon.png';
 import logoFull from './assets/logo_full.png';
 import faviconLogo from './assets/favicon_logo.png';
-import Navbar from './components/Navbar';
-import DashboardHome from './components/DashboardHome';
-import AddExpenseModal from './components/AddExpenseModal';
-import SettleUpModal from './components/SettleUpModal';
-import InsightsView from './components/InsightsView';
-import FundTracker from './components/FundTracker';
-import InstallAppModal from './components/InstallAppModal';
-
-
 
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v3.1.8';
 
@@ -185,12 +166,6 @@ class ErrorBoundary extends React.Component {
 
   reportIssue = () => {
     const err = this.state.error;
-    const errText = `Error: ${err?.toString() || 'Unknown'}\nStack:\n${err?.stack || 'N/A'}\nURL: ${window.location.href}`;
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(errText).catch(() => {});
-    }
-
     const subject = encodeURIComponent(`[Tallyin Bug] ${err?.name || 'Error'}`);
     const body = encodeURIComponent(
       `Hi Tallyin Support,\n\nI ran into a bug. Here are the details:\n\n` +
@@ -199,15 +174,10 @@ class ErrorBoundary extends React.Component {
       `App Version: ${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown'}\n` +
       `Page URL: ${window.location.href}\n` +
       `Timestamp: ${new Date().toISOString()}\n` +
-      `Browser: ${navigator.userAgent}\n\n`
+      `Browser: ${navigator.userAgent}\n\n` +
+      `Steps to reproduce:\n[Please describe what you were doing]\n`
     );
-
-    try {
-      window.location.href = `mailto:support@tallyin.app?subject=${subject}&body=${body}`;
-    } catch {
-      window.open(`mailto:support@tallyin.app?subject=${subject}&body=${body}`, '_blank');
-    }
-
+    window.open(`mailto:support@tallyin.app?subject=${subject}&body=${body}`, '_blank');
     this.setState({ isReporting: true });
   };
 
@@ -216,32 +186,28 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="p-6 max-w-xl mx-auto my-10 bg-red-50 border border-red-200 rounded-2xl dark:bg-red-950/20 dark:border-red-900/30 text-red-800 dark:text-red-300 shadow-lg">
           <h2 className="text-lg font-bold">Something went wrong rendering this view.</h2>
-          <p className="text-sm mt-2 font-mono bg-red-100 dark:bg-red-900/40 p-4 rounded-xl overflow-auto max-h-60 selection:bg-red-200">
+          <p className="text-sm mt-2 font-mono bg-red-100 dark:bg-red-900/40 p-4 rounded-xl overflow-auto max-h-60">
             {this.state.error?.toString()}
           </p>
-          <div className="flex flex-wrap gap-2 mt-4">
+          <div className="flex gap-2 mt-4">
             <button 
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.reload();
-              }}
-              className="px-4 py-2.5 bg-[#1A3827] text-white hover:bg-[#255038] rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="px-4 py-2 bg-[#1A3827] text-white hover:bg-[#255038] rounded-xl text-xs font-bold transition-all"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Try Again (Reload App)</span>
+              Try Again
             </button>
             <button
               onClick={this.reportIssue}
               disabled={this.state.isReporting}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
                 this.state.isReporting
                   ? 'bg-emerald-600 text-white'
                   : 'bg-red-600 text-white hover:bg-red-700'
               }`}
             >
               {this.state.isReporting
-                ? <><span>✓</span> Details copied & mail opened!</>
-                : <><AlertCircle className="w-3.5 h-3.5" /> Report Issue (Copy & Email)</>
+                ? <><span>✓</span> Email opened — thank you!</>
+                : <><AlertCircle className="w-3 h-3" /> Report Issue</>
               }
             </button>
           </div>
@@ -467,18 +433,6 @@ export default function App() {
   const [accessCodeInput, setAccessCodeInput] = useState('');
   const [codeLoginEmail, setCodeLoginEmail] = useState('');
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
-  const [showMaintenanceLogin, setShowMaintenanceLogin] = useState(false);
-  const [logoClickCount, setLogoClickCount] = useState(0);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.has('admin') || params.has('login') || params.has('bypass') || params.has('access') || params.has('sampath')) {
-        setShowMaintenanceLogin(true);
-      }
-    }
-  }, []);
-
 
   const auth = useMemo(() => ({
     currentUser: user ? {
@@ -495,10 +449,7 @@ export default function App() {
   const [monthlyBudget, setMonthlyBudget] = useState(() => Number(localStorage.getItem('monthlyBudget')) || 22000);
   const [personalCap, setPersonalCap] = useState(() => Number(localStorage.getItem('personalCap')) || 2500);
   const [isEditingPersonalCap, setIsEditingPersonalCap] = useState(false);
-  const [selectedPersonalMemberUid, setSelectedPersonalMemberUid] = useState('all');
-  const [personalFilterScope, setPersonalFilterScope] = useState('personal'); // 'personal' vs 'all_paid'
-
-
+  const [personalCapInput, setPersonalCapInput] = useState('');
 
   // Add Expense Split States
   const [formPaidBy, setFormPaidBy] = useState('');
@@ -2767,137 +2718,103 @@ export default function App() {
 
   // Dynamically calculated values based on synced transactions state
   const computedStats = useMemo(() => {
-    const data = transactions.filter(t => 
-      t.category !== '__FUND_INIT__' && 
-      t.category !== '__FUND_SPEND__' && 
-      t.category !== '__DELETE_PROPOSAL__' && 
-      t.category !== '__SYSTEM_MAINTENANCE__' && 
-      t.category !== '__SYSTEM_ANNOUNCEMENT__'
-    );
+    const data = transactions.filter(t => t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__BILL__' && t.category !== '__CHORE__' && t.category !== '__DELETE_PROPOSAL__');
     const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
-
-    // Helper to resolve any UID / ID / Nickname string to a canonical member UID
-    const resolveUid = (rawVal) => {
-      if (!rawVal) return currentUid;
-      const str = String(rawVal).trim().toLowerCase();
-      const match = (members || []).find(m => 
-        (m.uid && String(m.uid).trim().toLowerCase() === str) ||
-        (m.id && String(m.id).trim().toLowerCase() === str) ||
-        (m.nickname && String(m.nickname).trim().toLowerCase() === str)
-      );
-      if (match) return match.uid || match.id || match.nickname;
-      if (userNickname && userNickname.trim().toLowerCase() === str) return currentUid;
-      return rawVal;
-    };
 
     // Calculate totals
     let totalSpend = 0;
     let totalRoomSpend = 0;
     let personalSpend = 0;
     let sharedSpend = 0;
-
+    
     // Map of member uid to net balance: paid - share
     const roomBalances = {};
-    (members || []).forEach(m => {
-      const key = m.uid || m.id || m.nickname;
-      if (key) roomBalances[key] = 0;
+    
+    // Initialize balances for all current members
+    members.forEach(m => {
+      roomBalances[m.uid] = 0;
     });
-    if (Object.keys(roomBalances).length === 0) {
+    
+    // Default fallback if members list is empty
+    if (members.length === 0) {
       roomBalances[currentUid] = 0;
+      roomBalances['roommate'] = 0;
     }
 
     data.forEach(t => {
       const amount = Number(t.amount) || 0;
-      if (amount <= 0) return;
-
-      const isPayment = t.category === 'Payment' || (t.title && t.title.startsWith('Payment:'));
-      const isSharedTx = Boolean(t.isShared);
-      const payerUid = resolveUid(t.paidByUid || (t.paidBy === userNickname ? currentUid : t.paidBy));
-
-      // ── 1. PAYMENT / SETTLEMENT ──────────────────────────────────────────
-      if (isPayment) {
-        // Payment transfers money from payer to receiver to settle debt.
-        // Payer's balance gets credited (+amount), Receiver's balance gets debited (-amount).
-        if (roomBalances[payerUid] !== undefined) {
-          roomBalances[payerUid] += amount;
-        } else {
-          roomBalances[payerUid] = amount;
-        }
-
-        let receiverUid = null;
-        if (t.splits && Array.isArray(t.splits)) {
-          const recSplit = t.splits.find(s => resolveUid(s.uid || s.nickname) !== payerUid && Number(s.amount) > 0);
-          if (recSplit) receiverUid = resolveUid(recSplit.uid || recSplit.nickname);
-        }
-        if (!receiverUid) {
-          const otherMember = (members || []).find(m => resolveUid(m.uid || m.id || m.nickname) !== payerUid);
-          receiverUid = otherMember ? (otherMember.uid || otherMember.id || otherMember.nickname) : null;
-        }
-
-        if (receiverUid) {
-          if (roomBalances[receiverUid] !== undefined) {
-            roomBalances[receiverUid] -= amount;
-          } else {
-            roomBalances[receiverUid] = -amount;
-          }
-        }
-        return; // Settlement done — don't add to spend totals
-      }
-
-      // ── 2. PERSONAL EXPENSES (NOT SHARED) ─────────────────────────────
-      if (!isSharedTx) {
+      const isPayment = t.category === 'Payment';
+      
+      if (!isPayment) {
         totalSpend += amount;
-        if (payerUid === currentUid) {
-          personalSpend += amount;
+        if (t.isShared) {
+          totalRoomSpend += amount;
         }
-        // Personal expenses do NOT affect room balances!
-        return;
       }
 
-      // ── 3. ROOM SHARED EXPENSES ─────────────────────────────────────────
-      totalSpend += amount;
-      totalRoomSpend += amount;
+      // Determine payer UID
+      let payerUid = t.paidByUid;
+      if (!payerUid) {
+        const isSelf = t.paidBy === userNickname;
+        payerUid = isSelf ? currentUid : 'roommate';
+      }
 
-      // Payer paid full amount out of pocket -> credit payer
+      // Add paid amount to payer's balance
       if (roomBalances[payerUid] !== undefined) {
         roomBalances[payerUid] += amount;
       } else {
         roomBalances[payerUid] = amount;
       }
 
-      // Subtract split shares from participants
-      if (t.splits && Array.isArray(t.splits) && t.splits.length > 0) {
+      // Subtract split shares from everyone
+      if (t.splits && Array.isArray(t.splits)) {
         t.splits.forEach(split => {
-          const splitUid = resolveUid(split.uid || split.nickname);
-          const shareAmt = Number(split.amount) || 0;
-
+          let splitUid = split.uid;
+          if (!splitUid) {
+            const isSelf = split.nickname === userNickname || split.nickname === 'Alex';
+            splitUid = isSelf ? currentUid : 'roommate';
+          }
+          
           if (roomBalances[splitUid] !== undefined) {
-            roomBalances[splitUid] -= shareAmt;
+            roomBalances[splitUid] -= Number(split.amount) || 0;
           } else {
-            roomBalances[splitUid] = -shareAmt;
+            roomBalances[splitUid] = -(Number(split.amount) || 0);
           }
 
-          if (splitUid === currentUid) {
-            sharedSpend += shareAmt;
+          // Accumulate spend categories for the current logged-in user based on their share:
+          if (splitUid === currentUid && !isPayment) {
+            const shareAmt = Number(split.amount) || 0;
+            if (t.isShared) {
+              sharedSpend += shareAmt;
+            } else {
+              personalSpend += shareAmt;
+            }
           }
         });
       } else {
-        // Fallback: 50/50 split among members
-        const activeMembers = members && members.length > 0 ? members : [{ uid: currentUid }, { uid: 'roommate' }];
-        const sharePerMember = amount / activeMembers.length;
-        activeMembers.forEach(m => {
-          const mKey = m.uid || m.id || m.nickname;
-          if (roomBalances[mKey] !== undefined) {
-            roomBalances[mKey] -= sharePerMember;
-          } else {
-            roomBalances[mKey] = -sharePerMember;
+        // Legacy splits fallback (50/50 shared vs 100% personal)
+        if (t.isShared) {
+          if (!isPayment) {
+            sharedSpend += amount;
           }
-        });
-        sharedSpend += sharePerMember;
+          const halfShare = amount / 2;
+          roomBalances[currentUid] -= halfShare;
+          const roommateUid = members.find(m => m.uid !== currentUid)?.uid || 'roommate';
+          if (roomBalances[roommateUid] !== undefined) {
+            roomBalances[roommateUid] -= halfShare;
+          } else {
+            roomBalances[roommateUid] = -halfShare;
+          }
+        } else {
+          if (payerUid === currentUid && !isPayment) {
+            personalSpend += amount;
+          }
+          roomBalances[payerUid] -= amount;
+        }
       }
     });
 
-    // Round values to 2 decimal places to avoid floating-point math issues
+    // Round values to 2 decimal places to avoid floating-point math issues (e.g. -0.00 owes)
     Object.keys(roomBalances).forEach(uid => {
       roomBalances[uid] = Math.round(roomBalances[uid] * 100) / 100;
     });
@@ -5011,19 +4928,8 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     return `₹${Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  // Helper to format member initials
-  const fmtInitials = (name) => {
-    if (!name) return 'M';
-    const parts = String(name).trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return String(name).slice(0, 2).toUpperCase();
-  };
-
   // CSV Export Handler
-  // CSV Export Handler
-  const exportToCSV = (list = null, customTitle = null) => {
+  const exportToCSV = (list = null) => {
     try {
       const dataList = Array.isArray(list) ? list : filteredTransactions;
       if (dataList.length === 0) {
@@ -5047,8 +4953,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const fileSlug = customTitle ? customTitle.toLowerCase().replace(/[^a-z0-9]/g, '_') : `room_${userRoomId || 'export'}`;
-      link.download = `tallyin_${fileSlug}_${new Date().toISOString().split('T')[0]}.csv`;
+      link.download = `tallyin_room_${userRoomId || 'export'}_${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -5061,7 +4966,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
   };
 
   // Excel Export Handler (styled XLS format)
-  const exportToExcel = (list = null, customTitle = null) => {
+  const exportToExcel = (list = null) => {
     try {
       const dataList = Array.isArray(list) ? list : filteredTransactions;
       if (dataList.length === 0) {
@@ -5071,7 +4976,6 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
       const totalSpend = dataList.filter(t => t.category !== 'Payment').reduce((s, t) => s + (Number(t.amount) || 0), 0);
       const memberNames = members.map(m => m.nickname).join(' & ') || userNickname;
-      const reportTitle = customTitle || 'Tallyin Financial Ledger Report';
 
       const excelTemplate = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -5102,12 +5006,12 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         </head>
         <body>
           <div class="header-info">
-            <span class="header-title">${reportTitle}</span><br/>
+            <span class="header-title">Tallyin Financial Ledger Report</span><br/>
             <b>Room Workspace:</b> ${userRoomId || 'N/A'}<br/>
             <b>Room Name:</b> ${roomName}<br/>
             <b>Exported by:</b> ${userNickname} (${user?.email || 'N/A'})<br/>
             <b>Exported on:</b> ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}<br/>
-            <b>Total Selected Spend:</b> ${formatINR(totalSpend)} (${dataList.length} transactions)<br/>
+            <b>Total Selected Spend:</b> ${formatINR(totalSpend)}<br/>
             <b>Members:</b> ${memberNames}
           </div>
           <table>
@@ -5144,8 +5048,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      const fileSlug = customTitle ? customTitle.toLowerCase().replace(/[^a-z0-9]/g, '_') : `ledger_${userRoomId || 'room'}`;
-      link.download = `tallyin_${fileSlug}.xls`;
+      link.download = `tallyin_ledger_export_${userRoomId || 'room'}.xls`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -5159,7 +5062,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
   };
 
   // PDF Export Handler — opens styled print page in new tab
-  const exportToPDF = (list = null, customTitle = null) => {
+  const exportToPDF = (list = null) => {
     try {
       const dataList = Array.isArray(list) ? list : filteredTransactions;
       if (dataList.length === 0) {
@@ -5167,8 +5070,6 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         return;
       }
 
-      const isPersonalList = Array.isArray(list) && dataList.every(t => t.isShared === false);
-      const docTitle = customTitle || (isPersonalList ? 'Personal Expenses Statement' : 'Tallyin Ledger - Statement of Account');
       const totalSpend = dataList.filter(t => t.category !== 'Payment').reduce((s, t) => s + (Number(t.amount) || 0), 0);
       const sharedSpend = dataList.filter(t => t.isShared && t.category !== 'Payment').reduce((s, t) => s + (Number(t.amount) || 0), 0);
       const personalSpend = totalSpend - sharedSpend;
@@ -5184,7 +5085,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         <!DOCTYPE html>
         <html>
         <head>
-          <title>${docTitle}</title>
+          <title>Tallyin Ledger - Statement of Account</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -5231,7 +5132,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
               <div class="logo-text">Tallyin</div>
             </div>
             <div class="doc-info">
-              <b>${docTitle}</b><br/>
+              <b>Room Statement</b><br/>
               <b>Room Name:</b> ${roomName}<br/>
               <b>Workspace ID:</b> ${userRoomId || 'N/A'}<br/>
               <b>Exported by:</b> ${userNickname} (${user?.email || 'N/A'})<br/>
@@ -5240,30 +5141,29 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             </div>
           </div>
           
-          <h4 class="summary-title">${isPersonalList ? 'Personal Statement Summary' : 'Financial Summary'}</h4>
+          <h4 class="summary-title">Financial Summary</h4>
           <div class="cards-grid">
             <div class="summary-card">
-              <p class="card-label">Total Selected Spend</p>
+              <p class="card-label">Total Spent</p>
               <p class="card-value">${formatINR(totalSpend)}</p>
-              <p style="font-size:10px;color:#5C6E5C;margin-top:4px">${dataList.length} transactions included</p>
+              <p style="font-size:10px;color:#5C6E5C;margin-top:4px">Shared + Personal</p>
             </div>
             <div class="summary-card" style="border-color:#d1fae5;background-color:#f0fdf4">
-              <p class="card-label" style="color:#065f46">${isPersonalList ? 'Ledger Type' : 'Shared Bills'}</p>
-              <p class="card-value" style="color:#065f46">${isPersonalList ? 'Personal' : formatINR(sharedSpend)}</p>
-              <p style="font-size:10px;color:#6b7280;margin-top:4px">${isPersonalList ? 'Private transactions' : 'Counted in balance'}</p>
+              <p class="card-label" style="color:#065f46">Shared Bills</p>
+              <p class="card-value" style="color:#065f46">${formatINR(sharedSpend)}</p>
+              <p style="font-size:10px;color:#6b7280;margin-top:4px">Counted in balance</p>
             </div>
             <div class="summary-card" style="border-color:#e5e7eb;background-color:#f9fafb">
-              <p class="card-label" style="color:#6b7280">${isPersonalList ? 'Record Count' : 'Personal (Excluded)'}</p>
-              <p class="card-value" style="color:#374151">${isPersonalList ? dataList.length : formatINR(personalSpend)}</p>
-              <p style="font-size:10px;color:#9ca3af;margin-top:4px">${isPersonalList ? 'Items in filter' : 'Excluded from balance'}</p>
+              <p class="card-label" style="color:#6b7280">Personal (Excluded)</p>
+              <p class="card-value" style="color:#374151">${formatINR(personalSpend)}</p>
+              <p style="font-size:10px;color:#9ca3af;margin-top:4px">Excluded from balance</p>
             </div>
             <div class="summary-card" style="border-color:${myBalance >= 0 ? '#d1fae5' : '#fee2e2'};background-color:${myBalance >= 0 ? '#ecfdf5' : '#fff1f2'}">
-              <p class="card-label" style="color:${myBalance >= 0 ? '#065f46' : '#be123c'}">${isPersonalList ? 'Filter Context' : 'Your Balance'}</p>
-              <p class="card-value" style="color:${myBalance >= 0 ? '#059669' : '#e11d48'};font-size:14px;">${isPersonalList ? (selectedPersonalMemberUid === 'all' ? 'All Roommates' : selectedPersonalMemberUid === 'me' ? userNickname : 'Roommate') : statusText}</p>
-              <p style="font-size:10px;color:#9ca3af;margin-top:4px">${isPersonalList ? 'Selected Tab Filter' : 'Based on shared bills'}</p>
+              <p class="card-label" style="color:${myBalance >= 0 ? '#065f46' : '#be123c'}">Your Balance</p>
+              <p class="card-value" style="color:${myBalance >= 0 ? '#059669' : '#e11d48'}">${statusText}</p>
+              <p style="font-size:10px;color:#9ca3af;margin-top:4px">Based on shared bills</p>
             </div>
           </div>
-
 
           <div class="status-banner">
             <div class="status-dot"></div>
@@ -5821,18 +5721,21 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
   };
 
   // Filtered transactions for the ledger
-  // Ledger shows all room shared & logged expenses (Food, Utilities, Rent, Shopping, Bills, Chores, Payments)
+  // Ledger shows: shared expenses + personal expenses added by OTHER users.
+  // Current user's own personal expenses are hidden here — they live in the Personal Expenses tab.
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredTransactions = useMemo(() => {
+    const currentUid = user?.id || 'anonymous';
     const activeTxList = transactions.filter(t => {
-      if (
-        t.category === '__FUND_INIT__' || 
-        t.category === '__FUND_SPEND__' || 
-        t.category === '__DELETE_PROPOSAL__' || 
-        t.category === '__SYSTEM_MAINTENANCE__' || 
-        t.category === '__SYSTEM_ANNOUNCEMENT__'
-      ) return false;
-      return true;
+      if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__BILL__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__') return false;
+      if (t.isShared) return true; // always show shared bills
+      // For personal expenses: hide if the expense belongs solely to the current user
+      const isMineOnly =
+        t.splits &&
+        Array.isArray(t.splits) &&
+        t.splits.length === 1 &&
+        t.splits[0]?.uid === currentUid;
+      return !isMineOnly; // show only if it's someone else's personal expense
     });
 
     return activeTxList.filter(t => {
@@ -5841,7 +5744,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
       return matchesSearch && matchesCategory && matchesMonth;
     });
-  }, [transactions, searchQuery, categoryFilter, selectedMonth]);
+  }, [transactions, searchQuery, categoryFilter, selectedMonth, user]);
 
   // Check if there is an existing transaction matching current input title
   const matchingExistingTx = useMemo(() => {
@@ -5868,30 +5771,23 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     );
   }, [fundSpendFormTitle, transactions, editingFundSpend, selectedFundId]);
 
-
-  // Personal expenses memo (isShared is false, owned by current user)
+  // Personal expenses memo (isShared is false, split only with self)
   const myPersonalExpenses = useMemo(() => {
-    const currentUid = user?.id || user?.uid || auth?.currentUser?.uid || 'anonymous';
+    const currentUid = user?.id || 'anonymous';
     return transactions.filter(t => {
-      if (t.isShared !== false) return false;
-      if (
-        t.category === '__FUND_INIT__' ||
-        t.category === '__FUND_SPEND__' ||
-        t.category === '__DELETE_PROPOSAL__' ||
-        t.category === '__SYSTEM_MAINTENANCE__' ||
-        t.category === '__SYSTEM_ANNOUNCEMENT__' ||
-        t.category === 'Payment'
-      ) {
-        return false;
-      }
-
-      const isMyPayer = t.paidByUid === currentUid || t.createdBy === currentUid || (t.paidBy && userNickname && t.paidBy.trim().toLowerCase() === userNickname.trim().toLowerCase());
-      const isMySplit = t.splits && Array.isArray(t.splits) && t.splits.some(s => s.uid === currentUid || (s.nickname && userNickname && s.nickname.trim().toLowerCase() === userNickname.trim().toLowerCase()));
-
-      return isMyPayer || isMySplit;
+      return t.isShared === false && 
+             t.splits && 
+             Array.isArray(t.splits) && 
+             t.splits.length === 1 && 
+             t.splits[0] && 
+             t.splits[0].uid === currentUid &&
+             t.category !== '__FUND_INIT__' &&
+             t.category !== '__FUND_SPEND__' &&
+             t.category !== '__SHOPPING__' &&
+             t.category !== '__CHORE__' &&
+             t.category !== '__DELETE_PROPOSAL__';
     });
-  }, [transactions, user, userNickname]);
-
+  }, [transactions, user]);
 
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const myFunds = useMemo(() => {
@@ -5990,78 +5886,13 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
   }, [billsList, notificationMethod, pushNotificationsEnabled]);
 
   const filteredPersonalExpenses = useMemo(() => {
-    if (selectedPersonalMemberUid === 'me' && personalFilterScope === 'personal') {
-      // ✅ Use myPersonalExpenses directly — already scoped to the current user only
-      return myPersonalExpenses.filter(t => {
-        const matchesSearch = matchesTxSearch(t, searchQuery);
-        const matchesCategory = categoryFilter === 'All' || t.category === categoryFilter;
-        const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
-        return matchesSearch && matchesCategory && matchesMonth;
-      });
-    }
-
-    const targetMember = (members || []).find(m => 
-      (m.uid && String(m.uid) === String(selectedPersonalMemberUid)) || 
-      (m.id && String(m.id) === String(selectedPersonalMemberUid)) || 
-      (m.nickname && m.nickname === selectedPersonalMemberUid)
-    );
-
-    const normTargetNick = targetMember?.nickname?.toLowerCase() || (selectedPersonalMemberUid !== 'all' && selectedPersonalMemberUid !== 'me' ? selectedPersonalMemberUid.toLowerCase() : (userNickname || '').toLowerCase());
-    const targetUidStr = targetMember ? String(targetMember.uid || targetMember.id) : (selectedPersonalMemberUid === 'me' ? String(user?.id || user?.uid || auth?.currentUser?.uid || '') : null);
-    const targetFirstWord = normTargetNick.split(' ')[0] || '';
-
-    return transactions.filter(t => {
-      if (
-        t.category === '__FUND_INIT__' ||
-        t.category === '__FUND_SPEND__' ||
-        t.category === '__DELETE_PROPOSAL__' ||
-        t.category === '__SYSTEM_MAINTENANCE__' ||
-        t.category === '__SYSTEM_ANNOUNCEMENT__' ||
-        t.category === 'Payment'
-      ) {
-        return false;
-      }
-
-      if (personalFilterScope === 'personal') {
-        if (t.isShared !== false) return false;
-      }
-
-      if (selectedPersonalMemberUid !== 'all') {
-        const txPayer = (t.paidBy || '').trim().toLowerCase();
-        const txPayerUid = t.paidByUid ? String(t.paidByUid) : '';
-        const splitNick = (t.splits && t.splits[0] && t.splits[0].nickname ? t.splits[0].nickname : '').trim().toLowerCase();
-        const splitUid = (t.splits && t.splits[0] && t.splits[0].uid ? String(t.splits[0].uid) : '');
-
-        const effectiveNick = txPayer || splitNick;
-        const effectiveUid = txPayerUid || splitUid;
-
-        let isMatch = false;
-
-        if (effectiveNick && normTargetNick) {
-          const payerFirstWord = effectiveNick.split(' ')[0] || '';
-          isMatch = effectiveNick === normTargetNick || 
-                    effectiveNick.includes(normTargetNick) || 
-                    normTargetNick.includes(effectiveNick) || 
-                    (payerFirstWord && targetFirstWord && payerFirstWord === targetFirstWord);
-        }
-
-        if (!isMatch && targetUidStr && targetUidStr !== 'anonymous' && effectiveUid) {
-          isMatch = effectiveUid === targetUidStr;
-        }
-
-        if (!isMatch) return false;
-      }
-
+    return myPersonalExpenses.filter(t => {
       const matchesSearch = matchesTxSearch(t, searchQuery);
       const matchesCategory = categoryFilter === 'All' || t.category === categoryFilter;
       const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
       return matchesSearch && matchesCategory && matchesMonth;
     });
-  }, [transactions, myPersonalExpenses, selectedPersonalMemberUid, personalFilterScope, members, user, userNickname, searchQuery, categoryFilter, selectedMonth]);
-
-
-
-
+  }, [myPersonalExpenses, searchQuery, categoryFilter, selectedMonth]);
 
   // Available unique months from all transactions
   const availableMonths = useMemo(() => {
@@ -6106,17 +5937,13 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     const isPersonalTab = insightsTab === 'personal';
 
     const monthTransactions = transactions.filter(t => 
-      t.isShared &&
       (selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth))) &&
       t.category !== '__FUND_INIT__' && 
       t.category !== '__FUND_SPEND__' &&
       t.category !== '__SHOPPING__' &&
-      t.category !== '__BILL__' &&
       t.category !== '__CHORE__' &&
-      t.category !== '__DELETE_PROPOSAL__' &&
       t.category !== 'Payment'
     );
-
     const monthPersonalExpenses = myPersonalExpenses.filter(t => selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth)));
 
     const targetTransactions = isPersonalTab ? monthPersonalExpenses : monthTransactions;
@@ -6340,7 +6167,6 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
   }
 
   // LOGIN PAGE VIEW (Unauthenticated State)
-
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F6F8F6] dark:bg-slate-950 p-4 font-sans relative overflow-hidden transition-colors duration-300">
@@ -8054,35 +7880,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         <main className="flex-grow pt-20 px-4 sm:px-8 pb-24 overflow-y-auto">
           <ErrorBoundary>
-            {currentView === 'home' && (
-              <DashboardHome
-                transactions={transactions}
-                members={members}
-                userNickname={userNickname}
-                computedStats={computedStats}
-                monthlyBudget={monthlyBudget}
-                personalCap={personalCap}
-                setIsAddExpenseOpen={setIsAddExpenseOpen}
-                setIsSettleModalOpen={setIsSettleModalOpen}
-                setSettlePayer={setSettlePayer}
-                setSettleReceiver={setSettleReceiver}
-                setSettleAmount={setSettleAmount}
-                setActiveReceiptZoom={setActiveReceiptZoom}
-                handleDeleteTransaction={handleDeleteTransaction}
-                handleEditTransaction={handleEditTransaction}
-                setCurrentView={setCurrentView}
-              />
-
-            )}
+            {currentView === 'home' && <ViewRenderer render={renderHome} />}
             {currentView === 'ledger' && <ViewRenderer render={renderLedger} />}
             {currentView === 'personal-expenses' && <ViewRenderer render={renderPersonalExpenses} />}
-            {(currentView === 'funds' || currentView === 'fund-tracker') && (
-              <ViewRenderer render={renderFundTracker} />
-            )}
-            {currentView === 'insights' && (
-              <ViewRenderer render={renderInsights} />
-            )}
-
+            {currentView === 'fund-tracker' && <ViewRenderer render={renderFundTracker} />}
+            {currentView === 'insights' && <ViewRenderer render={renderInsights} />}
             {currentView === 'settlement-records' && <ViewRenderer render={renderSettlementRecords} />}
             {currentView === 'receipts' && <ViewRenderer render={renderReceipts} />}
             {currentView === 'shopping-board' && <ViewRenderer render={renderShoppingBoard} />}
@@ -8090,7 +7892,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {currentView === 'settings' && <ViewRenderer render={renderSettings} />}
           </ErrorBoundary>
         </main>
-
 
 
         {/* Add Expense Modal Overlay */}
@@ -8160,13 +7961,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           <span className="text-xs sm:text-sm">Quick add</span>
         </button>
       </div>
-
-      {/* PWA Install App Popup */}
-      <InstallAppModal triggerToast={triggerToast} />
     </div>
   );
-
-
 
   // ==========================================
   // PAGE 1: HOME (DASHBOARD)
@@ -8915,10 +8711,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             ) : (
               filteredTransactions.map((t) => {
-                const currentUid = user?.id || user?.uid || auth.currentUser?.uid;
-                const isCreator = !t.createdBy || t.createdBy === 'anonymous' || (currentUid && (t.createdBy === currentUid || t.paidByUid === currentUid));
-                const isSettlement = t.category === 'Payment';
-
+                const isCreator = !t.createdBy || t.createdBy === 'anonymous' || t.createdBy === auth.currentUser?.uid;
                 return (
                   <div key={t.id} className="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100 gap-2 sm:gap-4">
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
@@ -8957,8 +8750,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
                     <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 border-t border-dashed border-[#F6F8F6] dark:border-slate-800 sm:border-t-0 pt-2.5 sm:pt-0">
                       <div className="text-left sm:text-right">
-                        <p className={`font-black text-xs sm:text-sm ${isSettlement ? 'text-emerald-700 dark:text-[#A3E635]' : 'text-[#1A3827] dark:text-slate-100'}`}>
-                          {isSettlement ? `+${formatINR(t.amount)}` : formatINR(t.amount)}
+                        <p className={`font-black text-xs sm:text-sm ${t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? 'text-red-700 dark:text-rose-500' : 'text-[#1A3827] dark:text-[#A3E635]'}`}>
+                          {t.paidBy === 'Alex' || t.paidBy === 'Sampath Jogi Pusala' || t.paidBy === userNickname ? '-' : '+'}{formatINR(t.amount)}
                         </p>
                         <div className="flex items-center gap-1.5 mt-0.5 sm:justify-end text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
                           <Calendar className="w-3 h-3 hidden sm:block" />
@@ -8999,416 +8792,327 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   function openAddPersonalExpense() {
     setEditingTransaction(null);
     setIsAddExpenseOpen(true);
-    const currentUid = auth.currentUser?.uid || user?.id || user?.uid || 'anonymous';
-    
-    let targetUid = currentUid;
-    if (selectedPersonalMemberUid !== 'all' && selectedPersonalMemberUid !== 'me') {
-      const activeMem = (members || []).find(m => 
-        (m.uid && String(m.uid) === String(selectedPersonalMemberUid)) || 
-        (m.id && String(m.id) === String(selectedPersonalMemberUid)) || 
-        (m.nickname && m.nickname === selectedPersonalMemberUid)
-      );
-      if (activeMem) {
-        targetUid = activeMem.uid || activeMem.id || activeMem.nickname;
-      } else {
-        targetUid = selectedPersonalMemberUid;
-      }
-    }
-
-    setFormPaidBy(targetUid);
+    const currentUid = auth.currentUser?.uid || 'anonymous';
+    setFormPaidBy(currentUid);
     const newSplits = {};
-    (members || []).forEach(m => {
-      const mId = m.uid || m.id || m.nickname;
-      newSplits[mId] = String(mId) === String(targetUid) || (m.nickname && m.nickname === targetUid);
+    members.forEach(m => {
+      newSplits[m.uid] = m.uid === currentUid;
     });
     setSelectedSplitMembers(newSplits);
   }
 
   function renderPersonalExpenses() {
-    const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'Groceries', 'Fuel', 'People', 'Other'];
-    const currentUid = user?.id || user?.uid || auth?.currentUser?.uid || 'anonymous';
-    const activeMemberObj = (members || []).find(m =>
-      (m.uid && String(m.uid) === String(selectedPersonalMemberUid)) ||
-      (m.id && String(m.id) === String(selectedPersonalMemberUid)) ||
-      (m.nickname && m.nickname === selectedPersonalMemberUid)
-    );
-    const activeMemberName = selectedPersonalMemberUid === 'all'
-      ? 'All Roommates'
-      : selectedPersonalMemberUid === 'me'
-      ? (userNickname || 'You')
-      : (activeMemberObj?.nickname || 'Member');
-
+    const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'People'];
     const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
-    const activeMonthLabel = (() => {
-      const [y, m] = activeMonth.split('-');
-      return new Date(Number(y), Number(m) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
-    })();
-
-    const monthTotal = filteredPersonalExpenses.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-    const activeCapLimit = selectedPersonalMemberUid === 'all' ? personalCap * (members.length || 1) : personalCap;
-    const capPct = Math.min((monthTotal / (activeCapLimit || 1)) * 100, 100);
-    const capOver = capPct >= 100;
-    const capWarn = capPct >= 80;
-
-    const exportTitle = selectedPersonalMemberUid === 'all'
-      ? 'Personal_All_Roommates'
-      : `Personal_${activeMemberObj?.nickname || userNickname || 'Me'}`;
-
-    /* ── Transaction row ─────────────────────────── */
-    const renderTxRow = (t) => {
-      const isCreator = !t.createdBy || t.createdBy === 'anonymous' ||
-        (currentUid && (t.createdBy === currentUid || t.paidByUid === currentUid));
-      return (
-        <div key={t.id} className="group flex items-center gap-4 px-5 py-3.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800/40 transition-colors duration-100">
-          <div className="w-10 h-10 rounded-2xl bg-[#EAF0EC] dark:bg-slate-800 border border-[#E3E8E3]/60 dark:border-slate-700/60 flex items-center justify-center shrink-0 shadow-sm">
-            {getCategoryIcon(t.category)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-bold text-[#1A3827] dark:text-slate-100 truncate">{t.title}</p>
-              {t.isShared && (
-                <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#A3E635]/20 text-[#1A3827] dark:bg-[#A3E635]/10 dark:text-[#A3E635] border border-[#A3E635]/30 uppercase tracking-wide">
-                  Shared
-                </span>
-              )}
-              {t.isEdited && (
-                <span onClick={(e) => { e.stopPropagation(); setActiveEditHistoryTx(t); }} className="shrink-0 text-[9px] font-bold text-rose-400 italic cursor-pointer hover:underline">(edited)</span>
-              )}
-            </div>
-            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
-              <span className="font-mono text-[9px] bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] px-1.5 py-0.5 rounded border border-[#E3E8E3]/60 dark:border-slate-700">{formatTxId(t.id)}</span>
-              <span className="font-semibold">{t.category}</span>
-              <span className="opacity-30">·</span>
-              <span>{t.date}{t.time ? ` · ${parseTimeAndHistory(t.time).time}` : ''}</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <p className="text-sm font-black text-rose-600 dark:text-rose-400 tabular-nums">-{formatINR(t.amount)}</p>
-            {isCreator && (
-              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => handleEditTransaction(t)} className="p-1.5 text-[#5C6E5C] hover:text-[#1A3827] dark:hover:text-white hover:bg-[#EAF0EC] dark:hover:bg-slate-700 rounded-lg transition-all">
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={() => handleDeleteTransaction(t)} className="p-1.5 text-[#5C6E5C] hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-all">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    };
+    const monthlyPersonalTotal = selectedMonth === 'All'
+      ? myPersonalExpenses.reduce((sum, t) => sum + t.amount, 0)
+      : myPersonalExpenses.filter(t => t.date && t.date.startsWith(activeMonth)).reduce((sum, t) => sum + t.amount, 0);
+    const personalPercentage = Math.min((monthlyPersonalTotal / personalCap) * 100, 100);
 
     return (
       <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
-
+        
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Personal Expenses</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Private ledgers, tracked per member.</p>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Personal expenses</h1>
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Your private ledger, separate from room bills.</p>
           </div>
-          <div className="flex items-center gap-2.5 self-start sm:self-auto">
-            <div className="relative">
-              <button
+          
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            {/* Export Dropdown */}
+            <div className="relative flex-1 sm:flex-none">
+              <button 
                 onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                className="flex items-center gap-1.5 border border-[#E3E8E3] dark:border-slate-700 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all"
+                className="w-full flex items-center justify-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download className="w-4 h-4" />
                 <span>Export</span>
-                <ChevronDown className="w-3 h-3" />
+                <ChevronDown className="w-3.5 h-3.5" />
               </button>
+              
               {isExportDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl shadow-xl py-1.5 z-40 text-xs font-bold text-[#1A3827] dark:text-slate-200">
-                    <button onClick={() => { exportToCSV(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-emerald-600" /> CSV</button>
-                    <button onClick={() => { exportToExcel(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"><Sliders className="w-3.5 h-3.5 text-blue-500" /> Excel</button>
-                    <button onClick={() => { exportToPDF(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-amber-500" /> PDF</button>
+                  <div className="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+                    <button 
+                      onClick={() => { exportToCSV(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                    >
+                      <FileText className="w-4 h-4 text-emerald-700" />
+                      <span>Export to CSV</span>
+                    </button>
+                    <button 
+                      onClick={() => { exportToExcel(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                    >
+                      <Sliders className="w-4 h-4 text-blue-600" />
+                      <span>Export to Excel</span>
+                    </button>
+                    <button 
+                      onClick={() => { exportToPDF(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      <span>Download PDF</span>
+                    </button>
                   </div>
                 </>
               )}
             </div>
-            <button
+
+            <button 
               onClick={openAddPersonalExpense}
-              className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-[#BEF264] transition-all flex items-center gap-2 shadow-sm"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
             >
               <Plus className="w-4 h-4" />
-              <span>Add expense</span>
+              <span>Add personal expense</span>
             </button>
           </div>
         </div>
 
-        {/* Hero card */}
-        {selectedPersonalMemberUid !== 'all' && (
-          <div className="bg-gradient-to-br from-[#1A3827] via-[#204530] to-[#0D1E14] dark:from-[#0C1012] dark:via-[#141A1D] dark:to-[#060809] text-white p-6 sm:p-7 rounded-3xl border border-[#A3E635]/20 relative overflow-hidden transition-all duration-300">
-            <div className="absolute right-0 top-0 w-64 h-64 bg-[#A3E635]/10 blur-3xl rounded-full -mr-10 -mt-10 pointer-events-none" />
-            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-5 z-10 relative">
-              <div>
-                <div className="flex items-center gap-2 text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-2">
-                  <span className="w-2 h-2 rounded-full bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-pulse" />
-                  <span>{activeMemberName} · {selectedMonth === 'All' ? 'All Time' : activeMonthLabel}</span>
-                </div>
-                <p className="text-sm text-slate-300 font-medium">Total personal spend</p>
-                <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1 drop-shadow-sm tabular-nums">{formatINR(monthTotal)}</h2>
-              </div>
-              <div className="space-y-3 sm:text-right">
-                <div>
-                  <div className="flex items-center justify-between sm:justify-end gap-3 mb-1.5">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Monthly limit</span>
-                    <button
-                      onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }}
-                      className="text-[10px] text-[#A3E635] hover:text-white font-bold flex items-center gap-1 transition-colors"
-                    >
-                      <Pencil className="w-2.5 h-2.5" /> {isEditingPersonalCap ? 'editing...' : formatINR(activeCapLimit)}
-                    </button>
-                  </div>
-                  {isEditingPersonalCap ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">₹</span>
-                      <input
-                        type="number" min="0" value={personalCapInput}
-                        onChange={e => setPersonalCapInput(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') { const v = Number(personalCapInput); if (v > 0) { setPersonalCap(v); localStorage.setItem('personalCap', v); } setIsEditingPersonalCap(false); }
-                          if (e.key === 'Escape') setIsEditingPersonalCap(false);
-                        }}
-                        className="w-28 bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-sm font-bold text-white outline-none focus:border-[#A3E635]"
-                        autoFocus
-                      />
-                      <button onClick={() => { const v = Number(personalCapInput); if (v > 0) { setPersonalCap(v); localStorage.setItem('personalCap', v); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#A3E635] text-[#1A3827] px-2.5 py-1 rounded-lg">Save</button>
-                      <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] font-bold text-slate-400">Cancel</button>
-                    </div>
-                  ) : (
-                    <div className="w-full sm:w-48 bg-white/10 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full transition-all duration-700 ${capOver ? 'bg-rose-500' : capWarn ? 'bg-amber-400' : 'bg-[#A3E635]'}`}
-                        style={{ width: `${capPct}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-                <div className="flex gap-4 sm:justify-end">
-                  <div className="text-center">
-                    <p className={`text-lg font-black tabular-nums ${capOver ? 'text-rose-400' : 'text-[#A3E635]'}`}>{capPct.toFixed(0)}%</p>
-                    <p className="text-[10px] text-slate-400">used</p>
-                  </div>
-                  <div className="text-center">
-                    <p className={`text-lg font-black tabular-nums ${capOver ? 'text-rose-400' : 'text-white'}`}>{formatINR(Math.max(0, activeCapLimit - monthTotal))}</p>
-                    <p className="text-[10px] text-slate-400">remaining</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-lg font-black text-white tabular-nums">{filteredPersonalExpenses.length}</p>
-                    <p className="text-[10px] text-slate-400">entries</p>
-                  </div>
-                </div>
-              </div>
+        {/* Expense Meter */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm space-y-3 transition-colors duration-300">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[10px] sm:text-xs font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">
+                Expense Meter — {selectedMonth === 'All' ? 'All Time' : (() => {
+                  const [year, month] = activeMonth.split('-');
+                  const dateObj = new Date(Number(year), Number(month) - 1, 1);
+                  return dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+                })()}
+              </p>
+              <p className="text-lg sm:text-xl font-extrabold text-[#1A3827] dark:text-slate-100 mt-1">
+                {formatINR(monthlyPersonalTotal)} / {formatINR(personalCap)}
+              </p>
             </div>
-          </div>
-        )}
-
-        {/* Controls */}
-        <div className="flex flex-col gap-3">
-          {/* Member tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
-            <button
-              onClick={() => setSelectedPersonalMemberUid('all')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 flex items-center gap-2 ${
-                selectedPersonalMemberUid === 'all'
-                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                  : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700 hover:border-[#1A3827] dark:hover:border-[#A3E635]'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" /> All
-            </button>
-            <button
-              onClick={() => setSelectedPersonalMemberUid('me')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 flex items-center gap-2 ${
-                selectedPersonalMemberUid === 'me'
-                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                  : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700 hover:border-[#1A3827] dark:hover:border-[#A3E635]'
-              }`}
-            >
-              <User className="w-3.5 h-3.5" /> {userNickname?.split(' ')[0] || 'Me'} (You)
-            </button>
-            {(members || []).map(m => {
-              const isMe = (m.uid && m.uid === currentUid) || (m.id && m.id === currentUid) || (m.nickname && userNickname && m.nickname.toLowerCase() === userNickname.toLowerCase());
-              if (isMe) return null;
-              const mId = m.uid || m.id || m.nickname;
-              return (
-                <button
-                  key={mId}
-                  onClick={() => setSelectedPersonalMemberUid(mId)}
-                  className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 flex items-center gap-2 ${
-                    selectedPersonalMemberUid === mId
-                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                      : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700 hover:border-[#1A3827] dark:hover:border-[#A3E635]'
-                  }`}
-                >
-                  <User className="w-3.5 h-3.5" /> {m.nickname?.split(' ')[0] || m.nickname}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Scope + Month + Category */}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="flex bg-[#EAF0EC] dark:bg-slate-800 rounded-2xl p-1 gap-1 flex-1">
-              <button
-                onClick={() => setPersonalFilterScope('personal')}
-                className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
-                  personalFilterScope === 'personal'
-                    ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-sm'
-                    : 'text-[#5C6E5C] dark:text-slate-500 hover:text-[#1A3827]'
-                }`}
-              >
-                <Lock className="w-3 h-3" /> Private only
-              </button>
-              <button
-                onClick={() => setPersonalFilterScope('all_paid')}
-                className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
-                  personalFilterScope === 'all_paid'
-                    ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-sm'
-                    : 'text-[#5C6E5C] dark:text-slate-500 hover:text-[#1A3827]'
-                }`}
-              >
-                <CreditCard className="w-3 h-3" /> All paid by member
-              </button>
-            </div>
-            <select
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(e.target.value)}
-              className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 focus:outline-none cursor-pointer hover:border-[#1A3827] dark:hover:border-[#A3E635] transition-colors"
-            >
-              <option value="All">All months</option>
-              {availableMonths.map(m => {
-                const [y, mo] = m.split('-');
-                const label = new Date(Number(y), Number(mo) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
-                return <option key={m} value={m}>{label}</option>;
-              })}
-            </select>
-            <select
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 focus:outline-none cursor-pointer hover:border-[#1A3827] dark:hover:border-[#A3E635] transition-colors"
-            >
-              {categories.map(c => <option key={c} value={c}>{c === 'All' ? 'All categories' : c}</option>)}
-            </select>
-          </div>
-
-          {/* Search */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-[#5C6E5C] dark:text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search expenses..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-11 pr-10 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl text-sm text-[#1A3827] dark:text-white placeholder:text-[#5C6E5C]/60 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#1A3827]/20 dark:focus:ring-[#A3E635]/20 transition-all"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#5C6E5C] hover:text-[#1A3827] dark:hover:text-white transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Transaction list */}
-        {selectedPersonalMemberUid === 'all' ? (
-          <div className="space-y-4">
-            {(members || []).map(m => {
-              const isMe = (m.uid && m.uid === currentUid) || (m.id && m.id === currentUid) || (m.nickname && userNickname && m.nickname.toLowerCase() === userNickname.toLowerCase());
-              const mNick = isMe ? (userNickname || 'You') : (m.nickname || 'Member');
-              const mNickNorm = (m.nickname || '').trim().toLowerCase();
-              const mFirst = mNickNorm.split(' ')[0] || '';
-              const mId = String(m.uid || m.id || m.nickname || '');
-              const mTxns = filteredPersonalExpenses.filter(t => {
-                const payer = (t.paidBy || '').trim().toLowerCase();
-                const payerUid = t.paidByUid ? String(t.paidByUid) : '';
-                const payerFirst = payer.split(' ')[0] || '';
-                if (isMe) return payerUid === currentUid || t.createdBy === currentUid || payer === (userNickname || '').toLowerCase();
-                if (payerUid && mId && payerUid === mId) return true;
-                if (payer && mNickNorm) return payer === mNickNorm || payer.includes(mNickNorm) || mNickNorm.includes(payer) || (payerFirst && mFirst && payerFirst === mFirst);
-                return false;
-              });
-              const mTotal = mTxns.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-              return (
-                <div key={m.uid || m.id || m.nickname} className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-colors duration-300">
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-[#EAF0EC] dark:border-slate-800 bg-[#F6F8F6]/40 dark:bg-slate-950/20">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#1A3827] to-[#204530] text-white text-[11px] font-black flex items-center justify-center shadow-sm shrink-0">
-                        {fmtInitials(m.nickname || 'M')}
-                      </div>
-                      <div>
-                        <p className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100">{mNick}</p>
-                        <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">{mTxns.length} transaction{mTxns.length !== 1 ? 's' : ''}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-base font-black text-rose-600 dark:text-rose-400 tabular-nums">{formatINR(mTotal)}</p>
-                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">spent</p>
-                    </div>
-                  </div>
-                  {mTxns.length === 0 ? (
-                    <div className="text-center py-8 px-4 text-[#5C6E5C] dark:text-slate-400">
-                      <p className="text-xs font-semibold">No expenses</p>
-                      <button onClick={() => setPersonalFilterScope('all_paid')} className="text-[10px] text-[#1A3827] dark:text-[#A3E635] font-black underline mt-1">
-                        Show all paid by {mNick} →
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800/60">
-                      {mTxns.map(renderTxRow)}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-colors duration-300">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#EAF0EC] dark:border-slate-800 bg-[#F6F8F6]/40 dark:bg-slate-950/20">
-              <div>
-                <p className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100">
-                  {activeMemberName}{activeMemberName.endsWith('s') ? "'" : "'s"} expenses
-                </p>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">
-                  {selectedMonth === 'All' ? 'All time' : activeMonthLabel} · {personalFilterScope === 'personal' ? 'Private only' : 'All paid by member'}
-                </p>
-              </div>
-              <span className="text-[10px] font-extrabold text-[#5C6E5C] dark:text-slate-400 bg-[#EAF0EC] dark:bg-slate-800 px-3 py-1.5 rounded-xl">
-                {filteredPersonalExpenses.length} item{filteredPersonalExpenses.length !== 1 ? 's' : ''}
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                personalPercentage >= 90 ? 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-rose-500' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'
+              }`}>
+                {personalPercentage.toFixed(0)}% Used
               </span>
+              {/* Edit limit button */}
+              <button
+                onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }}
+                className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all"
+                title="Edit personal spending limit"
+              >
+                <Pencil className="w-3.5 h-3.5 text-[#5C6E5C] dark:text-slate-400" />
+              </button>
             </div>
-            {filteredPersonalExpenses.length === 0 ? (
-              <div className="flex flex-col items-center py-12 px-6 gap-3 text-center">
-                <div className="w-14 h-14 bg-[#EAF0EC] dark:bg-slate-800 rounded-2xl flex items-center justify-center text-2xl border border-[#E3E8E3] dark:border-slate-700">💡</div>
-                <div>
-                  <p className="text-sm font-extrabold text-[#1A3827] dark:text-slate-200">
-                    No {personalFilterScope === 'personal' ? 'private' : ''} expenses found
-                  </p>
-                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 max-w-xs leading-relaxed">
-                    Shared room bills (Groceries, Rent, Utilities) live in <strong>The Ledger</strong>, not here.
-                  </p>
-                </div>
-                {personalFilterScope === 'personal' && (
-                  <button
-                    onClick={() => setPersonalFilterScope('all_paid')}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-xs font-black hover:bg-[#255038] dark:hover:bg-[#BEF264] transition-all shadow-sm"
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    Show all expenses paid by {activeMemberName} →
-                  </button>
-                )}
+          </div>
+
+          {/* Inline limit editor */}
+          {isEditingPersonalCap && (
+            <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
+              <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">Set limit (₹)</span>
+              <input
+                type="number"
+                min="0"
+                value={personalCapInput}
+                onChange={e => setPersonalCapInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const val = Number(personalCapInput);
+                    if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); }
+                    setIsEditingPersonalCap(false);
+                  }
+                  if (e.key === 'Escape') setIsEditingPersonalCap(false);
+                }}
+                className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0"
+                autoFocus
+              />
+              <button
+                onClick={() => {
+                  const val = Number(personalCapInput);
+                  if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); }
+                  setIsEditingPersonalCap(false);
+                }}
+                className="text-[10px] font-black bg-[#1A3827] text-white px-3 py-1 rounded-lg hover:bg-[#255038] transition-all"
+              >Save</button>
+              <button
+                onClick={() => setIsEditingPersonalCap(false)}
+                className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 transition-all"
+              >Cancel</button>
+            </div>
+          )}
+          
+          <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 rounded-full h-2 overflow-hidden border border-[#E3E8E3]/50 dark:border-slate-800">
+            <div 
+              className={`h-full rounded-full transition-all duration-300 ${
+                personalPercentage >= 90 ? 'bg-red-600' : 'bg-[#1A3827] dark:bg-[#A3E635]'
+              }`}
+              style={{ width: `${personalPercentage}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+            {personalPercentage >= 100 
+              ? "⚠️ You have reached your monthly personal spending limit!" 
+              : `You have ${formatINR(personalCap - monthlyPersonalTotal)} remaining before reaching your ${formatINR(personalCap)} limit.`}
+          </p>
+        </div>
+
+        {/* Search & Filter Bar */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center gap-3 justify-between transition-colors duration-300">
+          <div className="flex-1 relative">
+            <Search className="w-4 h-4 text-[#5C6E5C] absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input 
+              type="text" 
+              placeholder="Search title, TX ID, category..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
+            />
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 w-full md:w-auto">
+            <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:items-center sm:gap-3 sm:w-auto">
+              <select 
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="w-full border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3.5 py-2.5 text-base sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-semibold cursor-pointer"
+              >
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c === 'All' ? 'All categories' : c}</option>
+                ))}
+              </select>
+
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="w-full border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3.5 py-2.5 text-base sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-semibold cursor-pointer"
+              >
+                <option value="All">All months</option>
+                {availableMonths.map((m) => {
+                  const [year, month] = m.split('-');
+                  const dateObj = new Date(Number(year), Number(month) - 1, 1);
+                  const monthName = dateObj.toLocaleString('default', { month: 'long' });
+                  return (
+                    <option key={m} value={m}>
+                      📅 {monthName} {year}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            <button 
+              onClick={() => {
+                setSearchQuery('');
+                setCategoryFilter('All');
+                setSelectedMonth(getLocalMonthStr());
+                triggerToast('Search filter reset.');
+              }}
+              className="w-full sm:w-auto bg-[#1A3827] dark:bg-slate-800 text-white px-4 py-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all text-center"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Transaction list panel */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-colors duration-300">
+          <div className="px-6 py-5 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center bg-[#F6F8F6]/30 dark:bg-slate-950/20">
+            <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">
+              {selectedMonth === 'All' ? 'All Personal Expenses' : (() => {
+                const [year, month] = activeMonth.split('-');
+                const dateObj = new Date(Number(year), Number(month) - 1, 1);
+                return dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+              })()}
+            </h3>
+            <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">
+              {filteredPersonalExpenses.length === myPersonalExpenses.length 
+                ? `${filteredPersonalExpenses.length} transactions` 
+                : `Filtered ${filteredPersonalExpenses.length} of ${myPersonalExpenses.length}`}
+            </span>
+          </div>
+
+          <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800">
+            {myPersonalExpenses.length === 0 ? (
+              <div className="text-center py-12 text-[#5C6E5C] dark:text-slate-400">
+                <p className="text-xs sm:text-sm font-semibold">No personal expenses logged yet.</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-505 mt-1">Add a bill split with only yourself to track it here.</p>
+              </div>
+            ) : filteredPersonalExpenses.length === 0 ? (
+              <div className="text-center py-12 text-[#5C6E5C] dark:text-slate-400">
+                <p className="text-xs sm:text-sm font-semibold">No personal transactions match your filters.</p>
               </div>
             ) : (
-              <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800/60">
-                {filteredPersonalExpenses.map(renderTxRow)}
-              </div>
+              filteredPersonalExpenses.map((t) => {
+                const isCreator = !t.createdBy || t.createdBy === 'anonymous' || t.createdBy === auth.currentUser?.uid;
+                return (
+                  <div key={t.id} className="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100 gap-2 sm:gap-4">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 flex items-center justify-center border border-[#E3E8E3]/20 shrink-0">
+                        {getCategoryIcon(t.category)}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">
+                          {t.title}
+                          {t.isEdited && (
+                            <span 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveEditHistoryTx(t);
+                              }}
+                              className="ml-1.5 text-[9px] text-rose-500 dark:text-rose-400 italic font-bold tracking-wide cursor-pointer hover:underline"
+                              title="Click to view edit history"
+                            >
+                              (Edited)
+                            </span>
+                          )}
+                        </h4>
+                        <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
+                          <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Transaction ID">
+                            {formatTxId(t.id)}
+                          </span>
+                          <span className="text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0">
+                            {t.category}
+                          </span>
+                          <span className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold truncate">
+                            Paid by {t.paidByUid === auth.currentUser?.uid ? 'You' : t.paidBy}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 border-t border-dashed border-[#F6F8F6] dark:border-slate-800 sm:border-t-0 pt-2.5 sm:pt-0">
+                      <div className="text-left sm:text-right">
+                        <p className="font-black text-xs sm:text-sm text-red-700 dark:text-rose-500">
+                          -{formatINR(t.amount)}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5 sm:justify-end text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
+                          <Calendar className="w-3 h-3 hidden sm:block" />
+                          <span>{t.date} {t.time && `• ${parseTimeAndHistory(t.time).time}`}</span>
+                        </div>
+                      </div>
+
+                      {isCreator && (
+                        <div className="flex items-center gap-1 border-l border-slate-150 dark:border-slate-800 pl-3">
+                          <button 
+                            onClick={() => handleEditTransaction(t)}
+                            className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                            title="Edit transaction"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteTransaction(t)}
+                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
+                            title="Delete transaction"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
-        )}
+        </div>
 
       </div>
     );
