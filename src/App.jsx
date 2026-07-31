@@ -2278,14 +2278,14 @@ export default function App() {
   };
 
   // ─── Auto Monthly Statement Scheduler ───────────────────────────────────────
-  // Automatically sends monthly statements on the 5th of every month.
+  // Automatically sends monthly statements on the 1st of every month.
   // Uses localStorage to track "last sent" month and avoid duplicate sends.
   useEffect(() => {
     if (!userRoomId || !user || members.length === 0 || transactions.length === 0) return;
 
     const today = new Date();
     const dayOfMonth = today.getDate();
-    if (dayOfMonth !== 5) return; // Only trigger on the 5th
+    if (dayOfMonth !== 1) return; // Only trigger on the 1st of the month
 
     const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     const storageKey = `tallyin_auto_stmt_sent_${userRoomId}_${monthKey}`;
