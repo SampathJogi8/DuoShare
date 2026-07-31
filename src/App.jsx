@@ -8997,7 +8997,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   }
 
   function renderPersonalExpenses() {
-    const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'People', 'Groceries', 'Fuel', 'Other'];
+    const categories = ['All', 'Food', 'Utilities', 'Rent', 'Shopping', 'Transport', 'Groceries', 'Fuel', 'People', 'Other'];
     const currentUid = user?.id || user?.uid || auth?.currentUser?.uid || 'anonymous';
     const activeMemberObj = (members || []).find(m =>
       (m.uid && String(m.uid) === String(selectedPersonalMemberUid)) ||
@@ -9019,52 +9019,49 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     const monthTotal = filteredPersonalExpenses.reduce((s, t) => s + (Number(t.amount) || 0), 0);
     const activeCapLimit = selectedPersonalMemberUid === 'all' ? personalCap * (members.length || 1) : personalCap;
     const capPct = Math.min((monthTotal / (activeCapLimit || 1)) * 100, 100);
+    const capOver = capPct >= 100;
+    const capWarn = capPct >= 80;
 
     const exportTitle = selectedPersonalMemberUid === 'all'
       ? 'Personal_All_Roommates'
-      : selectedPersonalMemberUid === 'me'
-      ? `Personal_${userNickname || 'You'}`
-      : `Personal_${activeMemberObj?.nickname || 'Member'}`;
+      : `Personal_${activeMemberObj?.nickname || userNickname || 'Me'}`;
 
-    /* ── Transaction row renderer ─────────────────── */
+    /* ── Transaction row ─────────────────────────── */
     const renderTxRow = (t) => {
       const isCreator = !t.createdBy || t.createdBy === 'anonymous' ||
         (currentUid && (t.createdBy === currentUid || t.paidByUid === currentUid));
       return (
-        <div key={t.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors rounded-xl mx-2 mb-0.5">
-          {/* Icon */}
-          <div className="w-9 h-9 rounded-xl bg-[#F0F4F1] dark:bg-slate-800 flex items-center justify-center shrink-0">
+        <div key={t.id} className="group flex items-center gap-4 px-5 py-3.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800/40 transition-colors duration-100">
+          <div className="w-10 h-10 rounded-2xl bg-[#EAF0EC] dark:bg-slate-800 border border-[#E3E8E3]/60 dark:border-slate-700/60 flex items-center justify-center shrink-0 shadow-sm">
             {getCategoryIcon(t.category)}
           </div>
-
-          {/* Title + meta */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-[#1A3827] dark:text-slate-100 truncate">
-              {t.title}
-              {t.isEdited && (
-                <span
-                  onClick={(e) => { e.stopPropagation(); setActiveEditHistoryTx(t); }}
-                  className="ml-1.5 text-[9px] text-rose-500 italic cursor-pointer hover:underline"
-                >(edited)</span>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-bold text-[#1A3827] dark:text-slate-100 truncate">{t.title}</p>
+              {t.isShared && (
+                <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-[#A3E635]/20 text-[#1A3827] dark:bg-[#A3E635]/10 dark:text-[#A3E635] border border-[#A3E635]/30 uppercase tracking-wide">
+                  Shared
+                </span>
               )}
-            </p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1.5">
-              <span className="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded text-[9px] font-mono">{formatTxId(t.id)}</span>
-              <span>{t.category}</span>
-              <span className="opacity-40">·</span>
+              {t.isEdited && (
+                <span onClick={(e) => { e.stopPropagation(); setActiveEditHistoryTx(t); }} className="shrink-0 text-[9px] font-bold text-rose-400 italic cursor-pointer hover:underline">(edited)</span>
+              )}
+            </div>
+            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
+              <span className="font-mono text-[9px] bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] px-1.5 py-0.5 rounded border border-[#E3E8E3]/60 dark:border-slate-700">{formatTxId(t.id)}</span>
+              <span className="font-semibold">{t.category}</span>
+              <span className="opacity-30">·</span>
               <span>{t.date}{t.time ? ` · ${parseTimeAndHistory(t.time).time}` : ''}</span>
             </p>
           </div>
-
-          {/* Amount + actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-sm font-black text-rose-600 dark:text-rose-400">-{formatINR(t.amount)}</span>
+          <div className="flex items-center gap-3 shrink-0">
+            <p className="text-sm font-black text-rose-600 dark:text-rose-400 tabular-nums">-{formatINR(t.amount)}</p>
             {isCreator && (
-              <div className="flex items-center gap-0.5">
-                <button onClick={() => handleEditTransaction(t)} className="p-1.5 text-slate-400 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-all">
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => handleEditTransaction(t)} className="p-1.5 text-[#5C6E5C] hover:text-[#1A3827] dark:hover:text-white hover:bg-[#EAF0EC] dark:hover:bg-slate-700 rounded-lg transition-all">
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={() => handleDeleteTransaction(t)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-all">
+                <button onClick={() => handleDeleteTransaction(t)} className="p-1.5 text-[#5C6E5C] hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-all">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -9075,322 +9072,319 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     };
 
     return (
-      <div className="max-w-3xl mx-auto space-y-5 animate-fade-in pb-10">
+      <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
 
-        {/* ── Top bar ──────────────────────────────── */}
-        <div className="flex items-center justify-between">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Personal Expenses</h1>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Private ledger · per member</p>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Personal Expenses</h1>
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Private ledgers, tracked per member.</p>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Export */}
+          <div className="flex items-center gap-2.5 self-start sm:self-auto">
             <div className="relative">
               <button
                 onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                className="flex items-center gap-1.5 border border-[#E3E8E3] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-300 px-3 py-2 rounded-xl text-xs font-bold transition-all"
+                className="flex items-center gap-1.5 border border-[#E3E8E3] dark:border-slate-700 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Export</span>
+                <span>Export</span>
                 <ChevronDown className="w-3 h-3" />
               </button>
               {isExportDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl shadow-xl py-1.5 z-40 text-xs font-bold text-slate-700 dark:text-slate-200">
-                    <button onClick={() => { exportToCSV(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-emerald-600" /> CSV</button>
-                    <button onClick={() => { exportToExcel(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"><Sliders className="w-3.5 h-3.5 text-blue-500" /> Excel</button>
-                    <button onClick={() => { exportToPDF(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-amber-500" /> PDF</button>
+                  <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl shadow-xl py-1.5 z-40 text-xs font-bold text-[#1A3827] dark:text-slate-200">
+                    <button onClick={() => { exportToCSV(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-emerald-600" /> CSV</button>
+                    <button onClick={() => { exportToExcel(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"><Sliders className="w-3.5 h-3.5 text-blue-500" /> Excel</button>
+                    <button onClick={() => { exportToPDF(filteredPersonalExpenses, exportTitle); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-amber-500" /> PDF</button>
                   </div>
                 </>
               )}
             </div>
-            {/* Add */}
             <button
               onClick={openAddPersonalExpense}
-              className="flex items-center gap-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#255038] dark:hover:bg-[#BEF264] transition-all shadow-sm"
+              className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-[#BEF264] transition-all flex items-center gap-2 shadow-sm"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Expense</span>
+              <Plus className="w-4 h-4" />
+              <span>Add expense</span>
             </button>
           </div>
         </div>
 
-        {/* ── Member tabs ──────────────────────────── */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
-          {/* All */}
-          <button
-            onClick={() => setSelectedPersonalMemberUid('all')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 ${
-              selectedPersonalMemberUid === 'all'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
-                : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" /> All
-          </button>
+        {/* Hero card */}
+        {selectedPersonalMemberUid !== 'all' && (
+          <div className="bg-gradient-to-br from-[#1A3827] via-[#204530] to-[#0D1E14] dark:from-[#0C1012] dark:via-[#141A1D] dark:to-[#060809] text-white p-6 sm:p-7 rounded-3xl border border-[#A3E635]/20 relative overflow-hidden transition-all duration-300">
+            <div className="absolute right-0 top-0 w-64 h-64 bg-[#A3E635]/10 blur-3xl rounded-full -mr-10 -mt-10 pointer-events-none" />
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-5 z-10 relative">
+              <div>
+                <div className="flex items-center gap-2 text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-2">
+                  <span className="w-2 h-2 rounded-full bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-pulse" />
+                  <span>{activeMemberName} · {selectedMonth === 'All' ? 'All Time' : activeMonthLabel}</span>
+                </div>
+                <p className="text-sm text-slate-300 font-medium">Total personal spend</p>
+                <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1 drop-shadow-sm tabular-nums">{formatINR(monthTotal)}</h2>
+              </div>
+              <div className="space-y-3 sm:text-right">
+                <div>
+                  <div className="flex items-center justify-between sm:justify-end gap-3 mb-1.5">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Monthly limit</span>
+                    <button
+                      onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }}
+                      className="text-[10px] text-[#A3E635] hover:text-white font-bold flex items-center gap-1 transition-colors"
+                    >
+                      <Pencil className="w-2.5 h-2.5" /> {isEditingPersonalCap ? 'editing...' : formatINR(activeCapLimit)}
+                    </button>
+                  </div>
+                  {isEditingPersonalCap ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400">₹</span>
+                      <input
+                        type="number" min="0" value={personalCapInput}
+                        onChange={e => setPersonalCapInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { const v = Number(personalCapInput); if (v > 0) { setPersonalCap(v); localStorage.setItem('personalCap', v); } setIsEditingPersonalCap(false); }
+                          if (e.key === 'Escape') setIsEditingPersonalCap(false);
+                        }}
+                        className="w-28 bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-sm font-bold text-white outline-none focus:border-[#A3E635]"
+                        autoFocus
+                      />
+                      <button onClick={() => { const v = Number(personalCapInput); if (v > 0) { setPersonalCap(v); localStorage.setItem('personalCap', v); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#A3E635] text-[#1A3827] px-2.5 py-1 rounded-lg">Save</button>
+                      <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] font-bold text-slate-400">Cancel</button>
+                    </div>
+                  ) : (
+                    <div className="w-full sm:w-48 bg-white/10 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-700 ${capOver ? 'bg-rose-500' : capWarn ? 'bg-amber-400' : 'bg-[#A3E635]'}`}
+                        style={{ width: `${capPct}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-4 sm:justify-end">
+                  <div className="text-center">
+                    <p className={`text-lg font-black tabular-nums ${capOver ? 'text-rose-400' : 'text-[#A3E635]'}`}>{capPct.toFixed(0)}%</p>
+                    <p className="text-[10px] text-slate-400">used</p>
+                  </div>
+                  <div className="text-center">
+                    <p className={`text-lg font-black tabular-nums ${capOver ? 'text-rose-400' : 'text-white'}`}>{formatINR(Math.max(0, activeCapLimit - monthTotal))}</p>
+                    <p className="text-[10px] text-slate-400">remaining</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-black text-white tabular-nums">{filteredPersonalExpenses.length}</p>
+                    <p className="text-[10px] text-slate-400">entries</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-          {/* Me */}
-          <button
-            onClick={() => setSelectedPersonalMemberUid('me')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 ${
-              selectedPersonalMemberUid === 'me'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
-                : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700'
-            }`}
-          >
-            <User className="w-3.5 h-3.5" /> Me ({userNickname?.split(' ')[0] || 'You'})
-          </button>
+        {/* Controls */}
+        <div className="flex flex-col gap-3">
+          {/* Member tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+            <button
+              onClick={() => setSelectedPersonalMemberUid('all')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 flex items-center gap-2 ${
+                selectedPersonalMemberUid === 'all'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                  : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700 hover:border-[#1A3827] dark:hover:border-[#A3E635]'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" /> All
+            </button>
+            <button
+              onClick={() => setSelectedPersonalMemberUid('me')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 flex items-center gap-2 ${
+                selectedPersonalMemberUid === 'me'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                  : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700 hover:border-[#1A3827] dark:hover:border-[#A3E635]'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" /> {userNickname?.split(' ')[0] || 'Me'} (You)
+            </button>
+            {(members || []).map(m => {
+              const isMe = (m.uid && m.uid === currentUid) || (m.id && m.id === currentUid) || (m.nickname && userNickname && m.nickname.toLowerCase() === userNickname.toLowerCase());
+              if (isMe) return null;
+              const mId = m.uid || m.id || m.nickname;
+              return (
+                <button
+                  key={mId}
+                  onClick={() => setSelectedPersonalMemberUid(mId)}
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 flex items-center gap-2 ${
+                    selectedPersonalMemberUid === mId
+                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                      : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700 hover:border-[#1A3827] dark:hover:border-[#A3E635]'
+                  }`}
+                >
+                  <User className="w-3.5 h-3.5" /> {m.nickname?.split(' ')[0] || m.nickname}
+                </button>
+              );
+            })}
+          </div>
 
-          {/* Other members */}
-          {(members || []).map(m => {
-            const isMe = (m.uid && m.uid === currentUid) || (m.id && m.id === currentUid) || (m.nickname && userNickname && m.nickname.toLowerCase() === userNickname.toLowerCase());
-            if (isMe) return null;
-            const mId = m.uid || m.id || m.nickname;
-            return (
+          {/* Scope + Month + Category */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex bg-[#EAF0EC] dark:bg-slate-800 rounded-2xl p-1 gap-1 flex-1">
               <button
-                key={mId}
-                onClick={() => setSelectedPersonalMemberUid(mId)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 ${
-                  selectedPersonalMemberUid === mId
-                    ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
-                    : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-700'
+                onClick={() => setPersonalFilterScope('personal')}
+                className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
+                  personalFilterScope === 'personal'
+                    ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-sm'
+                    : 'text-[#5C6E5C] dark:text-slate-500 hover:text-[#1A3827]'
                 }`}
               >
-                <User className="w-3.5 h-3.5" /> {m.nickname?.split(' ')[0] || m.nickname}
+                <Lock className="w-3 h-3" /> Private only
               </button>
-            );
-          })}
-        </div>
-
-        {/* ── Scope + Month filters ─────────────────── */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          {/* Scope toggle */}
-          <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 gap-1 flex-1">
-            <button
-              onClick={() => setPersonalFilterScope('personal')}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
-                personalFilterScope === 'personal'
-                  ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-sm'
-                  : 'text-slate-400 dark:text-slate-500'
-              }`}
+              <button
+                onClick={() => setPersonalFilterScope('all_paid')}
+                className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
+                  personalFilterScope === 'all_paid'
+                    ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-sm'
+                    : 'text-[#5C6E5C] dark:text-slate-500 hover:text-[#1A3827]'
+                }`}
+              >
+                <CreditCard className="w-3 h-3" /> All paid by member
+              </button>
+            </div>
+            <select
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 focus:outline-none cursor-pointer hover:border-[#1A3827] dark:hover:border-[#A3E635] transition-colors"
             >
-              <Lock className="w-3 h-3" /> Private only
-            </button>
-            <button
-              onClick={() => setPersonalFilterScope('all_paid')}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
-                personalFilterScope === 'all_paid'
-                  ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-sm'
-                  : 'text-slate-400 dark:text-slate-500'
-              }`}
+              <option value="All">All months</option>
+              {availableMonths.map(m => {
+                const [y, mo] = m.split('-');
+                const label = new Date(Number(y), Number(mo) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+                return <option key={m} value={m}>{label}</option>;
+              })}
+            </select>
+            <select
+              value={categoryFilter}
+              onChange={e => setCategoryFilter(e.target.value)}
+              className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 focus:outline-none cursor-pointer hover:border-[#1A3827] dark:hover:border-[#A3E635] transition-colors"
             >
-              <CreditCard className="w-3 h-3" /> All paid by member
-            </button>
+              {categories.map(c => <option key={c} value={c}>{c === 'All' ? 'All categories' : c}</option>)}
+            </select>
           </div>
 
-          {/* Month select */}
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 focus:outline-none cursor-pointer"
-          >
-            <option value="All">All months</option>
-            {availableMonths.map(m => {
-              const [y, mo] = m.split('-');
-              const label = new Date(Number(y), Number(mo) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
-              return <option key={m} value={m}>{label}</option>;
-            })}
-          </select>
-
-          {/* Category select */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 focus:outline-none cursor-pointer"
-          >
-            {categories.map(c => <option key={c} value={c}>{c === 'All' ? 'All categories' : c}</option>)}
-          </select>
+          {/* Search */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-[#5C6E5C] dark:text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search expenses..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-11 pr-10 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl text-sm text-[#1A3827] dark:text-white placeholder:text-[#5C6E5C]/60 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#1A3827]/20 dark:focus:ring-[#A3E635]/20 transition-all"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#5C6E5C] hover:text-[#1A3827] dark:hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* ── Summary cards ─────────────────────────── */}
-        {selectedPersonalMemberUid !== 'all' && (
-          <div className="grid grid-cols-3 gap-3">
-            {/* Total spent */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl px-4 py-3.5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Spent</p>
-              <p className="text-lg font-black text-rose-600 dark:text-rose-400 mt-0.5">{formatINR(monthTotal)}</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">{activeMonthLabel}</p>
-            </div>
-            {/* Budget remaining */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl px-4 py-3.5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Remaining</p>
-              <p className={`text-lg font-black mt-0.5 ${capPct >= 100 ? 'text-red-600' : 'text-emerald-600 dark:text-[#A3E635]'}`}>
-                {formatINR(Math.max(activeCapLimit - monthTotal, 0))}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-0.5">of {formatINR(activeCapLimit)} limit</p>
-            </div>
-            {/* Transactions count */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl px-4 py-3.5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Entries</p>
-              <p className="text-lg font-black text-[#1A3827] dark:text-slate-100 mt-0.5">{filteredPersonalExpenses.length}</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">transactions</p>
-            </div>
-          </div>
-        )}
-
-        {/* ── Budget meter (single member) ─────────── */}
-        {selectedPersonalMemberUid !== 'all' && (
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl px-4 py-3 flex items-center gap-4">
-            <div className="flex-1">
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly limit</span>
-                <button onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }} className="text-[10px] text-slate-400 hover:text-[#1A3827] dark:hover:text-white font-bold transition-colors flex items-center gap-1">
-                  <Pencil className="w-2.5 h-2.5" /> Edit
-                </button>
-              </div>
-              {isEditingPersonalCap ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 font-bold">₹</span>
-                  <input
-                    type="number" min="0" value={personalCapInput}
-                    onChange={e => setPersonalCapInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { const v = Number(personalCapInput); if (v > 0) { setPersonalCap(v); localStorage.setItem('personalCap', v); } setIsEditingPersonalCap(false); }
-                      if (e.key === 'Escape') setIsEditingPersonalCap(false);
-                    }}
-                    className="flex-1 bg-slate-50 dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-lg px-2 py-1 text-sm font-bold text-[#1A3827] dark:text-white outline-none"
-                    autoFocus
-                  />
-                  <button onClick={() => { const v = Number(personalCapInput); if (v > 0) { setPersonalCap(v); localStorage.setItem('personalCap', v); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#1A3827] text-white px-2.5 py-1 rounded-lg">Save</button>
-                  <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] font-bold text-slate-400 px-2 py-1">Cancel</button>
-                </div>
-              ) : (
-                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all duration-500 ${capPct >= 90 ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`}
-                    style={{ width: `${capPct}%` }}
-                  />
-                </div>
-              )}
-            </div>
-            <div className="text-right shrink-0">
-              <p className={`text-xs font-black ${capPct >= 90 ? 'text-rose-500' : 'text-[#1A3827] dark:text-[#A3E635]'}`}>{capPct.toFixed(0)}%</p>
-              <p className="text-[10px] text-slate-400">used</p>
-            </div>
-          </div>
-        )}
-
-        {/* ── Search bar ───────────────────────────── */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search expenses..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 rounded-xl text-sm text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-[#1A3827]/30"
-          />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {/* ── Transaction list ─────────────────────── */}
+        {/* Transaction list */}
         {selectedPersonalMemberUid === 'all' ? (
-          /* Separate sections per member */
           <div className="space-y-4">
             {(members || []).map(m => {
               const isMe = (m.uid && m.uid === currentUid) || (m.id && m.id === currentUid) || (m.nickname && userNickname && m.nickname.toLowerCase() === userNickname.toLowerCase());
               const mNick = isMe ? (userNickname || 'You') : (m.nickname || 'Member');
-              const mNickNorm = m.nickname ? m.nickname.trim().toLowerCase() : '';
+              const mNickNorm = (m.nickname || '').trim().toLowerCase();
               const mFirst = mNickNorm.split(' ')[0] || '';
-
+              const mId = String(m.uid || m.id || m.nickname || '');
               const mTxns = filteredPersonalExpenses.filter(t => {
                 const payer = (t.paidBy || '').trim().toLowerCase();
                 const payerUid = t.paidByUid ? String(t.paidByUid) : '';
                 const payerFirst = payer.split(' ')[0] || '';
                 if (isMe) return payerUid === currentUid || t.createdBy === currentUid || payer === (userNickname || '').toLowerCase();
-                if (payerUid && (m.uid || m.id) && payerUid === String(m.uid || m.id)) return true;
+                if (payerUid && mId && payerUid === mId) return true;
                 if (payer && mNickNorm) return payer === mNickNorm || payer.includes(mNickNorm) || mNickNorm.includes(payer) || (payerFirst && mFirst && payerFirst === mFirst);
                 return false;
               });
-
               const mTotal = mTxns.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-
               return (
-                <div key={m.uid || m.id || m.nickname} className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden">
-                  {/* Member header */}
-                  <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#F0F4F1] dark:border-slate-800">
+                <div key={m.uid || m.id || m.nickname} className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-colors duration-300">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-[#EAF0EC] dark:border-slate-800 bg-[#F6F8F6]/40 dark:bg-slate-950/20">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-[11px] font-black flex items-center justify-center shrink-0">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#1A3827] to-[#204530] text-white text-[11px] font-black flex items-center justify-center shadow-sm shrink-0">
                         {fmtInitials(m.nickname || 'M')}
                       </div>
                       <div>
                         <p className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100">{mNick}</p>
-                        <p className="text-[10px] text-slate-400">{mTxns.length} transactions</p>
+                        <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">{mTxns.length} transaction{mTxns.length !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-black text-rose-600 dark:text-rose-400">{formatINR(mTotal)}</p>
-                      <p className="text-[10px] text-slate-400">spent</p>
+                      <p className="text-base font-black text-rose-600 dark:text-rose-400 tabular-nums">{formatINR(mTotal)}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold">spent</p>
                     </div>
                   </div>
-
-                  {/* Transactions */}
-                  <div className="py-1.5">
-                    {mTxns.length === 0 ? (
-                      <div className="text-center py-6 text-slate-400 text-xs">
-                        No expenses — <button onClick={() => setPersonalFilterScope('all_paid')} className="underline font-bold text-[#1A3827] dark:text-[#A3E635]">show all paid by {mNick}</button>
-                      </div>
-                    ) : mTxns.map(renderTxRow)}
-                  </div>
+                  {mTxns.length === 0 ? (
+                    <div className="text-center py-8 px-4 text-[#5C6E5C] dark:text-slate-400">
+                      <p className="text-xs font-semibold">No expenses</p>
+                      <button onClick={() => setPersonalFilterScope('all_paid')} className="text-[10px] text-[#1A3827] dark:text-[#A3E635] font-black underline mt-1">
+                        Show all paid by {mNick} →
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800/60">
+                      {mTxns.map(renderTxRow)}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         ) : (
-          /* Single member list */
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#F0F4F1] dark:border-slate-800">
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-colors duration-300">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#EAF0EC] dark:border-slate-800 bg-[#F6F8F6]/40 dark:bg-slate-950/20">
               <div>
-                <p className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100">{activeMemberName}'s expenses</p>
-                <p className="text-[10px] text-slate-400">{selectedMonth === 'All' ? 'All time' : activeMonthLabel}</p>
+                <p className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100">
+                  {activeMemberName}{activeMemberName.endsWith('s') ? "'" : "'s"} expenses
+                </p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">
+                  {selectedMonth === 'All' ? 'All time' : activeMonthLabel} · {personalFilterScope === 'personal' ? 'Private only' : 'All paid by member'}
+                </p>
               </div>
-              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">
-                {filteredPersonalExpenses.length} items
+              <span className="text-[10px] font-extrabold text-[#5C6E5C] dark:text-slate-400 bg-[#EAF0EC] dark:bg-slate-800 px-3 py-1.5 rounded-xl">
+                {filteredPersonalExpenses.length} item{filteredPersonalExpenses.length !== 1 ? 's' : ''}
               </span>
             </div>
-
-            <div className="py-1.5">
-              {filteredPersonalExpenses.length === 0 ? (
-                <div className="text-center py-10 px-6 space-y-3">
-                  <p className="text-2xl">💡</p>
-                  <p className="text-sm font-bold text-[#1A3827] dark:text-slate-200">No {personalFilterScope === 'personal' ? 'private' : ''} expenses found</p>
-                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
-                    Shared room bills (Groceries, Rent, Utilities) are in <strong>The Ledger</strong>, not here.
+            {filteredPersonalExpenses.length === 0 ? (
+              <div className="flex flex-col items-center py-12 px-6 gap-3 text-center">
+                <div className="w-14 h-14 bg-[#EAF0EC] dark:bg-slate-800 rounded-2xl flex items-center justify-center text-2xl border border-[#E3E8E3] dark:border-slate-700">💡</div>
+                <div>
+                  <p className="text-sm font-extrabold text-[#1A3827] dark:text-slate-200">
+                    No {personalFilterScope === 'personal' ? 'private' : ''} expenses found
                   </p>
-                  {personalFilterScope === 'personal' && (
-                    <button
-                      onClick={() => setPersonalFilterScope('all_paid')}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-xs font-black hover:opacity-90 transition-all"
-                    >
-                      <CreditCard className="w-3.5 h-3.5" />
-                      Show all expenses paid by {activeMemberName} →
-                    </button>
-                  )}
+                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 max-w-xs leading-relaxed">
+                    Shared room bills (Groceries, Rent, Utilities) live in <strong>The Ledger</strong>, not here.
+                  </p>
                 </div>
-              ) : filteredPersonalExpenses.map(renderTxRow)}
-            </div>
+                {personalFilterScope === 'personal' && (
+                  <button
+                    onClick={() => setPersonalFilterScope('all_paid')}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-xs font-black hover:bg-[#255038] dark:hover:bg-[#BEF264] transition-all shadow-sm"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    Show all expenses paid by {activeMemberName} →
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800/60">
+                {filteredPersonalExpenses.map(renderTxRow)}
+              </div>
+            )}
           </div>
         )}
 
       </div>
     );
   }
-
 
   // ==========================================
   // PAGE 3: ADD EXPENSE MODAL (OVERLAY)
