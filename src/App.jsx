@@ -67,8 +67,6 @@ import { supabase } from './supabase';
 import logoIcon from './assets/logo_icon.png';
 import logoFull from './assets/logo_full.png';
 import faviconLogo from './assets/favicon_logo.png';
-
-import MaintenanceView from './components/MaintenanceView';
 import Navbar from './components/Navbar';
 import DashboardHome from './components/DashboardHome';
 import AddExpenseModal from './components/AddExpenseModal';
