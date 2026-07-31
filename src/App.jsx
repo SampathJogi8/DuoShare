@@ -8273,39 +8273,65 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           {/* Right side roommate balance sheet */}
-          <div className="border-t md:border-t-0 md:border-l border-white/10 dark:border-slate-800 pt-5 md:pt-0 md:pl-10 space-y-4 flex-1 max-w-sm z-10 text-left flex flex-col justify-between">
+          <div className="border-t md:border-t-0 md:border-l border-white/10 dark:border-slate-800 pt-5 md:pt-0 md:pl-10 space-y-3 flex-1 max-w-sm z-10 text-left flex flex-col justify-between">
             <div>
-              <p className="text-[10px] font-bold text-white/50 dark:text-slate-400 tracking-wider uppercase">Roommate Balance Sheet</p>
-              <div className="space-y-2 max-h-28 overflow-y-auto pr-1 mt-2">
+              <p className="text-[10px] font-bold text-white/50 dark:text-slate-400 tracking-wider uppercase mb-3">Who owes who</p>
+              <div className="space-y-2.5 max-h-32 overflow-y-auto pr-1">
                 {members.length > 1 ? (
                   members.map(m => {
                     if (m.uid === currentUid) return null;
                     const bal = computedStats.balances[m.uid] || 0;
+                    const iOwe = bal < -0.01;
+                    const owesMe = bal > 0.01;
                     return (
-                      <div key={m.uid} className="flex justify-between items-center text-xs font-semibold py-1 border-b border-white/5 last:border-b-0 gap-2">
-                        <span className="text-white/80 truncate max-w-[120px]">{m.nickname}</span>
-                        <span className={`shrink-0 ${bal > 0 ? 'text-[#A3E635] font-bold' : bal < 0 ? 'text-rose-400 font-bold' : 'text-white/40'}`}>
-                          {bal > 0 ? `is owed ${formatINR(bal)}` : bal < 0 ? `owes ${formatINR(Math.abs(bal))}` : 'settled up'}
-                        </span>
+                      <div key={m.uid} className={`rounded-xl px-3 py-2.5 border ${
+                        owesMe ? 'bg-[#A3E635]/10 border-[#A3E635]/25' :
+                        iOwe   ? 'bg-rose-500/10 border-rose-500/25' :
+                        'bg-white/5 border-white/10'
+                      }`}>
+                        {owesMe ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-black text-white truncate max-w-[90px]">{m.nickname}</span>
+                            <span className="text-[10px] text-white/50">→</span>
+                            <span className="text-[11px] font-black text-[#A3E635]">You</span>
+                            <span className="ml-auto text-[11px] font-black text-[#A3E635] shrink-0">{formatINR(bal)}</span>
+                          </div>
+                        ) : iOwe ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-black text-white">You</span>
+                            <span className="text-[10px] text-white/50">→</span>
+                            <span className="text-[11px] font-black text-white truncate max-w-[90px]">{m.nickname}</span>
+                            <span className="ml-auto text-[11px] font-black text-rose-400 shrink-0">{formatINR(Math.abs(bal))}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-white/60">{m.nickname}</span>
+                            <span className="text-[10px] font-bold text-white/30">All settled ✓</span>
+                          </div>
+                        )}
+                        <p className={`text-[9px] mt-0.5 font-semibold ${
+                          owesMe ? 'text-[#A3E635]/70' : iOwe ? 'text-rose-400/70' : 'text-white/25'
+                        }`}>
+                          {owesMe ? `${m.nickname} owes you ${formatINR(bal)}` : iOwe ? `You owe ${m.nickname} ${formatINR(Math.abs(bal))}` : ''}
+                        </p>
                       </div>
                     );
                   })
                 ) : (
-                  <p className="text-[11px] text-white/40 italic">Invite roommates to view balance sheet.</p>
+                  <p className="text-[11px] text-white/40 italic">Invite roommates to view balances.</p>
                 )}
               </div>
             </div>
             {suggestedTransfers.length > 0 && (
-              <div className="pt-3 border-t border-white/10 mt-2">
-                <p className="text-[10px] font-bold text-[#A3E635]/80 tracking-wider uppercase">Suggested Transfers</p>
-                <div className="space-y-1.5 mt-2 max-h-24 overflow-y-auto pr-1">
+              <div className="pt-3 border-t border-white/10 mt-1">
+                <p className="text-[10px] font-bold text-[#A3E635]/80 tracking-wider uppercase mb-2">Suggested transfers</p>
+                <div className="space-y-2 max-h-24 overflow-y-auto pr-1">
                   {suggestedTransfers.map((t, idx) => (
-                    <div key={idx} className="text-[11px] text-white/90 leading-relaxed font-semibold flex flex-wrap items-center gap-1">
-                      <span className="text-rose-400 truncate max-w-[80px]">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
-                      <span className="text-white/45 font-normal">owes</span>
-                      <span className="text-[#A3E635] font-bold">{formatINR(t.amount)}</span>
-                      <span className="text-white/45 font-normal">to</span>
-                      <span className="text-[#A3E635] truncate max-w-[80px]">{t.toUid === currentUid ? 'You' : t.toName}</span>
+                    <div key={idx} className="flex items-center gap-1.5 text-[11px] font-bold">
+                      <span className="text-rose-400 shrink-0">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
+                      <ArrowRight className="w-3 h-3 text-white/30 shrink-0" />
+                      <span className="text-[#A3E635] shrink-0">{t.toUid === currentUid ? 'You' : t.toName}</span>
+                      <span className="ml-auto text-white/80 font-black shrink-0">{formatINR(t.amount)}</span>
                     </div>
                   ))}
                 </div>
@@ -9855,34 +9881,76 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   const owesMe = bal > 0.01;
 
                   return (
-                    <div 
-                      key={m.uid} 
-                      className="bg-white dark:bg-[#161D20] border border-[#E3E8E3] dark:border-[#1E282C] rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm hover:border-[#A3E635]/40 transition-all"
+                    <div
+                      key={m.uid}
+                      className={`border rounded-2xl p-4 shadow-sm transition-all ${
+                        owesMe ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50' :
+                        iOwe   ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/50' :
+                        'bg-white dark:bg-[#161D20] border-[#E3E8E3] dark:border-[#1E282C]'
+                      }`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {/* Avatar */}
-                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-black shrink-0 ${
-                          owesMe ? 'bg-emerald-500/10 text-emerald-600 dark:text-[#A3E635] border border-emerald-500/30' :
-                          iOwe ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30' :
-                          'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                      {/* Who owes who — crystal clear row */}
+                      <div className="flex items-center gap-2 mb-3">
+                        {/* Payer side */}
+                        <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl ${
+                          iOwe ? 'bg-rose-100 dark:bg-rose-900/30' : 'bg-slate-100 dark:bg-slate-800'
                         }`}>
-                          {m.nickname.charAt(0).toUpperCase()}
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 ${
+                            iOwe ? 'bg-rose-500 text-white' : 'bg-[#1A3827] text-white'
+                          }`}>
+                            {iOwe ? 'Y' : m.nickname.charAt(0).toUpperCase()}
+                          </div>
+                          <span className={`text-xs font-black ${
+                            iOwe ? 'text-rose-700 dark:text-rose-300' : 'text-[#1A3827] dark:text-slate-200'
+                          }`}>{iOwe ? 'You' : m.nickname}</span>
                         </div>
 
-                        <div className="min-w-0">
-                          <h4 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}</h4>
-                          <p className={`text-[11px] font-semibold truncate mt-0.5 ${
+                        {/* Arrow + amount */}
+                        <div className="flex flex-col items-center flex-1">
+                          <div className={`text-[10px] font-black ${
                             owesMe ? 'text-emerald-600 dark:text-[#A3E635]' :
-                            iOwe ? 'text-rose-500' :
-                            'text-slate-400'
+                            iOwe   ? 'text-rose-500' :
+                            'text-slate-300'
                           }`}>
-                            {owesMe ? `Owes you ${formatINR(bal)}` : iOwe ? `You owe ${formatINR(Math.abs(bal))}` : 'All settled up'}
-                          </p>
+                            {owesMe || iOwe ? formatINR(Math.abs(bal)) : '—'}
+                          </div>
+                          <div className={`flex items-center gap-0.5 text-[9px] font-bold ${
+                            owesMe || iOwe ? 'text-slate-400' : 'text-slate-300'
+                          }`}>
+                            <span>—</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </div>
+                        </div>
+
+                        {/* Receiver side */}
+                        <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl ${
+                          owesMe ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-slate-100 dark:bg-slate-800'
+                        }`}>
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 ${
+                            owesMe ? 'bg-emerald-600 text-white' : 'bg-[#1A3827] text-white'
+                          }`}>
+                            {owesMe ? 'Y' : m.nickname.charAt(0).toUpperCase()}
+                          </div>
+                          <span className={`text-xs font-black ${
+                            owesMe ? 'text-emerald-700 dark:text-emerald-300' : 'text-[#1A3827] dark:text-slate-200'
+                          }`}>{owesMe ? 'You' : iOwe ? m.nickname : m.nickname}</span>
                         </div>
                       </div>
 
-                      {/* 1-Tap Action Buttons */}
-                      <div className="shrink-0">
+                      {/* Status label + action */}
+                      <div className="flex items-center justify-between">
+                        <p className={`text-xs font-extrabold ${
+                          owesMe ? 'text-emerald-600 dark:text-[#A3E635]' :
+                          iOwe   ? 'text-rose-500 dark:text-rose-400' :
+                          'text-slate-400'
+                        }`}>
+                          {owesMe ? `${m.nickname} owes you ${formatINR(bal)}` :
+                           iOwe   ? `You owe ${m.nickname} ${formatINR(Math.abs(bal))}` :
+                           '✓ All settled up'}
+                        </p>
+
+                        {/* 1-Tap Action Buttons */}
+                        <div className="shrink-0">
                         {iOwe ? (
                           <button
                             type="button"
@@ -9903,9 +9971,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           </button>
                         ) : (
                           <span className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-bold rounded-xl">
-                            Settled
+                            Settled ✓
                           </span>
                         )}
+                        </div>
                       </div>
                     </div>
                   );
