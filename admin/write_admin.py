@@ -222,7 +222,10 @@ HTML = r"""<!DOCTYPE html>
         const actionLabel = turnDown ? 'TAKE SITE DOWN (Lockdown)' : 'RESTORE SITE ONLINE';
         if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
 
-        const targetRoomId = (rooms && rooms[0] && rooms[0].id) ? rooms[0].id : 'system';
+        const targetRoomId = (rooms && rooms[0] && rooms[0].id) ? rooms[0].id : 'DUO-KLIZ-2508';
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10);
+        const timeStr = now.toTimeString().slice(0, 8);
 
         try {
           if (maintTxId) {
@@ -230,7 +233,8 @@ HTML = r"""<!DOCTYPE html>
               title: turnDown ? 'DOWN' : 'UP',
               split_type: turnDown ? 'down' : 'up',
               paid_by: maintMessage,
-              date: new Date().toISOString()
+              date: dateStr,
+              time: timeStr
             }).eq('id', maintTxId);
             if (error) throw error;
           } else {
@@ -240,9 +244,12 @@ HTML = r"""<!DOCTYPE html>
               category: '__SYSTEM_MAINTENANCE__',
               split_type: turnDown ? 'down' : 'up',
               paid_by: maintMessage,
+              paid_by_uid: 'system',
+              created_by: 'system',
               amount: 0,
               is_shared: false,
-              date: new Date().toISOString()
+              date: dateStr,
+              time: timeStr
             }).select();
             if (error) throw error;
             if (data && data[0]) setMaintTxId(data[0].id);
@@ -259,7 +266,10 @@ HTML = r"""<!DOCTYPE html>
       // BROADCAST ANNOUNCEMENT
       const handleSendBroadcast = async () => {
         if (!annTitle.trim() || !annBody.trim()) { toast.error('Title and message required'); return; }
-        const targetRoomId = (rooms && rooms[0] && rooms[0].id) ? rooms[0].id : 'system';
+        const targetRoomId = (rooms && rooms[0] && rooms[0].id) ? rooms[0].id : 'DUO-KLIZ-2508';
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10);
+        const timeStr = now.toTimeString().slice(0, 8);
 
         try {
           const { error } = await db.from('transactions').insert({
@@ -268,9 +278,12 @@ HTML = r"""<!DOCTYPE html>
             category: '__SYSTEM_ANNOUNCEMENT__',
             split_type: annType,
             paid_by: annBody.trim(),
+            paid_by_uid: 'system',
+            created_by: 'system',
             amount: 0,
             is_shared: false,
-            date: new Date().toISOString()
+            date: dateStr,
+            time: timeStr
           });
           if (error) throw error;
           toast.success('Broadcast sent to all users!');
@@ -666,4 +679,4 @@ HTML = r"""<!DOCTYPE html>
 out = os.path.join(os.path.dirname(__file__), "index.html")
 with open(out, "w", encoding="utf-8") as f:
     f.write(HTML)
-print("Updated admin HTML with room_id fallback!")
+print("Updated admin HTML with all NOT NULL fields!")
