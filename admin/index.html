@@ -130,8 +130,7 @@
               </div>
               <div>
                 <label className="block text-[11px] font-black uppercase text-[#5C6E5C] dark:text-slate-400 mb-1.5 tracking-wider">Master Key / Passcode</label>
-                <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="TallyinAdmin2026!#" className="w-full px-4 py-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-sm font-semibold outline-none focus:border-[#1A3827] dark:focus:border-[#A3E635]" />
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-1 font-semibold">Master Key: <code className="bg-[#EAF0EC] dark:bg-slate-800 px-1.5 py-0.5 rounded text-emerald-800 dark:text-[#A3E635]">TallyinAdmin2026!#</code></p>
+                <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-sm font-semibold outline-none focus:border-[#1A3827] dark:focus:border-[#A3E635]" />
               </div>
               <button type="submit" disabled={loading} className="w-full py-3.5 px-4 bg-[#1A3827] hover:bg-[#255038] dark:bg-[#A3E635] dark:hover:bg-lime-400 text-white dark:text-slate-950 font-extrabold text-sm rounded-xl transition-all shadow-md">
                 {loading ? 'Authenticating...' : 'Enter Master Admin Portal'}
