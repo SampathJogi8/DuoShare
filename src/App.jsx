@@ -2799,7 +2799,7 @@ export default function App() {
     data.forEach(t => {
       const amount = Number(t.amount) || 0;
       const isPayment = t.category === 'Payment';
-      
+
       if (!isPayment) {
         totalSpend += amount;
         if (t.isShared) {
@@ -2814,6 +2814,46 @@ export default function App() {
         payerUid = isSelf ? currentUid : 'roommate';
       }
 
+      // ── PAYMENT / SETTLEMENT TRANSACTIONS ────────────────────────────────
+      // A Payment means A paid B a cash amount to settle debt.
+      // Effect on balances:
+      //   - The payer (A) already showed as "owed more" from previous expenses.
+      //     A paying B reduces A's surplus and cancels B's debt.
+      //   - We simply subtract the payment amount from A's net balance
+      //     and add it to B's net balance (B is the split receiver with amount > 0).
+      if (isPayment) {
+        // Deduct from payer: they used their surplus to pay someone
+        if (roomBalances[payerUid] !== undefined) {
+          roomBalances[payerUid] -= amount;
+        } else {
+          roomBalances[payerUid] = -amount;
+        }
+        // Credit the receiver (the split entry with amount > 0)
+        if (t.splits && Array.isArray(t.splits)) {
+          t.splits.forEach(split => {
+            const splitAmt = Number(split.amount) || 0;
+            if (splitAmt > 0) {
+              const receiverUid = split.uid || 'roommate';
+              if (roomBalances[receiverUid] !== undefined) {
+                roomBalances[receiverUid] += splitAmt;
+              } else {
+                roomBalances[receiverUid] = splitAmt;
+              }
+            }
+          });
+        } else {
+          // Legacy: no splits info — just find the other member
+          const receiverUid = members.find(m => m.uid !== payerUid)?.uid || 'roommate';
+          if (roomBalances[receiverUid] !== undefined) {
+            roomBalances[receiverUid] += amount;
+          } else {
+            roomBalances[receiverUid] = amount;
+          }
+        }
+        return; // done — skip normal expense processing below
+      }
+
+      // ── NORMAL EXPENSE TRANSACTIONS ──────────────────────────────────────
       // Add paid amount to payer's balance
       if (roomBalances[payerUid] !== undefined) {
         roomBalances[payerUid] += amount;
@@ -2829,7 +2869,7 @@ export default function App() {
             const isSelf = split.nickname === userNickname || (split.uid && split.uid === currentUid);
             splitUid = isSelf ? currentUid : 'roommate';
           }
-          
+
           if (roomBalances[splitUid] !== undefined) {
             roomBalances[splitUid] -= Number(split.amount) || 0;
           } else {
@@ -2837,7 +2877,7 @@ export default function App() {
           }
 
           // Accumulate spend categories for the current logged-in user based on their share:
-          if (splitUid === currentUid && !isPayment) {
+          if (splitUid === currentUid) {
             const shareAmt = Number(split.amount) || 0;
             if (t.isShared) {
               sharedSpend += shareAmt;
@@ -2849,9 +2889,7 @@ export default function App() {
       } else {
         // Legacy splits fallback (50/50 shared vs 100% personal)
         if (t.isShared) {
-          if (!isPayment) {
-            sharedSpend += amount;
-          }
+          sharedSpend += amount;
           const halfShare = amount / 2;
           roomBalances[currentUid] -= halfShare;
           const roommateUid = members.find(m => m.uid !== currentUid)?.uid || 'roommate';
@@ -2861,7 +2899,7 @@ export default function App() {
             roomBalances[roommateUid] = -halfShare;
           }
         } else {
-          if (payerUid === currentUid && !isPayment) {
+          if (payerUid === currentUid) {
             personalSpend += amount;
           }
           roomBalances[payerUid] -= amount;
