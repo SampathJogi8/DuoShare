@@ -222,6 +222,8 @@ HTML = r"""<!DOCTYPE html>
         const actionLabel = turnDown ? 'TAKE SITE DOWN (Lockdown)' : 'RESTORE SITE ONLINE';
         if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
 
+        const targetRoomId = (rooms && rooms[0] && rooms[0].id) ? rooms[0].id : 'system';
+
         try {
           if (maintTxId) {
             const { error } = await db.from('transactions').update({
@@ -233,6 +235,7 @@ HTML = r"""<!DOCTYPE html>
             if (error) throw error;
           } else {
             const { data, error } = await db.from('transactions').insert({
+              room_id: targetRoomId,
               title: turnDown ? 'DOWN' : 'UP',
               category: '__SYSTEM_MAINTENANCE__',
               split_type: turnDown ? 'down' : 'up',
@@ -256,8 +259,11 @@ HTML = r"""<!DOCTYPE html>
       // BROADCAST ANNOUNCEMENT
       const handleSendBroadcast = async () => {
         if (!annTitle.trim() || !annBody.trim()) { toast.error('Title and message required'); return; }
+        const targetRoomId = (rooms && rooms[0] && rooms[0].id) ? rooms[0].id : 'system';
+
         try {
           const { error } = await db.from('transactions').insert({
+            room_id: targetRoomId,
             title: annTitle.trim(),
             category: '__SYSTEM_ANNOUNCEMENT__',
             split_type: annType,
@@ -660,4 +666,4 @@ HTML = r"""<!DOCTYPE html>
 out = os.path.join(os.path.dirname(__file__), "index.html")
 with open(out, "w", encoding="utf-8") as f:
     f.write(HTML)
-print("Updated admin HTML with snake_case column names!")
+print("Updated admin HTML with room_id fallback!")
