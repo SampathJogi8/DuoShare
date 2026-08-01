@@ -7365,18 +7365,21 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         />
 
         {/* Chat Panel */}
-        <div className="relative pointer-events-auto w-full max-w-sm mr-4 mb-24 sm:mb-6 flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-[#E3E8E3] dark:border-slate-700 bg-white dark:bg-slate-900 animate-slide-up" style={{ maxHeight: 'min(600px, 80vh)' }}>
+        <div className="relative pointer-events-auto w-full max-w-sm mr-4 mb-24 sm:mb-6 flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-emerald-500/30 dark:border-white/10 bg-white/95 dark:bg-[#070A0D]/95 backdrop-blur-3xl animate-slide-up" style={{ maxHeight: 'min(600px, 80vh)' }}>
 
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-3.5 bg-gradient-to-r from-[#1A3827] to-[#255038] text-white shrink-0">
-            <div className="w-8 h-8 rounded-full bg-[#A3E635] flex items-center justify-center text-[#1A3827] font-black text-sm">AI</div>
+          <div className="flex items-center gap-3 px-4.5 py-4 bg-gradient-to-r from-[#0F291E] via-[#0A1A13] to-[#06120D] text-white shrink-0 border-b border-emerald-500/20">
+            <div className="w-9 h-9 rounded-2xl bg-[#A3E635] flex items-center justify-center text-slate-950 font-black text-xs shadow-md shadow-lime-500/20">AI</div>
             <div className="flex-1">
-              <p className="font-bold text-sm tracking-tight">Divvy</p>
-              <p className="text-[10px] text-emerald-300 font-semibold">Powered by Gemini · Knows your finances</p>
+              <p className="font-extrabold text-sm tracking-tight text-white flex items-center gap-1.5">
+                <span>Divvy</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#A3E635] shadow-[0_0_6px_#A3E635]"></span>
+              </p>
+              <p className="text-[10px] text-emerald-300 font-bold">Powered by Gemini • Realtime finances</p>
             </div>
             <button
               onClick={() => setShowAiChat(false)}
-              className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+              className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -9614,21 +9617,21 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   return (
                     <div 
                       key={m.uid} 
-                      className="bg-white dark:bg-[#161D20] border border-[#E3E8E3] dark:border-[#1E282C] rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm hover:border-[#A3E635]/40 transition-all"
+                      className="hud-card rounded-3xl p-4.5 flex items-center justify-between gap-3 shadow-md hover:border-emerald-500/50 transition-all duration-300"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         {/* Avatar */}
-                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-black shrink-0 ${
-                          owesMe ? 'bg-emerald-500/10 text-emerald-600 dark:text-[#A3E635] border border-emerald-500/30' :
-                          iOwe ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30' :
+                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black shrink-0 shadow-inner ${
+                          owesMe ? 'bg-emerald-500/10 text-emerald-600 dark:text-[#A3E635] border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]' :
+                          iOwe ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 shadow-[0_0_12px_rgba(244,63,94,0.2)]' :
                           'bg-slate-100 dark:bg-slate-800 text-slate-400'
                         }`}>
                           {m.nickname.charAt(0).toUpperCase()}
                         </div>
 
                         <div className="min-w-0">
-                          <h4 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}</h4>
-                          <p className={`text-[11px] font-semibold truncate mt-0.5 ${
+                          <h4 className="font-extrabold text-sm text-[#0F172A] dark:text-slate-100 truncate">{m.nickname}</h4>
+                          <p className={`text-[11px] font-bold truncate mt-0.5 ${
                             owesMe ? 'text-emerald-600 dark:text-[#A3E635]' :
                             iOwe ? 'text-rose-500' :
                             'text-slate-400'
@@ -9644,16 +9647,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           <button
                             type="button"
                             onClick={() => executeQuickSettle(currentUid, m.uid, Math.abs(bal))}
-                            className="px-3.5 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs rounded-xl hover:scale-105 active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+                            className="px-4 py-2.5 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs rounded-2xl hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/20 cursor-pointer flex items-center gap-1.5"
                           >
-                            <Zap className="w-3.5 h-3.5 fill-current" />
+                            <Zap className="w-3.5 h-3.5 fill-current text-[#A3E635] dark:text-slate-950" />
                             <span>Pay {formatINR(Math.abs(bal))}</span>
                           </button>
                         ) : owesMe ? (
                           <button
                             type="button"
                             onClick={() => executeQuickSettle(m.uid, currentUid, bal)}
-                            className="px-3.5 py-2 bg-emerald-600 dark:bg-emerald-500 text-white dark:text-slate-950 font-black text-xs rounded-xl hover:scale-105 active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+                            className="px-4 py-2.5 bg-emerald-600 dark:bg-emerald-500 text-white dark:text-slate-950 font-black text-xs rounded-2xl hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-600/20 cursor-pointer flex items-center gap-1.5"
                           >
                             <Check className="w-3.5 h-3.5 stroke-[3]" />
                             <span>Mark {formatINR(bal)} Paid</span>
