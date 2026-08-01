@@ -20,7 +20,14 @@ import {
   Server,
   Zap,
   CheckCircle2,
-  Sliders
+  Sliders,
+  PieChart,
+  Building2,
+  Flame,
+  Terminal,
+  FileText,
+  Download,
+  DollarSign
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import { supabase } from '../supabase';
@@ -140,12 +147,67 @@ export default function AdminDashboard({
     }
   }, []);
 
+  // Financial Audit & Live Stream states
+  const [recentTransactions, setRecentTransactions] = useState([]);
+  const [categoryBreakdown, setCategoryBreakdown] = useState([]);
+  const [totalFinancialVolume, setTotalFinancialVolume] = useState(0);
+  const [simulatedErrorRate, setSimulatedErrorRate] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return Number(localStorage.getItem('tallyin_simulated_error_rate')) || 0;
+    }
+    return 0;
+  });
+  const [featureFlags, setFeatureFlags] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_feature_flags');
+        return saved ? JSON.parse(saved) : { aiOcr: true, smartSettlements: true, budgetAlerts: true };
+      } catch (e) { console.error(e); }
+    }
+    return { aiOcr: true, smartSettlements: true, budgetAlerts: true };
+  });
+
+  const fetchFinancialsAndLogs = useCallback(async () => {
+    try {
+      const { data: txList } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('id', { ascending: false })
+        .limit(100);
+
+      if (txList) {
+        setRecentTransactions(txList);
+        const total = txList.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+        setTotalFinancialVolume(total);
+
+        const catMap = {};
+        txList.forEach(t => {
+          const cat = t.category || 'General';
+          if (!cat.startsWith('__')) {
+            catMap[cat] = (catMap[cat] || 0) + (Number(t.amount) || 0);
+          }
+        });
+
+        const sortedCats = Object.keys(catMap).map(c => ({
+          name: c,
+          amount: catMap[c],
+          pct: total > 0 ? Math.round((catMap[c] / total) * 100) : 0
+        })).sort((a, b) => b.amount - a.amount);
+
+        setCategoryBreakdown(sortedCats);
+      }
+    } catch (e) {
+      console.warn("Financials fetch error:", e);
+    }
+  }, []);
+
   useEffect(() => {
     if (adminAuthenticated) {
       measurePing();
       fetchSystemStats();
+      fetchFinancialsAndLogs();
     }
-  }, [adminAuthenticated, measurePing, fetchSystemStats]);
+  }, [adminAuthenticated, measurePing, fetchSystemStats, fetchFinancialsAndLogs]);
 
   // Handle Passkey verification
   const handlePasskeySubmit = (e) => {
@@ -550,7 +612,43 @@ export default function AdminDashboard({
           }`}
         >
           <Activity className="w-3.5 h-3.5" />
-          <span>Overview Controls</span>
+          <span>Overview</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('activity_feed')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'activity_feed'
+              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+          }`}
+        >
+          <Flame className="w-3.5 h-3.5 text-amber-500" />
+          <span>Live Activity Feed</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('finance_audit')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'finance_audit'
+              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+          }`}
+        >
+          <PieChart className="w-3.5 h-3.5 text-emerald-500" />
+          <span>Financial Audit</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('room_explorer')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'room_explorer'
+              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5 text-blue-500" />
+          <span>Rooms Directory ({allSystemRooms.length})</span>
         </button>
 
         <button
@@ -561,8 +659,8 @@ export default function AdminDashboard({
               : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
           }`}
         >
-          <Power className="w-3.5 h-3.5" />
-          <span>Maintenance Mode</span>
+          <Power className="w-3.5 h-3.5 text-rose-500" />
+          <span>Site Maintenance</span>
         </button>
 
         <button
@@ -573,8 +671,8 @@ export default function AdminDashboard({
               : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
           }`}
         >
-          <Radio className="w-3.5 h-3.5" />
-          <span>Live Broadcasts</span>
+          <Radio className="w-3.5 h-3.5 text-purple-500" />
+          <span>Broadcasts</span>
         </button>
 
         <button
@@ -585,8 +683,8 @@ export default function AdminDashboard({
               : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
           }`}
         >
-          <Mail className="w-3.5 h-3.5" />
-          <span>Centralized Email Hub</span>
+          <Mail className="w-3.5 h-3.5 text-blue-400" />
+          <span>Email Hub</span>
         </button>
 
         <button
@@ -597,8 +695,8 @@ export default function AdminDashboard({
               : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
           }`}
         >
-          <Pin className="w-3.5 h-3.5" />
-          <span>Pinned Announcements</span>
+          <Pin className="w-3.5 h-3.5 text-amber-400" />
+          <span>Room Pinning</span>
         </button>
 
         <button
@@ -609,8 +707,20 @@ export default function AdminDashboard({
               : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
           }`}
         >
-          <Sliders className="w-3.5 h-3.5" />
+          <Sliders className="w-3.5 h-3.5 text-emerald-400" />
           <span>Latency & Throttling</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('chaos_tester')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'chaos_tester'
+              ? 'bg-rose-600 text-white shadow-md'
+              : 'hud-card text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+          }`}
+        >
+          <Terminal className="w-3.5 h-3.5" />
+          <span>Chaos & Feature Flags</span>
         </button>
       </div>
 
@@ -1096,6 +1206,305 @@ export default function AdminDashboard({
         </div>
       )}
 
+      {/* Tab: Live Activity Feed */}
+      {activeTab === 'activity_feed' && (
+        <div className="hud-card rounded-3xl p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                <Flame className="w-5 h-5 text-amber-500" />
+                Live Real-Time Activity Feed
+              </h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                Recent transactions and room activities logged across the entire platform.
+              </p>
+            </div>
+            <button
+              onClick={fetchFinancialsAndLogs}
+              className="px-3 py-1.5 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-colors flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh Feed</span>
+            </button>
+          </div>
+
+          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+            {recentTransactions.length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center py-8">No recent transactions recorded in database.</p>
+            ) : (
+              recentTransactions.map(tx => (
+                <div key={tx.id} className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800/80 flex items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-[#EAF0EC] dark:bg-slate-800 flex items-center justify-center font-bold text-[#1A3827] dark:text-[#A3E635] shrink-0">
+                      ₹
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{tx.title}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                        Paid by <span className="font-bold text-[#1A3827] dark:text-slate-200">{tx.paid_by || 'User'}</span> • Room: <span className="font-mono">{tx.room_id || 'N/A'}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <p className="font-mono font-black text-sm text-[#1A3827] dark:text-[#A3E635]">₹{Number(tx.amount || 0).toLocaleString('en-IN')}</p>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">{tx.category || 'General'}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Financial Audit */}
+      {activeTab === 'finance_audit' && (
+        <div className="hud-card rounded-3xl p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-emerald-500" />
+                Platform Financial Audit & Expense Ledger
+              </h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                System-wide transaction totals and monetary breakdown by category.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                const csvHeader = "ID,Title,Amount,Category,PaidBy,RoomID,Date\n";
+                const csvRows = recentTransactions.map(t => `"${t.id}","${t.title}",${t.amount},"${t.category}","${t.paid_by}","${t.room_id}","${t.date}"`).join("\n");
+                const blob = new Blob([csvHeader + csvRows], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `tallyin-audit-export-${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                if (triggerToast) triggerToast('Audit report CSV downloaded!');
+              }}
+              className="px-3.5 py-2 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export Audit CSV</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-2xl space-y-1">
+              <span className="text-[10px] font-extrabold uppercase text-emerald-800 dark:text-emerald-300">Total Financial Volume</span>
+              <p className="text-2xl font-mono font-black text-emerald-900 dark:text-emerald-200">
+                ₹{totalFinancialVolume.toLocaleString('en-IN')}
+              </p>
+              <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Across Sample Transactions</p>
+            </div>
+
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl space-y-1">
+              <span className="text-[10px] font-extrabold uppercase text-blue-800 dark:text-blue-300">Total Logged Transactions</span>
+              <p className="text-2xl font-mono font-black text-blue-900 dark:text-blue-200">
+                {stats.totalTransactions}
+              </p>
+              <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400">Database Records Count</p>
+            </div>
+
+            <div className="p-4 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/50 rounded-2xl space-y-1">
+              <span className="text-[10px] font-extrabold uppercase text-purple-800 dark:text-purple-300">Avg Transaction Value</span>
+              <p className="text-2xl font-mono font-black text-purple-900 dark:text-purple-200">
+                ₹{recentTransactions.length > 0 ? Math.round(totalFinancialVolume / recentTransactions.length).toLocaleString('en-IN') : 0}
+              </p>
+              <p className="text-[10px] font-bold text-purple-700 dark:text-purple-400">Average Expense Size</p>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider">Spend Breakdown by Category</h4>
+            <div className="space-y-2">
+              {categoryBreakdown.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">No category data available.</p>
+              ) : (
+                categoryBreakdown.map(cat => (
+                  <div key={cat.name} className="space-y-1">
+                    <div className="flex justify-between text-xs font-bold text-[#1A3827] dark:text-slate-200">
+                      <span>{cat.name}</span>
+                      <span className="font-mono">₹{cat.amount.toLocaleString('en-IN')} ({cat.pct}%)</span>
+                    </div>
+                    <div className="w-full bg-[#EAF0EC] dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                      <div className="bg-[#1A3827] dark:bg-[#A3E635] h-full rounded-full transition-all" style={{ width: `${Math.min(cat.pct, 100)}%` }}></div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: System Rooms Directory */}
+      {activeTab === 'room_explorer' && (
+        <div className="hud-card rounded-3xl p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-blue-500" />
+                Registered System Rooms Directory ({allSystemRooms.length})
+              </h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                Explore all active roommate spaces registered in the Supabase database.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
+            {allSystemRooms.length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center col-span-2 py-8">No rooms found in database.</p>
+            ) : (
+              allSystemRooms.map(r => (
+                <div key={r.roomId} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
+                  <div className="space-y-0.5 min-w-0">
+                    <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">🏠 {r.roomName}</p>
+                    <p className="font-mono text-[11px] text-[#5C6E5C] dark:text-[#A3E635] font-bold">{r.roomId}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        setTargetPinRoomId(r.roomId);
+                        setIsCustomRoomInput(false);
+                        setActiveTab('pinning');
+                        if (triggerToast) triggerToast(`Room ${r.roomId} selected for pinning`);
+                      }}
+                      className="px-2.5 py-1.5 bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300 rounded-xl text-[10px] font-bold hover:bg-amber-200 transition-colors flex items-center gap-1"
+                    >
+                      <Pin className="w-3 h-3" />
+                      <span>Pin</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(r.roomId);
+                        if (triggerToast) triggerToast(`Room Code ${r.roomId} copied!`);
+                      }}
+                      className="p-1.5 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200"
+                      title="Copy Code"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Chaos & Feature Flags */}
+      {activeTab === 'chaos_tester' && (
+        <div className="hud-card rounded-3xl p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-black text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                <Terminal className="w-5 h-5" />
+                Chaos Engineering & System Feature Flags
+              </h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                Simulate network glitches and toggle system-wide experimental feature flags.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 rounded-2xl space-y-2">
+              <h4 className="text-xs font-black text-rose-900 dark:text-rose-200 uppercase tracking-wider">Simulated Error Injection Rate</h4>
+              <p className="text-xs text-rose-800 dark:text-rose-300">
+                Inject artificial API failures to test offline handling and UI error toasts.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                {[0, 10, 25, 50].map(rate => (
+                  <button
+                    key={rate}
+                    onClick={() => {
+                      setSimulatedErrorRate(rate);
+                      localStorage.setItem('tallyin_simulated_error_rate', String(rate));
+                      if (triggerToast) triggerToast(`Error rate set to ${rate}%`);
+                    }}
+                    className={`py-2.5 px-3 rounded-xl font-extrabold text-xs transition-all border ${
+                      simulatedErrorRate === rate
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-md'
+                        : 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-slate-200 border-[#E3E8E3] dark:border-slate-800'
+                    }`}
+                  >
+                    {rate === 0 ? '0% (Stable Production)' : `${rate}% Failures`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider">System Feature Flags</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-extrabold text-[#1A3827] dark:text-slate-100">AI Receipt OCR Engine</p>
+                    <p className="text-[10px] text-[#5C6E5C] font-semibold">Auto item extraction</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = { ...featureFlags, aiOcr: !featureFlags.aiOcr };
+                      setFeatureFlags(next);
+                      localStorage.setItem('tallyin_feature_flags', JSON.stringify(next));
+                      if (triggerToast) triggerToast(`AI OCR ${next.aiOcr ? 'ENABLED' : 'DISABLED'}`);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black ${
+                      featureFlags.aiOcr ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                    }`}
+                  >
+                    {featureFlags.aiOcr ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-extrabold text-[#1A3827] dark:text-slate-100">Smart Settlement Suggestions</p>
+                    <p className="text-[10px] text-[#5C6E5C] font-semibold">Optimized debt minimization</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = { ...featureFlags, smartSettlements: !featureFlags.smartSettlements };
+                      setFeatureFlags(next);
+                      localStorage.setItem('tallyin_feature_flags', JSON.stringify(next));
+                      if (triggerToast) triggerToast(`Smart Settlements ${next.smartSettlements ? 'ENABLED' : 'DISABLED'}`);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black ${
+                      featureFlags.smartSettlements ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                    }`}
+                  >
+                    {featureFlags.smartSettlements ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-extrabold text-[#1A3827] dark:text-slate-100">Budget Cap Warnings</p>
+                    <p className="text-[10px] text-[#5C6E5C] font-semibold">Over-budget notifications</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = { ...featureFlags, budgetAlerts: !featureFlags.budgetAlerts };
+                      setFeatureFlags(next);
+                      localStorage.setItem('tallyin_feature_flags', JSON.stringify(next));
+                      if (triggerToast) triggerToast(`Budget Alerts ${next.budgetAlerts ? 'ENABLED' : 'DISABLED'}`);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black ${
+                      featureFlags.budgetAlerts ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                    }`}
+                  >
+                    {featureFlags.budgetAlerts ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
