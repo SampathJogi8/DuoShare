@@ -234,6 +234,11 @@ const getLocalMonthStr = (d = new Date()) => {
   return `${year}-${month}`;
 };
 
+const getPreviousMonthStr = (d = new Date()) => {
+  const prevDate = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  return getLocalMonthStr(prevDate);
+};
+
 const getImages = (imageUrl) => {
   if (!imageUrl) return [];
   if (typeof imageUrl === 'string' && imageUrl.startsWith('[') && imageUrl.endsWith(']')) {
@@ -505,6 +510,16 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [insightsTab, setInsightsTab] = useState('room');
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+
+  // Quick Itemized Receipt Splitter State
+  const [isReceiptSplitterOpen, setIsReceiptSplitterOpen] = useState(false);
+  const [receiptSplitterTitle, setReceiptSplitterTitle] = useState('Groceries & Supplies');
+  const [receiptRawInput, setReceiptRawInput] = useState('');
+  const [parsedReceiptItems, setParsedReceiptItems] = useState([
+    { id: 'item_1', name: 'Milk 1L', amount: 65, selectedUids: [] },
+    { id: 'item_2', name: 'Eggs 12-pack', amount: 90, selectedUids: [] },
+    { id: 'item_3', name: 'Snacks & Drinks', amount: 240, selectedUids: [] }
+  ]);
 
   // AI Chat State
   const [showAiChat, setShowAiChat] = useState(false);
@@ -2278,7 +2293,7 @@ export default function App() {
   };
 
   // ─── Auto Monthly Statement Scheduler ───────────────────────────────────────
-  // Automatically sends monthly statements on the 1st of every month.
+  // Automatically sends monthly statements on the 1st of every month for the completed previous month.
   // Uses localStorage to track "last sent" month and avoid duplicate sends.
   useEffect(() => {
     if (!userRoomId || !user || members.length === 0 || transactions.length === 0) return;
@@ -2287,18 +2302,18 @@ export default function App() {
     const dayOfMonth = today.getDate();
     if (dayOfMonth !== 1) return; // Only trigger on the 1st of the month
 
-    const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-    const storageKey = `tallyin_auto_stmt_sent_${userRoomId}_${monthKey}`;
+    const previousMonthStr = getPreviousMonthStr(today);
+    const storageKey = `tallyin_auto_stmt_sent_${userRoomId}_${previousMonthStr}`;
     const alreadySent = localStorage.getItem(storageKey);
-    if (alreadySent) return; // Already sent this month
+    if (alreadySent) return; // Already sent for this previous month
 
     // Mark as sent before dispatch to prevent duplicate triggers
     localStorage.setItem(storageKey, 'true');
-    console.log(`[Tallyin] Auto-sending monthly statements for ${monthKey}...`);
+    console.log(`[Tallyin] Auto-sending monthly statements for completed month ${previousMonthStr}...`);
 
     // Small delay so app state is fully hydrated
     const timer = setTimeout(() => {
-      emailAllStatements();
+      emailAllStatements(previousMonthStr);
     }, 3000);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2924,6 +2939,155 @@ export default function App() {
     
     return transfers;
   }, [computedStats.balances, members]);
+
+  // 1-Click WhatsApp Room Balance & Debt Summary Broadcast
+  const handleShareWhatsAppSummary = () => {
+    const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
+    let text = `🏡 *Tallyin Room Expense Summary*\n`;
+    text += `📌 Room: ${roomName} (${userRoomId || 'N/A'})\n`;
+    text += `📅 Period: ${activeMonth}\n`;
+    text += `💰 Total Room Shared Spend: ${formatINR(computedStats.totalRoomSpend)}\n\n`;
+    text += `*Member Net Balances:*\n`;
+    members.forEach(m => {
+      const bal = computedStats.balances[m.uid] || 0;
+      const status = bal === 0 ? 'Settled ✅' : bal > 0 ? `Is owed ${formatINR(bal)}` : `Owes ${formatINR(Math.abs(bal))}`;
+      text += `• ${m.nickname}: ${status}\n`;
+    });
+
+    if (suggestedTransfers && suggestedTransfers.length > 0) {
+      text += `\n*Optimal Settlements Plan:*\n`;
+      suggestedTransfers.forEach(t => {
+        const fromName = t.fromUid === auth.currentUser?.uid ? 'You' : t.fromName;
+        const toName = t.toUid === auth.currentUser?.uid ? 'You' : t.toName;
+        text += `👉 ${fromName} ➔ ${toName}: ${formatINR(t.amount)}\n`;
+      });
+    } else {
+      text += `\n✨ All roommates are fully settled up!\n`;
+    }
+
+    text += `\nSync expenses on Tallyin: https://tallyin.vercel.app`;
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, '_blank');
+  };
+
+  // Quick Receipt Splitter Parser
+  const parseReceiptRawText = (text) => {
+    if (!text || !text.trim()) {
+      triggerToast('Please paste receipt text first.');
+      return;
+    }
+    const lines = text.split('\n').filter(l => l.trim().length > 0);
+    const newItems = [];
+    lines.forEach((line, index) => {
+      const match = line.match(/(.*?)(?:₹|\$|\b)?\s*([0-9]+(?:\.[0-9]{1,2})?)\s*$/);
+      if (match) {
+        const name = match[1].replace(/[-–:]+$/, '').trim() || `Item ${index + 1}`;
+        const amount = parseFloat(match[2]) || 0;
+        if (amount > 0) {
+          newItems.push({
+            id: `item_${Date.now()}_${index}`,
+            name,
+            amount,
+            selectedUids: members.map(m => m.uid)
+          });
+        }
+      } else {
+        newItems.push({
+          id: `item_${Date.now()}_${index}`,
+          name: line.trim(),
+          amount: 100,
+          selectedUids: members.map(m => m.uid)
+        });
+      }
+    });
+
+    if (newItems.length > 0) {
+      setParsedReceiptItems(newItems);
+      triggerToast(`Parsed ${newItems.length} items from receipt text!`);
+    } else {
+      triggerToast('No prices found. Add items manually below.');
+    }
+  };
+
+  // Quick Receipt Splitter Save Handler
+  const handleSaveItemizedReceipt = async () => {
+    if (parsedReceiptItems.length === 0) {
+      triggerToast('Please add at least one item to split.');
+      return;
+    }
+
+    const totalAmount = parsedReceiptItems.reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
+    if (totalAmount <= 0) {
+      triggerToast('Total amount must be greater than zero.');
+      return;
+    }
+
+    const splitMap = {};
+    members.forEach(m => { splitMap[m.uid] = 0; });
+
+    parsedReceiptItems.forEach(item => {
+      const uids = (item.selectedUids && item.selectedUids.length > 0) ? item.selectedUids : members.map(m => m.uid);
+      const share = (Number(item.amount) || 0) / uids.length;
+      uids.forEach(uid => {
+        if (splitMap[uid] !== undefined) {
+          splitMap[uid] += share;
+        } else {
+          splitMap[uid] = share;
+        }
+      });
+    });
+
+    const splits = members.map(m => ({
+      uid: m.uid,
+      nickname: m.nickname,
+      amount: Math.round((splitMap[m.uid] || 0) * 100) / 100
+    }));
+
+    const itemDesc = parsedReceiptItems.map(i => `${i.name} (₹${i.amount})`).join(', ');
+    const currentUid = auth.currentUser?.uid || 'anonymous';
+
+    const newTx = {
+      id: `tx_${Date.now()}`,
+      room_id: userRoomId,
+      title: `${receiptSplitterTitle || 'Itemized Receipt'}`,
+      amount: totalAmount,
+      category: 'Shopping',
+      date: getLocalDateStr(),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      paidBy: userNickname,
+      paidByUid: currentUid,
+      isShared: true,
+      splits: splits,
+      notes: `Itemized split (${parsedReceiptItems.length} items): ${itemDesc}`
+    };
+
+    try {
+      const { error } = await supabase.from('transactions').insert({
+        id: newTx.id,
+        room_id: userRoomId,
+        title: newTx.title,
+        amount: newTx.amount,
+        category: newTx.category,
+        date: newTx.date,
+        time: newTx.time,
+        paid_by: newTx.paidBy,
+        paid_by_uid: newTx.paidByUid,
+        is_shared: true,
+        splits: splits,
+        notes: newTx.notes
+      });
+
+      if (error) throw error;
+
+      setTransactions(prev => [newTx, ...prev]);
+      setIsReceiptSplitterOpen(false);
+      triggerToast('Itemized receipt saved and split successfully! 🎉');
+      await logActivity('expense', `${userNickname} added itemized receipt split "${newTx.title}" (₹${newTx.amount})`);
+    } catch (err) {
+      console.error('Failed to save itemized receipt:', err);
+      triggerToast(`Error saving itemized receipt: ${err.message}`);
+    }
+  };
 
   // Helper to check if transaction is marked as paid back
   const isTxPaidBack = (t) => {
@@ -5273,10 +5437,12 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     }
   };
 
-  const sendStatementEmail = async (txList, recipientList, type, ownerName = '') => {
+  const sendStatementEmail = async (txList, recipientList, type, ownerName = '', targetMonthStr = '') => {
     if (txList.length === 0) return;
     const cleanRecipients = recipientList.map(e => e.trim()).filter(e => e && e.includes('@'));
     if (cleanRecipients.length === 0) return;
+
+    const activeMonthStr = targetMonthStr || selectedMonth || 'ledger';
 
     try {
       // 1. Generate CSV Attachment
@@ -5494,17 +5660,17 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       const label = type === 'room' ? 'room' : type === 'fund' ? 'fund' : `personal_${ownerName.toLowerCase().replace(/\s+/g, '_')}`;
       const attachments = [
         {
-          name: `tallyin_${selectedMonth || 'ledger'}_${label}_statement.csv`,
+          name: `tallyin_${activeMonthStr}_${label}_statement.csv`,
           mimeType: 'text/csv',
           base64: toBase64(csvContent)
         },
         {
-          name: `tallyin_${selectedMonth || 'ledger'}_${label}_statement.xls`,
+          name: `tallyin_${activeMonthStr}_${label}_statement.xls`,
           mimeType: 'application/vnd.ms-excel',
           base64: toBase64(excelContent)
         },
         {
-          name: `tallyin_${selectedMonth || 'ledger'}_${label}_statement.html`,
+          name: `tallyin_${activeMonthStr}_${label}_statement.html`,
           mimeType: 'text/html',
           base64: toBase64(pdfHtmlContent),
           convertToPdf: true // Flag to tell Apps Script to convert to PDF
@@ -5512,7 +5678,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       ];
 
       const activeScriptUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
-      const subject = `Tallyin ${type === 'room' ? 'Room Ledger' : type === 'fund' ? 'Fund Tracker' : `Personal Statement - ${ownerName}`}: ${roomName} (${selectedMonth || 'Ledger'})`;
+      const subject = `Tallyin ${type === 'room' ? 'Room Ledger' : type === 'fund' ? 'Fund Tracker' : `Personal Statement - ${ownerName}`}: ${roomName} (${activeMonthStr})`;
       
       const statementDesc = type === 'room' 
         ? 'room financial statement of account (shared ledger)' 
@@ -5554,7 +5720,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                 Hello Roommate,
               </p>
               <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">
-                Attached is the official ${statementDesc} in room <strong>${roomName}</strong> (${userRoomId || 'N/A'}) for the period of <strong>${selectedMonth || 'full history'}</strong>.
+                Attached is the official ${statementDesc} in room <strong>${roomName}</strong> (${userRoomId || 'N/A'}) for the period of <strong>${activeMonthStr}</strong>.
               </p>
 
               <!-- Key Metadata Info Cards -->
@@ -5569,7 +5735,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                   <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
                     <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 12px;">
                       <span style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">PERIOD</span>
-                      <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${selectedMonth || 'Full History'}</span>
+                      <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${activeMonthStr}</span>
                     </div>
                   </td>
                 </tr>
@@ -5664,33 +5830,42 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     }
   };
 
-  const emailAllStatements = async () => {
+  const emailAllStatements = async (targetMonthOverride = null) => {
     setEmailingType('all');
-    triggerToast('Emailing monthly statements...');
+
+    const currentMonthStr = getLocalMonthStr();
+    let targetMonth = targetMonthOverride;
+    if (!targetMonth) {
+      if (!selectedMonth || selectedMonth === 'All' || selectedMonth === currentMonthStr) {
+        targetMonth = getPreviousMonthStr();
+      } else {
+        targetMonth = selectedMonth;
+      }
+    }
+
+    triggerToast(`Emailing monthly statements (${targetMonth})...`);
     
     try {
       // 1. Email Room Shared Ledger
       const roomTxs = transactions.filter(t => {
         if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__' || t.category === '__SHOPPING__' || t.category === '__BILL__' || t.category === '__CHORE__' || t.category === '__DELETE_PROPOSAL__' || t.category === 'Payment') return false;
-        const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
+        const matchesMonth = t.date && t.date.startsWith(targetMonth);
         return t.isShared && matchesMonth;
       });
       
       const allEmails = members.map(m => m.email).filter(Boolean);
       if (allEmails.length > 0 && roomTxs.length > 0) {
-        triggerToast('Sending Room Ledger to all roommates...');
-        await sendStatementEmail(roomTxs, allEmails, 'room');
+        triggerToast(`Sending Room Ledger (${targetMonth}) to all roommates...`);
+        await sendStatementEmail(roomTxs, allEmails, 'room', '', targetMonth);
       }
 
-
-
       // 3. Email Personal Statements to each member individually
-      triggerToast('Distributing personal statements to members...');
+      triggerToast(`Distributing personal statements (${targetMonth}) to members...`);
       let personalSent = 0;
       for (const member of members) {
         if (!member.email) continue;
         const memberPersonalTxs = transactions.filter(t => {
-          const matchesMonth = selectedMonth === 'All' || (t.date && t.date.startsWith(selectedMonth));
+          const matchesMonth = t.date && t.date.startsWith(targetMonth);
           return t.isShared === false && 
                  t.splits && 
                  Array.isArray(t.splits) && 
@@ -5706,12 +5881,12 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         });
         
         if (memberPersonalTxs.length > 0) {
-          await sendStatementEmail(memberPersonalTxs, [member.email], 'personal', member.nickname);
+          await sendStatementEmail(memberPersonalTxs, [member.email], 'personal', member.nickname, targetMonth);
           personalSent++;
         }
       }
 
-      triggerToast('All monthly statements successfully emailed!');
+      triggerToast(`All monthly statements (${targetMonth}) successfully emailed!`);
     } catch (err) {
       console.error('Failed to email all statements:', err);
       triggerToast('Failed to email monthly statements.');
@@ -7896,6 +8071,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Add Expense Modal Overlay */}
         {isAddExpenseOpen && renderAddExpenseModal()}
+        {isReceiptSplitterOpen && renderReceiptSplitterModal()}
         {isAddShoppingOpen && renderAddShoppingModal()}
         {isSplitShoppingOpen && renderSplitShoppingModal()}
         {isAddBillOpen && renderAddBillModal()}
@@ -8025,13 +8201,30 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">{getGreeting()}, {userNickname.split(' ')[0]}.</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Everything looks calm in your room today.</p>
           </div>
-          <button 
-            onClick={() => openAddExpenseModal()}
-            className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all flex items-center justify-center gap-2 active:scale-98 self-start sm:self-auto shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add expense</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <button 
+              onClick={() => openAddExpenseModal()}
+              className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all flex items-center justify-center gap-2 active:scale-98 shadow-sm cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add expense</span>
+            </button>
+            <button 
+              onClick={() => setIsReceiptSplitterOpen(true)}
+              className="bg-emerald-800/90 dark:bg-slate-800 text-white dark:text-[#A3E635] font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-emerald-900 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2 active:scale-98 border border-emerald-700/50 dark:border-slate-700 shadow-sm cursor-pointer"
+            >
+              <ScanLine className="w-4 h-4 text-[#A3E635]" />
+              <span>⚡ Quick Itemizer</span>
+            </button>
+            <button 
+              onClick={handleShareWhatsAppSummary}
+              className="bg-[#25D366] text-slate-950 font-bold px-3.5 py-2.5 rounded-2xl text-xs hover:bg-[#22bf5b] transition-all flex items-center justify-center gap-1.5 active:scale-98 shadow-sm cursor-pointer"
+              title="Share Room Summary on WhatsApp"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">WhatsApp</span>
+            </button>
+          </div>
         </div>
 
         {/* Low Fund Balance Alert */}
@@ -8059,6 +8252,77 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             );
           }
           return null;
+        })()}
+
+        {/* Smart Budget Pace & Daily Safe Limit Forecast Widget */}
+        {(() => {
+          const todayDate = new Date().getDate();
+          const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+          const remainingDays = Math.max(1, daysInMonth - todayDate + 1);
+          const monthSpend = computedStats.totalRoomSpend || 0;
+          const activeLimit = monthlyBudget || 10000;
+          const dailyBurn = Math.round((monthSpend / Math.max(1, todayDate)) * 100) / 100;
+          const safeDailyLimit = Math.round((Math.max(0, activeLimit - monthSpend) / remainingDays) * 100) / 100;
+          const projectedMonthEnd = Math.round(dailyBurn * daysInMonth);
+          const pctUsed = Math.min(100, Math.round((monthSpend / activeLimit) * 100));
+
+          const isOver = projectedMonthEnd > activeLimit;
+          const isWarning = pctUsed >= 75 || dailyBurn > (activeLimit / daysInMonth) * 1.15;
+
+          return (
+            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-all duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#F1F5F9] dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-2 rounded-xl ${isOver ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-600' : isWarning ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600'}`}>
+                    <TrendingUp className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Smart Budget Velocity & Daily Burn Limit</h3>
+                    <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Day {todayDate} of {daysInMonth} · {remainingDays} days remaining this month</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                    isOver ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 border border-rose-300' :
+                    isWarning ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-300' :
+                    'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-[#A3E635] border border-emerald-300'
+                  }`}>
+                    {isOver ? '⚠️ Over Pace' : isWarning ? '⚡ High Pace' : '🟢 On Track'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-bold">
+                  <span className="text-[#5C6E5C] dark:text-slate-400">Spent: {formatINR(monthSpend)} ({pctUsed}%)</span>
+                  <span className="text-[#1A3827] dark:text-slate-200">Shared Budget: {formatINR(activeLimit)}</span>
+                </div>
+                <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden p-0.5">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${isOver ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`}
+                    style={{ width: `${pctUsed}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Metric Cards Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div className="p-3.5 rounded-2xl bg-[#F8FAFC] dark:bg-slate-800/40 border border-[#E2E8F0] dark:border-slate-800">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400 block mb-0.5">Current Daily Burn</span>
+                  <span className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100">{formatINR(dailyBurn)} / day</span>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-[#F8FAFC] dark:bg-slate-800/40 border border-[#E2E8F0] dark:border-slate-800">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400 block mb-0.5">Recommended Safe Cap</span>
+                  <span className="text-sm font-extrabold text-emerald-600 dark:text-[#A3E635]">{formatINR(safeDailyLimit)} / day</span>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-[#F8FAFC] dark:bg-slate-800/40 border border-[#E2E8F0] dark:border-slate-800">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400 block mb-0.5">Projected Month-End</span>
+                  <span className={`text-sm font-extrabold ${isOver ? 'text-rose-600' : 'text-[#1A3827] dark:text-slate-100'}`}>{formatINR(projectedMonthEnd)}</span>
+                </div>
+              </div>
+            </div>
+          );
         })()}
 
         {/* Main Balance Card */}
@@ -12206,6 +12470,190 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // ==========================================
   // MODAL: DIGITAL SETTLEMENT RECEIPT CERTIFICATE
   // ==========================================
+  function renderReceiptSplitterModal() {
+    const totalReceiptAmount = parsedReceiptItems.reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
+
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in">
+        <div className="bg-white dark:bg-[#0E1315] w-full max-w-xl rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-[#1E282C] max-h-[92vh] flex flex-col overflow-hidden transition-all duration-300">
+          
+          {/* Header */}
+          <div className="px-6 py-5 border-b border-[#E3E8E3]/60 dark:border-[#1E282C] flex justify-between items-center bg-[#F4F7F4]/40 dark:bg-[#161D20]/40 shrink-0">
+            <div>
+              <div className="flex items-center gap-2">
+                <ScanLine className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635]" />
+                <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100 tracking-tight">Quick Receipt Splitter</h3>
+              </div>
+              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium mt-0.5">Parse receipt items & assign custom splits to roommates in seconds</p>
+            </div>
+            <button 
+              onClick={() => setIsReceiptSplitterOpen(false)} 
+              className="p-1.5 rounded-xl hover:bg-slate-200/60 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="p-6 overflow-y-auto space-y-6 flex-1">
+            {/* Title Input */}
+            <div>
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 mb-1.5 block">Receipt / Expense Title</label>
+              <input
+                type="text"
+                value={receiptSplitterTitle}
+                onChange={(e) => setReceiptSplitterTitle(e.target.value)}
+                placeholder="e.g. D-Mart Grocery Run, Dinner at Pizza Hut"
+                className="w-full px-4 py-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 text-sm font-semibold text-[#1A3827] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1A3827]"
+              />
+            </div>
+
+            {/* Fast Text Quick Parse Area */}
+            <div className="bg-[#F8FAFC] dark:bg-slate-900/60 border border-[#E2E8F0] dark:border-slate-800 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[#A3E635]" />
+                  Paste Receipt Text / Items
+                </span>
+                <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400">e.g. Milk 65</span>
+              </div>
+              <textarea
+                rows={3}
+                value={receiptRawInput}
+                onChange={(e) => setReceiptRawInput(e.target.value)}
+                placeholder={`Milk 1L 65\nEggs 12-pack 90\nBread & Butter 120`}
+                className="w-full p-3 text-xs font-mono rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-950 text-[#1A3827] dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#1A3827]"
+              />
+              <button
+                type="button"
+                onClick={() => parseReceiptRawText(receiptRawInput)}
+                className="w-full py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:bg-[#255038] dark:hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>⚡ Auto-Parse Receipt Text</span>
+              </button>
+            </div>
+
+            {/* Parsed Items List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 uppercase tracking-wider">Itemized Breakdown</h4>
+                <span className="text-xs font-bold text-[#1A3827] dark:text-[#A3E635]">Total: {formatINR(totalReceiptAmount)}</span>
+              </div>
+
+              <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                {parsedReceiptItems.map((item) => (
+                  <div key={item.id} className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={item.name}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setParsedReceiptItems(prev => prev.map(i => i.id === item.id ? { ...i, name: val } : i));
+                        }}
+                        className="flex-1 px-3 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-950 text-xs font-bold text-[#1A3827] dark:text-white"
+                      />
+                      <div className="relative w-28">
+                        <span className="absolute left-2.5 top-2 text-xs font-bold text-[#5C6E5C] dark:text-slate-400">₹</span>
+                        <input
+                          type="number"
+                          value={item.amount}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setParsedReceiptItems(prev => prev.map(i => i.id === item.id ? { ...i, amount: val } : i));
+                          }}
+                          className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-950 text-xs font-black text-[#1A3827] dark:text-[#A3E635]"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setParsedReceiptItems(prev => prev.filter(i => i.id !== item.id))}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Roommate Assignment Checkboxes */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-[#F1F5F9] dark:border-slate-800/80">
+                      <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 mr-1">Split among:</span>
+                      {members.map(m => {
+                        const isChecked = item.selectedUids.length === 0 || item.selectedUids.includes(m.uid);
+                        return (
+                          <button
+                            key={m.uid}
+                            type="button"
+                            onClick={() => {
+                              setParsedReceiptItems(prev => prev.map(i => {
+                                if (i.id !== item.id) return i;
+                                const currentUids = i.selectedUids.length === 0 ? members.map(mem => mem.uid) : i.selectedUids;
+                                const hasUid = currentUids.includes(m.uid);
+                                const nextUids = hasUid ? currentUids.filter(u => u !== m.uid) : [...currentUids, m.uid];
+                                return { ...i, selectedUids: nextUids };
+                              }));
+                            }}
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                              isChecked
+                                ? 'bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-xs'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 opacity-60'
+                            }`}
+                          >
+                            <Check className={`w-3 h-3 ${isChecked ? 'opacity-100' : 'opacity-0'}`} />
+                            <span>{m.nickname}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setParsedReceiptItems(prev => [
+                    ...prev,
+                    { id: `item_${Date.now()}`, name: `New Item ${prev.length + 1}`, amount: 50, selectedUids: members.map(m => m.uid) }
+                  ]);
+                }}
+                className="w-full py-2 border border-dashed border-[#1A3827]/30 dark:border-slate-700 text-[#1A3827] dark:text-[#A3E635] font-bold text-xs rounded-xl hover:bg-slate-50 dark:hover:bg-slate-900 transition-all flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Item Line</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="p-5 border-t border-[#E3E8E3] dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-950 flex items-center justify-between shrink-0">
+            <div>
+              <p className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase">Itemized Total</p>
+              <p className="text-base font-black text-[#1A3827] dark:text-[#A3E635]">{formatINR(totalReceiptAmount)}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsReceiptSplitterOpen(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveItemizedReceipt}
+                className="px-5 py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-xs font-extrabold rounded-xl hover:bg-[#255038] dark:hover:bg-slate-200 transition-all shadow-md"
+              >
+                Save & Split Receipt
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
   function renderSettlementDetailModal() {
     if (!selectedSettlementDetail) return null;
     const st = selectedSettlementDetail;
