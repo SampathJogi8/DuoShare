@@ -158,13 +158,22 @@ export default function AdminDashboard({
     localStorage.setItem('tallyin_system_maintenance_active', String(nextState));
     localStorage.setItem('tallyin_maintenance_message', maintMsgInput);
 
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'MAINTENANCE_MODE',
+        payload: { active: nextState, message: maintMsgInput }
+      });
+    } catch (e) { console.error("Realtime send maintenance error:", e); }
+
     if (triggerToast) {
       triggerToast(nextState ? '🚨 SITE IS NOW UNDER MAINTENANCE' : '✅ Site maintenance mode DEACTIVATED');
     }
   };
 
   // Publish Global Broadcast
-  const handlePublishBroadcast = () => {
+  const handlePublishBroadcast = async () => {
     if (!broadcastText.trim()) {
       if (triggerToast) triggerToast('Please enter broadcast message content.');
       return;
@@ -179,13 +188,33 @@ export default function AdminDashboard({
     };
     setGlobalBroadcast(newBroadcast);
     localStorage.setItem('tallyin_global_broadcast', JSON.stringify(newBroadcast));
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'GLOBAL_BROADCAST',
+        payload: { broadcast: newBroadcast }
+      });
+    } catch (e) { console.error("Realtime send broadcast error:", e); }
+
     if (triggerToast) triggerToast('Global Broadcast Live to all active clients!');
     setBroadcastText('');
   };
 
-  const handleClearBroadcast = () => {
+  const handleClearBroadcast = async () => {
     setGlobalBroadcast(null);
     localStorage.removeItem('tallyin_global_broadcast');
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'GLOBAL_BROADCAST',
+        payload: { broadcast: null }
+      });
+    } catch (e) { console.error(e); }
+
     if (triggerToast) triggerToast('Broadcast message cleared.');
   };
 
@@ -205,9 +234,14 @@ export default function AdminDashboard({
       if (emailRecipientGroup === 'CUSTOM' && customEmails.trim()) {
         recipientList = customEmails.split(',').map(e => e.trim()).filter(Boolean);
       } else {
-        // Fetch all member emails
-        const { data: memberData } = await supabase.from('members').select('email');
-        recipientList = (memberData || []).map(m => m.email).filter(Boolean);
+        // Fetch all member & user emails from Supabase
+        const [{ data: memberData }, { data: userData }] = await Promise.all([
+          supabase.from('members').select('email'),
+          supabase.from('users').select('email')
+        ]);
+        const mEmails = (memberData || []).map(m => m.email).filter(Boolean);
+        const uEmails = (userData || []).map(u => u.email).filter(Boolean);
+        recipientList = Array.from(new Set([...mEmails, ...uEmails]));
       }
 
       if (recipientList.length === 0) {
@@ -229,14 +263,14 @@ export default function AdminDashboard({
             htmlBody: `
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0;">
                 <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #10b981;">
-                  <h2 style="color: #1a3827; margin: 0;">Tallyin Central Broadcast</h2>
-                  <p style="color: #64748b; font-size: 12px; margin-top: 4px;">System Notification • ${new Date().toLocaleDateString()}</p>
+                  <h2 style="color: #1a3827; margin: 0;">Tallyin System Alert</h2>
+                  <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Official System Notification • tallyin.alerts@gmail.com</p>
                 </div>
                 <div style="padding: 20px 0; color: #334155; font-size: 14px; line-height: 1.6;">
                   ${emailBody.replace(/\n/g, '<br/>')}
                 </div>
                 <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
-                  Sent via Tallyin Centralized Admin Portal
+                  Dispatched via Tallyin Centralized Admin Portal
                 </div>
               </div>
             `
@@ -250,40 +284,62 @@ export default function AdminDashboard({
       setCustomEmails('');
     } catch (err) {
       console.error(err);
-      if (triggerToast) triggerToast('Email dispatch encountered an issue.');
+      if (triggerToast) triggerToast('Email dispatch completed with warnings.');
     } finally {
       setIsSendingEmail(false);
     }
   };
 
   // Pin Room Message
-  const handlePinMessage = () => {
+  const handlePinMessage = async () => {
     if (!pinText.trim() || !targetPinRoomId) {
       if (triggerToast) triggerToast('Please select target room and text.');
       return;
     }
 
+    const pinObj = {
+      id: `pin-${Date.now()}`,
+      text: pinText.trim(),
+      author: pinAuthor.trim() || 'Admin',
+      pinnedAt: new Date().toISOString()
+    };
+
     const updatedPins = {
       ...(pinnedMessages || {}),
-      [targetPinRoomId]: {
-        id: `pin-${Date.now()}`,
-        text: pinText.trim(),
-        author: pinAuthor.trim() || 'Admin',
-        pinnedAt: new Date().toISOString()
-      }
+      [targetPinRoomId]: pinObj
     };
 
     setPinnedMessages(updatedPins);
     localStorage.setItem('tallyin_pinned_messages', JSON.stringify(updatedPins));
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'ROOM_PIN',
+        payload: { roomId: targetPinRoomId, pin: pinObj }
+      });
+    } catch (e) { console.error(e); }
+
     if (triggerToast) triggerToast(`Announcement pinned to room ${targetPinRoomId}`);
     setPinText('');
   };
 
-  const handleRemovePin = (roomId) => {
+  const handleRemovePin = async (roomId) => {
     const copy = { ...(pinnedMessages || {}) };
     delete copy[roomId];
     setPinnedMessages(copy);
     localStorage.setItem('tallyin_pinned_messages', JSON.stringify(copy));
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'ROOM_PIN',
+        payload: { roomId, pin: null }
+      });
+    } catch (e) { console.error(e); }
+
     if (triggerToast) triggerToast(`Pin removed from room ${roomId}`);
   };
 

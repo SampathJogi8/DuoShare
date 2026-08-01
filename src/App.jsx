@@ -581,6 +581,76 @@ export default function App() {
     return 0;
   });
 
+  // Real-time System Admin Channel & Storage Sync
+  useEffect(() => {
+    const sysChannel = supabase.channel('system_admin_channel');
+
+    sysChannel
+      .on('broadcast', { event: 'MAINTENANCE_MODE' }, (payload) => {
+        if (payload?.payload) {
+          setIsSystemMaintenanceActive(payload.payload.active);
+          if (payload.payload.message) setMaintenanceMessage(payload.payload.message);
+          localStorage.setItem('tallyin_system_maintenance_active', String(payload.payload.active));
+          if (payload.payload.message) localStorage.setItem('tallyin_maintenance_message', payload.payload.message);
+        }
+      })
+      .on('broadcast', { event: 'GLOBAL_BROADCAST' }, (payload) => {
+        if (payload?.payload) {
+          setGlobalBroadcast(payload.payload.broadcast);
+          if (payload.payload.broadcast) {
+            localStorage.setItem('tallyin_global_broadcast', JSON.stringify(payload.payload.broadcast));
+          } else {
+            localStorage.removeItem('tallyin_global_broadcast');
+          }
+        }
+      })
+      .on('broadcast', { event: 'ROOM_PIN' }, (payload) => {
+        if (payload?.payload) {
+          const { roomId, pin } = payload.payload;
+          setPinnedMessages(prev => {
+            const next = { ...(prev || {}) };
+            if (pin) {
+              next[roomId] = pin;
+            } else {
+              delete next[roomId];
+            }
+            localStorage.setItem('tallyin_pinned_messages', JSON.stringify(next));
+            return next;
+          });
+        }
+      })
+      .subscribe();
+
+    const handleStorageChange = (e) => {
+      if (e.key === 'tallyin_system_maintenance_active') {
+        setIsSystemMaintenanceActive(e.newValue === 'true');
+      }
+      if (e.key === 'tallyin_maintenance_message') {
+        setMaintenanceMessage(e.newValue || '');
+      }
+      if (e.key === 'tallyin_global_broadcast') {
+        try {
+          setGlobalBroadcast(e.newValue ? JSON.parse(e.newValue) : null);
+        } catch (err) { console.error(err); }
+      }
+      if (e.key === 'tallyin_pinned_messages') {
+        try {
+          setPinnedMessages(e.newValue ? JSON.parse(e.newValue) : {});
+        } catch (err) { console.error(err); }
+      }
+      if (e.key === 'tallyin_simulated_latency') {
+        setSimulatedLatency(Number(e.newValue) || 0);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      supabase.removeChannel(sysChannel);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
   const [insightsTab, setInsightsTab] = useState('room');
   const [personalTabSection, setPersonalTabSection] = useState('all'); // 'all' | 'my-self' | 'paid-for-others' | 'by-roommate'
   const [selectedRoommateFilter, setSelectedRoommateFilter] = useState('all');
@@ -8331,6 +8401,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           }`}>
             <Radio className="w-4 h-4 animate-pulse shrink-0" />
             <span>{globalBroadcast.text}</span>
+          </div>
+        )}
+
+        {/* Pinned Room Announcement Banner */}
+        {userRoomId && pinnedMessages?.[userRoomId] && (
+          <div className="mx-4 sm:mx-8 mt-20 mb-2 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/50 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-sm animate-fade-in">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Pin className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 rotate-45" />
+              <div className="min-w-0 text-left">
+                <span className="font-bold text-amber-900 dark:text-amber-200">
+                  {pinnedMessages[userRoomId].author}:
+                </span>
+                <span className="ml-1 text-amber-800 dark:text-amber-300">
+                  {pinnedMessages[userRoomId].text}
+                </span>
+              </div>
+            </div>
+            <span className="text-[9px] font-mono text-amber-700 dark:text-amber-500 shrink-0">
+              PINNED
+            </span>
           </div>
         )}
 
