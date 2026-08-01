@@ -8060,17 +8060,17 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         })()}
 
         {/* Main Balance Card */}
-        <div className="bg-gradient-to-br from-[#0F291E] via-[#163A2B] to-[#0A1F16] dark:from-[#080B0D] dark:via-[#0E1417] dark:to-[#040608] text-white p-6 sm:p-8 rounded-3xl hud-glow-lime border border-[#A3E635]/30 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300 shadow-2xl">
-          <div className="absolute right-0 top-0 w-96 h-96 bg-[#A3E635]/15 blur-3xl rounded-full -mr-20 -mt-20 pointer-events-none animate-pulse-glow"></div>
-          <div className="absolute left-1/3 bottom-0 w-64 h-64 bg-emerald-500/10 blur-3xl rounded-full -mb-20 pointer-events-none"></div>
+        <div className="bg-gradient-to-br from-[#061811] via-[#0B261C] to-[#04100B] text-white p-7 sm:p-9 rounded-3xl border border-emerald-500/25 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300 shadow-2xl">
+          <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/10 blur-3xl rounded-full -mr-20 -mt-20 pointer-events-none animate-pulse-glow"></div>
+          <div className="absolute left-1/3 bottom-0 w-64 h-64 bg-teal-500/10 blur-3xl rounded-full -mb-20 pointer-events-none"></div>
           
           <div className="space-y-4 max-w-md z-10">
             <div>
-              <div className="inline-flex items-center gap-2 bg-[#A3E635]/15 border border-[#A3E635]/30 px-3 py-1 rounded-full text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5 backdrop-blur-md">
+              <div className="inline-flex items-center gap-2 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 rounded-full text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-2 backdrop-blur-md">
                 <span className="w-2 h-2 rounded-full bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-pulse"></span>
                 <span>CURRENT NET BALANCE</span>
               </div>
-              <h3 className="text-xs text-slate-300 font-medium mt-1">
+              <h3 className="text-xs text-slate-300 font-semibold mt-1">
                 {myBalance > 0 ? 'You are owed' : myBalance < 0 ? 'You owe' : 'All settled up'}
               </h3>
               <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1 drop-shadow-md">
@@ -8088,7 +8088,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
             <button 
               onClick={handleSettleUp}
-              className="inline-flex items-center gap-2.5 bg-[#A3E635] text-[#0F291E] font-black px-5 py-2.5 rounded-2xl text-xs hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-lime-950/20 cursor-pointer"
+              className="inline-flex items-center gap-2.5 bg-[#A3E635] text-slate-950 font-black px-6 py-3 rounded-2xl text-xs hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-xl shadow-lime-950/20 cursor-pointer"
             >
               <span>Settle up</span>
               <ArrowRight className="w-4 h-4 stroke-[2.5]" />
@@ -8096,17 +8096,17 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           {/* Right side roommate balance sheet */}
-          <div className="border-t md:border-t-0 md:border-l border-white/10 dark:border-slate-800/80 pt-5 md:pt-0 md:pl-10 space-y-4 flex-1 max-w-sm z-10 text-left flex flex-col justify-between">
+          <div className="border-t md:border-t-0 md:border-l border-white/10 pt-5 md:pt-0 md:pl-10 space-y-4 flex-1 max-w-sm z-10 text-left flex flex-col justify-between">
             <div>
-              <p className="text-[10px] font-black text-white/60 dark:text-slate-400 tracking-widest uppercase">Roommate Balance Sheet</p>
-              <div className="space-y-2 max-h-32 overflow-y-auto pr-1 mt-2.5">
+              <p className="text-[10px] font-black text-white/60 tracking-widest uppercase">Roommate Balance Sheet</p>
+              <div className="space-y-2 max-h-36 overflow-y-auto pr-1 mt-2.5">
                 {members.length > 1 ? (
                   members.map(m => {
                     if (m.uid === currentUid) return null;
                     const bal = computedStats.balances[m.uid] || 0;
                     return (
-                      <div key={m.uid} className="flex justify-between items-center text-xs font-semibold py-1.5 px-2 rounded-xl bg-white/5 dark:bg-white/5 border border-white/5 gap-2 transition-all hover:bg-white/10">
-                        <span className="text-white/90 truncate max-w-[120px]">{m.nickname}</span>
+                      <div key={m.uid} className="flex justify-between items-center text-xs font-semibold py-2 px-3 rounded-2xl bg-white/5 border border-white/10 gap-2 transition-all hover:bg-white/10 hover:border-white/20">
+                        <span className="text-white/90 truncate max-w-[120px] font-bold">{m.nickname}</span>
                         <span className={`shrink-0 text-[11px] ${bal > 0 ? 'text-[#A3E635] font-black' : bal < 0 ? 'text-rose-400 font-black' : 'text-white/40 font-medium'}`}>
                           {bal > 0 ? `is owed ${formatINR(bal)}` : bal < 0 ? `owes ${formatINR(Math.abs(bal))}` : 'settled up'}
                         </span>
@@ -8123,7 +8123,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <p className="text-[10px] font-black text-[#A3E635] tracking-widest uppercase">Suggested Transfers</p>
                 <div className="space-y-1.5 mt-2 max-h-24 overflow-y-auto pr-1">
                   {suggestedTransfers.map((t, idx) => (
-                    <div key={idx} className="text-[11px] text-white/90 leading-relaxed font-semibold flex flex-wrap items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-xl">
+                    <div key={idx} className="text-[11px] text-white/90 leading-relaxed font-semibold flex flex-wrap items-center gap-1.5 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl">
                       <span className="text-rose-400 font-bold truncate max-w-[80px]">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
                       <span className="text-white/50 font-normal text-[10px]">owes</span>
                       <span className="text-[#A3E635] font-black">{formatINR(t.amount)}</span>
