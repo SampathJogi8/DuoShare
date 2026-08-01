@@ -2927,26 +2927,54 @@ export default function App() {
     return `TX-${str.toUpperCase()}`;
   };
 
-  // Helper to match transaction against search query (supports TX ID, title, category, paidBy, amount, notes)
+  // Helper to match transaction against universal search query (supports TX ID, title, category, paidBy, amount, splits, date, month, notes)
   const matchesTxSearch = (t, queryStr) => {
     if (!queryStr || !queryStr.trim()) return true;
-    const q = queryStr.trim().toLowerCase();
+    if (!t) return false;
 
-    const titleStr = String(t?.title || '').toLowerCase();
-    const categoryStr = String(t?.category || '').toLowerCase();
-    const rawIdStr = String(t?.id || '').toLowerCase();
-    const formattedIdStr = formatTxId(t?.id).toLowerCase();
-    const paidByStr = String(t?.paidBy || t?.paid_by || '').toLowerCase();
-    const amountStr = String(t?.amount ?? '').toLowerCase();
-    const notesStr = String(t?.notes || t?.description || '').toLowerCase();
+    // Split search query into clean lowercase terms (supports multi-keyword search like "Food Alex 100")
+    const terms = queryStr.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return true;
 
-    return titleStr.includes(q) ||
-           categoryStr.includes(q) ||
-           rawIdStr.includes(q) ||
-           formattedIdStr.includes(q) ||
-           paidByStr.includes(q) ||
-           amountStr.includes(q) ||
-           notesStr.includes(q);
+    // Build exhaustive searchable text block for this transaction
+    const rawId = String(t.id || '').toLowerCase();
+    const formattedId = formatTxId(t.id).toLowerCase();
+    const title = String(t.title || '').toLowerCase();
+    const category = String(t.category || '').toLowerCase();
+    const amountRaw = String(t.amount ?? '').toLowerCase();
+    const amountFormatted = formatINR(t.amount).toLowerCase();
+    const paidBy = String(t.paidBy || t.paid_by || '').toLowerCase();
+    const notes = String(t.notes || t.description || '').toLowerCase();
+    const splitType = String(t.splitType || t.split || '').toLowerCase();
+    const isSharedStr = t.isShared ? 'shared room' : 'personal private';
+    
+    // Extract dates & months
+    const dateStr = String(t.date || '').toLowerCase();
+    let monthNameStr = '';
+    if (t.date) {
+      try {
+        const d = new Date(t.date);
+        if (!isNaN(d.getTime())) {
+          monthNameStr = d.toLocaleString('default', { month: 'long', year: 'numeric' }).toLowerCase() + ' ' +
+                         d.toLocaleString('default', { month: 'short' }).toLowerCase();
+        }
+      } catch (e) {
+        // ignore date parse error
+      }
+    }
+    const timeStr = String(t.time || '').toLowerCase();
+
+    // Extract all member names involved in splits
+    let splitsNames = '';
+    if (t.splits && Array.isArray(t.splits)) {
+      splitsNames = t.splits.map(s => String(s.nickname || s.name || s.uid || '')).join(' ').toLowerCase();
+    }
+
+    // Combine all fields into a single searchable text
+    const searchableText = `${rawId} ${formattedId} ${title} ${category} ${amountRaw} ${amountFormatted} ${paidBy} ${notes} ${splitType} ${isSharedStr} ${dateStr} ${monthNameStr} ${timeStr} ${splitsNames}`;
+
+    // Every search term must match somewhere in the combined searchable text
+    return terms.every(term => searchableText.includes(term));
   };
 
   // Helper to resolve split label without paid back status
@@ -8610,7 +8638,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             <Search className="w-4 h-4 text-[#5C6E5C] dark:text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
             <input 
               type="text" 
-              placeholder="Search title, TX ID, category, paid by..."
+              placeholder="Search TX ID, title, amount, payer, member, month..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-11 pr-4 py-2.5 border border-[#E2EAE3] dark:border-[#1F2830] rounded-2xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-white bg-white/70 dark:bg-[#080B0D]/70 font-medium placeholder:text-slate-400 transition-all"
@@ -9018,7 +9046,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             <Search className="w-4 h-4 text-[#5C6E5C] absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input 
               type="text" 
-              placeholder="Search title, TX ID, category..."
+              placeholder="Search TX ID, title, amount, payer, member, month..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
