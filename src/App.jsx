@@ -2940,14 +2940,35 @@ export default function App() {
     return transfers;
   }, [computedStats.balances, members]);
 
-  // 1-Click WhatsApp Room Balance & Debt Summary Broadcast
+  // 1-Click WhatsApp Room Balance & Budget Velocity Broadcast
   const handleShareWhatsAppSummary = () => {
     const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
-    let text = `🏡 *Tallyin Room Expense Summary*\n`;
+    const todayDate = new Date().getDate();
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const remainingDays = Math.max(1, daysInMonth - todayDate + 1);
+    const monthSpend = computedStats.totalRoomSpend || 0;
+    const activeLimit = monthlyBudget || 10000;
+    const dailyBurn = Math.round((monthSpend / Math.max(1, todayDate)) * 100) / 100;
+    const safeDailyLimit = Math.round((Math.max(0, activeLimit - monthSpend) / remainingDays) * 100) / 100;
+    const projectedMonthEnd = Math.round(dailyBurn * daysInMonth);
+    const pctUsed = Math.min(100, Math.round((monthSpend / activeLimit) * 100));
+
+    const isOver = projectedMonthEnd > activeLimit;
+    const isWarning = pctUsed >= 75 || dailyBurn > (activeLimit / daysInMonth) * 1.15;
+    const paceStatusText = isOver ? '⚠️ Over Pace' : isWarning ? '⚡ High Spend Pace' : '🟢 On Track';
+
+    let text = `🏡 *Tallyin Room Expense & Budget Report*\n`;
     text += `📌 Room: ${roomName} (${userRoomId || 'N/A'})\n`;
-    text += `📅 Period: ${activeMonth}\n`;
-    text += `💰 Total Room Shared Spend: ${formatINR(computedStats.totalRoomSpend)}\n\n`;
-    text += `*Member Net Balances:*\n`;
+    text += `📅 Period: ${activeMonth} (Day ${todayDate} of ${daysInMonth})\n\n`;
+
+    text += `📊 *Smart Budget Velocity & Burn Rate:*\n`;
+    text += `• Shared Budget: ${formatINR(activeLimit)}\n`;
+    text += `• Spent So Far: ${formatINR(monthSpend)} (${pctUsed}%)\n`;
+    text += `• Daily Burn Rate: ${formatINR(dailyBurn)}/day\n`;
+    text += `• Safe Recommended Cap: ${formatINR(safeDailyLimit)}/day\n`;
+    text += `• Projected Month-End: ${formatINR(projectedMonthEnd)} (${paceStatusText})\n\n`;
+
+    text += `👥 *Member Net Balances:*\n`;
     members.forEach(m => {
       const bal = computedStats.balances[m.uid] || 0;
       const status = bal === 0 ? 'Settled ✅' : bal > 0 ? `Is owed ${formatINR(bal)}` : `Owes ${formatINR(Math.abs(bal))}`;
@@ -2955,7 +2976,7 @@ export default function App() {
     });
 
     if (suggestedTransfers && suggestedTransfers.length > 0) {
-      text += `\n*Optimal Settlements Plan:*\n`;
+      text += `\n🔄 *Optimal Settlement Plan:*\n`;
       suggestedTransfers.forEach(t => {
         const fromName = t.fromUid === auth.currentUser?.uid ? 'You' : t.fromName;
         const toName = t.toUid === auth.currentUser?.uid ? 'You' : t.toName;
@@ -8289,6 +8310,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   }`}>
                     {isOver ? '⚠️ Over Pace' : isWarning ? '⚡ High Pace' : '🟢 On Track'}
                   </span>
+                  <button
+                    onClick={handleShareWhatsAppSummary}
+                    className="p-1.5 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border border-[#25D366]/30"
+                    title="Share Budget Velocity Report on WhatsApp"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span className="text-[10px] hidden sm:inline">WhatsApp</span>
+                  </button>
                 </div>
               </div>
 
