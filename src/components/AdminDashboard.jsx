@@ -227,60 +227,93 @@ export default function AdminDashboard({
   const [banReasonInput, setBanReasonInput] = useState('Violation of platform guidelines or debt non-payment');
   const [isBanModalOpen, setIsBanModalOpen] = useState(false);
 
+  // Sync Banned Users with Supabase DB + Realtime Channel
+  const syncBannedUsersToDatabase = async (updatedList) => {
+    setBannedUsers(updatedList);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tallyin_banned_users', JSON.stringify(updatedList));
+    }
+
+    // 1. Save to Supabase DB system_settings
+    try {
+      await supabase
+        .from('system_settings')
+        .upsert({ key: 'banned_users', value: updatedList }, { onConflict: 'key' });
+    } catch (err) {
+      console.warn("Supabase system_settings upsert error:", err);
+    }
+
+    // 2. Broadcast via Supabase Realtime channel
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'USER_BAN_UPDATE',
+        payload: { bannedUsers: updatedList }
+      });
+    } catch (err) {
+      console.warn("Realtime send ban error:", err);
+    }
+  };
+
+  const fetchBannedUsers = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'banned_users')
+        .maybeSingle();
+
+      if (data?.value && Array.isArray(data.value)) {
+        setBannedUsers(data.value);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('tallyin_banned_users', JSON.stringify(data.value));
+        }
+      }
+    } catch (err) {
+      console.warn("Fetch banned users error:", err);
+    }
+  }, []);
+
   // Ban User Handler
-  const handleBanUser = async (targetEmail, targetReason) => {
-    const cleanEmail = targetEmail.trim().toLowerCase();
-    if (!cleanEmail) {
-      if (triggerToast) triggerToast('Valid email required to ban user.');
+  const handleBanUser = async (targetIdentifier, targetReason, extraData = {}) => {
+    const rawTarget = String(targetIdentifier || '').trim();
+    if (!rawTarget || rawTarget === 'N/A') {
+      if (triggerToast) triggerToast('Valid email or username required to ban user.');
       return;
     }
-    if (ADMIN_EMAILS.includes(cleanEmail)) {
+
+    const cleanTarget = rawTarget.toLowerCase();
+    if (ADMIN_EMAILS.map(e => e.toLowerCase()).includes(cleanTarget)) {
       if (triggerToast) triggerToast('Cannot ban system administrators!');
       return;
     }
 
     const newBanObj = {
-      email: cleanEmail,
-      reason: targetReason.trim() || 'Account suspended by administrator.',
+      identifier: cleanTarget,
+      email: cleanTarget,
+      name: extraData.name || rawTarget,
+      id: extraData.id || rawTarget,
+      reason: targetReason?.trim() || 'Account suspended by administrator.',
       bannedAt: new Date().toISOString(),
       bannedBy: user?.email || 'Admin'
     };
 
-    const updatedBanned = [...bannedUsers.filter(b => b.email !== cleanEmail), newBanObj];
-    setBannedUsers(updatedBanned);
-    localStorage.setItem('tallyin_banned_users', JSON.stringify(updatedBanned));
+    const updatedBanned = [...bannedUsers.filter(b => (b.identifier || b.email)?.toLowerCase() !== cleanTarget), newBanObj];
+    await syncBannedUsersToDatabase(updatedBanned);
 
-    try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
-        type: 'broadcast',
-        event: 'USER_BAN_UPDATE',
-        payload: { bannedUsers: updatedBanned }
-      });
-    } catch (e) { console.error("Realtime send ban error:", e); }
-
-    if (triggerToast) triggerToast(`User ${cleanEmail} SUSPENDED & BANNED!`);
+    if (triggerToast) triggerToast(`User "${rawTarget}" SUSPENDED & BANNED!`);
     setBanEmailInput('');
     setIsBanModalOpen(false);
   };
 
   // Unban User Handler
-  const handleUnbanUser = async (targetEmail) => {
-    const cleanEmail = targetEmail.trim().toLowerCase();
-    const updatedBanned = bannedUsers.filter(b => b.email !== cleanEmail);
-    setBannedUsers(updatedBanned);
-    localStorage.setItem('tallyin_banned_users', JSON.stringify(updatedBanned));
+  const handleUnbanUser = async (targetIdentifier) => {
+    const cleanTarget = String(targetIdentifier || '').trim().toLowerCase();
+    const updatedBanned = bannedUsers.filter(b => (b.identifier || b.email)?.toLowerCase() !== cleanTarget);
+    await syncBannedUsersToDatabase(updatedBanned);
 
-    try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
-        type: 'broadcast',
-        event: 'USER_BAN_UPDATE',
-        payload: { bannedUsers: updatedBanned }
-      });
-    } catch (e) { console.error(e); }
-
-    if (triggerToast) triggerToast(`User ${cleanEmail} RESTORED & UNBANNED!`);
+    if (triggerToast) triggerToast(`User "${targetIdentifier}" RESTORED & UNBANNED!`);
   };
 
   // User Directory & Search states
@@ -350,8 +383,9 @@ export default function AdminDashboard({
       fetchSystemStats();
       fetchFinancialsAndLogs();
       fetchUserDirectory();
+      fetchBannedUsers();
     }
-  }, [adminAuthenticated, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory]);
+  }, [adminAuthenticated, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers]);
 
   // Handle Passkey verification
   const handlePasskeySubmit = (e) => {
