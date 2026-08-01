@@ -8247,16 +8247,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     const dataList = transactions;
     const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
     const myBalance = computedStats.currentUserBalance;
-
     const { monthlyPersonalTotal, personalPercentage, monthSharedSpend, isLowBalance } = homeStats;
     const activeLimit = monthlyBudget;
     const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
-
     const [yearStr, monthStr] = activeMonth.split('-');
     const year = Number(yearStr);
     const month = Number(monthStr);
-    const activeDateObj = new Date(year, month - 1, 1);
-    const monthName = activeDateObj.toLocaleString('default', { month: 'long' });
+    const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
     const monthlyRoomSpend = transactions
       .filter(t => t.isShared && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__BILL__' && t.category !== '__CHORE__' && t.category !== 'Payment' && t.date && t.date.startsWith(activeMonth))
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -8270,336 +8267,323 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     const isOver = budgetPct >= 100;
 
     return (
-      <div className="space-y-4 max-w-2xl mx-auto animate-fade-in pb-24">
+      <div className="max-w-7xl mx-auto animate-fade-in pb-24 lg:pb-8">
 
-        {/* ─── Alerts ─── */}
-        {isLowBalance && (
-          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-3.5 flex items-start gap-3">
-            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400">Budget Warning</h4>
-              <p className="text-[11px] text-amber-700 dark:text-amber-500 mt-0.5">You're approaching your budget. {formatINR(Math.max(0, activeLimit - monthSharedSpend))} remaining.</p>
+        {/* ─── Top Alerts ─── */}
+        <div className="space-y-3 mb-4">
+          {isLowBalance && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-3.5 flex items-start gap-3">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400">Budget Warning</h4>
+                <p className="text-[11px] text-amber-700 dark:text-amber-500 mt-0.5">Approaching shared budget. {formatINR(Math.max(0, activeLimit - monthSharedSpend))} remaining.</p>
+              </div>
             </div>
-          </div>
-        )}
-
-        {pendingRecurringTxs.length > 0 && (
-          <div className="bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/10 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
-            <div className="flex items-center gap-2">
-              <RefreshCw className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
-              <h3 className="font-bold text-sm text-[#1A3827] dark:text-slate-100">Due Recurring Expenses</h3>
-            </div>
-            <div className="space-y-2">
-              {pendingRecurringTxs.map(({ tx, interval, nextDue }) => (
-                <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800">
-                  <div>
-                    <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{tx.title}</p>
-                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Due {nextDue} · {interval}</p>
+          )}
+          {pendingRecurringTxs.length > 0 && (
+            <div className="bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/10 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
+                <h3 className="font-bold text-sm text-[#1A3827] dark:text-slate-100">Due Recurring Expenses</h3>
+              </div>
+              <div className="space-y-2">
+                {pendingRecurringTxs.map(({ tx, interval, nextDue }) => (
+                  <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800">
+                    <div>
+                      <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{tx.title}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Due {nextDue} · {interval}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-[#1A3827] dark:text-white">{formatINR(tx.amount)}</span>
+                      <button disabled={postingRecurringIds.includes(tx.id)} onClick={() => handlePostRecurringExpense(tx, nextDue)} className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-[10px] rounded-lg transition-all disabled:opacity-50 cursor-pointer">
+                        {postingRecurringIds.includes(tx.id) ? 'Posting...' : 'Post'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-[#1A3827] dark:text-white">{formatINR(tx.amount)}</span>
-                    <button
-                      disabled={postingRecurringIds.includes(tx.id)}
-                      onClick={() => handlePostRecurringExpense(tx, nextDue)}
-                      className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-[10px] rounded-lg transition-all disabled:opacity-50 cursor-pointer"
-                    >
-                      {postingRecurringIds.includes(tx.id) ? 'Posting...' : 'Post'}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* ─── Greeting Row ─── */}
-        <div className="flex items-center justify-between">
+        {/* ─── Greeting + CTA Button ─── */}
+        <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-xl font-black text-[#0F172A] dark:text-slate-100 tracking-tight">{getGreeting()}, {userNickname.split(' ')[0]} 👋</h1>
-            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Here's your room overview</p>
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-[#0F172A] dark:text-slate-100 tracking-tight">{getGreeting()}, {userNickname.split(' ')[0]} 👋</h1>
+            <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Here's your room overview</p>
           </div>
-          <button
-            onClick={() => openAddExpenseModal()}
-            className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] active:scale-95 transition-all duration-150 shadow-md cursor-pointer flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            <span>Add</span>
+          <button onClick={() => openAddExpenseModal()} className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm hover:bg-[#1A3827] dark:hover:bg-[#BEF264] active:scale-95 transition-all duration-150 shadow-md cursor-pointer flex items-center gap-2">
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span className="hidden sm:inline">Add Expense</span>
+            <span className="sm:hidden">Add</span>
           </button>
         </div>
 
-        {/* ─── Hero Balance Card ─── */}
-        <div className="bg-[#061811] text-white rounded-3xl p-5 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-48 h-48 bg-emerald-500/10 blur-3xl rounded-full -mr-10 -mt-10 pointer-events-none" />
+        {/* ═══════════════════════════════════════════════════════
+            RESPONSIVE GRID
+            Mobile / Tablet  → single column stack
+            Desktop (lg+)   → 12-col: 8 left main + 4 right sidebar
+        ════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
 
-          {/* Balance header */}
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-[#A3E635]">NET BALANCE</span>
-              <p className="text-xs text-slate-300 mt-0.5">
-                {myBalance > 0 ? 'You are owed' : myBalance < 0 ? 'You owe' : 'All settled'}
-              </p>
-              <h2 className="text-3xl font-black text-[#A3E635] tracking-tight mt-0.5">
-                {formatINR(Math.abs(myBalance))}
-              </h2>
-            </div>
-            <button
-              onClick={handleSettleUp}
-              className="shrink-0 bg-[#A3E635] text-slate-950 font-black px-4 py-2 rounded-xl text-xs hover:bg-[#BEF264] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 mt-1"
-            >
-              <HandCoins className="w-3.5 h-3.5" />
-              <span>Settle</span>
-            </button>
-          </div>
+          {/* ── LEFT MAIN COLUMN (lg: 8 cols) ── */}
+          <div className="lg:col-span-8 space-y-4">
 
-          {/* Roommate balance mini rows */}
-          {members.length > 1 && (
-            <div className="space-y-1.5 border-t border-white/10 pt-3.5 mt-1">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-white/40 mb-2">Roommate Balances</p>
-              {members.map(m => {
-                if (m.uid === currentUid) return null;
-                const bal = computedStats.balances[m.uid] || 0;
-                return (
-                  <div key={m.uid} className="flex justify-between items-center text-xs py-1.5 px-3 rounded-xl bg-white/5 border border-white/10">
-                    <span className="text-white/80 font-semibold truncate max-w-[120px]">{m.nickname}</span>
-                    <span className={`shrink-0 text-[11px] font-black ${bal > 0 ? 'text-[#A3E635]' : bal < 0 ? 'text-rose-400' : 'text-white/30'}`}>
-                      {bal > 0 ? `owes you ${formatINR(bal)}` : bal < 0 ? `you owe ${formatINR(Math.abs(bal))}` : 'settled'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Suggested transfers */}
-          {suggestedTransfers.length > 0 && (
-            <div className="border-t border-white/10 pt-3 mt-2 space-y-1.5">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-[#A3E635]">Suggested</p>
-              {suggestedTransfers.slice(0, 2).map((t, idx) => (
-                <div key={idx} className="text-[11px] text-white/80 flex flex-wrap items-center gap-1 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl">
-                  <span className="text-rose-400 font-bold">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
-                  <span className="text-white/40">owes</span>
-                  <span className="text-[#A3E635] font-black">{formatINR(t.amount)}</span>
-                  <span className="text-white/40">to</span>
-                  <span className="text-[#A3E635] font-bold">{t.toUid === currentUid ? 'You' : t.toName}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ─── Quick Actions (2×2 thumb grid) ─── */}
-        <div>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400 mb-2.5">QUICK ACTIONS</p>
-          <div className="grid grid-cols-4 gap-2.5">
-            {[
-              { label: 'Add Bill', icon: <Plus className="w-5 h-5" />, action: () => openAddExpenseModal() },
-              { label: 'Receipt', icon: <Upload className="w-5 h-5" />, action: () => handleTriggerUpload() },
-              { label: 'Insights', icon: <TrendingUp className="w-5 h-5" />, action: () => setCurrentView('insights') },
-              { label: 'Invite', icon: <UserCheck className="w-5 h-5" />, action: () => handleInviteTrigger() },
-            ].map(({ label, icon, action }) => (
-              <button
-                key={label}
-                onClick={action}
-                className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3 flex flex-col items-center gap-1.5 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 active:scale-95 transition-all duration-150 cursor-pointer text-[#1A3827] dark:text-[#A3E635]"
-              >
-                {icon}
-                <span className="text-[9px] font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wide text-center leading-tight">{label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ─── Monthly Budget Bar ─── */}
-        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">{monthName} Budget</p>
-              <div className="flex items-baseline gap-1 mt-0.5">
-                <span className="text-lg font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyRoomSpend)}</span>
-                <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(monthlyBudget)}</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className={`text-[9px] font-black px-2 py-1 rounded-full ${isOver ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>
-                {budgetPct}% used
-              </span>
-              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-1">{daysLeft}d left</p>
-            </div>
-          </div>
-          <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${isOver ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`}
-              style={{ width: `${budgetPct}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
-            <span>{isOver ? `⚠️ Over by ${formatINR(monthlyRoomSpend - monthlyBudget)}` : `${formatINR(remaining)} remaining`}</span>
-            {!isOver && daysLeft > 0 && <span>~{formatINR(dailyLimit)}/day</span>}
-          </div>
-          {/* Projection */}
-          {activeMonth === currentMonthStr && today.getDate() > 0 && monthlyRoomSpend > 0 && (() => {
-            const projected = Math.round((monthlyRoomSpend / today.getDate()) * daysInMonth);
-            return (
-              <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                📈 Projected month-end: <span className="font-black">{formatINR(projected)}</span>
-              </p>
-            );
-          })()}
-        </div>
-
-        {/* ─── Personal Expense Meter ─── */}
-        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Personal Spending</p>
-              <div className="flex items-baseline gap-1 mt-0.5">
-                <span className="text-base font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyPersonalTotal)}</span>
-                <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(personalCap)}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className={`text-[9px] font-black px-2 py-1 rounded-full ${personalPercentage >= 90 ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>
-                {personalPercentage.toFixed(0)}%
-              </span>
-              <button
-                onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }}
-                className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all cursor-pointer"
-                title="Edit limit"
-              >
-                <Pencil className="w-3 h-3 text-[#5C6E5C] dark:text-slate-400" />
-              </button>
-            </div>
-          </div>
-          {isEditingPersonalCap && (
-            <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
-              <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">₹</span>
-              <input
-                type="number" min="0" value={personalCapInput}
-                onChange={e => setPersonalCapInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }
-                  if (e.key === 'Escape') setIsEditingPersonalCap(false);
-                }}
-                className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0"
-                autoFocus
-              />
-              <button onClick={() => { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#1A3827] text-white px-2.5 py-1 rounded-lg cursor-pointer">Save</button>
-              <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] text-[#5C6E5C] px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 cursor-pointer">✕</button>
-            </div>
-          )}
-          <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-1.5 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full transition-all duration-500 ${personalPercentage >= 90 ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${Math.min(100, personalPercentage)}%` }} />
-          </div>
-          <p className="text-[10px] font-medium text-[#5C6E5C] dark:text-slate-400">
-            {personalPercentage >= 100
-              ? `⚠️ Exceeded by ${formatINR(monthlyPersonalTotal - personalCap)}`
-              : `${formatINR(personalCap - monthlyPersonalTotal)} remaining`}
-          </p>
-        </div>
-
-        {/* ─── Recent Transactions ─── */}
-        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 pt-4 pb-3">
-            <h3 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">Recent Transactions</h3>
-            <button onClick={() => setCurrentView('ledger')} className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] flex items-center gap-1 hover:underline cursor-pointer">
-              View all <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800">
-            {dataList.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs text-[#5C6E5C] dark:text-slate-400">No transactions yet.</div>
-            ) : (
-              dataList.slice(0, 5).map((t) => {
-                const isPayer = (t.paidByUid && t.paidByUid === currentUid) || (!t.paidByUid && t.paidBy === userNickname);
-                return (
-                  <div key={t.id} className="flex items-center gap-3 px-4 py-3 active:bg-slate-50 dark:active:bg-slate-800 transition-colors">
-                    <div className="w-9 h-9 rounded-xl bg-[#F6F8F6] dark:bg-slate-800 flex items-center justify-center shrink-0">
-                      {getCategoryIcon(t.category)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 truncate">
-                        {t.title}
-                        {t.isEdited && <span onClick={e => { e.stopPropagation(); setActiveEditHistoryTx(t); }} className="ml-1.5 text-[9px] text-rose-500 italic font-bold cursor-pointer">(Edited)</span>}
-                      </p>
-                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 truncate">{getTransactionSubtitle(t)}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-xs font-bold ${isPayer ? 'text-[#1A3827] dark:text-[#A3E635]' : 'text-slate-400 dark:text-slate-500'}`}>
-                        {isPayer ? '−' : '+'}{formatINR(t.amount)}
-                      </p>
-                      <p className="text-[9px] text-[#5C6E5C] dark:text-slate-500 mt-0.5">{t.date}</p>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-          <div className="px-4 py-2.5 border-t border-[#F6F8F6] dark:border-slate-800 flex items-center gap-1.5 text-[9px] text-[#5C6E5C] dark:text-slate-500">
-            <Clock className="w-3 h-3" />
-            <span>Live sync via Supabase</span>
-          </div>
-        </div>
-
-        {/* ─── Activity Feed ─── */}
-        {activityLogs.length > 0 && (
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-3">
-            <h3 className="text-[9px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">Room Activity</h3>
-            <div className="space-y-2.5">
-              {activityLogs.slice(0, 4).map(log => {
-                const isCreate = log.action === 'create';
-                const isEdit = log.action === 'edit';
-                const isSettle = log.action === 'settle';
-                const isDelete = log.action === 'delete';
-                let iconColorClass = 'text-slate-400';
-                let bgClass = 'bg-slate-50 dark:bg-slate-800';
-                let logIcon = <Clock className="w-3 h-3" />;
-                if (isCreate) { iconColorClass = 'text-emerald-600 dark:text-[#A3E635]'; bgClass = 'bg-emerald-50 dark:bg-emerald-950/30'; logIcon = <Plus className="w-3 h-3" />; }
-                else if (isEdit) { iconColorClass = 'text-amber-600'; bgClass = 'bg-amber-50 dark:bg-amber-950/20'; logIcon = <Pencil className="w-3 h-3" />; }
-                else if (isSettle) { iconColorClass = 'text-blue-600'; bgClass = 'bg-blue-50 dark:bg-blue-950/20'; logIcon = <Check className="w-3 h-3" />; }
-                else if (isDelete) { iconColorClass = 'text-rose-600'; bgClass = 'bg-rose-50 dark:bg-rose-950/20'; logIcon = <Trash2 className="w-3 h-3" />; }
-                return (
-                  <div key={log.id} className="flex items-start gap-2.5">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${bgClass} ${iconColorClass}`}>
-                      {logIcon}
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-[#1A3827] dark:text-slate-200 leading-snug">{log.details || log.action}</p>
-                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">{formatLogTime(log.created_at || log.timestamp)}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ─── Low Fund Balance Alert ─── */}
-        {(() => {
-          if (myFunds.length === 0) return null;
-          const totalFundBalance = myFunds.reduce((sum, fund) => {
-            const fundId = fund.id;
-            const spent = myFundSpends.filter(s => s.splitType && (s.splitType === `__FUND_SPEND__:${fundId}` || s.splitType === fundId)).reduce((a, b) => a + (Number(b.amount) || 0), 0);
-            return sum + ((Number(fund.amount) || 0) - spent);
-          }, 0);
-          if (totalFundBalance < 2000 && totalFundBalance >= 0) {
-            return (
-              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl p-3.5 flex items-start gap-3">
-                <span className="text-base shrink-0">⚠️</span>
-                <div>
-                  <p className="text-xs font-black text-amber-800 dark:text-amber-300">Low Fund Balance</p>
-                  <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                    Total fund balance: <span className="font-bold">{formatINR(Math.max(0, totalFundBalance))}</span>. Consider topping up.
+            {/* ── Hero Balance Card ── */}
+            <div className="bg-[#061811] text-white rounded-3xl p-5 sm:p-6 lg:p-7 relative overflow-hidden">
+              <div className="absolute right-0 top-0 w-64 h-64 bg-emerald-500/10 blur-3xl rounded-full -mr-16 -mt-16 pointer-events-none" />
+              <div className="absolute left-1/3 bottom-0 w-48 h-48 bg-teal-500/8 blur-3xl rounded-full -mb-16 pointer-events-none" />
+              <div className="relative z-10 flex flex-col sm:flex-row sm:gap-8">
+                {/* Balance */}
+                <div className="flex-1">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-[#A3E635]">NET BALANCE</span>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    {myBalance > 0 ? 'You are owed' : myBalance < 0 ? 'You owe' : 'All settled up ✓'}
                   </p>
+                  <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1 leading-none">
+                    {formatINR(Math.abs(myBalance))}
+                  </h2>
+                  <p className="text-xs text-slate-300/70 mt-2 leading-relaxed max-w-xs">
+                    {myBalance > 0 ? 'You have paid more than your share.' : myBalance < 0 ? 'You owe money to your roommates.' : 'You are completely settled with everyone!'}
+                  </p>
+                  <button onClick={handleSettleUp} className="inline-flex items-center gap-2 mt-4 bg-[#A3E635] text-slate-950 font-black px-5 py-2.5 rounded-xl text-xs hover:bg-[#BEF264] active:scale-95 transition-all cursor-pointer shadow-lg">
+                    <HandCoins className="w-4 h-4" /><span>Settle Up</span><ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {/* Roommate balances — side panel on sm+, stacked below on mobile */}
+                {members.length > 1 && (
+                  <div className="border-t border-white/10 sm:border-t-0 sm:border-l sm:border-white/10 pt-4 sm:pt-0 sm:pl-8 mt-4 sm:mt-0 space-y-1.5 flex flex-col justify-center sm:w-52 lg:w-60 shrink-0">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-white/40 mb-2">Roommate Balances</p>
+                    {members.map(m => {
+                      if (m.uid === currentUid) return null;
+                      const bal = computedStats.balances[m.uid] || 0;
+                      return (
+                        <div key={m.uid} className="flex justify-between items-center text-xs py-1.5 px-3 rounded-xl bg-white/5 border border-white/10">
+                          <span className="text-white/80 font-semibold truncate max-w-[110px]">{m.nickname}</span>
+                          <span className={`shrink-0 text-[11px] font-black ${bal > 0 ? 'text-[#A3E635]' : bal < 0 ? 'text-rose-400' : 'text-white/30'}`}>
+                            {bal > 0 ? `owes ${formatINR(bal)}` : bal < 0 ? `owed ${formatINR(Math.abs(bal))}` : 'settled'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {suggestedTransfers.length > 0 && (
+                      <div className="pt-2 border-t border-white/10 mt-1 space-y-1.5">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#A3E635]">Suggested Transfers</p>
+                        {suggestedTransfers.slice(0, 2).map((t, idx) => (
+                          <div key={idx} className="text-[11px] text-white/80 flex flex-wrap items-center gap-1 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl">
+                            <span className="text-rose-400 font-bold">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
+                            <span className="text-white/40 text-[10px]">owes</span>
+                            <span className="text-[#A3E635] font-black">{formatINR(t.amount)}</span>
+                            <span className="text-white/40 text-[10px]">to</span>
+                            <span className="text-[#A3E635] font-bold">{t.toUid === currentUid ? 'You' : t.toName}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── Quick Actions ── */}
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400 mb-2.5">QUICK ACTIONS</p>
+              <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
+                {[
+                  { label: 'Add Bill', icon: <Plus className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => openAddExpenseModal() },
+                  { label: 'Scan Receipt', icon: <Upload className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => handleTriggerUpload() },
+                  { label: 'Insights', icon: <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => setCurrentView('insights') },
+                  { label: 'Invite', icon: <UserCheck className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => handleInviteTrigger() },
+                ].map(({ label, icon, action }) => (
+                  <button key={label} onClick={action}
+                    className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-col items-center gap-2 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 hover:border-[#1A3827]/20 active:scale-95 transition-all duration-150 cursor-pointer text-[#1A3827] dark:text-[#A3E635] group"
+                  >
+                    <div className="group-hover:scale-110 transition-transform duration-150">{icon}</div>
+                    <span className="text-[9px] sm:text-[10px] font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wide text-center leading-tight">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Recent Transactions ── */}
+            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
+                <h3 className="text-xs sm:text-sm font-black text-[#1A3827] dark:text-slate-100 tracking-tight">Recent Transactions</h3>
+                <button onClick={() => setCurrentView('ledger')} className="text-[10px] sm:text-xs font-bold text-[#1A3827] dark:text-[#A3E635] flex items-center gap-1 hover:underline cursor-pointer">
+                  View all <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+              <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800">
+                {dataList.length === 0 ? (
+                  <div className="px-5 py-10 text-center">
+                    <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold">No transactions yet.</p>
+                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-1">Expenses you log will appear here.</p>
+                  </div>
+                ) : (
+                  dataList.slice(0, 6).map((t) => {
+                    const isPayer = (t.paidByUid && t.paidByUid === currentUid) || (!t.paidByUid && t.paidBy === userNickname);
+                    return (
+                      <div key={t.id} className="flex items-center gap-3 px-4 sm:px-5 py-3 sm:py-3.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800/50 transition-colors cursor-default">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-800 flex items-center justify-center shrink-0">{getCategoryIcon(t.category)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs sm:text-sm font-bold text-[#1A3827] dark:text-slate-100 truncate">
+                            {t.title}
+                            {t.isEdited && <span onClick={e => { e.stopPropagation(); setActiveEditHistoryTx(t); }} className="ml-1.5 text-[9px] text-rose-500 italic font-bold cursor-pointer">(Edited)</span>}
+                          </p>
+                          <p className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 truncate">{getTransactionSubtitle(t)}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`text-xs sm:text-sm font-bold ${isPayer ? 'text-[#1A3827] dark:text-[#A3E635]' : 'text-slate-400 dark:text-slate-500'}`}>
+                            {isPayer ? '−' : '+'}{formatINR(t.amount)}
+                          </p>
+                          <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-0.5">{t.date}</p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className="px-4 sm:px-5 py-2.5 border-t border-[#F6F8F6] dark:border-slate-800 flex items-center gap-1.5 text-[9px] text-[#5C6E5C] dark:text-slate-500">
+                <Clock className="w-3 h-3" /><span>Live sync via Supabase</span>
+              </div>
+            </div>
+
+          </div>{/* end left column */}
+
+          {/* ── RIGHT SIDEBAR (lg: 4 cols) ── */}
+          <div className="lg:col-span-4 space-y-4">
+
+            {/* Monthly Budget Card */}
+            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">{monthName} Room Budget</p>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <span className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyRoomSpend)}</span>
+                    <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(monthlyBudget)}</span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 ml-2">
+                  <span className={`text-[9px] font-black px-2 py-1 rounded-full ${isOver ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>{budgetPct}% used</span>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-1">{daysLeft}d left</p>
                 </div>
               </div>
-            );
-          }
-          return null;
-        })()}
+              <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2.5 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-500 ${isOver ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${budgetPct}%` }} />
+              </div>
+              <div className="flex justify-between text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+                <span>{isOver ? `⚠️ Over by ${formatINR(monthlyRoomSpend - monthlyBudget)}` : `${formatINR(remaining)} remaining`}</span>
+                {!isOver && daysLeft > 0 && <span>~{formatINR(dailyLimit)}/day</span>}
+              </div>
+              {activeMonth === currentMonthStr && today.getDate() > 0 && monthlyRoomSpend > 0 && (() => {
+                const projected = Math.round((monthlyRoomSpend / today.getDate()) * daysInMonth);
+                return (
+                  <div className={`rounded-xl p-3 flex items-start gap-2 ${isOver ? 'bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/30' : 'bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/10 dark:border-slate-800'}`}>
+                    <Sparkles className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${isOver ? 'text-rose-600' : 'text-[#1A3827] dark:text-[#A3E635]'}`} />
+                    <div>
+                      <p className={`text-[10px] font-bold ${isOver ? 'text-rose-700 dark:text-rose-400' : 'text-[#1A3827] dark:text-slate-200'}`}>{isOver ? 'Over budget!' : "You're on track"}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">📈 Projected: <span className="font-black">{formatINR(projected)}</span></p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Personal Spending Card */}
+            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Personal Spending</p>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <span className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyPersonalTotal)}</span>
+                    <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(personalCap)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                  <span className={`text-[9px] font-black px-2 py-1 rounded-full ${personalPercentage >= 90 ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>{personalPercentage.toFixed(0)}%</span>
+                  <button onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }} className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all cursor-pointer" title="Edit limit">
+                    <Pencil className="w-3 h-3 text-[#5C6E5C] dark:text-slate-400" />
+                  </button>
+                </div>
+              </div>
+              {isEditingPersonalCap && (
+                <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
+                  <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">₹</span>
+                  <input type="number" min="0" value={personalCapInput}
+                    onChange={e => setPersonalCapInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }
+                      if (e.key === 'Escape') setIsEditingPersonalCap(false);
+                    }}
+                    className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0" autoFocus />
+                  <button onClick={() => { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#1A3827] text-white px-2.5 py-1 rounded-lg cursor-pointer">Save</button>
+                  <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] text-[#5C6E5C] px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 cursor-pointer">✕</button>
+                </div>
+              )}
+              <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-500 ${personalPercentage >= 90 ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${Math.min(100, personalPercentage)}%` }} />
+              </div>
+              <p className="text-[10px] font-medium text-[#5C6E5C] dark:text-slate-400">
+                {personalPercentage >= 100 ? `⚠️ Exceeded by ${formatINR(monthlyPersonalTotal - personalCap)}` : `${formatINR(personalCap - monthlyPersonalTotal)} remaining`}
+              </p>
+            </div>
+
+            {/* Room Activity Feed */}
+            {activityLogs.length > 0 && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
+                <h3 className="text-[9px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">Room Activity</h3>
+                <div className="space-y-2.5">
+                  {activityLogs.slice(0, 5).map(log => {
+                    const isCreate = log.action === 'create', isEdit = log.action === 'edit', isSettle = log.action === 'settle', isDelete = log.action === 'delete';
+                    let col = 'text-slate-400', bg = 'bg-slate-50 dark:bg-slate-800', icon = <Clock className="w-3 h-3" />;
+                    if (isCreate) { col = 'text-emerald-600 dark:text-[#A3E635]'; bg = 'bg-emerald-50 dark:bg-emerald-950/30'; icon = <Plus className="w-3 h-3" />; }
+                    else if (isEdit) { col = 'text-amber-600'; bg = 'bg-amber-50 dark:bg-amber-950/20'; icon = <Pencil className="w-3 h-3" />; }
+                    else if (isSettle) { col = 'text-blue-600'; bg = 'bg-blue-50 dark:bg-blue-950/20'; icon = <Check className="w-3 h-3" />; }
+                    else if (isDelete) { col = 'text-rose-600'; bg = 'bg-rose-50 dark:bg-rose-950/20'; icon = <Trash2 className="w-3 h-3" />; }
+                    return (
+                      <div key={log.id} className="flex items-start gap-2.5">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${bg} ${col}`}>{icon}</div>
+                        <div>
+                          <p className="text-xs font-semibold text-[#1A3827] dark:text-slate-200 leading-snug">{log.details || log.action}</p>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">{formatLogTime(log.created_at || log.timestamp)}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Low Fund Balance Alert */}
+            {(() => {
+              if (myFunds.length === 0) return null;
+              const totalFundBalance = myFunds.reduce((sum, fund) => {
+                const fundId = fund.id;
+                const spent = myFundSpends.filter(s => s.splitType && (s.splitType === `__FUND_SPEND__:${fundId}` || s.splitType === fundId)).reduce((a, b) => a + (Number(b.amount) || 0), 0);
+                return sum + ((Number(fund.amount) || 0) - spent);
+              }, 0);
+              if (totalFundBalance < 2000 && totalFundBalance >= 0) {
+                return (
+                  <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl p-3.5 flex items-start gap-3">
+                    <span className="text-base shrink-0">⚠️</span>
+                    <div>
+                      <p className="text-xs font-black text-amber-800 dark:text-amber-300">Low Fund Balance</p>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">Total: <span className="font-bold">{formatINR(Math.max(0, totalFundBalance))}</span>. Consider topping up.</p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+          </div>{/* end right sidebar */}
+
+        </div>{/* end main grid */}
 
       </div>
     );
   }
+
 
   // ==========================================
   // PAGE 2: THE LEDGER
