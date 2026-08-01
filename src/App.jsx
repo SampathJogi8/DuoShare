@@ -1745,24 +1745,16 @@ export default function App() {
 
 
 
-  // Supabase Real-time Sync
+  // Supabase Real-time Sync & Immediate Room Data Fetch
   useEffect(() => {
     if (!user || !userRoomId) return;
 
-    let hasFetched = false;
-    const performInitialFetch = () => {
-      if (hasFetched) return;
-      hasFetched = true;
-      fetchTransactions(userRoomId);
-      fetchReceipts(userRoomId);
-      fetchRoomSettings(userRoomId);
-      fetchMembers(userRoomId);
-      fetchActivityLogs(userRoomId);
-    };
-
-    const timer = setTimeout(() => {
-      performInitialFetch();
-    }, 1500);
+    // Trigger immediate parallel fetch for the active room (0ms latency)
+    fetchTransactions(userRoomId);
+    fetchReceipts(userRoomId);
+    fetchRoomSettings(userRoomId);
+    fetchMembers(userRoomId);
+    fetchActivityLogs(userRoomId);
 
     const channel = supabase
       .channel(`room:${userRoomId}`)
@@ -1881,13 +1873,9 @@ export default function App() {
       )
       .subscribe((status) => {
         console.log(`Realtime subscription status for room ${userRoomId}:`, status);
-        if (status === 'SUBSCRIBED') {
-          performInitialFetch();
-        }
       });
 
     return () => {
-      clearTimeout(timer);
       supabase.removeChannel(channel);
     };
   }, [user, userRoomId, fetchTransactions, fetchReceipts, fetchRoomSettings, fetchMembers, fetchActivityLogs]);
