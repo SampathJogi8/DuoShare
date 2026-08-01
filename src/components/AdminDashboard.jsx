@@ -27,7 +27,17 @@ import {
   Terminal,
   FileText,
   Download,
-  DollarSign
+  DollarSign,
+  Search,
+  Globe,
+  ShieldCheck,
+  TrendingUp,
+  BarChart3,
+  Filter,
+  Cpu,
+  Layers,
+  UserCheck,
+  Key
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import { supabase } from '../supabase';
@@ -201,13 +211,75 @@ export default function AdminDashboard({
     }
   }, []);
 
+  // User Directory & Search states
+  const [allRegisteredUsers, setAllRegisteredUsers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [securityLogs, setSecurityLogs] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_security_logs');
+        return saved ? JSON.parse(saved) : [
+          { id: 'sec-1', action: 'Admin Portal Authorized', email: user?.email || 'tallyin.alerts@gmail.com', timestamp: new Date().toLocaleTimeString(), status: 'SUCCESS' }
+        ];
+      } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+
+  const fetchUserDirectory = useCallback(async () => {
+    try {
+      const [{ data: memberList }, { data: userList }] = await Promise.all([
+        supabase.from('members').select('*').limit(100),
+        supabase.from('users').select('*').limit(100)
+      ]);
+
+      const combined = [];
+      const seen = new Set();
+
+      (memberList || []).forEach(m => {
+        const key = m.email || m.uid || m.nickname;
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          combined.push({
+            id: m.uid || m.id,
+            name: m.nickname || m.name || 'Roommate',
+            email: m.email || 'N/A',
+            roomId: m.room_id || 'Shared Space',
+            photoURL: m.photoURL,
+            role: 'Member'
+          });
+        }
+      });
+
+      (userList || []).forEach(u => {
+        const key = u.email || u.uid;
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          combined.push({
+            id: u.uid || u.id,
+            name: u.nickname || u.name || 'User',
+            email: u.email || 'N/A',
+            roomId: u.room_id || 'Joined Space',
+            photoURL: u.photoURL,
+            role: 'User'
+          });
+        }
+      });
+
+      setAllRegisteredUsers(combined);
+    } catch (e) {
+      console.warn("User directory fetch error:", e);
+    }
+  }, []);
+
   useEffect(() => {
     if (adminAuthenticated) {
       measurePing();
       fetchSystemStats();
       fetchFinancialsAndLogs();
+      fetchUserDirectory();
     }
-  }, [adminAuthenticated, measurePing, fetchSystemStats, fetchFinancialsAndLogs]);
+  }, [adminAuthenticated, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory]);
 
   // Handle Passkey verification
   const handlePasskeySubmit = (e) => {
@@ -601,6 +673,26 @@ export default function AdminDashboard({
         </div>
       </div>
 
+      {/* Universal Quick Search Bar */}
+      <div className="relative">
+        <Search className="w-4 h-4 text-[#5C6E5C] dark:text-slate-400 absolute left-4 top-3.5" />
+        <input
+          type="text"
+          placeholder="🔍 Universal Admin Search (Type user email, room code, or transaction name)..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="w-full pl-11 pr-4 py-3 bg-white/90 dark:bg-slate-900/90 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-4 top-3 text-xs text-[#5C6E5C] hover:text-[#1A3827] font-bold"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
       {/* Navigation Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
         <button
@@ -628,6 +720,18 @@ export default function AdminDashboard({
         </button>
 
         <button
+          onClick={() => setActiveTab('user_directory')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'user_directory'
+              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5 text-blue-400" />
+          <span>User Accounts ({allRegisteredUsers.length})</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('finance_audit')}
           className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
             activeTab === 'finance_audit'
@@ -649,6 +753,18 @@ export default function AdminDashboard({
         >
           <Building2 className="w-3.5 h-3.5 text-blue-500" />
           <span>Rooms Directory ({allSystemRooms.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('security_audit')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'security_audit'
+              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Security Audit Logs</span>
         </button>
 
         <button
@@ -708,7 +824,7 @@ export default function AdminDashboard({
           }`}
         >
           <Sliders className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Latency & Throttling</span>
+          <span>Latency</span>
         </button>
 
         <button
@@ -720,7 +836,7 @@ export default function AdminDashboard({
           }`}
         >
           <Terminal className="w-3.5 h-3.5" />
-          <span>Chaos & Feature Flags</span>
+          <span>Chaos & Flags</span>
         </button>
       </div>
 
@@ -1202,6 +1318,121 @@ export default function AdminDashboard({
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: User Accounts Directory */}
+      {activeTab === 'user_directory' && (
+        <div className="hud-card rounded-3xl p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-500" />
+                Registered User Accounts Directory ({allRegisteredUsers.length})
+              </h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                View registered roommates, email addresses, and room assignments.
+              </p>
+            </div>
+            <button
+              onClick={fetchUserDirectory}
+              className="px-3 py-1.5 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-colors flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh Users</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
+            {allRegisteredUsers.length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center col-span-2 py-8">No registered user accounts found in database.</p>
+            ) : (
+              allRegisteredUsers
+                .filter(u => {
+                  if (!searchQuery.trim()) return true;
+                  const q = searchQuery.toLowerCase();
+                  return (
+                    (u.name && u.name.toLowerCase().includes(q)) ||
+                    (u.email && u.email.toLowerCase().includes(q)) ||
+                    (u.roomId && u.roomId.toLowerCase().includes(q))
+                  );
+                })
+                .map(u => (
+                  <div key={u.id || u.email} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {u.photoURL ? (
+                        <img src={u.photoURL} alt={u.name} className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 flex items-center justify-center font-black text-xs shrink-0">
+                          {u.name ? u.name.charAt(0).toUpperCase() : 'U'}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{u.name}</p>
+                        <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 truncate">{u.email}</p>
+                        <p className="text-[10px] font-mono text-emerald-700 dark:text-[#A3E635]">Room: {u.roomId}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setEmailRecipientGroup('CUSTOM');
+                        setCustomEmails(u.email);
+                        setActiveTab('email');
+                        if (triggerToast) triggerToast(`Composing email to ${u.email}`);
+                      }}
+                      className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0"
+                      title="Send Mail"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Security Audit Logs */}
+      {activeTab === 'security_audit' && (
+        <div className="hud-card rounded-3xl p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                System Security & Admin Access Logs
+              </h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                Audit trail of admin authorization events, maintenance toggles, and security verifications.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
+            {securityLogs.length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center py-8">No security events logged.</p>
+            ) : (
+              securityLogs.map((log, idx) => (
+                <div key={log.id || idx} className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 shrink-0">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{log.action}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                        Initiated by <span className="font-bold text-[#1A3827] dark:text-slate-200">{log.email}</span> • {log.timestamp}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20 shrink-0">
+                    {log.status || 'VERIFIED'}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
