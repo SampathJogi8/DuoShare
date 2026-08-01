@@ -8089,25 +8089,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <h2 className="font-black text-xs sm:text-sm text-[#0F172A] dark:text-slate-100 leading-tight tracking-tight">
                   {roomName}
                 </h2>
-                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                  {/* Room ID Badge with 1-tap copy */}
-                  <button
-                    onClick={() => {
-                      if (userRoomId) {
-                        navigator.clipboard.writeText(userRoomId);
-                        if (triggerToast) triggerToast(`Room code copied: ${userRoomId}`);
-                      }
-                    }}
-                    className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 dark:bg-emerald-400/10 border border-emerald-500/20 dark:border-emerald-400/20 hover:border-emerald-500/40 text-[9px] font-mono font-black text-[#1A3827] dark:text-[#A3E635] transition-all cursor-pointer shadow-2xs"
-                    title="Click to copy Room Code"
-                  >
-                    <span className="text-[8px] font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">ROOM</span>
-                    <span className="tracking-wider">{userRoomId}</span>
-                    <Copy className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
-                  </button>
-
+                <div className="flex items-center gap-1.5 mt-0.5">
                   {/* Live Sync Status Indicator */}
-                  <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[9px] font-black tracking-wider uppercase transition-all ${
+                  <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-black tracking-wider uppercase transition-all ${
                     isDbSynced 
                       ? 'bg-emerald-500/10 dark:bg-emerald-400/10 border-emerald-500/20 dark:border-emerald-400/20 text-emerald-700 dark:text-[#A3E635]' 
                       : 'bg-amber-500/10 dark:bg-amber-400/10 border-amber-500/20 dark:border-amber-400/20 text-amber-700 dark:text-amber-400'
