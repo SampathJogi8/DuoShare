@@ -32,7 +32,8 @@ export default function MaintenanceView({
   setAuthError,
   toastMessage,
   triggerToast,
-  appVersion
+  appVersion,
+  maintenanceMessage
 }) {
   const [showMaintenanceLogin, setShowMaintenanceLogin] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -104,8 +105,8 @@ export default function MaintenanceView({
             <h1 className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
               Tallyin is Upgrading! 🚀
             </h1>
-            <p className="text-sm text-[#5C6E5C] dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-              We are currently undergoing a major platform redesign to bring you a faster, smarter, and more beautiful experience. Normal access is temporarily paused.
+            <p className="text-xs sm:text-sm text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/50 max-w-md mx-auto leading-relaxed p-3.5 rounded-2xl font-semibold shadow-sm">
+              {maintenanceMessage || "We are currently undergoing a major platform redesign to bring you a faster, smarter, and more beautiful experience. Normal access is temporarily paused."}
             </p>
           </div>
         </div>
