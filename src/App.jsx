@@ -8390,41 +8390,46 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
         </header>
 
-        {/* Live Broadcast Banner Overlay */}
-        {globalBroadcast?.active && (
-          <div className={`w-full pt-16 px-4 py-2.5 text-xs font-bold text-center flex items-center justify-center gap-2 shadow-sm animate-fade-in ${
-            globalBroadcast.type === 'alert'
-              ? 'bg-rose-600 text-white'
-              : globalBroadcast.type === 'maintenance'
-              ? 'bg-amber-500 text-slate-950'
-              : 'bg-purple-700 text-white'
-          }`}>
-            <Radio className="w-4 h-4 animate-pulse shrink-0" />
-            <span>{globalBroadcast.text}</span>
-          </div>
-        )}
-
-        {/* Pinned Room Announcement Banner */}
-        {userRoomId && pinnedMessages?.[userRoomId] && (
-          <div className="mx-4 sm:mx-8 mt-20 mb-2 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/50 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-sm animate-fade-in">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <Pin className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 rotate-45" />
-              <div className="min-w-0 text-left">
-                <span className="font-bold text-amber-900 dark:text-amber-200">
-                  {pinnedMessages[userRoomId].author}:
-                </span>
-                <span className="ml-1 text-amber-800 dark:text-amber-300">
-                  {pinnedMessages[userRoomId].text}
-                </span>
+        <main className="flex-grow pt-16 sm:pt-20 px-3 sm:px-8 pb-24 overflow-y-auto">
+          {/* Live Broadcast Banner Overlay (Mobile & Desktop) */}
+          {globalBroadcast?.active && (
+            <div className={`w-full mb-3 px-4 py-2.5 rounded-2xl text-xs font-bold text-center flex items-center justify-between gap-2 shadow-md animate-fade-in ${
+              globalBroadcast.type === 'alert'
+                ? 'bg-rose-600 text-white'
+                : globalBroadcast.type === 'maintenance'
+                ? 'bg-amber-500 text-slate-950'
+                : 'bg-purple-700 text-white'
+            }`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <Radio className="w-4 h-4 animate-pulse shrink-0" />
+                <span className="truncate">{globalBroadcast.text}</span>
               </div>
+              <span className="text-[9px] font-black tracking-wider uppercase px-2 py-0.5 rounded-full bg-white/20 shrink-0">
+                {globalBroadcast.type || 'NOTICE'}
+              </span>
             </div>
-            <span className="text-[9px] font-mono text-amber-700 dark:text-amber-500 shrink-0">
-              PINNED
-            </span>
-          </div>
-        )}
+          )}
 
-        <main className="flex-grow pt-20 px-4 sm:px-8 pb-24 overflow-y-auto">
+          {/* Pinned Room Announcement Banner (Mobile & Desktop) */}
+          {userRoomId && (pinnedMessages?.[userRoomId] || pinnedMessages?.['ALL']) && (
+            <div className="w-full mb-4 p-3.5 bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/30 dark:border-amber-400/30 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-sm animate-fade-in">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Pin className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 rotate-45" />
+                <div className="min-w-0 text-left">
+                  <p className="font-bold text-amber-950 dark:text-amber-200 truncate">
+                    {(pinnedMessages[userRoomId] || pinnedMessages['ALL']).author}
+                  </p>
+                  <p className="text-amber-800 dark:text-amber-300 leading-tight">
+                    {(pinnedMessages[userRoomId] || pinnedMessages['ALL']).text}
+                  </p>
+                </div>
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full shrink-0">
+                PINNED
+              </span>
+            </div>
+          )}
+
           <ErrorBoundary>
             {currentView === 'home' && <ViewRenderer render={renderHome} />}
             {currentView === 'ledger' && <ViewRenderer render={renderLedger} />}
