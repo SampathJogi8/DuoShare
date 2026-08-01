@@ -1,83 +1,99 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --font-sans: 'Plus Jakarta Sans', 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
 body {
-  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
-  @apply bg-[#F0F4F1] text-[#1A3827] antialiased transition-colors duration-300;
+  font-family: var(--font-sans);
+  background-color: #F3F7F4;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(163, 230, 53, 0.08) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.06) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(26, 56, 39, 0.03) 0px, transparent 50%);
+  background-attachment: fixed;
+  color: #12291C;
+  @apply antialiased transition-colors duration-300;
 }
 
 body.dark {
-  @apply bg-[#060809] text-slate-100;
+  background-color: #080B0D;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(163, 230, 53, 0.04) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(20, 184, 166, 0.03) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(0, 0, 0, 0.6) 0px, transparent 50%);
+  color: #F1F5F9;
 }
 
 /* Pitch Obsidian & Deep Slate Overrides for Dark Mode */
 .dark .dark\:bg-slate-950 {
-  background-color: #060809 !important;
+  background-color: #080B0D !important;
 }
 .dark .dark\:bg-slate-900 {
-  background-color: #0C1012 !important;
+  background-color: #0E1317 !important;
 }
 .dark .dark\:bg-slate-800 {
-  background-color: #141A1D !important;
+  background-color: #161D22 !important;
 }
 .dark .dark\:bg-slate-800\/20 {
-  background-color: rgba(20, 26, 29, 0.2) !important;
+  background-color: rgba(22, 29, 34, 0.2) !important;
 }
 .dark .dark\:bg-slate-800\/40 {
-  background-color: rgba(20, 26, 29, 0.4) !important;
+  background-color: rgba(22, 29, 34, 0.4) !important;
 }
 .dark .dark\:border-slate-800 {
-  border-color: #1C2428 !important;
+  border-color: #1F2830 !important;
 }
 .dark .dark\:bg-slate-950\/20 {
-  background-color: rgba(6, 8, 9, 0.2) !important;
+  background-color: rgba(8, 11, 13, 0.2) !important;
 }
 .dark .dark\:bg-slate-950\/10 {
-  background-color: rgba(6, 8, 9, 0.1) !important;
+  background-color: rgba(8, 11, 13, 0.1) !important;
 }
 .dark .dark\:bg-slate-950\/40 {
-  background-color: rgba(6, 8, 9, 0.4) !important;
+  background-color: rgba(8, 11, 13, 0.4) !important;
 }
 
 /* Glassmorphism Panels & Cards */
 .hud-card {
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(220, 228, 220, 0.85);
-  box-shadow: 0 4px 20px -2px rgba(26, 56, 39, 0.05);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(226, 234, 227, 0.9);
+  box-shadow: 0 10px 30px -5px rgba(18, 41, 28, 0.04), 0 4px 12px -2px rgba(18, 41, 28, 0.02);
 }
 
 .dark .hud-card {
-  background: rgba(12, 16, 18, 0.88);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.4);
+  background: rgba(14, 19, 23, 0.82);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.6);
 }
 
 .hud-card-interactive {
-  @apply hud-card transition-all duration-300 hover:border-[#A3E635]/60 hover:shadow-xl hover:shadow-black/10 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99];
+  @apply hud-card transition-all duration-300 hover:border-[#A3E635]/60 hover:shadow-2xl hover:shadow-[#A3E635]/10 hover:-translate-y-1 active:translate-y-0 active:scale-[0.99];
 }
 
 /* Glowing Neon Accents */
 .hud-glow-lime {
-  box-shadow: 0 0 35px -5px rgba(163, 230, 53, 0.35);
+  box-shadow: 0 0 40px -8px rgba(163, 230, 53, 0.4);
 }
 
 .hud-glow-emerald {
-  box-shadow: 0 0 35px -5px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 0 40px -8px rgba(16, 185, 129, 0.35);
 }
 
 .hud-glow-rose {
-  box-shadow: 0 0 35px -5px rgba(244, 63, 94, 0.3);
+  box-shadow: 0 0 40px -8px rgba(244, 63, 94, 0.35);
 }
 
 .hud-glow-indigo {
-  box-shadow: 0 0 35px -5px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 40px -8px rgba(99, 102, 241, 0.35);
 }
 
 /* Shimmer Loading Skeleton */
@@ -97,7 +113,7 @@ body.dark {
 }
 
 .dark .skeleton-shimmer {
-  background: linear-gradient(90deg, rgba(20, 26, 29, 0.6) 25%, rgba(28, 36, 40, 0.9) 50%, rgba(20, 26, 29, 0.6) 75%);
+  background: linear-gradient(90deg, rgba(22, 29, 34, 0.6) 25%, rgba(31, 40, 48, 0.9) 50%, rgba(22, 29, 34, 0.6) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.8s infinite ease-in-out;
 }
@@ -124,27 +140,27 @@ body.dark {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #DCE4DC;
+  background: #D5E0D6;
   border-radius: 9999px;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #1C2428;
+  background: #1F2830;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #C4D0C4;
+  background: #B9CAB9;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #28343A;
+  background: #2D3A46;
 }
 
 /* Animations */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.985);
+    transform: translateY(10px) scale(0.985);
   }
   to {
     opacity: 1;
@@ -163,12 +179,25 @@ body.dark {
   }
 }
 
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
 .animate-fade-in {
   animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-pulse-glow {
   animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+.animate-float-slow {
+  animation: floatSlow 4s ease-in-out infinite;
 }
 
 .hover-scale-effect {

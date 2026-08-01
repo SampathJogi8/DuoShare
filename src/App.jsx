@@ -7957,7 +7957,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         <div className="fixed bottom-24 right-6 z-30 animate-fade-in" style={{ transform: 'translate3d(0, 0, 0)', WebkitTransform: 'translate3d(0, 0, 0)' }}>
           <button 
             onClick={() => setShowAiChat(true)}
-            className="flex items-center justify-center w-12 h-12 bg-[#1A3827] text-[#A3E635] rounded-full shadow-lg shadow-emerald-950/20 hover:scale-105 active:scale-95 transition-all duration-200 border border-[#255038]"
+            className="flex items-center justify-center w-13 h-13 bg-[#0F291E] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full shadow-2xl shadow-emerald-950/30 hover:scale-110 active:scale-95 transition-all duration-200 border border-[#A3E635]/40 cursor-pointer"
             id="fab-ai-assistant"
             title="Ask Divvy"
           >
@@ -7970,7 +7970,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="fixed bottom-6 right-6 z-30" style={{ transform: 'translate3d(0, 0, 0)', WebkitTransform: 'translate3d(0, 0, 0)' }}>
         <button 
           onClick={() => openAddExpenseModal()}
-          className="flex items-center gap-2 bg-[#A3E635] text-[#1A3827] font-bold px-4 sm:px-5 py-3 sm:py-3.5 rounded-full shadow-lg shadow-lime-900/10 hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 border border-[#84CC16]"
+          className="flex items-center gap-2.5 bg-[#A3E635] text-[#0F291E] font-black px-5 py-3.5 rounded-full shadow-xl shadow-lime-950/20 hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 border border-[#84CC16] cursor-pointer"
           id="fab-quick-add"
         >
           <Plus className="w-5 h-5 stroke-[3]" />
@@ -8078,24 +8078,25 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         })()}
 
         {/* Main Balance Card */}
-        <div className="bg-gradient-to-br from-[#1A3827] via-[#204530] to-[#0D1E14] dark:from-[#0C1012] dark:via-[#141A1D] dark:to-[#060809] text-white p-6 sm:p-8 rounded-3xl hud-glow-lime border border-[#A3E635]/30 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300">
-          <div className="absolute right-0 top-0 w-96 h-96 bg-[#A3E635]/10 blur-3xl rounded-full -mr-20 -mt-20 pointer-events-none"></div>
+        <div className="bg-gradient-to-br from-[#0F291E] via-[#163A2B] to-[#0A1F16] dark:from-[#080B0D] dark:via-[#0E1417] dark:to-[#040608] text-white p-6 sm:p-8 rounded-3xl hud-glow-lime border border-[#A3E635]/30 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300 shadow-2xl">
+          <div className="absolute right-0 top-0 w-96 h-96 bg-[#A3E635]/15 blur-3xl rounded-full -mr-20 -mt-20 pointer-events-none animate-pulse-glow"></div>
+          <div className="absolute left-1/3 bottom-0 w-64 h-64 bg-emerald-500/10 blur-3xl rounded-full -mb-20 pointer-events-none"></div>
           
           <div className="space-y-4 max-w-md z-10">
             <div>
-              <div className="flex items-center gap-2 text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-0.5">
+              <div className="inline-flex items-center gap-2 bg-[#A3E635]/15 border border-[#A3E635]/30 px-3 py-1 rounded-full text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5 backdrop-blur-md">
                 <span className="w-2 h-2 rounded-full bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-pulse"></span>
                 <span>CURRENT NET BALANCE</span>
               </div>
-              <h3 className="text-xs text-slate-300 font-medium mt-0.5">
+              <h3 className="text-xs text-slate-300 font-medium mt-1">
                 {myBalance > 0 ? 'You are owed' : myBalance < 0 ? 'You owe' : 'All settled up'}
               </h3>
-              <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1 drop-shadow-sm">
+              <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1 drop-shadow-md">
                 {formatINR(Math.abs(myBalance))}
               </h2>
             </div>
             
-            <p className="text-xs sm:text-sm text-[#EAF0EC]/80 dark:text-slate-300 font-medium">
+            <p className="text-xs sm:text-sm text-slate-200/90 font-medium leading-relaxed">
               {myBalance > 0 
                 ? "You have paid more than your share of the room expenses."
                 : myBalance < 0 
@@ -8105,26 +8106,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
             <button 
               onClick={handleSettleUp}
-              className="inline-flex items-center gap-2 bg-[#A3E635] text-[#1A3827] font-bold px-4 py-2 rounded-xl text-[10px] sm:text-xs hover:bg-[#BEF264] transition-all duration-150 shadow-sm"
+              className="inline-flex items-center gap-2.5 bg-[#A3E635] text-[#0F291E] font-black px-5 py-2.5 rounded-2xl text-xs hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-lime-950/20 cursor-pointer"
             >
               <span>Settle up</span>
-              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
 
           {/* Right side roommate balance sheet */}
-          <div className="border-t md:border-t-0 md:border-l border-white/10 dark:border-slate-800 pt-5 md:pt-0 md:pl-10 space-y-4 flex-1 max-w-sm z-10 text-left flex flex-col justify-between">
+          <div className="border-t md:border-t-0 md:border-l border-white/10 dark:border-slate-800/80 pt-5 md:pt-0 md:pl-10 space-y-4 flex-1 max-w-sm z-10 text-left flex flex-col justify-between">
             <div>
-              <p className="text-[10px] font-bold text-white/50 dark:text-slate-400 tracking-wider uppercase">Roommate Balance Sheet</p>
-              <div className="space-y-2 max-h-28 overflow-y-auto pr-1 mt-2">
+              <p className="text-[10px] font-black text-white/60 dark:text-slate-400 tracking-widest uppercase">Roommate Balance Sheet</p>
+              <div className="space-y-2 max-h-32 overflow-y-auto pr-1 mt-2.5">
                 {members.length > 1 ? (
                   members.map(m => {
                     if (m.uid === currentUid) return null;
                     const bal = computedStats.balances[m.uid] || 0;
                     return (
-                      <div key={m.uid} className="flex justify-between items-center text-xs font-semibold py-1 border-b border-white/5 last:border-b-0 gap-2">
-                        <span className="text-white/80 truncate max-w-[120px]">{m.nickname}</span>
-                        <span className={`shrink-0 ${bal > 0 ? 'text-[#A3E635] font-bold' : bal < 0 ? 'text-rose-400 font-bold' : 'text-white/40'}`}>
+                      <div key={m.uid} className="flex justify-between items-center text-xs font-semibold py-1.5 px-2 rounded-xl bg-white/5 dark:bg-white/5 border border-white/5 gap-2 transition-all hover:bg-white/10">
+                        <span className="text-white/90 truncate max-w-[120px]">{m.nickname}</span>
+                        <span className={`shrink-0 text-[11px] ${bal > 0 ? 'text-[#A3E635] font-black' : bal < 0 ? 'text-rose-400 font-black' : 'text-white/40 font-medium'}`}>
                           {bal > 0 ? `is owed ${formatINR(bal)}` : bal < 0 ? `owes ${formatINR(Math.abs(bal))}` : 'settled up'}
                         </span>
                       </div>
@@ -8137,15 +8138,15 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </div>
             {suggestedTransfers.length > 0 && (
               <div className="pt-3 border-t border-white/10 mt-2">
-                <p className="text-[10px] font-bold text-[#A3E635]/80 tracking-wider uppercase">Suggested Transfers</p>
+                <p className="text-[10px] font-black text-[#A3E635] tracking-widest uppercase">Suggested Transfers</p>
                 <div className="space-y-1.5 mt-2 max-h-24 overflow-y-auto pr-1">
                   {suggestedTransfers.map((t, idx) => (
-                    <div key={idx} className="text-[11px] text-white/90 leading-relaxed font-semibold flex flex-wrap items-center gap-1">
-                      <span className="text-rose-400 truncate max-w-[80px]">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
-                      <span className="text-white/45 font-normal">owes</span>
-                      <span className="text-[#A3E635] font-bold">{formatINR(t.amount)}</span>
-                      <span className="text-white/45 font-normal">to</span>
-                      <span className="text-[#A3E635] truncate max-w-[80px]">{t.toUid === currentUid ? 'You' : t.toName}</span>
+                    <div key={idx} className="text-[11px] text-white/90 leading-relaxed font-semibold flex flex-wrap items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-xl">
+                      <span className="text-rose-400 font-bold truncate max-w-[80px]">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
+                      <span className="text-white/50 font-normal text-[10px]">owes</span>
+                      <span className="text-[#A3E635] font-black">{formatINR(t.amount)}</span>
+                      <span className="text-white/50 font-normal text-[10px]">to</span>
+                      <span className="text-[#A3E635] font-bold truncate max-w-[80px]">{t.toUid === currentUid ? 'You' : t.toName}</span>
                     </div>
                   ))}
                 </div>
