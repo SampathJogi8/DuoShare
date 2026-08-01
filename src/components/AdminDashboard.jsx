@@ -37,7 +37,9 @@ import {
   Cpu,
   Layers,
   UserCheck,
-  Key
+  Key,
+  Ban,
+  UserX
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import { supabase } from '../supabase';
@@ -210,6 +212,76 @@ export default function AdminDashboard({
       console.warn("Financials fetch error:", e);
     }
   }, []);
+
+  // Ban Management States
+  const [bannedUsers, setBannedUsers] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_banned_users');
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+  const [banEmailInput, setBanEmailInput] = useState('');
+  const [banReasonInput, setBanReasonInput] = useState('Violation of platform guidelines or debt non-payment');
+  const [isBanModalOpen, setIsBanModalOpen] = useState(false);
+
+  // Ban User Handler
+  const handleBanUser = async (targetEmail, targetReason) => {
+    const cleanEmail = targetEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      if (triggerToast) triggerToast('Valid email required to ban user.');
+      return;
+    }
+    if (ADMIN_EMAILS.includes(cleanEmail)) {
+      if (triggerToast) triggerToast('Cannot ban system administrators!');
+      return;
+    }
+
+    const newBanObj = {
+      email: cleanEmail,
+      reason: targetReason.trim() || 'Account suspended by administrator.',
+      bannedAt: new Date().toISOString(),
+      bannedBy: user?.email || 'Admin'
+    };
+
+    const updatedBanned = [...bannedUsers.filter(b => b.email !== cleanEmail), newBanObj];
+    setBannedUsers(updatedBanned);
+    localStorage.setItem('tallyin_banned_users', JSON.stringify(updatedBanned));
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'USER_BAN_UPDATE',
+        payload: { bannedUsers: updatedBanned }
+      });
+    } catch (e) { console.error("Realtime send ban error:", e); }
+
+    if (triggerToast) triggerToast(`User ${cleanEmail} SUSPENDED & BANNED!`);
+    setBanEmailInput('');
+    setIsBanModalOpen(false);
+  };
+
+  // Unban User Handler
+  const handleUnbanUser = async (targetEmail) => {
+    const cleanEmail = targetEmail.trim().toLowerCase();
+    const updatedBanned = bannedUsers.filter(b => b.email !== cleanEmail);
+    setBannedUsers(updatedBanned);
+    localStorage.setItem('tallyin_banned_users', JSON.stringify(updatedBanned));
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'USER_BAN_UPDATE',
+        payload: { bannedUsers: updatedBanned }
+      });
+    } catch (e) { console.error(e); }
+
+    if (triggerToast) triggerToast(`User ${cleanEmail} RESTORED & UNBANNED!`);
+  };
 
   // User Directory & Search states
   const [allRegisteredUsers, setAllRegisteredUsers] = useState([]);
@@ -729,6 +801,18 @@ export default function AdminDashboard({
         >
           <Users className="w-3.5 h-3.5 text-blue-400" />
           <span>User Accounts ({allRegisteredUsers.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('banned_accounts')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'banned_accounts'
+              ? 'bg-rose-600 text-white shadow-md'
+              : 'hud-card text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+          }`}
+        >
+          <Ban className="w-3.5 h-3.5" />
+          <span>Banned Accounts ({bannedUsers.length})</span>
         </button>
 
         <button
@@ -1375,20 +1459,123 @@ export default function AdminDashboard({
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setEmailRecipientGroup('CUSTOM');
-                        setCustomEmails(u.email);
-                        setActiveTab('email');
-                        if (triggerToast) triggerToast(`Composing email to ${u.email}`);
-                      }}
-                      className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0"
-                      title="Send Mail"
-                    >
-                      <Mail className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => {
+                          setEmailRecipientGroup('CUSTOM');
+                          setCustomEmails(u.email);
+                          setActiveTab('email');
+                          if (triggerToast) triggerToast(`Composing email to ${u.email}`);
+                        }}
+                        className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700"
+                        title="Send Mail"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                      </button>
+
+                      {bannedUsers.some(b => b.email === u.email?.toLowerCase()) ? (
+                        <button
+                          onClick={() => handleUnbanUser(u.email)}
+                          className="px-2.5 py-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black hover:bg-emerald-200 transition-colors flex items-center gap-1"
+                          title="Unban User Account"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Unban</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setBanEmailInput(u.email);
+                            handleBanUser(u.email, banReasonInput);
+                          }}
+                          className="px-2.5 py-1.5 bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-[10px] font-black hover:bg-rose-200 transition-colors flex items-center gap-1"
+                          title="Ban & Block User Account"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          <span>Ban</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Banned Accounts Management */}
+      {activeTab === 'banned_accounts' && (
+        <div className="hud-card rounded-3xl p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-black text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                <Ban className="w-5 h-5" />
+                Banned User Accounts Management ({bannedUsers.length})
+              </h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                Block specific user emails from accessing the platform or restore suspended accounts.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Ban Input Box */}
+          <div className="p-4 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-2xl space-y-3">
+            <h4 className="text-xs font-black text-rose-900 dark:text-rose-200 uppercase tracking-wider">Ban New User Account</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                type="email"
+                placeholder="User Email Address (e.g. user@gmail.com)..."
+                value={banEmailInput}
+                onChange={e => setBanEmailInput(e.target.value)}
+                className="px-3.5 py-2.5 rounded-xl border border-rose-300 dark:border-rose-900 bg-white dark:bg-slate-900 text-xs text-[#1A3827] dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+              <input
+                type="text"
+                placeholder="Reason for suspension (e.g. Violation of policy)..."
+                value={banReasonInput}
+                onChange={e => setBanReasonInput(e.target.value)}
+                className="px-3.5 py-2.5 rounded-xl border border-rose-300 dark:border-rose-900 bg-white dark:bg-slate-900 text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+            <button
+              onClick={() => handleBanUser(banEmailInput, banReasonInput)}
+              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center justify-center gap-2"
+            >
+              <UserX className="w-4 h-4" />
+              <span>Ban User Email Now</span>
+            </button>
+          </div>
+
+          <div className="space-y-2.5 max-h-[400px] overflow-y-auto pr-1">
+            {bannedUsers.length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center py-8">No user accounts are currently banned.</p>
+            ) : (
+              bannedUsers.map(b => (
+                <div key={b.email} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/50 flex items-center justify-between gap-3 text-xs">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-extrabold text-rose-700 dark:text-rose-400 truncate">{b.email}</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                        BANNED
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#5C6E5C] dark:text-slate-300 italic truncate">
+                      "{b.reason}"
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      Banned by {b.bannedBy} on {new Date(b.bannedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => handleUnbanUser(b.email)}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 shadow-sm"
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>Unban User</span>
+                  </button>
+                </div>
+              ))
             )}
           </div>
         </div>
