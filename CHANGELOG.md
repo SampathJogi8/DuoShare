@@ -1,6 +1,107 @@
-# 🚀 DuoShare Changelog
+# Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+## [3.4.0](https://github.com/SampathJogi8/DuoShare/compare/v3.2.1...v3.4.0) (2026-08-01)
+
+
+### ♻️ Code Refactoring
+
+* completely remove admin portal and associated maintenance lockdown hooks ([146eb6c](https://github.com/SampathJogi8/DuoShare/commit/146eb6c6f8045c535dd009b83645c42e0945194e))
+* eliminate all remaining static sample arrays across all modular components and verify 100% real database data binding ([283c4a1](https://github.com/SampathJogi8/DuoShare/commit/283c4a11986826f994fafc6d1b0280d7bf4bfb76))
+
+
+### ⏪ Reverts
+
+* remove extra new features while preserving 10am monthly statement schedule ([2a0ca66](https://github.com/SampathJogi8/DuoShare/commit/2a0ca66861f6f58a31f07547a71e06c2b19b3126))
+* restore entire app (src/App.jsx) back to version from 2 days ago (commit 5036846) ([f008bc3](https://github.com/SampathJogi8/DuoShare/commit/f008bc31be492454632eb54317d812c10a61c956))
+* restore Settle Up engine, modal, and balance calculations back to stable version from 2 days ago (247378c) ([9dc196a](https://github.com/SampathJogi8/DuoShare/commit/9dc196ac1d638db8687d668767a3f60ef3cf794b))
+
+
+### 💄 UI / Styles
+
+* apply fresh Neo-Glass Emerald Cyberpunk redesign across all components ([02727d6](https://github.com/SampathJogi8/DuoShare/commit/02727d6d369f7f42c94893b531075cb1c6d5429a))
+* apply fresh Neo-Glass Emerald redesign to Dashboard view ([6bd4689](https://github.com/SampathJogi8/DuoShare/commit/6bd4689f7a09ea7e8e34edecfd6554eccc66379f))
+* apply Minimalist Luxe & Swiss Typography redesign theme ([d9a92c8](https://github.com/SampathJogi8/DuoShare/commit/d9a92c86bfe16ff8ff7753da3c4e12b52e686361))
+* complete comprehensive redesign across all pages, modals, and drawers ([e1b94ea](https://github.com/SampathJogi8/DuoShare/commit/e1b94ea713324063340018fb53ee9f299d62c725))
+* comprehensive end-to-end UI/UX redesign across every view and modal ([8cce286](https://github.com/SampathJogi8/DuoShare/commit/8cce28678b90819e8861ee2299945d3aad9ab639))
+* elevate UI design system with modern glassmorphism, fonts, and neon aesthetics without altering any logic ([09cdfdb](https://github.com/SampathJogi8/DuoShare/commit/09cdfdbbd8c4fa8f38cf415240a469265c063360))
+* redesign admin portal to match Tallyin design system ([18e4f03](https://github.com/SampathJogi8/DuoShare/commit/18e4f0313235c11b7fa5e83a1a6a76a5f43b3d76))
+
+
+### 🐛 Bug Fixes
+
+* add CreditCard import to lucide-react and improve ErrorBoundary recovery & issue reporting ([247378c](https://github.com/SampathJogi8/DuoShare/commit/247378c2f1ad6d406c69ab398f2a4c72d856256c))
+* align property mappings and balance lookups between DashboardHome and App.jsx ([fffa686](https://github.com/SampathJogi8/DuoShare/commit/fffa686730e3e0d8dc19bca658a4a1c0f93d4141))
+* atomic site status toggle & pick latest maintenance status by created_at timestamp ([bb7732b](https://github.com/SampathJogi8/DuoShare/commit/bb7732b088ea346089851a5de02aafd8fd43daaf))
+* critical balance bug — Payment transactions were increasing debt instead of cancelling it ([6fcc74e](https://github.com/SampathJogi8/DuoShare/commit/6fcc74e444f7217ef682ab74ab1dd0c99c276bb8))
+* define fmtInitials helper for roommate avatars in Personal Expenses ([90bcbd8](https://github.com/SampathJogi8/DuoShare/commit/90bcbd8b50a6b150c0cadba5bba12e72560e4930))
+* enable transaction search by Transaction ID, title, category, payer, amount and notes ([473c716](https://github.com/SampathJogi8/DuoShare/commit/473c71654185d400c99ecc858127dc333bed45d4))
+* ensure database status is UP and remove unused MaintenanceView import ([4fa4b85](https://github.com/SampathJogi8/DuoShare/commit/4fa4b85710058bcf2354e9ac0a294d6775feb4d3))
+* export CSV, Excel, and PDF strictly for active tab filter with dynamic document title and context cards ([8e3f909](https://github.com/SampathJogi8/DuoShare/commit/8e3f9093f0df49652772a12728ec2212565ee089))
+* filter out internal system tags (__FUND_INIT__, __FUND_SPEND__) from home expenses feed and category snapshot ([3a447c7](https://github.com/SampathJogi8/DuoShare/commit/3a447c7984049e8eaa381967260be85eb5af1932))
+* implement comprehensive UID, nickname, and splits array matching for roommate personal expense tabs ([96589e0](https://github.com/SampathJogi8/DuoShare/commit/96589e0b75df725847bffa4a71f0661292a2f3b9))
+* independent global polling for system status & announcements across all rooms and login states ([2426afb](https://github.com/SampathJogi8/DuoShare/commit/2426afb470381362147ad1949d41033355902294))
+* make room balances & settle up crystal clear — directional arrows, color-coded who-owes-who cards ([8799367](https://github.com/SampathJogi8/DuoShare/commit/879936758d027330b2775ed549e34eda3248ef4f))
+* Optimize mobile responsive layout for Add Expense, Export, and Settlements buttons in Ledger header ([b5d001d](https://github.com/SampathJogi8/DuoShare/commit/b5d001d3a1750618b2315e515ca0374edd9fc914))
+* pass all required NOT NULL columns (date, time, paid_by_uid, created_by) when toggling site status ([45f84cc](https://github.com/SampathJogi8/DuoShare/commit/45f84ccd6f350cafd4ef97e8eefd4c37822128e4))
+* pass room_id to system maintenance transaction inserts to satisfy NOT NULL constraint ([eaa48f5](https://github.com/SampathJogi8/DuoShare/commit/eaa48f504a8c126ffb2bbe87473e44a9b9b38f9d))
+* personal expense filter + add admin portal ([2f13311](https://github.com/SampathJogi8/DuoShare/commit/2f13311132e2e09a622b200cce3dc0c0431980aa))
+* pre-fill target member when adding personal expense and fix total sum calculation for member tabs ([1738ace](https://github.com/SampathJogi8/DuoShare/commit/1738ace204acf0ea7595b70d5d181c86e1635729))
+* refine myPersonalExpenses filtering to ensure exact user ownership and eliminate historical non-personal entries ([49d00bc](https://github.com/SampathJogi8/DuoShare/commit/49d00bccf9b46f81899b404425b8754e446c31db))
+* remove client-side auto-email useEffect on app load to prevent emails on login ([6f8700e](https://github.com/SampathJogi8/DuoShare/commit/6f8700ef27cda5b6c500211b9c506aa5f5558a6e))
+* remove legacy static hardcoded MaintenanceView so site is online for all users ([709dc65](https://github.com/SampathJogi8/DuoShare/commit/709dc658aab6d05eccd1843b3b9a313da3058690))
+* remove repetitive top header badge pills across all view tabs ([a699043](https://github.com/SampathJogi8/DuoShare/commit/a6990437c330faebd74245ab5c41e4ab51dffe7f))
+* Remove Settlement Record item from left sidebar navigation ([57ae2e3](https://github.com/SampathJogi8/DuoShare/commit/57ae2e35a1dc1123f78f0e9ad5b99c91bef1966a))
+* render member-specific personal transactions list correctly when clicking roommate tabs ([51fb4c4](https://github.com/SampathJogi8/DuoShare/commit/51fb4c43ee64e400936a2cb1298ae6fb526a2e0b))
+* resolve balance calculation bug — strictly isolate personal expenses from room balances and sanitize UID resolution ([a08939b](https://github.com/SampathJogi8/DuoShare/commit/a08939bc86feb68205039dc14411fe8bd84048c1))
+* resolve ledger calculations, category exclusions, and remove hardcoded name checks ([8be66d7](https://github.com/SampathJogi8/DuoShare/commit/8be66d7f125d7115fefc6333feb66aa2f09ad566))
+* resolve member matching fallback logic to correctly match Anirudh and Sampath personal transactions ([3777be5](https://github.com/SampathJogi8/DuoShare/commit/3777be53b2e0cb7800dcf136406dd0f7c559042d))
+* resolve personal expenses overlap by evaluating nickname ownership before creator UID fallback ([369c0c6](https://github.com/SampathJogi8/DuoShare/commit/369c0c6057113751902c4abbef618dde8f2d2a8d))
+* resolve React error 310 by moving hooks to top-level and using fixed overlay for maintenance mode ([493a3a7](https://github.com/SampathJogi8/DuoShare/commit/493a3a7608794136923577ce8302b0bef28b05f1))
+* resolve roommate personal expense filtering to correctly separate Anirudh and Sampath transactions ([3f3c74f](https://github.com/SampathJogi8/DuoShare/commit/3f3c74f718b38a4011f9212b56739b7361eeaab0))
+* resolve undefined m.uid click handler bug causing member tab selection fallback to user nickname ([54b8c58](https://github.com/SampathJogi8/DuoShare/commit/54b8c588899049df21f57adeec60b74f144e099e))
+* restore database engine rendering for Fund Tracker and Insights to ensure 100% data accuracy ([5673a99](https://github.com/SampathJogi8/DuoShare/commit/5673a9908fd863521c7a32bd0d23768ccf562261))
+* restore site 100% online for all users ([3bc842d](https://github.com/SampathJogi8/DuoShare/commit/3bc842d73c57731d41cb39c8c463da46240886fa))
+* restrict Insights room spend calculations strictly to shared room expenses (isShared === true) ([5969ca3](https://github.com/SampathJogi8/DuoShare/commit/5969ca34be1c74e459143ed4ed5b792ad46c3fc8))
+* settle up now enables both payer and receiver to mark payment — 'I Paid' vs 'Confirm Received' with hints ([2257482](https://github.com/SampathJogi8/DuoShare/commit/2257482f438eb28cdc515bc2d115488c9938faf7))
+* smart month-end projection formula to prevent early-month rent/bill spikes from inflating projection to 100k ([170acc0](https://github.com/SampathJogi8/DuoShare/commit/170acc028075c72aefe2af57cb115c7c21dcb33a))
+* strict member exclusion for personal expenses tabs and dynamic Expense Meter label and limit updates ([f0ec60e](https://github.com/SampathJogi8/DuoShare/commit/f0ec60ed5e1874eebfc740295c356ccc58088eaf))
+* update Supabase database column names (is_shared, split_type, paid_by) in Admin Portal ([0154549](https://github.com/SampathJogi8/DuoShare/commit/0154549abe7d869a7170f45aa6b49633dfad675b))
+
+
+### ✨ Features
+
+* add 10am monthly statement schedule, quick receipt itemizer, whatsapp balance share & budget velocity forecast ([a330b1e](https://github.com/SampathJogi8/DuoShare/commit/a330b1eaa565936a8481203d655a13b292cf5657))
+* add All / My Personal / Other Roommates section tabs to Personal Expenses view ([198993e](https://github.com/SampathJogi8/DuoShare/commit/198993e4a9704c26508c33bfcacdc25003a395ac))
+* add direct Master Passcode authentication to Admin Portal ([1586c11](https://github.com/SampathJogi8/DuoShare/commit/1586c116d56375ac72d060d93cc0f6c0565df3cb))
+* add maintenance mode and redesign notice with admin access for sampathjogipusala123@gmail.com ([c9eb1dc](https://github.com/SampathJogi8/DuoShare/commit/c9eb1dc9b1d7edb2f1b614078a98d28a74a3de24))
+* add member-by-member personal expense tabs to view each roommate's personal expenses separately ([4332a41](https://github.com/SampathJogi8/DuoShare/commit/4332a417195e29a8143e8c1b2491756a4fbb90d5))
+* add PWA Install App prompt component for Android, iOS, and Desktop devices ([ada7e41](https://github.com/SampathJogi8/DuoShare/commit/ada7e41df0e745fe56d85d16e04278b7ceb55a87))
+* add scope filter toggle for personal vs all expenses paid by member ([cfee1d0](https://github.com/SampathJogi8/DuoShare/commit/cfee1d0e874989fd91e563af7b5a231506720492))
+* Add Settlement Record button, category filter, and summary card in Ledger view ([80d3d66](https://github.com/SampathJogi8/DuoShare/commit/80d3d66524b38a3d7d82dbcd932759b28d6bc77a))
+* Add settlement record feature and transaction ID display across all transaction views ([1cf57c8](https://github.com/SampathJogi8/DuoShare/commit/1cf57c853a7de5dea2f2043df15ff17a7f4e9b1d))
+* Apply futuristic minimal UI redesign with glassmorphism and Plus Jakarta Sans typography ([a3ef630](https://github.com/SampathJogi8/DuoShare/commit/a3ef630d73e316e6a6efc6050786aafdad85971d))
+* complete major redesign of Tallyin with modular components, glassmorphism design system, and enhanced analytics ([f76d855](https://github.com/SampathJogi8/DuoShare/commit/f76d8559696d9e9ea660083a810cccca61f0e30d))
+* Execute Next-Gen Obsidian Glass HUD major redesign ([5036846](https://github.com/SampathJogi8/DuoShare/commit/5036846383e5ec72793564e7126610e6a14319fa))
+* full admin control - instant site lockdown up/down, room/transaction edit & clear tools ([c5ed211](https://github.com/SampathJogi8/DuoShare/commit/c5ed2110cb62d409d4c995a2c827e6d77b3e78f8))
+* fully responsive home — mobile stacked + desktop 2-col sidebar ([04e7f33](https://github.com/SampathJogi8/DuoShare/commit/04e7f333d74a6a1525462bdf58c3b4f8fde2bd7a))
+* implement Universal Multi-Term Transaction Search Engine across all search fields ([994ac1d](https://github.com/SampathJogi8/DuoShare/commit/994ac1dfc8e32adaf43e813e7d59d890e421d639))
+* include Smart Budget Velocity & Daily Burn Limit in WhatsApp broadcast report ([b311669](https://github.com/SampathJogi8/DuoShare/commit/b311669be64a7f32b60bb67b83a55426c0af0d86))
+* limit home dashboard feed to 8 recent transactions and add clean room budget and category snapshot cards ([1f211ad](https://github.com/SampathJogi8/DuoShare/commit/1f211ad07fc3ee0bad1640319b1f60f3dd78aec6))
+* luxury Swiss MNC Financial Audit design for PDF export statement ([c8c8b00](https://github.com/SampathJogi8/DuoShare/commit/c8c8b004bb1e44e241ba9f0626da3c6636f97049))
+* make admin access login stealthy via secret URL query or 5 logo clicks ([db83d76](https://github.com/SampathJogi8/DuoShare/commit/db83d76db5538b3502eff2841c680b8a2ace0fa0))
+* minimal and classic Swiss typography layout for PDF export statement ([2ee95ee](https://github.com/SampathJogi8/DuoShare/commit/2ee95ee09c2c6c83d848bc566d44845b0f564e59))
+* minimal, professional & classy redesign for Settlement Records ([719faf9](https://github.com/SampathJogi8/DuoShare/commit/719faf9c69080978e02dcf28edcfe25daa72cbe4))
+* mobile-first home screen redesign ([5a5c419](https://github.com/SampathJogi8/DuoShare/commit/5a5c419da49be2bd69a1f8d5060b99037d8fc9d9))
+* position maintenance lockdown gate before unauthenticated login view for 100% site lockdown ([f47af39](https://github.com/SampathJogi8/DuoShare/commit/f47af39e0b8f88e20fc039b9279ed23f7daf4767))
+* redesign personal expenses page with all-at-once default view and dynamic member-by-member filter tabs for meters, insights, and feed ([10a9c80](https://github.com/SampathJogi8/DuoShare/commit/10a9c80ba0195759992511bbf5fa485fb2fb8db4))
+* Redesign Settle Up modal to be simple and detailed with 1-tap recommendations, quick presets, balance preview, and instant UPI QR ([ce024b6](https://github.com/SampathJogi8/DuoShare/commit/ce024b6c93efbb249e63209e0fc2cda587889013))
+* Redesign Settle Up module to a minimal, aesthetic 1-tap single payment interface ([ce1dee1](https://github.com/SampathJogi8/DuoShare/commit/ce1dee1a09249abcfd51224091e60b1a135c9a5a))
+* render full-screen maintenance overlay with admin message, live sticky broadcast banners, and remove room manager from admin portal ([c088655](https://github.com/SampathJogi8/DuoShare/commit/c08865560fcb4b19f1de908a61228dd6200c64fb))
+* schedule auto monthly statement email dispatch to every 1st of the month ([f5f4b02](https://github.com/SampathJogi8/DuoShare/commit/f5f4b02e168db29931cd24c9d9e416250ee8469b))
+* separate personal expenses by roommate with distinct member-by-member sections ([addabab](https://github.com/SampathJogi8/DuoShare/commit/addababe8b40ea1f10ae856e6467b5193e76467d))
+* update Personal Expenses section tabs to All, Paid by You (For You), Paid for Others by You, and By Roommate name ([989e7dc](https://github.com/SampathJogi8/DuoShare/commit/989e7dc2200ab3d4a8ab98225d26b6969e7d126e))
 
 ### 3.2.1 (2026-07-27)
 
