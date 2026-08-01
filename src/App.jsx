@@ -7780,26 +7780,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="flex-1 flex flex-col pl-0 md:pl-64 h-screen min-w-0 overflow-hidden">
         
         {/* Top Navbar */}
-        <header className="h-16 border-b border-[#E3E8E3]/60 dark:border-[#1E282C] bg-white/80 dark:bg-[#0E1315]/80 backdrop-blur-xl flex items-center justify-between px-4 sm:px-8 fixed top-0 right-0 left-0 md:left-64 z-20 transition-all duration-300 shadow-sm">
+        <header className="h-16 border-b border-[#E2EAE3] dark:border-[#1A222C] bg-white/85 dark:bg-[#07090C]/85 backdrop-blur-2xl flex items-center justify-between px-4 sm:px-8 fixed top-0 right-0 left-0 md:left-64 z-20 transition-all duration-300 shadow-sm">
           <div className="flex items-center gap-1">
             <button 
               onClick={() => setIsMobileMenuOpen(true)}
-              className="p-2 text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl mr-1.5 md:hidden"
+              className="p-2 text-[#5C6E5C] dark:text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-xl mr-1.5 md:hidden"
             >
               <Menu className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <img 
                 src={faviconLogo} 
                 alt="Tallyin Logo" 
-                className="w-7 h-7 object-cover rounded-lg hidden sm:block flex-shrink-0 shadow-sm"
+                className="w-7 h-7 object-cover rounded-lg hidden sm:block flex-shrink-0 shadow-md border border-emerald-500/20"
               />
               <div>
-                <h2 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 leading-tight tracking-tight">{roomName}</h2>
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${isDbSynced ? 'bg-[#A3E635] shadow-[0_0_8px_#A3E635]' : 'bg-amber-500 animate-pulse'}`}></span>
-                  <span className="text-[8px] sm:text-[9px] font-extrabold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest">
+                <h2 className="font-extrabold text-xs sm:text-sm text-[#0F172A] dark:text-slate-100 leading-tight tracking-tight">{roomName}</h2>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`w-2 h-2 rounded-full ${isDbSynced ? 'bg-emerald-500 shadow-[0_0_10px_#10B981]' : 'bg-amber-500 animate-pulse'}`}></span>
+                  <span className="text-[8px] sm:text-[9px] font-black text-emerald-800 dark:text-[#A3E635] uppercase tracking-widest bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                     ROOM • {userRoomId} {isDbSynced ? '(LIVE SYNC)' : '(OFFLINE CACHE)'}
                   </span>
                 </div>
@@ -8038,14 +8038,18 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">{getGreeting()}, {userNickname.split(' ')[0]}.</h1>
+            <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>LIVE ROOM LEDGER SYNC</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] dark:text-slate-100 tracking-tight mt-0.5">{getGreeting()}, {userNickname.split(' ')[0]}.</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Everything looks calm in your room today.</p>
           </div>
           <button 
             onClick={() => openAddExpenseModal()}
-            className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all flex items-center justify-center gap-2 active:scale-98 self-start sm:self-auto shadow-sm"
+            className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-5 py-3 rounded-2xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/10 cursor-pointer flex items-center justify-center gap-2 self-start sm:self-auto"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 stroke-[3]" />
             <span>Add expense</span>
           </button>
         </div>
