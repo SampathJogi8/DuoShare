@@ -2282,32 +2282,7 @@ export default function App() {
     }
   };
 
-  // ─── Auto Monthly Statement Scheduler ───────────────────────────────────────
-  // Automatically sends monthly statements on the 1st of every month for the completed previous month.
-  // Uses localStorage to track "last sent" month and avoid duplicate sends.
-  useEffect(() => {
-    if (!userRoomId || !user || members.length === 0 || transactions.length === 0) return;
 
-    const today = new Date();
-    const dayOfMonth = today.getDate();
-    if (dayOfMonth !== 1) return; // Only trigger on the 1st of the month
-
-    const previousMonthStr = getPreviousMonthStr(today);
-    const storageKey = `tallyin_auto_stmt_sent_${userRoomId}_${previousMonthStr}`;
-    const alreadySent = localStorage.getItem(storageKey);
-    if (alreadySent) return; // Already sent for this previous month
-
-    // Mark as sent before dispatch to prevent duplicate triggers
-    localStorage.setItem(storageKey, 'true');
-    console.log(`[Tallyin] Auto-sending monthly statements for completed month ${previousMonthStr}...`);
-
-    // Small delay so app state is fully hydrated
-    const timer = setTimeout(() => {
-      emailAllStatements(previousMonthStr);
-    }, 3000);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userRoomId, user, members.length, transactions.length]);
 
   // Auto-delete trigger for host when all members approve a deletion proposal
   useEffect(() => {
