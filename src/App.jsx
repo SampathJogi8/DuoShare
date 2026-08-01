@@ -8252,41 +8252,58 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     const activeLimit = monthlyBudget;
     const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
 
+    const [yearStr, monthStr] = activeMonth.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    const activeDateObj = new Date(year, month - 1, 1);
+    const monthName = activeDateObj.toLocaleString('default', { month: 'long' });
+    const monthlyRoomSpend = transactions
+      .filter(t => t.isShared && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__BILL__' && t.category !== '__CHORE__' && t.category !== 'Payment' && t.date && t.date.startsWith(activeMonth))
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const budgetPct = Math.min(100, Math.round((monthlyRoomSpend / monthlyBudget) * 100)) || 0;
+    const remaining = Math.max(0, monthlyBudget - monthlyRoomSpend);
+    const today = new Date();
+    const currentMonthStr = getLocalMonthStr(today);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const daysLeft = activeMonth === currentMonthStr ? daysInMonth - today.getDate() : (activeMonth < currentMonthStr ? 0 : daysInMonth);
+    const dailyLimit = daysLeft > 0 ? Math.round(remaining / daysLeft) : 0;
+    const isOver = budgetPct >= 100;
+
     return (
-      <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
-        
+      <div className="space-y-4 max-w-2xl mx-auto animate-fade-in pb-24">
+
+        {/* ─── Alerts ─── */}
         {isLowBalance && (
-          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-4 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-3.5 flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold text-amber-800 dark:text-amber-400">Budget Warning</h4>
-              <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">You are approaching your shared monthly budget limit. You have {formatINR(Math.max(0, activeLimit - monthSharedSpend))} remaining.</p>
+              <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400">Budget Warning</h4>
+              <p className="text-[11px] text-amber-700 dark:text-amber-500 mt-0.5">You're approaching your budget. {formatINR(Math.max(0, activeLimit - monthSharedSpend))} remaining.</p>
             </div>
           </div>
         )}
 
         {pendingRecurringTxs.length > 0 && (
-          <div className="bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/10 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-3 transition-colors duration-300">
+          <div className="bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/10 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
             <div className="flex items-center gap-2">
-              <RefreshCw className="w-4.5 h-4.5 text-[#1A3827] dark:text-[#A3E635]" />
-              <h3 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100">Due Recurring Expenses</h3>
+              <RefreshCw className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
+              <h3 className="font-bold text-sm text-[#1A3827] dark:text-slate-100">Due Recurring Expenses</h3>
             </div>
-            <p className="text-xs text-[#5C6E5C] dark:text-slate-400">The following recurring expenses are due to be posted. Tap to post them for today:</p>
             <div className="space-y-2">
               {pendingRecurringTxs.map(({ tx, interval, nextDue }) => (
-                <div key={tx.id} className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800">
+                <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800">
                   <div>
                     <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">{tx.title}</p>
-                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Due on {nextDue} ({interval})</p>
+                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Due {nextDue} · {interval}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-[#1A3827] dark:text-white mr-2">{formatINR(tx.amount)}</span>
+                    <span className="text-xs font-black text-[#1A3827] dark:text-white">{formatINR(tx.amount)}</span>
                     <button
                       disabled={postingRecurringIds.includes(tx.id)}
                       onClick={() => handlePostRecurringExpense(tx, nextDue)}
-                      className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-[10px] rounded-lg transition-all disabled:opacity-50"
+                      className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-[10px] rounded-lg transition-all disabled:opacity-50 cursor-pointer"
                     >
-                      {postingRecurringIds.includes(tx.id) ? 'Posting...' : 'Post Expense'}
+                      {postingRecurringIds.includes(tx.id) ? 'Posting...' : 'Post'}
                     </button>
                   </div>
                 </div>
@@ -8295,40 +8312,283 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
         )}
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        {/* ─── Greeting Row ─── */}
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] dark:text-slate-100 tracking-tight">{getGreeting()}, {userNickname.split(' ')[0]}.</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Everything looks calm in your room today.</p>
+            <h1 className="text-xl font-black text-[#0F172A] dark:text-slate-100 tracking-tight">{getGreeting()}, {userNickname.split(' ')[0]} 👋</h1>
+            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Here's your room overview</p>
           </div>
-          <button 
+          <button
             onClick={() => openAddExpenseModal()}
-            className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-5 py-3 rounded-2xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/10 cursor-pointer flex items-center justify-center gap-2 self-start sm:self-auto"
+            className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] active:scale-95 transition-all duration-150 shadow-md cursor-pointer flex items-center gap-1.5"
           >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Add expense</span>
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>Add</span>
           </button>
         </div>
 
-        {/* Low Fund Balance Alert */}
+        {/* ─── Hero Balance Card ─── */}
+        <div className="bg-[#061811] text-white rounded-3xl p-5 relative overflow-hidden">
+          <div className="absolute right-0 top-0 w-48 h-48 bg-emerald-500/10 blur-3xl rounded-full -mr-10 -mt-10 pointer-events-none" />
+
+          {/* Balance header */}
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-[#A3E635]">NET BALANCE</span>
+              <p className="text-xs text-slate-300 mt-0.5">
+                {myBalance > 0 ? 'You are owed' : myBalance < 0 ? 'You owe' : 'All settled'}
+              </p>
+              <h2 className="text-3xl font-black text-[#A3E635] tracking-tight mt-0.5">
+                {formatINR(Math.abs(myBalance))}
+              </h2>
+            </div>
+            <button
+              onClick={handleSettleUp}
+              className="shrink-0 bg-[#A3E635] text-slate-950 font-black px-4 py-2 rounded-xl text-xs hover:bg-[#BEF264] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 mt-1"
+            >
+              <HandCoins className="w-3.5 h-3.5" />
+              <span>Settle</span>
+            </button>
+          </div>
+
+          {/* Roommate balance mini rows */}
+          {members.length > 1 && (
+            <div className="space-y-1.5 border-t border-white/10 pt-3.5 mt-1">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-white/40 mb-2">Roommate Balances</p>
+              {members.map(m => {
+                if (m.uid === currentUid) return null;
+                const bal = computedStats.balances[m.uid] || 0;
+                return (
+                  <div key={m.uid} className="flex justify-between items-center text-xs py-1.5 px-3 rounded-xl bg-white/5 border border-white/10">
+                    <span className="text-white/80 font-semibold truncate max-w-[120px]">{m.nickname}</span>
+                    <span className={`shrink-0 text-[11px] font-black ${bal > 0 ? 'text-[#A3E635]' : bal < 0 ? 'text-rose-400' : 'text-white/30'}`}>
+                      {bal > 0 ? `owes you ${formatINR(bal)}` : bal < 0 ? `you owe ${formatINR(Math.abs(bal))}` : 'settled'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Suggested transfers */}
+          {suggestedTransfers.length > 0 && (
+            <div className="border-t border-white/10 pt-3 mt-2 space-y-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#A3E635]">Suggested</p>
+              {suggestedTransfers.slice(0, 2).map((t, idx) => (
+                <div key={idx} className="text-[11px] text-white/80 flex flex-wrap items-center gap-1 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl">
+                  <span className="text-rose-400 font-bold">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
+                  <span className="text-white/40">owes</span>
+                  <span className="text-[#A3E635] font-black">{formatINR(t.amount)}</span>
+                  <span className="text-white/40">to</span>
+                  <span className="text-[#A3E635] font-bold">{t.toUid === currentUid ? 'You' : t.toName}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ─── Quick Actions (2×2 thumb grid) ─── */}
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400 mb-2.5">QUICK ACTIONS</p>
+          <div className="grid grid-cols-4 gap-2.5">
+            {[
+              { label: 'Add Bill', icon: <Plus className="w-5 h-5" />, action: () => openAddExpenseModal() },
+              { label: 'Receipt', icon: <Upload className="w-5 h-5" />, action: () => handleTriggerUpload() },
+              { label: 'Insights', icon: <TrendingUp className="w-5 h-5" />, action: () => setCurrentView('insights') },
+              { label: 'Invite', icon: <UserCheck className="w-5 h-5" />, action: () => handleInviteTrigger() },
+            ].map(({ label, icon, action }) => (
+              <button
+                key={label}
+                onClick={action}
+                className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3 flex flex-col items-center gap-1.5 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 active:scale-95 transition-all duration-150 cursor-pointer text-[#1A3827] dark:text-[#A3E635]"
+              >
+                {icon}
+                <span className="text-[9px] font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wide text-center leading-tight">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ─── Monthly Budget Bar ─── */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">{monthName} Budget</p>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-lg font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyRoomSpend)}</span>
+                <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(monthlyBudget)}</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className={`text-[9px] font-black px-2 py-1 rounded-full ${isOver ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>
+                {budgetPct}% used
+              </span>
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-1">{daysLeft}d left</p>
+            </div>
+          </div>
+          <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${isOver ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`}
+              style={{ width: `${budgetPct}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+            <span>{isOver ? `⚠️ Over by ${formatINR(monthlyRoomSpend - monthlyBudget)}` : `${formatINR(remaining)} remaining`}</span>
+            {!isOver && daysLeft > 0 && <span>~{formatINR(dailyLimit)}/day</span>}
+          </div>
+          {/* Projection */}
+          {activeMonth === currentMonthStr && today.getDate() > 0 && monthlyRoomSpend > 0 && (() => {
+            const projected = Math.round((monthlyRoomSpend / today.getDate()) * daysInMonth);
+            return (
+              <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                📈 Projected month-end: <span className="font-black">{formatINR(projected)}</span>
+              </p>
+            );
+          })()}
+        </div>
+
+        {/* ─── Personal Expense Meter ─── */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Personal Spending</p>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-base font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyPersonalTotal)}</span>
+                <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(personalCap)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[9px] font-black px-2 py-1 rounded-full ${personalPercentage >= 90 ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>
+                {personalPercentage.toFixed(0)}%
+              </span>
+              <button
+                onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }}
+                className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all cursor-pointer"
+                title="Edit limit"
+              >
+                <Pencil className="w-3 h-3 text-[#5C6E5C] dark:text-slate-400" />
+              </button>
+            </div>
+          </div>
+          {isEditingPersonalCap && (
+            <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
+              <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">₹</span>
+              <input
+                type="number" min="0" value={personalCapInput}
+                onChange={e => setPersonalCapInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }
+                  if (e.key === 'Escape') setIsEditingPersonalCap(false);
+                }}
+                className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0"
+                autoFocus
+              />
+              <button onClick={() => { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#1A3827] text-white px-2.5 py-1 rounded-lg cursor-pointer">Save</button>
+              <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] text-[#5C6E5C] px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 cursor-pointer">✕</button>
+            </div>
+          )}
+          <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-1.5 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all duration-500 ${personalPercentage >= 90 ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${Math.min(100, personalPercentage)}%` }} />
+          </div>
+          <p className="text-[10px] font-medium text-[#5C6E5C] dark:text-slate-400">
+            {personalPercentage >= 100
+              ? `⚠️ Exceeded by ${formatINR(monthlyPersonalTotal - personalCap)}`
+              : `${formatINR(personalCap - monthlyPersonalTotal)} remaining`}
+          </p>
+        </div>
+
+        {/* ─── Recent Transactions ─── */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 pt-4 pb-3">
+            <h3 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">Recent Transactions</h3>
+            <button onClick={() => setCurrentView('ledger')} className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] flex items-center gap-1 hover:underline cursor-pointer">
+              View all <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="divide-y divide-[#F6F8F6] dark:divide-slate-800">
+            {dataList.length === 0 ? (
+              <div className="px-4 py-8 text-center text-xs text-[#5C6E5C] dark:text-slate-400">No transactions yet.</div>
+            ) : (
+              dataList.slice(0, 5).map((t) => {
+                const isPayer = (t.paidByUid && t.paidByUid === currentUid) || (!t.paidByUid && t.paidBy === userNickname);
+                return (
+                  <div key={t.id} className="flex items-center gap-3 px-4 py-3 active:bg-slate-50 dark:active:bg-slate-800 transition-colors">
+                    <div className="w-9 h-9 rounded-xl bg-[#F6F8F6] dark:bg-slate-800 flex items-center justify-center shrink-0">
+                      {getCategoryIcon(t.category)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 truncate">
+                        {t.title}
+                        {t.isEdited && <span onClick={e => { e.stopPropagation(); setActiveEditHistoryTx(t); }} className="ml-1.5 text-[9px] text-rose-500 italic font-bold cursor-pointer">(Edited)</span>}
+                      </p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 truncate">{getTransactionSubtitle(t)}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-xs font-bold ${isPayer ? 'text-[#1A3827] dark:text-[#A3E635]' : 'text-slate-400 dark:text-slate-500'}`}>
+                        {isPayer ? '−' : '+'}{formatINR(t.amount)}
+                      </p>
+                      <p className="text-[9px] text-[#5C6E5C] dark:text-slate-500 mt-0.5">{t.date}</p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <div className="px-4 py-2.5 border-t border-[#F6F8F6] dark:border-slate-800 flex items-center gap-1.5 text-[9px] text-[#5C6E5C] dark:text-slate-500">
+            <Clock className="w-3 h-3" />
+            <span>Live sync via Supabase</span>
+          </div>
+        </div>
+
+        {/* ─── Activity Feed ─── */}
+        {activityLogs.length > 0 && (
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-3">
+            <h3 className="text-[9px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">Room Activity</h3>
+            <div className="space-y-2.5">
+              {activityLogs.slice(0, 4).map(log => {
+                const isCreate = log.action === 'create';
+                const isEdit = log.action === 'edit';
+                const isSettle = log.action === 'settle';
+                const isDelete = log.action === 'delete';
+                let iconColorClass = 'text-slate-400';
+                let bgClass = 'bg-slate-50 dark:bg-slate-800';
+                let logIcon = <Clock className="w-3 h-3" />;
+                if (isCreate) { iconColorClass = 'text-emerald-600 dark:text-[#A3E635]'; bgClass = 'bg-emerald-50 dark:bg-emerald-950/30'; logIcon = <Plus className="w-3 h-3" />; }
+                else if (isEdit) { iconColorClass = 'text-amber-600'; bgClass = 'bg-amber-50 dark:bg-amber-950/20'; logIcon = <Pencil className="w-3 h-3" />; }
+                else if (isSettle) { iconColorClass = 'text-blue-600'; bgClass = 'bg-blue-50 dark:bg-blue-950/20'; logIcon = <Check className="w-3 h-3" />; }
+                else if (isDelete) { iconColorClass = 'text-rose-600'; bgClass = 'bg-rose-50 dark:bg-rose-950/20'; logIcon = <Trash2 className="w-3 h-3" />; }
+                return (
+                  <div key={log.id} className="flex items-start gap-2.5">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${bgClass} ${iconColorClass}`}>
+                      {logIcon}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-[#1A3827] dark:text-slate-200 leading-snug">{log.details || log.action}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">{formatLogTime(log.created_at || log.timestamp)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Low Fund Balance Alert ─── */}
         {(() => {
           if (myFunds.length === 0) return null;
-          const LOW_THRESHOLD = 2000;
           const totalFundBalance = myFunds.reduce((sum, fund) => {
             const fundId = fund.id;
-            const spent = myFundSpends
-              .filter(s => s.splitType && (s.splitType === `__FUND_SPEND__:${fundId}` || s.splitType === fundId))
-              .reduce((a, b) => a + (Number(b.amount) || 0), 0);
+            const spent = myFundSpends.filter(s => s.splitType && (s.splitType === `__FUND_SPEND__:${fundId}` || s.splitType === fundId)).reduce((a, b) => a + (Number(b.amount) || 0), 0);
             return sum + ((Number(fund.amount) || 0) - spent);
           }, 0);
-          if (totalFundBalance < LOW_THRESHOLD && totalFundBalance >= 0) {
+          if (totalFundBalance < 2000 && totalFundBalance >= 0) {
             return (
-              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl p-4 flex items-start gap-3">
-                <span className="text-lg shrink-0">⚠️</span>
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl p-3.5 flex items-start gap-3">
+                <span className="text-base shrink-0">⚠️</span>
                 <div>
                   <p className="text-xs font-black text-amber-800 dark:text-amber-300">Low Fund Balance</p>
                   <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                    Your total fund balance is only <span className="font-bold">{formatINR(Math.max(0, totalFundBalance))}</span>. Consider topping up to avoid overdrafts.
+                    Total fund balance: <span className="font-bold">{formatINR(Math.max(0, totalFundBalance))}</span>. Consider topping up.
                   </p>
                 </div>
               </div>
@@ -8336,424 +8596,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           }
           return null;
         })()}
-
-        {/* Main Balance Card */}
-        <div className="bg-gradient-to-br from-[#061811] via-[#0B261C] to-[#04100B] text-white p-7 sm:p-9 rounded-3xl border border-emerald-500/25 relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6 sm:gap-8 transition-all duration-300 shadow-2xl">
-          <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/10 blur-3xl rounded-full -mr-20 -mt-20 pointer-events-none animate-pulse-glow"></div>
-          <div className="absolute left-1/3 bottom-0 w-64 h-64 bg-teal-500/10 blur-3xl rounded-full -mb-20 pointer-events-none"></div>
-          
-          <div className="space-y-4 max-w-md z-10">
-            <div>
-              <div className="inline-flex items-center gap-2 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 rounded-full text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-2 backdrop-blur-md">
-                <span className="w-2 h-2 rounded-full bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-pulse"></span>
-                <span>CURRENT NET BALANCE</span>
-              </div>
-              <h3 className="text-xs text-slate-300 font-semibold mt-1">
-                {myBalance > 0 ? 'You are owed' : myBalance < 0 ? 'You owe' : 'All settled up'}
-              </h3>
-              <h2 className="text-4xl sm:text-5xl font-black text-[#A3E635] tracking-tight mt-1 drop-shadow-md">
-                {formatINR(Math.abs(myBalance))}
-              </h2>
-            </div>
-            
-            <p className="text-xs sm:text-sm text-slate-200/90 font-medium leading-relaxed">
-              {myBalance > 0 
-                ? "You have paid more than your share of the room expenses."
-                : myBalance < 0 
-                  ? "You owe money to your roommates for shared expenses."
-                  : "You are completely settled up with everyone!"}
-            </p>
-
-            <button 
-              onClick={handleSettleUp}
-              className="inline-flex items-center gap-2.5 bg-[#A3E635] text-slate-950 font-black px-6 py-3 rounded-2xl text-xs hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-xl shadow-lime-950/20 cursor-pointer"
-            >
-              <span>Settle up</span>
-              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
-            </button>
-          </div>
-
-          {/* Right side roommate balance sheet */}
-          <div className="border-t md:border-t-0 md:border-l border-white/10 pt-5 md:pt-0 md:pl-10 space-y-4 flex-1 max-w-sm z-10 text-left flex flex-col justify-between">
-            <div>
-              <p className="text-[10px] font-black text-white/60 tracking-widest uppercase">Roommate Balance Sheet</p>
-              <div className="space-y-2 max-h-36 overflow-y-auto pr-1 mt-2.5">
-                {members.length > 1 ? (
-                  members.map(m => {
-                    if (m.uid === currentUid) return null;
-                    const bal = computedStats.balances[m.uid] || 0;
-                    return (
-                      <div key={m.uid} className="flex justify-between items-center text-xs font-semibold py-2 px-3 rounded-2xl bg-white/5 border border-white/10 gap-2 transition-all hover:bg-white/10 hover:border-white/20">
-                        <span className="text-white/90 truncate max-w-[120px] font-bold">{m.nickname}</span>
-                        <span className={`shrink-0 text-[11px] ${bal > 0 ? 'text-[#A3E635] font-black' : bal < 0 ? 'text-rose-400 font-black' : 'text-white/40 font-medium'}`}>
-                          {bal > 0 ? `is owed ${formatINR(bal)}` : bal < 0 ? `owes ${formatINR(Math.abs(bal))}` : 'settled up'}
-                        </span>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p className="text-[11px] text-white/40 italic">Invite roommates to view balance sheet.</p>
-                )}
-              </div>
-            </div>
-            {suggestedTransfers.length > 0 && (
-              <div className="pt-3 border-t border-white/10 mt-2">
-                <p className="text-[10px] font-black text-[#A3E635] tracking-widest uppercase">Suggested Transfers</p>
-                <div className="space-y-1.5 mt-2 max-h-24 overflow-y-auto pr-1">
-                  {suggestedTransfers.map((t, idx) => (
-                    <div key={idx} className="text-[11px] text-white/90 leading-relaxed font-semibold flex flex-wrap items-center gap-1.5 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl">
-                      <span className="text-rose-400 font-bold truncate max-w-[80px]">{t.fromUid === currentUid ? 'You' : t.fromName}</span>
-                      <span className="text-white/50 font-normal text-[10px]">owes</span>
-                      <span className="text-[#A3E635] font-black">{formatINR(t.amount)}</span>
-                      <span className="text-white/50 font-normal text-[10px]">to</span>
-                      <span className="text-[#A3E635] font-bold truncate max-w-[80px]">{t.toUid === currentUid ? 'You' : t.toName}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 2-Column Details Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
-          
-          {/* Left Column: Recent Activity */}
-          <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col justify-between transition-colors duration-300">
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight">Recent activity</h3>
-                <button 
-                  onClick={() => setCurrentView('ledger')} 
-                  className="text-xs font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline flex items-center gap-1 group"
-                >
-                  <span>View all</span>
-                  <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
-                </button>
-              </div>
-
-              {/* Transactions List */}
-              <div className="space-y-4">
-                {dataList.length === 0 ? (
-                  <div className="text-center py-8 text-[#5C6E5C] dark:text-slate-400">
-                    <p className="text-xs sm:text-sm font-semibold">No recent activity.</p>
-                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-1">Expenses you log will show up here.</p>
-                  </div>
-                ) : (
-                  dataList.slice(0, 4).map((t) => (
-                    <div key={t.id} className="flex items-center justify-between py-1 border-b border-[#F6F8F6] dark:border-slate-800 last:border-0 last:pb-0">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-950 flex items-center justify-center">
-                        {getCategoryIcon(t.category)}
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">
-                          {t.title}
-                          {t.isEdited && (
-                            <span 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveEditHistoryTx(t);
-                              }}
-                              className="ml-1.5 text-[9px] text-rose-500 dark:text-rose-400 italic font-bold tracking-wide cursor-pointer hover:underline"
-                              title="Click to view edit history"
-                            >
-                              (Edited)
-                            </span>
-                          )}
-                        </h4>
-                        <p className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5 truncate">
-                          {getTransactionSubtitle(t)}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="text-right ml-2 shrink-0">
-                      <p className={`font-bold text-xs sm:text-sm ${
-                        (t.paidByUid && t.paidByUid === currentUid) || (!t.paidByUid && t.paidBy === userNickname)
-                          ? 'text-[#1A3827] dark:text-[#A3E635]'
-                          : 'text-gray-500 dark:text-slate-400'
-                      }`}>
-                        {(t.paidByUid && t.paidByUid === currentUid) || (!t.paidByUid && t.paidBy === userNickname) ? '-' : '+'}{formatINR(t.amount)}
-                      </p>
-                      <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">{t.date} {t.time && `• ${parseTimeAndHistory(t.time).time}`}</p>
-                    </div>
-                  </div>
-                )))}
-              </div>
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-[#F6F8F6] dark:border-slate-800 flex items-center justify-between text-[10px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 font-medium">
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" />
-                <span>Last updated 2 mins ago</span>
-              </span>
-              <span className="text-[#1A3827] dark:text-[#A3E635] font-semibold">Synced live via Firestore</span>
-            </div>
-          </div>
-
-          {/* Right Column (Stacked Cards) */}
-          <div className="lg:col-span-5 space-y-6">
-            
-            {/* Top: Monthly Budget (Dynamic) */}
-            {(() => {
-              const activeMonth = selectedMonth === 'All' ? getLocalMonthStr() : selectedMonth;
-              const [yearStr, monthStr] = activeMonth.split('-');
-              const year = Number(yearStr);
-              const month = Number(monthStr);
-              const activeDateObj = new Date(year, month - 1, 1);
-              const monthName = activeDateObj.toLocaleString('default', { month: 'long' });
-
-              const monthlyRoomSpend = transactions
-                .filter(t => t.isShared && t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__BILL__' && t.category !== '__CHORE__' && t.category !== 'Payment' && t.date && t.date.startsWith(activeMonth))
-                .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-
-              const budgetPct = Math.min(100, Math.round((monthlyRoomSpend / monthlyBudget) * 100)) || 0;
-              const remaining = Math.max(0, monthlyBudget - monthlyRoomSpend);
-
-              const today = new Date();
-              const currentMonthStr = getLocalMonthStr(today);
-              const daysInMonth = new Date(year, month, 0).getDate();
-
-              let daysLeft;
-              if (activeMonth === currentMonthStr) {
-                daysLeft = daysInMonth - today.getDate();
-              } else if (activeMonth < currentMonthStr) {
-                daysLeft = 0;
-              } else {
-                daysLeft = daysInMonth;
-              }
-
-              const dailyLimit = daysLeft > 0 ? Math.round(remaining / daysLeft) : 0;
-              const isOver = budgetPct >= 100;
-              return (
-                <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-base sm:text-lg tracking-tight">{monthName} budget</h3>
-                    <span className="text-[10px] sm:text-xs font-bold text-[#5C6E5C] dark:text-slate-400 bg-[#F6F8F6] dark:bg-slate-950 px-2.5 py-1 rounded-lg">{daysLeft} days left</span>
-                  </div>
-
-                  <div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyRoomSpend)}</span>
-                      <span className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 font-semibold">of {formatINR(monthlyBudget)}</span>
-                    </div>
-                    <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-3 rounded-full overflow-hidden mt-3">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${isOver ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`}
-                        style={{ width: `${budgetPct}%` }}
-                      ></div>
-                    </div>
-                    <div className="flex justify-between mt-1.5">
-                      <span className="text-[10px] font-semibold text-[#5C6E5C] dark:text-slate-400">{budgetPct}% used</span>
-                      <span className="text-[10px] font-semibold text-[#5C6E5C] dark:text-slate-400">{formatINR(remaining)} left</span>
-                    </div>
-                  </div>
-
-                  <div className={`border p-3.5 rounded-2xl flex items-start gap-3 ${isOver ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/30' : 'bg-[#EAF0EC] dark:bg-slate-950 border-[#1A3827]/10 dark:border-slate-800'}`}>
-                    <Sparkles className={`w-4 h-4 mt-0.5 shrink-0 ${isOver ? 'text-rose-600' : 'text-[#1A3827] dark:text-[#A3E635]'}`} />
-                    <div>
-                      <p className={`text-xs font-bold ${isOver ? 'text-rose-700 dark:text-rose-400' : 'text-[#1A3827] dark:text-slate-200'}`}>
-                        {isOver ? 'Over budget!' : "You're on track"}
-                      </p>
-                      <p className="text-[10px] sm:text-[11px] text-[#255038] dark:text-slate-400 mt-0.5">
-                        {isOver ? `Exceeded by ${formatINR(monthlyRoomSpend - monthlyBudget)}.` : `Keep daily spend under ${formatINR(dailyLimit)} to stay on budget.`}
-                      </p>
-                      {/* Budget Forecast */}
-                      {(() => {
-                        const daysPassed2 = today.getDate();
-                        const daysInMonth2 = daysInMonth;
-                        if (activeMonth === currentMonthStr && daysPassed2 > 0 && monthlyRoomSpend > 0) {
-                          const projectedTotal = Math.round((monthlyRoomSpend / daysPassed2) * daysInMonth2);
-                          return (
-                            <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-1">
-                              📈 Projected month-end spend: <span className="font-black">{formatINR(projectedTotal)}</span>
-                            </p>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Personal Expense Meter */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm space-y-3 transition-colors duration-300">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-[10px] sm:text-xs font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">
-                    Personal Expense Meter — {selectedMonth === 'All' ? 'All Time' : (() => {
-                      const [year, month] = activeMonth.split('-');
-                      const dateObj = new Date(Number(year), Number(month) - 1, 1);
-                      return dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
-                    })()}
-                  </p>
-                  <p className="text-lg sm:text-xl font-extrabold text-[#1A3827] dark:text-slate-100 mt-1">
-                    {formatINR(monthlyPersonalTotal)} / {formatINR(personalCap)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                    personalPercentage >= 90 ? 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-rose-500' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'
-                  }`}>
-                    {personalPercentage.toFixed(0)}% Used
-                  </span>
-                  {/* Edit limit button */}
-                  <button
-                    onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }}
-                    className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all"
-                    title="Edit personal spending limit"
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-[#5C6E5C] dark:text-slate-400" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Inline limit editor */}
-              {isEditingPersonalCap && (
-                <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
-                  <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">Set limit (₹)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={personalCapInput}
-                    onChange={e => setPersonalCapInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        const val = Number(personalCapInput);
-                        if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); }
-                        setIsEditingPersonalCap(false);
-                      }
-                      if (e.key === 'Escape') setIsEditingPersonalCap(false);
-                    }}
-                    className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0"
-                    autoFocus
-                  />
-                  <button
-                    onClick={() => {
-                      const val = Number(personalCapInput);
-                      if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); }
-                      setIsEditingPersonalCap(false);
-                    }}
-                    className="text-[10px] font-black bg-[#1A3827] text-white px-3 py-1 rounded-lg hover:bg-[#255038] transition-all"
-                  >Save</button>
-                  <button
-                    onClick={() => setIsEditingPersonalCap(false)}
-                    className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 transition-all"
-                  >Cancel</button>
-                </div>
-              )}
-
-              {/* Progress bar */}
-              <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    personalPercentage >= 90 ? 'bg-red-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'
-                  }`}
-                  style={{ width: `${personalPercentage}%` }}
-                />
-              </div>
-              <p className="text-[10px] font-semibold text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                {personalPercentage >= 100 
-                  ? `You have exceeded your personal limit by ${formatINR(monthlyPersonalTotal - personalCap)}.`
-                  : `You have ${formatINR(personalCap - monthlyPersonalTotal)} remaining before reaching your ${formatINR(personalCap)} limit.`}
-              </p>
-            </div>
-
-            {/* Bottom: Quick Actions */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
-              <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-xs sm:text-sm tracking-widest uppercase">Quick actions</h3>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <button 
-                  onClick={() => openAddExpenseModal()}
-                  className="bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3]/50 dark:border-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-800/40 hover:border-[#1A3827]/20 p-3.5 rounded-2xl text-left transition-all duration-150"
-                >
-                  <Plus className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635] mb-2" />
-                  <span className="text-xs font-bold block text-[#1A3827] dark:text-slate-200">Add bill</span>
-                </button>
-                
-                <button 
-                  onClick={handleTriggerUpload}
-                  className="bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3]/50 dark:border-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-800/40 hover:border-[#1A3827]/20 p-3.5 rounded-2xl text-left transition-all duration-150"
-                >
-                  <Upload className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635] mb-2" />
-                  <span className="text-xs font-bold block text-[#1A3827] dark:text-slate-200">Scan receipt</span>
-                </button>
-                
-                <button 
-                  onClick={handleInviteTrigger}
-                  className="bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3]/50 dark:border-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-800/40 hover:border-[#1A3827]/20 p-3.5 rounded-2xl text-left transition-all duration-150"
-                >
-                  <UserCheck className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635] mb-2" />
-                  <span className="text-xs font-bold block text-[#1A3827] dark:text-slate-200">Invite roommate</span>
-                </button>
-                
-                <button 
-                  onClick={() => setCurrentView('insights')}
-                  className="bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3]/50 dark:border-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-800/40 hover:border-[#1A3827]/20 p-3.5 rounded-2xl text-left transition-all duration-150"
-                >
-                  <TrendingUp className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635] mb-2" />
-                  <span className="text-xs font-bold block text-[#1A3827] dark:text-slate-200">View insights</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Activity Feed */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300 mt-6 sm:mt-8">
-              <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-xs sm:text-sm tracking-widest uppercase">Recent Activity</h3>
-              <div className="space-y-3">
-                {activityLogs.slice(0, 5).map(log => {
-                  const isCreate = log.action === 'create';
-                  const isEdit = log.action === 'edit';
-                  const isSettle = log.action === 'settle';
-                  const isDelete = log.action === 'delete';
-
-                  let iconColorClass = 'text-[#5C6E5C] dark:text-slate-400';
-                  let bgClass = 'bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50';
-                  let logIcon = <Clock className="w-3.5 h-3.5" />;
-
-                  if (isCreate) {
-                    iconColorClass = 'text-emerald-700 dark:text-[#A3E635]';
-                    bgClass = 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/30';
-                    logIcon = <Plus className="w-3.5 h-3.5" />;
-                  } else if (isEdit) {
-                    iconColorClass = 'text-amber-600 dark:text-amber-400';
-                    bgClass = 'bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30';
-                    logIcon = <Pencil className="w-3.5 h-3.5" />;
-                  } else if (isSettle) {
-                    iconColorClass = 'text-blue-600 dark:text-blue-400';
-                    bgClass = 'bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30';
-                    logIcon = <Check className="w-3.5 h-3.5" />;
-                  } else if (isDelete) {
-                    iconColorClass = 'text-rose-600 dark:text-rose-400';
-                    bgClass = 'bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30';
-                    logIcon = <Trash2 className="w-3.5 h-3.5" />;
-                  }
-
-                  return (
-                    <div key={log.id} className="flex items-start gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${bgClass} ${iconColorClass}`}>
-                        {logIcon}
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-[#1A3827] dark:text-slate-200">{log.details || log.action}</p>
-                        <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">{formatLogTime(log.created_at || log.timestamp)}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-                {activityLogs.length === 0 && (
-                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400 italic">No recent activity.</p>
-                )}
-              </div>
-            </div>
-
-          </div>
-
-        </div>
 
       </div>
     );
