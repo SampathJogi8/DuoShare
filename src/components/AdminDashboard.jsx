@@ -160,19 +160,43 @@ export default function AdminDashboard({
     }
   };
 
-  // Toggle Maintenance Mode
-  const handleToggleMaintenance = async () => {
-    const nextState = !isSystemMaintenanceActive;
-    setIsSystemMaintenanceActive(nextState);
-    localStorage.setItem('tallyin_system_maintenance_active', String(nextState));
-    localStorage.setItem('tallyin_maintenance_message', maintMsgInput);
+  // Save Maintenance Message
+  const handleSaveMaintenanceMessage = async () => {
+    const textToSave = maintMsgInput.trim() || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.';
+    if (setMaintenanceMessage) {
+      setMaintenanceMessage(textToSave);
+    }
+    localStorage.setItem('tallyin_maintenance_message', textToSave);
 
     try {
       const sysChan = supabase.channel('system_admin_channel');
       await sysChan.send({
         type: 'broadcast',
         event: 'MAINTENANCE_MODE',
-        payload: { active: nextState, message: maintMsgInput }
+        payload: { active: isSystemMaintenanceActive, message: textToSave }
+      });
+    } catch (e) { console.error(e); }
+
+    if (triggerToast) triggerToast('Maintenance notice text updated!');
+  };
+
+  // Toggle Maintenance Mode
+  const handleToggleMaintenance = async () => {
+    const nextState = !isSystemMaintenanceActive;
+    const textToSave = maintMsgInput.trim() || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.';
+    setIsSystemMaintenanceActive(nextState);
+    if (setMaintenanceMessage) {
+      setMaintenanceMessage(textToSave);
+    }
+    localStorage.setItem('tallyin_system_maintenance_active', String(nextState));
+    localStorage.setItem('tallyin_maintenance_message', textToSave);
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'MAINTENANCE_MODE',
+        payload: { active: nextState, message: textToSave }
       });
     } catch (e) { console.error("Realtime send maintenance error:", e); }
 
@@ -702,7 +726,15 @@ export default function AdminDashboard({
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handleSaveMaintenanceMessage}
+                className="py-3.5 px-5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" />
+                <span>Save Maintenance Notice Text</span>
+              </button>
+
               <button
                 onClick={handleToggleMaintenance}
                 className={`py-3.5 px-6 rounded-xl font-black text-xs text-white shadow-md transition-all flex items-center gap-2 ${
