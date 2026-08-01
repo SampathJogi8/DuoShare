@@ -8084,23 +8084,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <span>Settings</span>
               </div>
             </button>
-
-            <button 
-              onClick={() => navigateTo('admin')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm ${
-                currentView === 'admin' 
-                  ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 font-bold border border-rose-200 dark:border-rose-900/50' 
-                  : 'text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <ShieldAlert className="w-4 h-4 text-rose-500" />
-                <span>Admin Console</span>
-              </div>
-              <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-700 dark:text-rose-400 rounded-md border border-rose-500/20">
-                PRO
-              </span>
-            </button>
           </nav>
         </div>
 

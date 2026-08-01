@@ -25,7 +25,10 @@ import {
 import faviconLogo from '../assets/favicon_logo.png';
 import { supabase } from '../supabase';
 
-const ADMIN_EMAILS = ['sampathjogipusala123@gmail.com'];
+const ADMIN_EMAILS = [
+  'tallyin.alerts@gmail.com',
+  'sampathjogipusala123@gmail.com'
+];
 const DEFAULT_ADMIN_PASSKEY = 'tallyin2026';
 
 export default function AdminDashboard({
