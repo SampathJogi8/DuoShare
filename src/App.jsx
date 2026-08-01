@@ -1810,7 +1810,9 @@ export default function App() {
     setMembers([]);
     setActivityLogs([]);
     setRoomCreatedBy(null);
-    setCurrentView('home');
+    if (currentView !== 'admin') {
+      setCurrentView('home');
+    }
     setIsMobileMenuOpen(false);
     setIsInviteModalOpen(false);
     setIsManageRoomOpen(false);
