@@ -515,8 +515,9 @@ export default function App() {
   const [currentView, setCurrentView] = useState(() => {
     if (typeof window !== 'undefined') {
       const pathname = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
       const params = new URLSearchParams(window.location.search);
-      if (pathname.startsWith('/admin') || params.has('admin') || params.has('admin_portal')) {
+      if (pathname.includes('admin') || hash.includes('admin') || params.has('admin') || params.has('admin_portal')) {
         return 'admin';
       }
     }
