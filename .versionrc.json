@@ -1,16 +1,19 @@
 {
-  "header": "# 🚀 DuoShare Changelog\n\nAll notable changes to this project will be documented in this file.\n",
   "types": [
-    { "type": "feat", "section": "✨ Features" },
-    { "type": "fix", "section": "🐛 Bug Fixes" },
-    { "type": "perf", "section": "⚡ Performance Improvements" },
-    { "type": "revert", "section": "⏪ Reverts" },
-    { "type": "chore", "section": "⚙️ Maintenance & Tooling" },
-    { "type": "docs", "section": "📝 Documentation" },
-    { "type": "style", "section": "🎨 Styling & UI polish" },
-    { "type": "refactor", "section": "♻️ Code Refactoring" }
+    { "type": "feat",     "section": "✨ Features" },
+    { "type": "fix",      "section": "🐛 Bug Fixes" },
+    { "type": "perf",     "section": "⚡ Performance" },
+    { "type": "refactor", "section": "♻️ Code Refactoring" },
+    { "type": "style",    "section": "💄 UI / Styles" },
+    { "type": "docs",     "section": "📝 Documentation" },
+    { "type": "test",     "section": "✅ Tests" },
+    { "type": "build",    "section": "📦 Build System", "hidden": true },
+    { "type": "ci",       "section": "🔧 CI/CD",        "hidden": true },
+    { "type": "chore",    "section": "🔨 Chores",       "hidden": true },
+    { "type": "revert",   "section": "⏪ Reverts" }
   ],
-  "scripts": {
-    "postbump": "node scripts/sync-version.js && git add android/app/build.gradle package-lock.json"
-  }
+  "commitUrlFormat": "https://github.com/SampathJogi8/DuoShare/commit/{{hash}}",
+  "compareUrlFormat": "https://github.com/SampathJogi8/DuoShare/compare/{{previousTag}}...{{currentTag}}",
+  "releaseCommitMessageFormat": "chore(release): v{{currentTag}}",
+  "tagPrefix": "v"
 }

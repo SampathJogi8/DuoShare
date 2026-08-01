@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   Wrench, 
   Lock, 
@@ -12,8 +12,6 @@ import {
   Hammer 
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
-
-const ALLOWED_MAINTENANCE_EMAIL = 'sampathjogipusala123@gmail.com';
 
 export default function MaintenanceView({
   user,
@@ -36,24 +34,24 @@ export default function MaintenanceView({
   triggerToast,
   appVersion
 }) {
-  const [showMaintenanceLogin, setShowMaintenanceLogin] = useState(false);
-  const [logoClickCount, setLogoClickCount] = useState(0);
-
-  // Stealth URL detector (?admin=1 or ?login=1 or ?access=1)
-  useEffect(() => {
+  const [showMaintenanceLogin, setShowMaintenanceLogin] = useState(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (
+      return (
         params.has('admin') || 
         params.has('login') || 
         params.has('bypass') || 
         params.has('access') || 
         params.has('sampath')
-      ) {
-        setShowMaintenanceLogin(true);
-      }
+      );
     }
-  }, []);
+    return false;
+  });
+
+  const handleLogoClick = () => {
+    setShowMaintenanceLogin(true);
+    if (triggerToast) triggerToast('Maintenance override unlocked.');
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F0F4F1] dark:bg-slate-950 p-4 font-sans relative overflow-hidden transition-colors duration-300">
@@ -83,17 +81,7 @@ export default function MaintenanceView({
         <div className="text-center space-y-4">
           <div 
             className="relative inline-block cursor-pointer select-none"
-            onClick={() => {
-              setLogoClickCount(prev => {
-                const next = prev + 1;
-                if (next >= 5) {
-                  setShowMaintenanceLogin(true);
-                  if (triggerToast) triggerToast('Maintenance override unlocked.');
-                  return 0;
-                }
-                return next;
-              });
-            }}
+            onClick={handleLogoClick}
             title="Tallyin Status"
           >
             <img 

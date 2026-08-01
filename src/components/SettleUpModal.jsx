@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, HandCoins, Check, QrCode, Copy, ArrowRight, Loader } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, HandCoins, ArrowRight, Loader } from 'lucide-react';
 
 export default function SettleUpModal({
   isOpen,
@@ -10,24 +10,17 @@ export default function SettleUpModal({
   triggerToast
 }) {
   const [payer, setPayer] = useState(userNickname || '');
-  const [receiver, setReceiver] = useState('');
+  const [selectedReceiver, setSelectedReceiver] = useState('');
   const [amount, setAmount] = useState('');
-  const [upiId, setUpiId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (members && members.length > 0 && !receiver) {
-      const otherMem = members.find(m => m.nickname !== userNickname) || members[0];
-      if (otherMem) setReceiver(otherMem.nickname);
-    }
-  }, [members, userNickname, receiver]);
+  const defaultReceiver = (members && members.length > 0)
+    ? (members.find(m => m.nickname !== userNickname) || members[0])?.nickname || ''
+    : '';
 
-  useEffect(() => {
-    if (receiver) {
-      const storedUpi = localStorage.getItem(`upi_id_${receiver}`) || '';
-      setUpiId(storedUpi);
-    }
-  }, [receiver]);
+  const receiver = selectedReceiver || defaultReceiver;
+
+  const upiId = receiver ? (localStorage.getItem(`upi_id_${receiver}`) || '') : '';
 
   if (!isOpen) return null;
 
@@ -109,7 +102,7 @@ export default function SettleUpModal({
               <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Who is Receiving?</label>
               <select
                 value={receiver}
-                onChange={e => setReceiver(e.target.value)}
+                onChange={e => setSelectedReceiver(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
               >
                 {(members || []).filter(m => m.nickname !== payer).map(m => (

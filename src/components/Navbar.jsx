@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   Home as HomeIcon, 
   BookOpen, 
@@ -11,9 +10,7 @@ import {
   QrCode, 
   ChevronDown, 
   LogOut, 
-  User, 
-  Menu,
-  ShieldCheck
+  Menu
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 
@@ -24,7 +21,6 @@ export default function Navbar({
   userNickname,
   userRooms,
   userRoomId,
-  setUserRoomId,
   isDarkMode,
   setIsDarkMode,
   triggerToast,

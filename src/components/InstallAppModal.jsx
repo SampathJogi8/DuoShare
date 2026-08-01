@@ -1,21 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { Download, X, Share, PlusSquare, Smartphone, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, X, Share, PlusSquare, Sparkles, CheckCircle2 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 
 export default function InstallAppModal({ triggerToast }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isIos, setIsIos] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
+  const [isStandalone] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  });
   const [isVisible, setIsVisible] = useState(false);
   const [showIosGuide, setShowIosGuide] = useState(false);
 
   useEffect(() => {
-    // 1. Check if already installed as PWA standalone app
-    const isStandaloneApp = window.matchMedia('(display-mode: standalone)').matches || 
-                            window.navigator.standalone === true;
-    setIsStandalone(isStandaloneApp);
-
-    if (isStandaloneApp) return;
+    if (isStandalone) return;
 
     // 2. Check if user already dismissed install prompt recently
     const isDismissed = localStorage.getItem('tallyin_install_dismissed');

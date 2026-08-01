@@ -1,13 +1,10 @@
-import React, { useState, useMemo } from 'react';
-import { TrendingUp, PieChart as PieChartIcon, Calendar, ArrowUpRight, ArrowDownRight, ShieldCheck, DollarSign, Wallet } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { TrendingUp, PieChart as PieChartIcon, ArrowUpRight } from 'lucide-react';
 
 export default function InsightsView({
   transactions,
-  members,
-  userNickname,
   computedStats,
-  personalCap,
-  monthlyBudget
+  personalCap
 }) {
   const [insightsTab, setInsightsTab] = useState('room'); // 'room' | 'personal'
 
