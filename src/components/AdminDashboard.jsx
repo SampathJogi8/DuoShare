@@ -77,7 +77,10 @@ export default function AdminDashboard({
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // Pinning form states
-  const [targetPinRoomId, setTargetPinRoomId] = useState(userRooms?.[0]?.roomId || '');
+  const [allSystemRooms, setAllSystemRooms] = useState([]);
+  const [customPinRoomId, setCustomPinRoomId] = useState('');
+  const [isCustomRoomInput, setIsCustomRoomInput] = useState(false);
+  const [targetPinRoomId, setTargetPinRoomId] = useState(userRooms?.[0]?.roomId || 'ALL');
   const [pinText, setPinText] = useState('');
   const [pinAuthor, setPinAuthor] = useState(userNickname || 'Admin');
 
@@ -110,14 +113,15 @@ export default function AdminDashboard({
     }
   }, []);
 
-  // Fetch Database System Stats
+  // Fetch Database System Stats & Room List
   const fetchSystemStats = useCallback(async () => {
     try {
-      const [roomsRes, usersRes, txRes, receiptsRes] = await Promise.allSettled([
+      const [roomsRes, usersRes, txRes, receiptsRes, roomListRes] = await Promise.allSettled([
         supabase.from('rooms').select('id', { count: 'exact', head: true }),
         supabase.from('members').select('uid', { count: 'exact', head: true }),
         supabase.from('transactions').select('id', { count: 'exact', head: true }),
-        supabase.from('receipts').select('id', { count: 'exact', head: true })
+        supabase.from('receipts').select('id', { count: 'exact', head: true }),
+        supabase.from('rooms').select('id, name')
       ]);
 
       setStats({
@@ -126,6 +130,11 @@ export default function AdminDashboard({
         totalTransactions: txRes.status === 'fulfilled' ? txRes.value.count || 0 : 0,
         totalReceipts: receiptsRes.status === 'fulfilled' ? receiptsRes.value.count || 0 : 0
       });
+
+      if (roomListRes.status === 'fulfilled' && roomListRes.value.data) {
+        const mapped = roomListRes.value.data.map(r => ({ roomId: r.id, roomName: r.name || r.id }));
+        setAllSystemRooms(mapped);
+      }
     } catch (e) {
       console.warn("Stats fetch failed:", e);
     }
@@ -292,8 +301,9 @@ export default function AdminDashboard({
 
   // Pin Room Message
   const handlePinMessage = async () => {
-    if (!pinText.trim() || !targetPinRoomId) {
-      if (triggerToast) triggerToast('Please select target room and text.');
+    const finalRoomId = isCustomRoomInput ? customPinRoomId.trim().toUpperCase() : targetPinRoomId;
+    if (!pinText.trim() || !finalRoomId) {
+      if (triggerToast) triggerToast('Please select or enter target room and text.');
       return;
     }
 
@@ -306,7 +316,7 @@ export default function AdminDashboard({
 
     const updatedPins = {
       ...(pinnedMessages || {}),
-      [targetPinRoomId]: pinObj
+      [finalRoomId]: pinObj
     };
 
     setPinnedMessages(updatedPins);
@@ -317,11 +327,11 @@ export default function AdminDashboard({
       await sysChan.send({
         type: 'broadcast',
         event: 'ROOM_PIN',
-        payload: { roomId: targetPinRoomId, pin: pinObj }
+        payload: { roomId: finalRoomId, pin: pinObj }
       });
     } catch (e) { console.error(e); }
 
-    if (triggerToast) triggerToast(`Announcement pinned to room ${targetPinRoomId}`);
+    if (triggerToast) triggerToast(`Announcement pinned to ${finalRoomId === 'ALL' ? 'ALL ROOMS' : `room ${finalRoomId}`}`);
     setPinText('');
   };
 
@@ -886,14 +896,42 @@ export default function AdminDashboard({
               <div className="space-y-1">
                 <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Target Room</label>
                 <select
-                  value={targetPinRoomId}
-                  onChange={e => setTargetPinRoomId(e.target.value)}
+                  value={isCustomRoomInput ? 'CUSTOM' : targetPinRoomId}
+                  onChange={e => {
+                    if (e.target.value === 'CUSTOM') {
+                      setIsCustomRoomInput(true);
+                    } else {
+                      setIsCustomRoomInput(false);
+                      setTargetPinRoomId(e.target.value);
+                    }
+                  }}
                   className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
                 >
-                  {(userRooms || []).map(r => (
-                    <option key={r.roomId} value={r.roomId}>🏠 {r.roomName} ({r.roomId})</option>
-                  ))}
+                  <option value="ALL">🌐 All Rooms (Global Pin)</option>
+                  {allSystemRooms.length > 0
+                    ? allSystemRooms.map(r => (
+                        <option key={r.roomId} value={r.roomId}>🏠 {r.roomName} ({r.roomId})</option>
+                      ))
+                    : (userRooms || []).map(r => (
+                        <option key={r.roomId} value={r.roomId}>🏠 {r.roomName} ({r.roomId})</option>
+                      ))
+                  }
+                  <option value="CUSTOM">✏️ Type Custom Room Code...</option>
                 </select>
+
+                {isCustomRoomInput && (
+                  <input
+                    type="text"
+                    placeholder="Enter Room Code (e.g. DUO-KLIZ-2508)"
+                    value={customPinRoomId}
+                    onChange={e => {
+                      const code = e.target.value.toUpperCase();
+                      setCustomPinRoomId(code);
+                      setTargetPinRoomId(code);
+                    }}
+                    className="w-full mt-2 px-3.5 py-2 bg-white dark:bg-slate-900 border border-amber-400 rounded-xl text-xs font-mono font-bold text-[#1A3827] dark:text-white focus:outline-none"
+                  />
+                )}
               </div>
 
               <div className="space-y-1">
