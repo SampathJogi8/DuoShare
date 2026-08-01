@@ -8523,29 +8523,33 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">The ledger</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Every expense, clearly accounted for.</p>
+            <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>SHARED ROOM LEDGER</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">The ledger</h1>
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Every expense, transparently tracked and split in real time.</p>
           </div>
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
-            {/* Primary Action on Mobile: Add Expense (Full width on mobile, auto on desktop) */}
+            {/* Primary Action */}
             <button 
               onClick={() => openAddExpenseModal()}
-              className="order-1 sm:order-3 w-full sm:w-auto flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-3 rounded-2xl font-black hover:bg-[#255038] dark:hover:bg-[#BEF264] transition-all duration-200 text-xs sm:text-sm shadow-md active:scale-98"
+              className="order-1 sm:order-3 w-full sm:w-auto flex items-center justify-center gap-2 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-3 rounded-2xl font-black hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 text-xs sm:text-sm shadow-lg shadow-emerald-950/10 cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
               <span>Add expense</span>
             </button>
 
-            {/* Secondary Actions on Mobile: 2 Equal Columns for Export & Settlement Records */}
+            {/* Secondary Actions */}
             <div className="order-2 flex items-center gap-2 w-full sm:w-auto">
               {/* Export Dropdown */}
               <div className="relative flex-1 sm:flex-none">
                 <button 
                   onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                  className="w-full flex items-center justify-center gap-1.5 border border-[#E3E8E3] dark:border-[#1E282C] hover:bg-[#F6F8F6] dark:hover:bg-[#161D20] text-[#1A3827] dark:text-slate-200 px-3.5 py-2.5 rounded-xl font-bold transition-all text-xs"
+                  className="w-full flex items-center justify-center gap-2 hud-card hover:border-[#A3E635]/60 text-[#12291C] dark:text-slate-200 px-4 py-2.5 rounded-2xl font-bold transition-all text-xs cursor-pointer shadow-sm"
                 >
-                  <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                  <Download className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
                   <span>Export</span>
                   <ChevronDown className="w-3.5 h-3.5 opacity-60" />
                 </button>
@@ -8553,24 +8557,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 {isExportDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
-                    <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-44 bg-white dark:bg-[#0E1315] border border-[#E3E8E3] dark:border-[#1E282C] rounded-2xl shadow-xl py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+                    <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-48 bg-white/95 dark:bg-[#0E1317]/95 backdrop-blur-2xl border border-[#E2EAE3] dark:border-[#1F2830] rounded-2xl shadow-2xl py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
                       <button 
                         onClick={() => { exportToCSV(filteredTransactions); setIsExportDropdownOpen(false); }}
-                        className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                        className="w-full text-left px-4 py-2.5 hover:bg-emerald-50 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors"
                       >
-                        <FileText className="w-4 h-4 text-emerald-700 dark:text-[#A3E635]" />
+                        <FileText className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
                         <span>Export to CSV</span>
                       </button>
                       <button 
                         onClick={() => { exportToExcel(filteredTransactions); setIsExportDropdownOpen(false); }}
-                        className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                        className="w-full text-left px-4 py-2.5 hover:bg-emerald-50 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors"
                       >
                         <Sliders className="w-4 h-4 text-blue-600" />
                         <span>Export to Excel</span>
                       </button>
                       <button 
                         onClick={() => { exportToPDF(filteredTransactions); setIsExportDropdownOpen(false); }}
-                        className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                        className="w-full text-left px-4 py-2.5 hover:bg-emerald-50 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors"
                       >
                         <Sparkles className="w-4 h-4 text-amber-500" />
                         <span>Download PDF</span>
@@ -8583,12 +8587,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               {/* Settlement Records Button */}
               <button 
                 onClick={() => navigateTo('settlement-records')}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-[#EAF0EC] dark:bg-[#161D20] text-[#1A3827] dark:text-[#A3E635] border border-[#1A3827]/15 dark:border-[#1E282C] px-3.5 py-2.5 rounded-xl font-bold hover:bg-emerald-100 dark:hover:bg-slate-800 transition-all duration-200 text-xs shadow-sm"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 hud-card hover:border-[#A3E635]/60 text-[#12291C] dark:text-[#A3E635] px-4 py-2.5 rounded-2xl font-bold transition-all text-xs cursor-pointer shadow-sm"
                 title="View Settlement History"
               >
-                <HandCoins className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0" />
+                <HandCoins className="w-4 h-4 text-emerald-600 dark:text-[#A3E635] shrink-0" />
                 <span className="truncate">Settlements</span>
-                <span className="px-1.5 py-0.5 text-[10px] font-black bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full shrink-0">
+                <span className="px-2 py-0.5 text-[10px] font-black bg-[#0F291E] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-full shrink-0">
                   {computedStats.settlementCount || 0}
                 </span>
               </button>
@@ -8597,15 +8601,15 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         </div>
 
         {/* Search & Filter Bar */}
-        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center gap-3 justify-between transition-colors duration-300">
+        <div className="hud-card p-4 rounded-3xl flex flex-col md:flex-row md:items-center gap-3 justify-between transition-all duration-300">
           <div className="flex-1 relative">
-            <Search className="w-4 h-4 text-[#5C6E5C] absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-[#5C6E5C] dark:text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
             <input 
               type="text" 
               placeholder="Search title, TX ID, category, paid by..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950"
+              className="w-full pl-11 pr-4 py-2.5 border border-[#E2EAE3] dark:border-[#1F2830] rounded-2xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-white bg-white/70 dark:bg-[#080B0D]/70 font-medium placeholder:text-slate-400 transition-all"
             />
           </div>
 
@@ -8614,7 +8618,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <select 
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3.5 py-2.5 text-base sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-semibold cursor-pointer"
+                className="w-full border border-[#E2EAE3] dark:border-[#1F2830] bg-white/70 dark:bg-[#080B0D]/70 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-slate-200 font-bold cursor-pointer transition-all"
               >
                 {categories.map((c) => (
                   <option key={c} value={c}>{c === 'All' ? 'All categories' : c}</option>
@@ -8624,7 +8628,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <select 
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="w-full border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3.5 py-2.5 text-base sm:text-sm focus:outline-none text-[#1A3827] dark:text-slate-200 font-semibold cursor-pointer"
+                className="w-full border border-[#E2EAE3] dark:border-[#1F2830] bg-white/70 dark:bg-[#080B0D]/70 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-slate-200 font-bold cursor-pointer transition-all"
               >
                 <option value="All">All months</option>
                 {availableMonths.map((m) => {
@@ -8647,7 +8651,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 setSelectedMonth(getLocalMonthStr());
                 triggerToast('Search filter reset.');
               }}
-              className="w-full sm:w-auto bg-[#1A3827] dark:bg-slate-800 text-white px-4 py-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all text-center"
+              className="w-full sm:w-auto bg-[#0F291E] dark:bg-slate-800 text-white px-4 py-2.5 rounded-2xl text-xs font-bold hover:bg-[#1A3827] dark:hover:bg-slate-700 transition-all text-center cursor-pointer"
             >
               Reset
             </button>
@@ -9140,21 +9144,21 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // ==========================================
   function renderAddExpenseModal() {
     return (
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 animate-fade-in">
-        <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-xl overflow-hidden border border-[#E3E8E3] dark:border-slate-800 relative max-h-[90vh] flex flex-col transition-colors duration-300">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4 animate-fade-in">
+        <div className="bg-white/95 dark:bg-[#0E1317]/95 backdrop-blur-2xl w-full max-w-lg rounded-3xl shadow-2xl border border-[#E2EAE3] dark:border-[#1F2830] relative max-h-[90vh] flex flex-col transition-all duration-300">
           
-          <div className="px-6 py-4 border-b border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center bg-[#F6F8F6]/30 dark:bg-slate-950/20 shrink-0">
+          <div className="px-6 py-5 border-b border-[#E2EAE3]/60 dark:border-[#1F2830] flex justify-between items-center bg-[#F4F9F5]/40 dark:bg-[#161D22]/40 shrink-0">
             <div>
-              <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">
+              <p className="text-[10px] tracking-widest font-black uppercase text-emerald-800 dark:text-[#A3E635]">
                 {editingTransaction ? 'EDIT TRANSACTION' : 'NEW TRANSACTION'}
               </p>
-              <h2 className="font-extrabold text-lg sm:text-xl text-[#1A3827] dark:text-slate-100 mt-0.5">
+              <h2 className="font-extrabold text-lg sm:text-xl text-[#12291C] dark:text-slate-100 mt-0.5 tracking-tight">
                 {editingTransaction ? 'Edit expense' : 'Add an expense'}
               </h2>
             </div>
             <button 
               onClick={() => setIsAddExpenseOpen(false)}
-              className="p-1.5 rounded-full text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200 transition-all"
+              className="p-2 rounded-2xl text-[#5C6E5C] dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800 hover:text-[#12291C] dark:hover:text-slate-200 transition-all cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -11218,29 +11222,32 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">ROOM INTELLIGENCE</p>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Spending insights</h1>
+            <div className="inline-flex items-center gap-2 bg-indigo-500/10 dark:bg-indigo-500/20 border border-indigo-500/20 px-3 py-1 rounded-full text-indigo-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>ROOM INTELLIGENCE & ANALYTICS</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Spending insights</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">A clearer view of where your money goes — powered by real data.</p>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             {/* Segmented Control */}
-            <div className="flex bg-[#F6F8F6] dark:bg-slate-950 p-1 rounded-2xl border border-[#E3E8E3]/50 dark:border-slate-800 self-start sm:self-auto">
+            <div className="flex hud-card p-1.5 rounded-2xl self-start sm:self-auto shadow-sm">
               <button
                 onClick={() => setInsightsTab('room')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all duration-200 cursor-pointer ${
                   !isPersonalTab
-                    ? 'bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-sm'
-                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
+                    ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-md'
+                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#12291C] dark:hover:text-slate-200'
                 }`}
               >
                 Room Expenses
               </button>
               <button
                 onClick={() => setInsightsTab('personal')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all duration-200 cursor-pointer ${
                   isPersonalTab
-                    ? 'bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-sm'
-                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
+                    ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-md'
+                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#12291C] dark:hover:text-slate-200'
                 }`}
               >
                 Personal Expenses
@@ -12345,22 +12352,25 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">VISUAL ARCHIVE</p>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Receipts gallery</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Every proof of purchase, close at hand.</p>
+            <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              <span>DIGITAL RECEIPT ARCHIVE</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Receipts gallery</h1>
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Every proof of purchase, securely archived & searchable.</p>
           </div>
 
           <button 
             onClick={handleTriggerUpload}
-            className="flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
+            className="flex items-center justify-center gap-2 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-3 rounded-2xl font-black hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 text-xs sm:text-sm shadow-lg shadow-emerald-950/10 cursor-pointer"
           >
-            <Upload className="w-4 h-4" />
+            <Upload className="w-4 h-4 stroke-[2.5]" />
             <span>Upload receipt</span>
           </button>
         </div>
 
         {activeReceipts.length === 0 ? (
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-12 text-center shadow-sm">
+          <div className="hud-card rounded-3xl p-12 text-center shadow-xl">
             <p className="text-xs sm:text-sm font-semibold text-[#5C6E5C] dark:text-slate-400">No receipts uploaded yet.</p>
             <p className="text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-1">Upload roommate bill receipt files to archive them in this visual polaroid grid.</p>
           </div>
@@ -12789,21 +12799,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Collaborative Needs</p>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Shopping List</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">List items needed for the flat and split them in 1-click.</p>
+            <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
+              <ShoppingCart className="w-3.5 h-3.5" />
+              <span>COLLABORATIVE FLAT NEEDS</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Shopping List</h1>
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">List items needed for the flat and split them in 1-click once bought.</p>
           </div>
           <button 
             onClick={() => setIsAddShoppingOpen(true)}
-            className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all flex items-center justify-center gap-2 active:scale-98 self-start sm:self-auto shadow-sm"
+            className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-5 py-3 rounded-2xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/10 cursor-pointer flex items-center justify-center gap-2"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 stroke-[3]" />
             <span>Add Shopping Item</span>
           </button>
         </div>
 
         {/* List Layout */}
-        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 shadow-sm transition-colors duration-300">
+        <div className="hud-card rounded-3xl p-6 shadow-xl transition-all duration-300">
           {pendingItems.length === 0 ? (
             <div className="text-center py-12 space-y-4">
               <div className="w-12 h-12 rounded-full bg-[#F6F8F6] dark:bg-slate-850 flex items-center justify-center mx-auto text-[#1A3827] dark:text-[#A3E635]">
@@ -13049,9 +13062,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Household Recurring Expenses</p>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Bills & Subscriptions</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Track upcoming flat bills, subscriptions, and log payments straight into room expenses.</p>
+            <div className="inline-flex items-center gap-2 bg-blue-500/10 dark:bg-blue-500/20 border border-blue-500/20 px-3 py-1 rounded-full text-blue-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              <span>RECURRING FLAT BILLS</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Bills & Subscriptions</h1>
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Track upcoming flat bills, OTT subscriptions, and log payments straight into room expenses.</p>
           </div>
           <button 
             onClick={() => {
@@ -13060,10 +13076,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               }
               setIsAddBillOpen(true);
             }}
-            className="bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold px-4 py-2.5 rounded-2xl text-xs hover:bg-[#255038] dark:hover:bg-slate-200 transition-all flex items-center justify-center gap-2 active:scale-98 self-start sm:self-auto shadow-sm"
+            className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-5 py-3 rounded-2xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/10 cursor-pointer flex items-center justify-center gap-2"
           >
-            <Plus className="w-4 h-4" />
-            <span>Add Bill Reminder</span>
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>Add Recurring Bill</span>
           </button>
         </div>
 
@@ -13342,18 +13358,21 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="space-y-6 sm:space-y-8 max-w-3xl mx-auto animate-fade-in pb-12">
         
         <div>
-          <p className="text-[10px] tracking-widest font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">YOUR SPACE</p>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight mt-0.5">Settings</h1>
-          <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Make Tallyin work the way you do.</p>
+          <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
+            <SettingsIcon className="w-3.5 h-3.5" />
+            <span>ACCOUNT & ROOM PREFERENCES</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Settings</h1>
+          <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Configure your profile, active room workspace, themes, and notifications.</p>
         </div>
 
         {/* Stacked Cards */}
         <div className="space-y-6">
           
           {/* Your Profile */}
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
-            <div className="flex justify-between items-center pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
-              <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight">
+          <div className="hud-card rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 transition-all duration-300">
+            <div className="flex justify-between items-center pb-3 border-b border-[#E2EAE3]/60 dark:border-[#1F2830]">
+              <h3 className="font-extrabold text-[#12291C] dark:text-slate-100 text-sm sm:text-base tracking-tight">
                 Your Profile
               </h3>
             </div>
