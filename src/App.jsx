@@ -12262,154 +12262,142 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     return (
       <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
         
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-gradient-to-br from-[#1A3827] via-[#244A34] to-[#132A1D] dark:from-slate-900 dark:via-slate-800 dark:to-slate-950 p-6 sm:p-8 rounded-3xl text-white shadow-xl relative overflow-hidden">
-          <div className="absolute -right-8 -bottom-8 w-48 h-48 bg-[#A3E635]/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 text-[#A3E635] text-xs font-bold uppercase tracking-widest mb-1">
-              <HandCoins className="w-4 h-4" />
-              <span>Room Debt Audit Log</span>
+        {/* Minimal Executive Header */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-[#061811] dark:bg-slate-900 border border-[#061811] dark:border-slate-800 p-6 sm:p-7 rounded-3xl text-white shadow-md">
+          <div>
+            <div className="flex items-center gap-2 text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1">
+              <HandCoins className="w-3.5 h-3.5" />
+              <span>ROOM DEBT AUDIT LOG</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Settlement Records</h1>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Settlement Records</h1>
+            <p className="text-xs text-slate-300 dark:text-slate-400 mt-1 max-w-xl">
               Complete history of roommate payments, direct transfers, and debt settlements logged in your room.
             </p>
           </div>
 
           <button 
             onClick={handleSettleUp}
-            className="relative z-10 flex items-center justify-center gap-2 bg-[#A3E635] hover:bg-[#b2f048] text-slate-950 px-6 py-3 rounded-2xl font-bold transition-all duration-200 text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 whitespace-nowrap"
+            className="flex items-center justify-center gap-2 bg-[#A3E635] hover:bg-[#b2f048] text-slate-950 px-5 py-2.5 rounded-xl font-extrabold transition-all duration-200 text-xs sm:text-sm shadow-md hover:scale-105 active:scale-95 whitespace-nowrap cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 stroke-[3]" />
             <span>Settle Up Now</span>
           </button>
         </div>
 
-        {/* Dashboard Overview Cards */}
+        {/* Minimalist Dashboard Overview Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-              <span className="text-[10px] font-black uppercase tracking-wider">Total Settled</span>
-              <HandCoins className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-4.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider">TOTAL SETTLED</span>
+              <HandCoins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <p className="text-lg sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">
+            <p className="text-lg sm:text-xl font-black text-[#1A3827] dark:text-slate-100">
               {formatINR(computedStats.totalSettledAmount || 0)}
             </p>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-              {computedStats.settlementCount || 0} completed transfers
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+              {computedStats.settlementCount || 0} transfers logged
             </p>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-              <span className="text-[10px] font-black uppercase tracking-wider">Total Count</span>
-              <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-4.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider">TRANSFERS LOGGED</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
             </div>
-            <p className="text-lg sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">
+            <p className="text-lg sm:text-xl font-black text-[#1A3827] dark:text-slate-100">
               {computedStats.settlementCount || 0}
             </p>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-              Recorded in room ledger
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Room ledger transfers
             </p>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-              <span className="text-[10px] font-black uppercase tracking-wider">My Payments Out</span>
-              <Send className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-4.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider">MY OUTGOING</span>
+              <Send className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
             </div>
-            <p className="text-lg sm:text-2xl font-black text-amber-600 dark:text-amber-400">
+            <p className="text-lg sm:text-xl font-black text-amber-600 dark:text-amber-400">
               {formatINR(computedStats.mySettlementsPaid || 0)}
             </p>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
               Paid by you to others
             </p>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-              <span className="text-[10px] font-black uppercase tracking-wider">My Payments In</span>
-              <UserCheck className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-4.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider">MY INCOMING</span>
+              <UserCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
             </div>
-            <p className="text-lg sm:text-2xl font-black text-teal-600 dark:text-teal-400">
+            <p className="text-lg sm:text-xl font-black text-teal-600 dark:text-teal-400">
               {formatINR(computedStats.mySettlementsReceived || 0)}
             </p>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
               Received by you
             </p>
           </div>
         </div>
 
-        {/* Filter Toolbar */}
-        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 rounded-2xl shadow-sm space-y-3 sm:space-y-0 sm:flex sm:items-center sm:gap-3">
-          {/* Search Box */}
+        {/* Minimal Filter Toolbar */}
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-3.5 rounded-2xl shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
               type="text"
-              placeholder="Search settlements by name or amount..."
+              placeholder="Search by name, amount, date..."
               value={settlementSearchQuery}
               onChange={(e) => setSettlementSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1A3827] dark:focus:ring-[#A3E635] text-slate-800 dark:text-slate-100"
+              className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#061811]/30 dark:focus:ring-[#A3E635]/30 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
             />
             {settlementSearchQuery && (
-              <button 
-                onClick={() => setSettlementSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-3.5 h-3.5" />
+              <button onClick={() => setSettlementSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X className="w-3 h-3" />
               </button>
             )}
           </div>
 
-          {/* Roommate Filter */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <select
               value={settlementRoommateFilter}
               onChange={(e) => setSettlementRoommateFilter(e.target.value)}
-              className="px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium focus:outline-none"
+              className="px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 font-medium focus:outline-none cursor-pointer"
             >
-              <option value="all">All Roommates</option>
+              <option value="all">All Members</option>
               <option value="me">Involving Me</option>
               <option value="paid_by_me">Paid by Me</option>
               <option value="received_by_me">Received by Me</option>
-              {members.map(m => (
-                <option key={m.uid} value={m.uid}>{m.nickname}</option>
-              ))}
+              {members.map(m => <option key={m.uid} value={m.uid}>{m.nickname}</option>)}
             </select>
-
-            {/* Month Filter */}
             <select
               value={settlementMonthFilter}
               onChange={(e) => setSettlementMonthFilter(e.target.value)}
-              className="px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium focus:outline-none"
+              className="px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 font-medium focus:outline-none cursor-pointer"
             >
               <option value="all">All Time</option>
               {availableMonths.map(m => (
-                <option key={m} value={m}>
-                  {new Date(`${m}-01`).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                </option>
+                <option key={m} value={m}>{new Date(`${m}-01`).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</option>
               ))}
             </select>
           </div>
         </div>
 
-        {/* Settlements Timeline List */}
+        {/* Settlements List */}
         {filteredSettlements.length === 0 ? (
-          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-12 text-center shadow-sm">
-            <div className="w-12 h-12 bg-emerald-50 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <HandCoins className="w-6 h-6" />
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-12 text-center">
+            <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl flex items-center justify-center mx-auto mb-3">
+              <HandCoins className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-[#1A3827] dark:text-slate-100">No Settlement Records Found</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-              {rawSettlements.length === 0 
-                ? "No debt settlements have been recorded in this room yet. Use 'Settle Up Now' to log payments between roommates."
-                : "No settlements match your current search or filter criteria. Try resetting your filters."}
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">No Settlement Records Found</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
+              {rawSettlements.length === 0
+                ? "No debt settlements have been recorded in this room yet."
+                : "No settlements match your current filters. Try resetting them."}
             </p>
             {rawSettlements.length === 0 && (
               <button
                 onClick={handleSettleUp}
-                className="mt-4 inline-flex items-center gap-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-[#255038] dark:hover:bg-[#b2f048] transition-all"
+                className="mt-4 inline-flex items-center gap-2 bg-[#061811] text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-[#1A3827] transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Record First Settlement</span>
@@ -12417,126 +12405,90 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             )}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {filteredSettlements.map((st) => {
               const currentUid = auth.currentUser ? auth.currentUser.uid : '';
               let payerUid = st.paidByUid;
-              if (!payerUid) {
-                payerUid = st.paidBy === userNickname ? currentUid : 'roommate';
-              }
+              if (!payerUid) payerUid = st.paidBy === userNickname ? currentUid : 'roommate';
               const payerMember = members.find(m => m.uid === payerUid) || { nickname: st.paidBy || 'Roommate' };
 
               let receiverMember = null;
               if (st.splits && Array.isArray(st.splits)) {
                 const rSplit = st.splits.find(s => s.uid !== payerUid || Number(s.amount) > 0);
-                if (rSplit) {
-                  receiverMember = members.find(m => m.uid === rSplit.uid) || { nickname: rSplit.nickname || 'Roommate' };
-                }
+                if (rSplit) receiverMember = members.find(m => m.uid === rSplit.uid) || { nickname: rSplit.nickname || 'Roommate' };
               }
-              if (!receiverMember) {
-                if (st.title && st.title.includes(' to ')) {
-                  const parts = st.title.replace('Payment: ', '').split(' to ');
-                  if (parts[1]) {
-                    receiverMember = { nickname: parts[1] };
-                  }
-                }
+              if (!receiverMember && st.title && st.title.includes(' to ')) {
+                const parts = st.title.replace('Payment: ', '').split(' to ');
+                if (parts[1]) receiverMember = { nickname: parts[1] };
               }
-              if (!receiverMember) {
-                receiverMember = { nickname: 'Roommate' };
-              }
+              if (!receiverMember) receiverMember = { nickname: 'Roommate' };
 
               const isUserPayer = payerUid === currentUid;
               const isUserReceiver = receiverMember && receiverMember.uid === currentUid;
 
               return (
-                <div 
-                  key={st.id} 
-                  className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm hover:border-emerald-200 dark:hover:border-slate-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                <div
+                  key={st.id}
+                  className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl px-4 py-3.5 sm:px-5 hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                 >
-                  {/* Left Column: Payer -> Receiver */}
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    {/* Avatar Payer */}
-                    <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-bold text-xs flex items-center justify-center border border-amber-200 dark:border-amber-800">
+                  {/* Left: Transfer parties */}
+                  <div className="flex items-center gap-3">
+                    {/* Payer avatar */}
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-[#F5F5F0] dark:bg-slate-800 text-[#1A3827] dark:text-slate-300 font-black text-xs flex items-center justify-center border border-[#E3E8E3] dark:border-slate-700">
                         {payerMember.nickname ? payerMember.nickname.charAt(0).toUpperCase() : 'P'}
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{payerMember.nickname}</p>
-                        <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">Payer</span>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight">{payerMember.nickname}</p>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">PAID</span>
                       </div>
                     </div>
 
                     {/* Arrow */}
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0">
-                      <ArrowRight className="w-4 h-4" />
-                    </div>
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" />
 
-                    {/* Avatar Receiver */}
-                    <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center justify-center border border-emerald-200 dark:border-emerald-800">
+                    {/* Receiver avatar */}
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-[#F0FDF4] dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-black text-xs flex items-center justify-center border border-emerald-100 dark:border-emerald-900">
                         {receiverMember.nickname ? receiverMember.nickname.charAt(0).toUpperCase() : 'R'}
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{receiverMember.nickname}</p>
-                        <span className="text-[9px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Receiver</span>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight">{receiverMember.nickname}</p>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">RECEIVED</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Middle Column: Badges & Info */}
+                  {/* Middle: meta info */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Transaction ID">
+                    <span className="font-mono text-[9px] font-semibold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded">
                       {formatTxId(st.id)}
                     </span>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>Direct Settlement</span>
-                    </span>
-
                     {isUserPayer && (
-                      <span className="text-[10px] font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-md">
-                        You Paid
-                      </span>
+                      <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-2 py-0.5 rounded-full">YOU PAID</span>
                     )}
                     {isUserReceiver && (
-                      <span className="text-[10px] font-bold bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400 px-2 py-0.5 rounded-md">
-                        You Received
-                      </span>
+                      <span className="text-[9px] font-bold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 px-2 py-0.5 rounded-full">YOU RECEIVED</span>
                     )}
-
-                    <div className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 ml-auto sm:ml-0">
-                      <Calendar className="w-3 h-3" />
-                      <span>{st.date}</span>
-                      {st.time && <span>• {st.time}</span>}
-                    </div>
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium">{st.date}</span>
                   </div>
 
-                  {/* Right Column: Amount & Actions */}
-                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800">
-                    <span className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
-                      {formatINR(st.amount)}
-                    </span>
-
-                    <div className="flex items-center gap-1">
+                  {/* Right: amount + actions */}
+                  <div className="flex items-center gap-2 sm:ml-auto shrink-0">
+                    <span className="text-sm font-black text-slate-900 dark:text-slate-100">{formatINR(st.amount)}</span>
+                    <div className="flex items-center gap-0.5">
                       <button
-                        onClick={() => {
-                          setSelectedSettlementDetail(st);
-                          setIsSettlementDetailOpen(true);
-                        }}
-                        className="p-2 text-slate-500 hover:text-[#1A3827] dark:hover:text-[#A3E635] hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all"
-                        title="View Digital Receipt"
+                        onClick={() => { setSelectedSettlementDetail(st); setIsSettlementDetailOpen(true); }}
+                        className="p-1.5 text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                        title="View Receipt"
                       >
-                        <FileText className="w-4 h-4" />
+                        <FileText className="w-3.5 h-3.5" />
                       </button>
-
                       <button
                         onClick={async () => {
                           if (window.confirm(`Delete settlement record of ${formatINR(st.amount)}? This will recalculate room balances.`)) {
                             try {
-                              const { error: delErr } = await supabase
-                                .from('transactions')
-                                .delete()
-                                .eq('id', st.id);
+                              const { error: delErr } = await supabase.from('transactions').delete().eq('id', st.id);
                               if (delErr) throw delErr;
                               setTransactions(prev => prev.filter(item => item.id !== st.id));
                               triggerToast('Settlement record deleted.');
@@ -12546,10 +12498,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             }
                           }
                         }}
-                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-all cursor-pointer"
                         title="Delete Record"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -12568,17 +12520,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
     const currentUid = auth.currentUser ? auth.currentUser.uid : '';
     let payerUid = st.paidByUid;
-    if (!payerUid) {
-      payerUid = st.paidBy === userNickname ? currentUid : 'roommate';
-    }
+    if (!payerUid) payerUid = st.paidBy === userNickname ? currentUid : 'roommate';
     const payerMember = members.find(m => m.uid === payerUid) || { nickname: st.paidBy || 'Roommate' };
 
     let receiverMember = null;
     if (st.splits && Array.isArray(st.splits)) {
       const rSplit = st.splits.find(s => s.uid !== payerUid || Number(s.amount) > 0);
-      if (rSplit) {
-        receiverMember = members.find(m => m.uid === rSplit.uid) || { nickname: rSplit.nickname || 'Roommate' };
-      }
+      if (rSplit) receiverMember = members.find(m => m.uid === rSplit.uid) || { nickname: rSplit.nickname || 'Roommate' };
     }
     if (!receiverMember && st.title && st.title.includes(' to ')) {
       const parts = st.title.replace('Payment: ', '').split(' to ');
@@ -12587,85 +12535,76 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     if (!receiverMember) receiverMember = { nickname: 'Roommate' };
 
     const handleCopyReceiptText = () => {
-      const text = `🧾 TALLYIN SETTLEMENT RECEIPT\nRoom: ${userRoomId}\nDate: ${st.date} ${st.time || ''}\nPayer: ${payerMember.nickname}\nReceiver: ${receiverMember.nickname}\nAmount Settled: ${formatINR(st.amount)}\nStatus: Verified & Settled`;
+      const text = `TALLYIN SETTLEMENT RECEIPT\nRoom: ${userRoomId}\nRef: ${formatTxId(st.id)}\nDate: ${st.date} ${st.time || ''}\nPayer: ${payerMember.nickname}\nReceiver: ${receiverMember.nickname}\nAmount: ${formatINR(st.amount)}\nStatus: Verified & Settled`;
       navigator.clipboard.writeText(text);
-      triggerToast('Settlement receipt summary copied to clipboard!');
+      triggerToast('Receipt copied to clipboard.');
     };
 
     return (
-      <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
-          {/* Close button */}
-          <button
-            onClick={() => {
-              setIsSettlementDetailOpen(false);
-              setSelectedSettlementDetail(null);
-            }}
-            className="absolute right-4 top-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
-          >
-            <X className="w-5 h-5" />
-          </button>
+      <div className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl max-w-sm w-full shadow-xl relative overflow-hidden">
 
-          {/* Receipt Header */}
-          <div className="text-center pb-6 border-b border-dashed border-slate-200 dark:border-slate-800">
-            <div className="w-12 h-12 bg-[#1A3827] dark:bg-[#A3E635] text-[#A3E635] dark:text-slate-950 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-md">
-              <HandCoins className="w-6 h-6" />
-            </div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">OFFICIAL SETTLEMENT RECEIPT</p>
-            <h3 className="text-xl font-extrabold text-[#1A3827] dark:text-slate-100 mt-0.5">Payment Certificate</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Receipt ID: {formatTxId(st.id)}</p>
+          {/* Minimal header strip */}
+          <div className="bg-[#061811] dark:bg-slate-950 px-6 pt-6 pb-5 text-white">
+            <button
+              onClick={() => { setIsSettlementDetailOpen(false); setSelectedSettlementDetail(null); }}
+              className="absolute right-4 top-4 p-1.5 text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition-all cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-[#A3E635] mb-1">SETTLEMENT RECEIPT</div>
+            <div className="text-2xl font-black tracking-tight">{formatINR(st.amount)}</div>
+            <div className="font-mono text-[10px] text-white/40 mt-1">{formatTxId(st.id)}</div>
           </div>
 
-          {/* Main Amount Callout */}
-          <div className="my-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-slate-800 dark:to-slate-850 p-5 rounded-2xl text-center border border-emerald-100 dark:border-slate-700">
-            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">Settled Amount</span>
-            <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
-              {formatINR(st.amount)}
+          {/* Transfer visual */}
+          <div className="px-6 py-5 flex items-center gap-3 border-b border-[#E3E8E3] dark:border-slate-800">
+            <div className="flex flex-col items-center flex-1">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-black text-sm flex items-center justify-center">
+                {payerMember.nickname ? payerMember.nickname.charAt(0).toUpperCase() : 'P'}
+              </div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-1.5">{payerMember.nickname}</p>
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Payer</span>
             </div>
-            <div className="inline-flex items-center gap-1.5 mt-2 bg-emerald-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full shadow-sm">
-              <CheckCircle2 className="w-3 h-3" />
-              <span>ROOM BALANCE BALANCED</span>
+            <div className="flex flex-col items-center gap-1">
+              <ArrowRight className="w-5 h-5 text-slate-300 dark:text-slate-600" />
+              <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">settled</span>
+            </div>
+            <div className="flex flex-col items-center flex-1">
+              <div className="w-10 h-10 rounded-xl bg-[#F0FDF4] dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-black text-sm flex items-center justify-center border border-emerald-100 dark:border-emerald-900">
+                {receiverMember.nickname ? receiverMember.nickname.charAt(0).toUpperCase() : 'R'}
+              </div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-1.5">{receiverMember.nickname}</p>
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Receiver</span>
             </div>
           </div>
 
-          {/* Details Table */}
-          <div className="space-y-3 text-xs">
-            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Payer (Sent From)</span>
-              <span className="font-bold text-slate-800 dark:text-slate-100">{payerMember.nickname}</span>
-            </div>
-
-            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Receiver (Sent To)</span>
-              <span className="font-bold text-slate-800 dark:text-slate-100">{receiverMember.nickname}</span>
-            </div>
-
-            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Date & Time</span>
-              <span className="font-bold text-slate-800 dark:text-slate-100">{st.date} {st.time || ''}</span>
-            </div>
-
-            <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Room ID</span>
-              <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{userRoomId}</span>
-            </div>
+          {/* Details rows */}
+          <div className="px-6 py-4 space-y-0">
+            {[
+              { label: 'Date', value: `${st.date}${st.time ? ' • ' + st.time : ''}` },
+              { label: 'Room', value: userRoomId || 'N/A' },
+              { label: 'Status', value: 'Verified & Settled' },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex justify-between items-center py-2.5 border-b border-[#F1F5F9] dark:border-slate-800 last:border-0">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">{label}</span>
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-100">{value}</span>
+              </div>
+            ))}
           </div>
 
           {/* Action Buttons */}
-          <div className="mt-6 flex gap-3">
+          <div className="px-6 pb-6 flex gap-2.5 pt-2">
             <button
               onClick={handleCopyReceiptText}
-              className="flex-1 flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 py-3 rounded-xl font-bold text-xs hover:bg-[#255038] dark:hover:bg-[#b2f048] transition-all shadow-sm"
+              className="flex-1 flex items-center justify-center gap-2 bg-[#061811] dark:bg-[#A3E635] text-white dark:text-slate-950 py-2.5 rounded-xl font-bold text-xs hover:bg-[#1A3827] dark:hover:bg-[#b2f048] transition-all cursor-pointer"
             >
-              <Copy className="w-4 h-4" />
+              <Copy className="w-3.5 h-3.5" />
               <span>Copy Receipt</span>
             </button>
             <button
-              onClick={() => {
-                setIsSettlementDetailOpen(false);
-                setSelectedSettlementDetail(null);
-              }}
-              className="px-5 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+              onClick={() => { setIsSettlementDetailOpen(false); setSelectedSettlementDetail(null); }}
+              className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-all cursor-pointer"
             >
               Close
             </button>
