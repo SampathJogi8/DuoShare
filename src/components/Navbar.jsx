@@ -69,7 +69,7 @@ export default function Navbar({
                   title="Invite or Manage Room"
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-                  <span className="max-w-[100sm:max-w-[140px]] truncate font-extrabold">
+                  <span className="max-w-[100px] sm:max-w-[140px] truncate font-extrabold">
                     {activeRoom?.room_name || userRoomId}
                   </span>
                   <QrCode className="w-3.5 h-3.5 text-[#5C6E5C] dark:text-slate-400 shrink-0" />
