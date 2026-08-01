@@ -8016,11 +8016,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>LIVE ROOM LEDGER SYNC</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] dark:text-slate-100 tracking-tight mt-0.5">{getGreeting()}, {userNickname.split(' ')[0]}.</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] dark:text-slate-100 tracking-tight">{getGreeting()}, {userNickname.split(' ')[0]}.</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Everything looks calm in your room today.</p>
           </div>
           <button 
@@ -8505,10 +8501,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>SHARED ROOM LEDGER</span>
-            </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">The ledger</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Every expense, transparently tracked and split in real time.</p>
           </div>
@@ -11204,11 +11196,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 bg-indigo-500/10 dark:bg-indigo-500/20 border border-indigo-500/20 px-3 py-1 rounded-full text-indigo-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>ROOM INTELLIGENCE & ANALYTICS</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Spending insights</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Spending insights</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">A clearer view of where your money goes — powered by real data.</p>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -12334,11 +12322,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
-              <FileText className="w-3.5 h-3.5" />
-              <span>DIGITAL RECEIPT ARCHIVE</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Receipts gallery</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Receipts gallery</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Every proof of purchase, securely archived & searchable.</p>
           </div>
 
@@ -12781,11 +12765,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
-              <ShoppingCart className="w-3.5 h-3.5" />
-              <span>COLLABORATIVE FLAT NEEDS</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Shopping List</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Shopping List</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">List items needed for the flat and split them in 1-click once bought.</p>
           </div>
           <button 
@@ -13044,11 +13024,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 bg-blue-500/10 dark:bg-blue-500/20 border border-blue-500/20 px-3 py-1 rounded-full text-blue-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
-              <FileText className="w-3.5 h-3.5" />
-              <span>RECURRING FLAT BILLS</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Bills & Subscriptions</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Bills & Subscriptions</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Track upcoming flat bills, OTT subscriptions, and log payments straight into room expenses.</p>
           </div>
           <button 
@@ -13340,11 +13316,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="space-y-6 sm:space-y-8 max-w-3xl mx-auto animate-fade-in pb-12">
         
         <div>
-          <div className="inline-flex items-center gap-2 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1 rounded-full text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
-            <SettingsIcon className="w-3.5 h-3.5" />
-            <span>ACCOUNT & ROOM PREFERENCES</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight mt-0.5">Settings</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Settings</h1>
           <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Configure your profile, active room workspace, themes, and notifications.</p>
         </div>
 
