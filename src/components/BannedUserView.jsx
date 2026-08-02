@@ -19,8 +19,21 @@ export default function BannedUserView({
 
   useEffect(() => {
     const checkAppealStatus = async () => {
-      const userEmail = (banInfo?.email || user?.email || localStorage.getItem('tallyin_user_email') || '').toLowerCase();
-      if (!userEmail) return;
+      const possibleIdentifiers = [
+        user?.email,
+        user?.uid,
+        banInfo?.email,
+        banInfo?.identifier,
+        banInfo?.id,
+        typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : null,
+        typeof window !== 'undefined' ? localStorage.getItem('user_email') : null,
+        typeof window !== 'undefined' ? localStorage.getItem('userNickname') : null,
+        typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_nickname') : null
+      ]
+        .filter(Boolean)
+        .map(id => String(id).trim().toLowerCase());
+
+      if (possibleIdentifiers.length === 0) return;
 
       try {
         const { data } = await supabase
@@ -31,8 +44,11 @@ export default function BannedUserView({
 
         if (data?.name && data.name.startsWith('[')) {
           const appeals = JSON.parse(data.name);
-          const myAppeal = appeals.find(a => (a.email || '').toLowerCase() === userEmail);
-          if (myAppeal && myAppeal.status === 'rejected') {
+          const myAppeal = appeals.find(a => {
+            const aEmail = String(a.email || a.identifier || '').trim().toLowerCase();
+            return possibleIdentifiers.includes(aEmail) && a.status === 'rejected';
+          });
+          if (myAppeal) {
             setIsAppealRejected(true);
           }
         }
@@ -44,9 +60,22 @@ export default function BannedUserView({
     // Listen for Realtime rejection broadcast
     const channel = supabase.channel('system_admin_channel');
     channel.on('broadcast', { event: 'BAN_APPEAL_DECISION' }, (payload) => {
-      const targetEmail = (payload?.payload?.email || '').toLowerCase();
-      const myEmail = (banInfo?.email || user?.email || localStorage.getItem('tallyin_user_email') || '').toLowerCase();
-      if (targetEmail && myEmail && targetEmail === myEmail && payload?.payload?.status === 'rejected') {
+      const targetEmail = String(payload?.payload?.email || '').trim().toLowerCase();
+      const possibleIdentifiers = [
+        user?.email,
+        user?.uid,
+        banInfo?.email,
+        banInfo?.identifier,
+        banInfo?.id,
+        typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : null,
+        typeof window !== 'undefined' ? localStorage.getItem('user_email') : null,
+        typeof window !== 'undefined' ? localStorage.getItem('userNickname') : null,
+        typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_nickname') : null
+      ]
+        .filter(Boolean)
+        .map(id => String(id).trim().toLowerCase());
+
+      if (targetEmail && possibleIdentifiers.includes(targetEmail) && payload?.payload?.status === 'rejected') {
         setIsAppealRejected(true);
       }
     }).subscribe();

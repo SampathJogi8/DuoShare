@@ -297,9 +297,12 @@ export default function AdminDashboard({
   }, []);
 
   const handleRejectAppeal = async (appeal) => {
-    const targetEmail = appeal.email;
+    const rawTarget = String(appeal.email || appeal.identifier || '').trim();
+    const cleanTarget = rawTarget.toLowerCase();
+
     const updatedAppeals = banAppeals.map(a => {
-      if (a.email === targetEmail || a.id === appeal.id) {
+      const aEmail = String(a.email || a.identifier || '').trim().toLowerCase();
+      if (aEmail === cleanTarget || a.id === appeal.id) {
         return { ...a, status: 'rejected', rejectedAt: new Date().toISOString() };
       }
       return a;
@@ -324,52 +327,54 @@ export default function AdminDashboard({
         await adminChannelRef.current.send({
           type: 'broadcast',
           event: 'BAN_APPEAL_DECISION',
-          payload: { email: targetEmail, status: 'rejected' }
+          payload: { email: cleanTarget, status: 'rejected' }
         });
       }
     } catch (err) { console.warn(err); }
 
-    // 3. Send automated rejection email to user
-    try {
-      const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
-      fetch(mailRelayUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          action: 'send_email',
-          to: targetEmail,
-          subject: 'Notice Regarding Your Tallyin Account Suspension Appeal',
-          body: `Hello,\n\nYour recent account suspension appeal for ${targetEmail} has been reviewed by Tallyin System Administration and was REJECTED.\n\nFurther in-app appeals cannot be submitted. If you have questions or additional details to present, please email support directly at tallyin.alerts@gmail.com.\n\nSincerely,\nTallyin Administration`,
-          htmlBody: `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-              <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #ef4444;">
-                <span style="background-color: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Appeal Decision Notice</span>
-                <h2 style="color: #1a3827; margin: 8px 0 0 0;">Suspension Appeal Rejected</h2>
-                <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tallyin Access & Security Operations</p>
-              </div>
-
-              <div style="padding: 20px 0; color: #334155; font-size: 14px; line-height: 1.6;">
-                <p>Hello,</p>
-                <p>Your recent account suspension appeal for <strong>${targetEmail}</strong> has been reviewed by Tallyin System Administration and was <strong>REJECTED</strong>.</p>
-
-                <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 8px; margin: 16px 0; color: #991b1b; font-size: 13px;">
-                  <strong>In-App Appeals Closed:</strong> Additional appeal submissions through the app screen have been permanently closed for this account.
+    // 3. Send automated rejection email to user (if email address contains @)
+    if (cleanTarget && cleanTarget.includes('@')) {
+      try {
+        const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+        fetch(mailRelayUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'send_email',
+            to: cleanTarget,
+            subject: 'Notice Regarding Your Tallyin Account Suspension Appeal',
+            body: `Hello,\n\nYour recent account suspension appeal for ${cleanTarget} has been reviewed by Tallyin System Administration and was REJECTED.\n\nFurther in-app appeals cannot be submitted. If you have questions or additional details to present, please email support directly at tallyin.alerts@gmail.com.\n\nSincerely,\nTallyin Administration`,
+            htmlBody: `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #ef4444;">
+                  <span style="background-color: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Appeal Decision Notice</span>
+                  <h2 style="color: #1a3827; margin: 8px 0 0 0;">Suspension Appeal Rejected</h2>
+                  <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tallyin Access & Security Operations</p>
                 </div>
 
-                <p>If you believe you have new documentation or further information to present, please email system support directly at <a href="mailto:tallyin.alerts@gmail.com" style="color: #2563eb; font-weight: 800; text-decoration: underline;">tallyin.alerts@gmail.com</a>.</p>
-              </div>
+                <div style="padding: 20px 0; color: #334155; font-size: 14px; line-height: 1.6;">
+                  <p>Hello,</p>
+                  <p>Your recent account suspension appeal for <strong>${cleanTarget}</strong> has been reviewed by Tallyin System Administration and was <strong>REJECTED</strong>.</p>
 
-              <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
-                Official Decision Notice • Tallyin System Administration
-              </div>
-            </div>
-          `
-        })
-      }).catch(e => console.warn(e));
-    } catch (err) { console.warn("Rejection email dispatch notice:", err); }
+                  <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 8px; margin: 16px 0; color: #991b1b; font-size: 13px;">
+                    <strong>In-App Appeals Closed:</strong> Additional appeal submissions through the app screen have been permanently closed for this account.
+                  </div>
 
-    if (triggerToast) triggerToast(`Appeal for ${targetEmail} REJECTED & user notified via email!`);
+                  <p>If you believe you have new documentation or further information to present, please email system support directly at <a href="mailto:tallyin.alerts@gmail.com" style="color: #2563eb; font-weight: 800; text-decoration: underline;">tallyin.alerts@gmail.com</a>.</p>
+                </div>
+
+                <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+                  Official Decision Notice • Tallyin System Administration
+                </div>
+              </div>
+            `
+          })
+        }).catch(e => console.warn(e));
+      } catch (err) { console.warn("Rejection email dispatch notice:", err); }
+    }
+
+    if (triggerToast) triggerToast(`Appeal for ${cleanTarget} REJECTED & user notified!`);
   };
 
   // Sync Banned Users with Supabase DB (rooms table + system_settings) + Realtime Channel
