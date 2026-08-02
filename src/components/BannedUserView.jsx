@@ -1,4 +1,4 @@
-import { Ban, ShieldAlert, LogOut, Sun, Moon, Mail } from 'lucide-react';
+import { Ban, ShieldAlert, LogOut, Sun, Moon, Mail, ShieldCheck } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 
 export default function BannedUserView({
@@ -6,12 +6,23 @@ export default function BannedUserView({
   banInfo,
   handleSignOut,
   isDarkMode,
-  setIsDarkMode
+  setIsDarkMode,
+  onOpenAdmin
 }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F0F4F1] dark:bg-slate-950 p-4 font-sans relative overflow-hidden transition-colors duration-300">
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-4 z-50">
+      {/* Theme Toggle & Admin Shortcut */}
+      <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+        {onOpenAdmin && (
+          <button
+            onClick={onOpenAdmin}
+            className="px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl shadow-sm hover:bg-slate-100 flex items-center gap-1.5"
+            title="Open Admin Console"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Admin Portal</span>
+          </button>
+        )}
         <button 
           onClick={() => setIsDarkMode(!isDarkMode)}
           className="p-2.5 text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
@@ -47,7 +58,7 @@ export default function BannedUserView({
         <div className="p-4 bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-900/40 rounded-2xl text-left space-y-2">
           <div className="flex items-center justify-between text-xs font-bold text-rose-900 dark:text-rose-300">
             <span>Suspended Account:</span>
-            <span className="font-mono truncate max-w-[180px]">{user?.email || 'User'}</span>
+            <span className="font-mono truncate max-w-[180px]">{banInfo?.email || user?.email || 'User'}</span>
           </div>
 
           <div className="pt-1 border-t border-rose-200/40 dark:border-rose-900/40 text-xs">

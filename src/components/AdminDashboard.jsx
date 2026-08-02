@@ -344,10 +344,6 @@ export default function AdminDashboard({
     }
 
     const cleanTarget = rawTarget.toLowerCase();
-    if (ADMIN_EMAILS.map(e => e.toLowerCase()).includes(cleanTarget)) {
-      if (triggerToast) triggerToast('Cannot ban system administrators!');
-      return;
-    }
 
     const newBanObj = {
       identifier: cleanTarget,
