@@ -55,7 +55,8 @@ import {
   ArrowLeftRight,
   ShieldAlert,
   Pin,
-  Radio
+  Radio,
+  Activity
 } from 'lucide-react';
 
 import { supabase } from './supabase';
