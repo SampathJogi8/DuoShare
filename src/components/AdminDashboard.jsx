@@ -663,13 +663,26 @@ export default function AdminDashboard({
     setGlobalBroadcast(newBroadcast);
     localStorage.setItem('tallyin_global_broadcast', JSON.stringify(newBroadcast));
 
+    // Save to Supabase rooms table for database persistence across all mobile & web clients
     try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
-        type: 'broadcast',
-        event: 'GLOBAL_BROADCAST',
-        payload: { broadcast: newBroadcast }
-      });
+      await supabase
+        .from('rooms')
+        .upsert({
+          id: '__SYSTEM_GLOBAL_BROADCAST__',
+          name: JSON.stringify(newBroadcast),
+          created_by: 'system',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch (err) { console.warn("DB broadcast persistence notice:", err); }
+
+    try {
+      if (adminChannelRef.current) {
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'GLOBAL_BROADCAST',
+          payload: { broadcast: newBroadcast }
+        });
+      }
     } catch (e) { console.error("Realtime send broadcast error:", e); }
 
     if (triggerToast) triggerToast('Global Broadcast Live to all active clients!');
@@ -677,19 +690,32 @@ export default function AdminDashboard({
   };
 
   const handleClearBroadcast = async () => {
+    const cleared = { active: false, text: '', id: '', type: 'info', createdAt: new Date().toISOString() };
     setGlobalBroadcast(null);
     localStorage.removeItem('tallyin_global_broadcast');
 
     try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
-        type: 'broadcast',
-        event: 'GLOBAL_BROADCAST',
-        payload: { broadcast: null }
-      });
+      await supabase
+        .from('rooms')
+        .upsert({
+          id: '__SYSTEM_GLOBAL_BROADCAST__',
+          name: JSON.stringify(cleared),
+          created_by: 'system',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch (err) { console.warn("DB clear broadcast notice:", err); }
+
+    try {
+      if (adminChannelRef.current) {
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'GLOBAL_BROADCAST',
+          payload: { broadcast: null }
+        });
+      }
     } catch (e) { console.error(e); }
 
-    if (triggerToast) triggerToast('Broadcast message cleared.');
+    if (triggerToast) triggerToast('Broadcast message cleared across all devices.');
   };
 
   // Send Centralized Emails

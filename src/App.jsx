@@ -628,6 +628,33 @@ export default function App() {
       })
       .subscribe();
 
+    // Fetch latest global broadcast from Supabase DB on startup & sync
+    const fetchDBGlobalBroadcast = async () => {
+      try {
+        const { data } = await supabase
+          .from('rooms')
+          .select('name')
+          .eq('id', '__SYSTEM_GLOBAL_BROADCAST__')
+          .maybeSingle();
+
+        if (data?.name && data.name.startsWith('{')) {
+          const parsed = JSON.parse(data.name);
+          if (parsed && parsed.active) {
+            setGlobalBroadcast(parsed);
+            localStorage.setItem('tallyin_global_broadcast', JSON.stringify(parsed));
+          } else {
+            setGlobalBroadcast(null);
+            localStorage.removeItem('tallyin_global_broadcast');
+          }
+        }
+      } catch (err) {
+        console.warn("Fetch DB global broadcast notice:", err);
+      }
+    };
+
+    fetchDBGlobalBroadcast();
+    const broadcastSyncInterval = setInterval(fetchDBGlobalBroadcast, 10000);
+
     const handleStorageChange = (e) => {
       if (e.key === 'tallyin_system_maintenance_active') {
         setIsSystemMaintenanceActive(e.newValue === 'true');
@@ -653,6 +680,7 @@ export default function App() {
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
+      clearInterval(broadcastSyncInterval);
       supabase.removeChannel(sysChannel);
       window.removeEventListener('storage', handleStorageChange);
     };
