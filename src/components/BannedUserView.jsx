@@ -18,21 +18,30 @@ export default function BannedUserView({
   const [errorMsg, setErrorMsg] = useState(null);
 
   useEffect(() => {
-    const checkAppealStatus = async () => {
-      const possibleIdentifiers = [
-        user?.email,
-        user?.uid,
-        banInfo?.email,
-        banInfo?.identifier,
-        banInfo?.id,
-        typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : null,
-        typeof window !== 'undefined' ? localStorage.getItem('user_email') : null,
-        typeof window !== 'undefined' ? localStorage.getItem('userNickname') : null,
-        typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_nickname') : null
-      ]
-        .filter(Boolean)
-        .map(id => String(id).trim().toLowerCase());
+    const possibleIdentifiers = [
+      user?.email,
+      user?.uid,
+      banInfo?.email,
+      banInfo?.identifier,
+      banInfo?.id,
+      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('user_email') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('userNickname') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_nickname') : null
+    ]
+      .filter(Boolean)
+      .map(id => String(id).trim().toLowerCase());
 
+    // Check local storage cache first
+    const isCachedRejected = possibleIdentifiers.some(id => 
+      typeof window !== 'undefined' && localStorage.getItem(`tallyin_appeal_rejected_${id}`) === 'true'
+    );
+
+    if (isCachedRejected) {
+      setIsAppealRejected(true);
+    }
+
+    const checkAppealStatus = async () => {
       if (possibleIdentifiers.length === 0) return;
 
       try {
@@ -50,6 +59,9 @@ export default function BannedUserView({
           });
           if (myAppeal) {
             setIsAppealRejected(true);
+            possibleIdentifiers.forEach(id => {
+              if (typeof window !== 'undefined') localStorage.setItem(`tallyin_appeal_rejected_${id}`, 'true');
+            });
           }
         }
       } catch (err) { console.warn(err); }
@@ -61,22 +73,11 @@ export default function BannedUserView({
     const channel = supabase.channel('system_admin_channel');
     channel.on('broadcast', { event: 'BAN_APPEAL_DECISION' }, (payload) => {
       const targetEmail = String(payload?.payload?.email || '').trim().toLowerCase();
-      const possibleIdentifiers = [
-        user?.email,
-        user?.uid,
-        banInfo?.email,
-        banInfo?.identifier,
-        banInfo?.id,
-        typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : null,
-        typeof window !== 'undefined' ? localStorage.getItem('user_email') : null,
-        typeof window !== 'undefined' ? localStorage.getItem('userNickname') : null,
-        typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_nickname') : null
-      ]
-        .filter(Boolean)
-        .map(id => String(id).trim().toLowerCase());
-
       if (targetEmail && possibleIdentifiers.includes(targetEmail) && payload?.payload?.status === 'rejected') {
         setIsAppealRejected(true);
+        possibleIdentifiers.forEach(id => {
+          if (typeof window !== 'undefined') localStorage.setItem(`tallyin_appeal_rejected_${id}`, 'true');
+        });
       }
     }).subscribe();
 
