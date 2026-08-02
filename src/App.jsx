@@ -86,7 +86,31 @@ if (typeof window !== 'undefined') {
     errorDiv.style.overflow = 'auto';
     errorDiv.style.fontSize = '14px';
     errorDiv.style.lineHeight = '1.5';
-    errorDiv.innerText = `🚨 Uncaught Runtime Error:\n\nMessage: ${event.message}\nSource: ${event.filename}:${event.lineno}:${event.colno}\n\nStack Trace:\n${event.error ? event.error.stack : 'No stack trace available'}`;
+    const errorText = document.createElement('pre');
+    errorText.innerText = `🚨 Uncaught Runtime Error:\n\nMessage: ${event.message}\nSource: ${event.filename}:${event.lineno}:${event.colno}\n\nStack Trace:\n${event.error ? event.error.stack : 'No stack trace available'}`;
+
+    const reloadBtn = document.createElement('button');
+    reloadBtn.innerText = '🔄 Clear Cache & Load Latest Version';
+    reloadBtn.style.display = 'block';
+    reloadBtn.style.padding = '10px 16px';
+    reloadBtn.style.marginBottom = '16px';
+    reloadBtn.style.backgroundColor = '#ffffff';
+    reloadBtn.style.color = '#7f1d1d';
+    reloadBtn.style.fontWeight = '900';
+    reloadBtn.style.borderRadius = '8px';
+    reloadBtn.style.border = 'none';
+    reloadBtn.style.cursor = 'pointer';
+    reloadBtn.onclick = () => {
+      if ('caches' in window) {
+        caches.keys().then((names) => {
+          names.forEach((name) => caches.delete(name));
+        });
+      }
+      window.location.reload(true);
+    };
+
+    errorDiv.appendChild(reloadBtn);
+    errorDiv.appendChild(errorText);
     document.body.appendChild(errorDiv);
   });
 
@@ -105,7 +129,31 @@ if (typeof window !== 'undefined') {
     errorDiv.style.overflow = 'auto';
     errorDiv.style.fontSize = '14px';
     errorDiv.style.lineHeight = '1.5';
-    errorDiv.innerText = `🚨 Unhandled Promise Rejection:\n\nReason: ${event.reason}\n\nStack Trace:\n${event.reason && event.reason.stack ? event.reason.stack : 'No stack trace available'}`;
+    const errorText = document.createElement('pre');
+    errorText.innerText = `🚨 Unhandled Promise Rejection:\n\nReason: ${event.reason}\n\nStack Trace:\n${event.reason && event.reason.stack ? event.reason.stack : 'No stack trace available'}`;
+
+    const reloadBtn = document.createElement('button');
+    reloadBtn.innerText = '🔄 Clear Cache & Load Latest Version';
+    reloadBtn.style.display = 'block';
+    reloadBtn.style.padding = '10px 16px';
+    reloadBtn.style.marginBottom = '16px';
+    reloadBtn.style.backgroundColor = '#ffffff';
+    reloadBtn.style.color = '#7f1d1d';
+    reloadBtn.style.fontWeight = '900';
+    reloadBtn.style.borderRadius = '8px';
+    reloadBtn.style.border = 'none';
+    reloadBtn.style.cursor = 'pointer';
+    reloadBtn.onclick = () => {
+      if ('caches' in window) {
+        caches.keys().then((names) => {
+          names.forEach((name) => caches.delete(name));
+        });
+      }
+      window.location.reload(true);
+    };
+
+    errorDiv.appendChild(reloadBtn);
+    errorDiv.appendChild(errorText);
     document.body.appendChild(errorDiv);
   });
 }
