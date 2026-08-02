@@ -71,10 +71,10 @@ export default function AdminDashboard({
 }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
   const [adminAuthenticated, setAdminAuthenticated] = useState(() => {
-    if (user && user.email && ADMIN_EMAILS.includes(user.email.trim().toLowerCase())) {
-      return true;
+    if (typeof window !== 'undefined' && sessionStorage.getItem('tallyin_admin_logged_out') === 'true') {
+      return false;
     }
-    return localStorage.getItem('tallyin_admin_authenticated') === 'true';
+    return typeof window !== 'undefined' && localStorage.getItem('tallyin_admin_authenticated') === 'true';
   });
   const [passkeyInput, setPasskeyInput] = useState('');
   const [passkeyError, setPasskeyError] = useState(null);
@@ -642,12 +642,31 @@ export default function AdminDashboard({
     const activePasskey = localStorage.getItem('tallyin_custom_admin_passkey') || import.meta.env?.VITE_ADMIN_PASSKEY || DEFAULT_ADMIN_PASSKEY;
     if (passkeyInput === activePasskey || (user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))) {
       setAdminAuthenticated(true);
-      localStorage.setItem('tallyin_admin_authenticated', 'true');
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tallyin_admin_authenticated', 'true');
+        sessionStorage.removeItem('tallyin_admin_logged_out');
+      }
       setPasskeyError(null);
       if (triggerToast) triggerToast('Admin Control Portal Authorized');
     } else {
       setPasskeyError('Invalid Admin Passkey. Access Denied.');
     }
+  };
+
+  const handleAdminSignOut = () => {
+    setAdminAuthenticated(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tallyin_admin_authenticated');
+      sessionStorage.setItem('tallyin_admin_logged_out', 'true');
+    }
+    setPasskeyInput('');
+    setPasskeyError(null);
+    if (triggerToast) triggerToast('Admin Portal Session Locked');
+  };
+
+  const handleExitAdmin = () => {
+    handleAdminSignOut();
+    if (onExitAdmin) onExitAdmin();
   };
 
   const handleUpdateAdminPasskey = (e) => {
@@ -1063,7 +1082,16 @@ export default function AdminDashboard({
             </button>
 
             <button
-              onClick={onExitAdmin}
+              onClick={handleAdminSignOut}
+              className="px-4 py-2.5 bg-rose-600/10 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-600 hover:text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+              title="Lock Admin Portal & Require Passkey"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Lock Admin</span>
+            </button>
+
+            <button
+              onClick={handleExitAdmin}
               className="px-4 py-2.5 bg-[#1A3827] text-white dark:bg-slate-800 dark:text-slate-200 hover:bg-[#255038] dark:hover:bg-slate-700 font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5"
             >
               <Home className="w-3.5 h-3.5" />
