@@ -8538,40 +8538,98 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         <main className="flex-grow pt-16 sm:pt-20 px-3 sm:px-8 pb-24 overflow-y-auto">
           {/* Live Broadcast Banner Overlay (Mobile & Desktop) */}
           {globalBroadcast?.active && (
-            <div className={`w-full mb-3 px-4 py-2.5 rounded-2xl text-xs font-bold text-center flex items-center justify-between gap-2 shadow-md animate-fade-in ${
+            <div className={`w-full mb-4 rounded-3xl p-4 sm:p-5 backdrop-blur-md shadow-xl transition-all duration-300 relative overflow-hidden border ${
               globalBroadcast.type === 'alert'
-                ? 'bg-rose-600 text-white'
+                ? 'bg-gradient-to-r from-rose-950/90 via-rose-900/90 to-red-950/90 text-rose-100 border-rose-500/40 dark:border-rose-500/60 shadow-rose-950/30'
                 : globalBroadcast.type === 'maintenance'
-                ? 'bg-amber-500 text-slate-950'
-                : 'bg-purple-700 text-white'
+                ? 'bg-gradient-to-r from-amber-950/90 via-amber-900/90 to-yellow-950/90 text-amber-100 border-amber-500/40 dark:border-amber-500/60 shadow-amber-950/30'
+                : 'bg-gradient-to-r from-slate-900/95 via-indigo-950/95 to-slate-900/95 text-indigo-100 border-indigo-500/40 dark:border-indigo-500/60 shadow-indigo-950/30'
             }`}>
-              <div className="flex items-center gap-2 min-w-0">
-                <Radio className="w-4 h-4 animate-pulse shrink-0" />
-                <span className="truncate">{globalBroadcast.text}</span>
+              {/* Background Ambient Radial Glow */}
+              <div className={`absolute -right-8 -bottom-8 w-32 h-32 rounded-full blur-2xl pointer-events-none opacity-40 ${
+                globalBroadcast.type === 'alert'
+                  ? 'bg-rose-500'
+                  : globalBroadcast.type === 'maintenance'
+                  ? 'bg-amber-400'
+                  : 'bg-indigo-500'
+              }`} />
+
+              <div className="flex items-start justify-between gap-3 relative z-10">
+                <div className="flex items-start gap-3 min-w-0">
+                  {/* Pulse Icon Badge */}
+                  <div className={`p-2.5 rounded-2xl shrink-0 flex items-center justify-center shadow-inner ${
+                    globalBroadcast.type === 'alert'
+                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                      : globalBroadcast.type === 'maintenance'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                  }`}>
+                    {globalBroadcast.type === 'alert' ? (
+                      <ShieldAlert className="w-5 h-5 animate-pulse" />
+                    ) : globalBroadcast.type === 'maintenance' ? (
+                      <Activity className="w-5 h-5 animate-pulse" />
+                    ) : (
+                      <Radio className="w-5 h-5 animate-pulse" />
+                    )}
+                  </div>
+
+                  <div className="space-y-1 text-left min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        globalBroadcast.type === 'alert'
+                          ? 'bg-rose-500/30 text-rose-200 border border-rose-400/30'
+                          : globalBroadcast.type === 'maintenance'
+                          ? 'bg-amber-500/30 text-amber-200 border border-amber-400/30'
+                          : 'bg-indigo-500/30 text-indigo-200 border border-indigo-400/30'
+                      }`}>
+                        <span className="relative flex h-2 w-2">
+                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                            globalBroadcast.type === 'alert' ? 'bg-rose-400' : globalBroadcast.type === 'maintenance' ? 'bg-amber-400' : 'bg-indigo-400'
+                          }`}></span>
+                          <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                            globalBroadcast.type === 'alert' ? 'bg-rose-500' : globalBroadcast.type === 'maintenance' ? 'bg-amber-400' : 'bg-indigo-400'
+                          }`}></span>
+                        </span>
+                        <span>{globalBroadcast.type === 'alert' ? 'Critical Alert' : globalBroadcast.type === 'maintenance' ? 'Maintenance Notice' : 'System Broadcast'}</span>
+                      </span>
+
+                      {globalBroadcast.createdAt && (
+                        <span className="text-[10px] opacity-60 font-mono">
+                          • {new Date(globalBroadcast.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs sm:text-sm font-extrabold leading-relaxed text-white/95 break-words">
+                      {globalBroadcast.text}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <span className="text-[9px] font-black tracking-wider uppercase px-2 py-0.5 rounded-full bg-white/20 shrink-0">
-                {globalBroadcast.type || 'NOTICE'}
-              </span>
             </div>
           )}
 
           {/* Pinned Room Announcement Banner (Mobile & Desktop) */}
           {userRoomId && (pinnedMessages?.[userRoomId] || pinnedMessages?.['ALL']) && (
-            <div className="w-full mb-4 p-3.5 bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/30 dark:border-amber-400/30 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-sm animate-fade-in">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Pin className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 rotate-45" />
-                <div className="min-w-0 text-left">
-                  <p className="font-bold text-amber-950 dark:text-amber-200 truncate">
-                    {(pinnedMessages[userRoomId] || pinnedMessages['ALL']).author}
-                  </p>
-                  <p className="text-amber-800 dark:text-amber-300 leading-tight">
+            <div className="w-full mb-4 p-4 rounded-3xl bg-gradient-to-r from-amber-950/80 via-slate-900/90 to-amber-950/80 border border-amber-500/30 dark:border-amber-400/40 backdrop-blur-md shadow-xl text-xs text-amber-100 flex items-start justify-between gap-3 relative overflow-hidden animate-fade-in">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                  <Pin className="w-4 h-4 rotate-45" />
+                </div>
+                <div className="space-y-0.5 text-left min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      Pinned Announcement
+                    </span>
+                    <span className="text-[10px] text-amber-200/60 font-bold truncate">
+                      By {(pinnedMessages[userRoomId] || pinnedMessages['ALL']).author || 'Admin'}
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-amber-100/90 leading-relaxed pt-0.5 break-words">
                     {(pinnedMessages[userRoomId] || pinnedMessages['ALL']).text}
                   </p>
                 </div>
               </div>
-              <span className="text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full shrink-0">
-                PINNED
-              </span>
             </div>
           )}
 
