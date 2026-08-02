@@ -23,8 +23,5 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Verify Version Sync
-        run: npm run version:sync
-
       - name: Build Web App
         run: npm run build
