@@ -226,17 +226,57 @@ export default function AdminDashboard({
   const [banEmailInput, setBanEmailInput] = useState('');
   const [banReasonInput, setBanReasonInput] = useState('Violation of platform guidelines or debt non-payment');
   const [isBanModalOpen, setIsBanModalOpen] = useState(false);
-  const adminChannelRef = useRef(null);
+  // Ban Appeals State
+  const [banAppeals, setBanAppeals] = useState([]);
 
-  // Keep persistent subscribed Realtime channel for Admin broadcasts
+  // Keep persistent subscribed Realtime channel for Admin broadcasts & Appeals
   useEffect(() => {
     const channel = supabase.channel('system_admin_channel');
-    channel.subscribe();
+    channel
+      .on('broadcast', { event: 'BAN_APPEAL_SUBMITTED' }, (payload) => {
+        if (payload?.payload?.appeal) {
+          setBanAppeals(prev => [payload.payload.appeal, ...prev.filter(a => a.email !== payload.payload.appeal.email)]);
+          if (triggerToast) triggerToast(`🚨 New suspension appeal received from ${payload.payload.appeal.email}!`);
+        }
+      })
+      .subscribe();
     adminChannelRef.current = channel;
     return () => {
       supabase.removeChannel(channel);
     };
+  }, [triggerToast]);
+
+  const fetchBanAppeals = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('rooms')
+        .select('name')
+        .eq('id', '__SYSTEM_BAN_APPEALS__')
+        .maybeSingle();
+
+      if (data?.name && data.name.startsWith('[')) {
+        setBanAppeals(JSON.parse(data.name));
+      }
+    } catch (err) {
+      console.warn("Fetch ban appeals error:", err);
+    }
   }, []);
+
+  const handleDismissAppeal = async (appealId) => {
+    const updated = banAppeals.filter(a => a.id !== appealId);
+    setBanAppeals(updated);
+    try {
+      await supabase
+        .from('rooms')
+        .upsert({
+          id: '__SYSTEM_BAN_APPEALS__',
+          name: JSON.stringify(updated),
+          created_by: 'system',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch (err) { console.error(err); }
+    if (triggerToast) triggerToast('Appeal dismissed.');
+  };
 
   // Sync Banned Users with Supabase DB (rooms table + system_settings) + Realtime Channel
   const syncBannedUsersToDatabase = async (updatedList) => {
@@ -440,8 +480,9 @@ export default function AdminDashboard({
       fetchFinancialsAndLogs();
       fetchUserDirectory();
       fetchBannedUsers();
+      fetchBanAppeals();
     }
-  }, [adminAuthenticated, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers]);
+  }, [adminAuthenticated, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals]);
 
   // Handle Passkey verification
   const handlePasskeySubmit = (e) => {
@@ -1619,6 +1660,59 @@ export default function AdminDashboard({
               </p>
             </div>
           </div>
+
+          {/* Incoming Suspension Appeals Section */}
+          {banAppeals.length > 0 && (
+            <div className="p-4 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black text-blue-900 dark:text-blue-200 uppercase tracking-wider flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-blue-500" />
+                  <span>Incoming Suspension Appeals ({banAppeals.length})</span>
+                </h4>
+                <button
+                  onClick={fetchBanAppeals}
+                  className="text-[10px] font-bold text-blue-700 dark:text-blue-300 hover:underline"
+                >
+                  Refresh Appeals
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                {banAppeals.map(appeal => (
+                  <div key={appeal.id} className="p-3.5 bg-white dark:bg-slate-900 border border-blue-200/80 dark:border-blue-900/50 rounded-xl space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-extrabold text-blue-900 dark:text-blue-300">{appeal.email}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">{appeal.timestamp} • {appeal.date}</span>
+                    </div>
+
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px] text-slate-700 dark:text-slate-200 italic">
+                      "{appeal.message}"
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        onClick={() => handleDismissAppeal(appeal.id)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-xl text-[10px] font-bold transition-colors"
+                      >
+                        Dismiss Appeal
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await handleUnbanUser(appeal.email);
+                          await handleDismissAppeal(appeal.id);
+                          if (triggerToast) triggerToast(`Approved & Unbanned ${appeal.email}!`);
+                        }}
+                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black transition-all shadow-sm flex items-center gap-1"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>Approve & Unban</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Quick Ban Input Box */}
           <div className="p-4 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-2xl space-y-3">
