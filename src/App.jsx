@@ -830,6 +830,34 @@ export default function App() {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
+  // Live polling while banned to detect unban in real time
+  useEffect(() => {
+    if (!isUserBanned) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('rooms')
+          .select('name')
+          .eq('id', '__SYSTEM_BANNED_USERS__')
+          .maybeSingle();
+
+        if (data?.name && data.name.startsWith('[')) {
+          const latestBanned = JSON.parse(data.name);
+          setBannedUsers(latestBanned);
+          localStorage.setItem('tallyin_banned_users', JSON.stringify(latestBanned));
+        } else {
+          setBannedUsers([]);
+          localStorage.setItem('tallyin_banned_users', '[]');
+        }
+      } catch (err) {
+        console.warn("Unban polling check notice:", err);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isUserBanned]);
+
   const banInfo = useMemo(() => {
     if (!bannedUsers || bannedUsers.length === 0) return null;
 

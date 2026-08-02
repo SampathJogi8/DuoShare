@@ -417,6 +417,11 @@ export default function AdminDashboard({
           event: 'USER_BAN_UPDATE',
           payload: { bannedUsers: updatedList }
         });
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'USER_UNBANNED',
+          payload: { bannedUsers: updatedList }
+        });
       }
     } catch (err) {
       console.warn("Realtime send ban error:", err);

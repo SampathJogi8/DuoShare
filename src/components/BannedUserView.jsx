@@ -69,17 +69,40 @@ export default function BannedUserView({
 
     checkAppealStatus();
 
-    // Listen for Realtime rejection broadcast
+    // Listen for Realtime rejection & unban broadcasts
     const channel = supabase.channel('system_admin_channel');
-    channel.on('broadcast', { event: 'BAN_APPEAL_DECISION' }, (payload) => {
-      const targetEmail = String(payload?.payload?.email || '').trim().toLowerCase();
-      if (targetEmail && possibleIdentifiers.includes(targetEmail) && payload?.payload?.status === 'rejected') {
-        setIsAppealRejected(true);
-        possibleIdentifiers.forEach(id => {
-          if (typeof window !== 'undefined') localStorage.setItem(`tallyin_appeal_rejected_${id}`, 'true');
-        });
-      }
-    }).subscribe();
+    channel
+      .on('broadcast', { event: 'BAN_APPEAL_DECISION' }, (payload) => {
+        const targetEmail = String(payload?.payload?.email || '').trim().toLowerCase();
+        if (targetEmail && possibleIdentifiers.includes(targetEmail) && payload?.payload?.status === 'rejected') {
+          setIsAppealRejected(true);
+          possibleIdentifiers.forEach(id => {
+            if (typeof window !== 'undefined') localStorage.setItem(`tallyin_appeal_rejected_${id}`, 'true');
+          });
+        }
+      })
+      .on('broadcast', { event: 'USER_BAN_UPDATE' }, (payload) => {
+        if (payload?.payload?.bannedUsers && Array.isArray(payload.payload.bannedUsers)) {
+          const latestBanned = payload.payload.bannedUsers;
+          const isStillBanned = latestBanned.some(b => {
+            const bId = (b.identifier || b.email || b.id || '').trim().toLowerCase();
+            const bName = (b.name || '').trim().toLowerCase();
+            return possibleIdentifiers.some(id => id === bId || id === bName);
+          });
+          if (!isStillBanned) {
+            localStorage.setItem('tallyin_banned_users', JSON.stringify(latestBanned));
+            window.dispatchEvent(new Event('storage'));
+          }
+        }
+      })
+      .on('broadcast', { event: 'USER_UNBANNED' }, (payload) => {
+        if (payload?.payload?.bannedUsers && Array.isArray(payload.payload.bannedUsers)) {
+          const latestBanned = payload.payload.bannedUsers;
+          localStorage.setItem('tallyin_banned_users', JSON.stringify(latestBanned));
+          window.dispatchEvent(new Event('storage'));
+        }
+      })
+      .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [user, banInfo]);
