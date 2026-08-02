@@ -614,7 +614,7 @@ export default function AdminDashboard({
   }, []);
 
   useEffect(() => {
-    if (adminAuthenticated) {
+    if (isAuthorizedAdmin) {
       measurePing();
       fetchSystemStats();
       fetchFinancialsAndLogs();
@@ -622,7 +622,7 @@ export default function AdminDashboard({
       fetchBannedUsers();
       fetchBanAppeals();
     }
-  }, [adminAuthenticated, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals]);
+  }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals]);
 
 
 
