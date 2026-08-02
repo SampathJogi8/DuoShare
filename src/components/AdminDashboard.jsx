@@ -857,13 +857,26 @@ export default function AdminDashboard({
     setPinnedMessages(updatedPins);
     localStorage.setItem('tallyin_pinned_messages', JSON.stringify(updatedPins));
 
+    logAuditAction('SAVE_PIN', `Pinned message to ${finalRoomId}: ${pinText.trim()}`);
+
+    // Persist to Supabase rooms table for cross-device sync
     try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
-        type: 'broadcast',
-        event: 'ROOM_PIN',
-        payload: { roomId: finalRoomId, pin: pinObj }
-      });
+      await supabase.from('rooms').upsert({
+        id: '__SYSTEM_PINNED_MESSAGES__',
+        name: JSON.stringify(updatedPins),
+        created_by: 'system',
+        created_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+    } catch (err) { console.warn("DB pin save notice:", err); }
+
+    try {
+      if (adminChannelRef.current) {
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'ROOM_PIN',
+          payload: { roomId: finalRoomId, pin: pinObj }
+        });
+      }
     } catch (e) { console.error(e); }
 
     if (triggerToast) triggerToast(`Announcement pinned to ${finalRoomId === 'ALL' ? 'ALL ROOMS' : `room ${finalRoomId}`}`);
@@ -876,13 +889,26 @@ export default function AdminDashboard({
     setPinnedMessages(copy);
     localStorage.setItem('tallyin_pinned_messages', JSON.stringify(copy));
 
+    logAuditAction('REMOVE_PIN', `Removed pinned message from ${roomId}`);
+
+    // Persist removal to Supabase rooms table
     try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
-        type: 'broadcast',
-        event: 'ROOM_PIN',
-        payload: { roomId, pin: null }
-      });
+      await supabase.from('rooms').upsert({
+        id: '__SYSTEM_PINNED_MESSAGES__',
+        name: JSON.stringify(copy),
+        created_by: 'system',
+        created_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+    } catch (err) { console.warn("DB pin remove notice:", err); }
+
+    try {
+      if (adminChannelRef.current) {
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'ROOM_PIN',
+          payload: { roomId, pin: null }
+        });
+      }
     } catch (e) { console.error(e); }
 
     if (triggerToast) triggerToast(`Pin removed from room ${roomId}`);

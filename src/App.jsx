@@ -628,17 +628,17 @@ export default function App() {
       })
       .subscribe();
 
-    // Fetch latest global broadcast from Supabase DB on startup & sync
-    const fetchDBGlobalBroadcast = async () => {
+    // Fetch latest global broadcast & pinned messages from Supabase DB on startup & sync
+    const fetchDBGlobalBroadcastAndPins = async () => {
       try {
-        const { data } = await supabase
+        const { data: bcData } = await supabase
           .from('rooms')
           .select('name')
           .eq('id', '__SYSTEM_GLOBAL_BROADCAST__')
           .maybeSingle();
 
-        if (data?.name && data.name.startsWith('{')) {
-          const parsed = JSON.parse(data.name);
+        if (bcData?.name && bcData.name.startsWith('{')) {
+          const parsed = JSON.parse(bcData.name);
           if (parsed && parsed.active) {
             setGlobalBroadcast(parsed);
             localStorage.setItem('tallyin_global_broadcast', JSON.stringify(parsed));
@@ -646,14 +646,29 @@ export default function App() {
             setGlobalBroadcast(null);
             localStorage.removeItem('tallyin_global_broadcast');
           }
+        } else {
+          setGlobalBroadcast(null);
+          localStorage.removeItem('tallyin_global_broadcast');
+        }
+
+        const { data: pinData } = await supabase
+          .from('rooms')
+          .select('name')
+          .eq('id', '__SYSTEM_PINNED_MESSAGES__')
+          .maybeSingle();
+
+        if (pinData?.name && pinData.name.startsWith('{')) {
+          const parsedPins = JSON.parse(pinData.name);
+          setPinnedMessages(parsedPins || {});
+          localStorage.setItem('tallyin_pinned_messages', JSON.stringify(parsedPins || {}));
         }
       } catch (err) {
-        console.warn("Fetch DB global broadcast notice:", err);
+        console.warn("Fetch DB global broadcast and pins notice:", err);
       }
     };
 
-    fetchDBGlobalBroadcast();
-    const broadcastSyncInterval = setInterval(fetchDBGlobalBroadcast, 10000);
+    fetchDBGlobalBroadcastAndPins();
+    const broadcastSyncInterval = setInterval(fetchDBGlobalBroadcastAndPins, 10000);
 
     const handleStorageChange = (e) => {
       if (e.key === 'tallyin_system_maintenance_active') {
