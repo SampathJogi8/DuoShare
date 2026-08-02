@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Ban, ShieldAlert, LogOut, Sun, Moon, Mail, ShieldCheck, Send, CheckCircle2, MessageSquare } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import { supabase } from '../supabase';
@@ -14,7 +14,45 @@ export default function BannedUserView({
   const [isAppealOpen, setIsAppealOpen] = useState(false);
   const [appealText, setAppealText] = useState('');
   const [appealStatus, setAppealStatus] = useState('idle'); // 'idle' | 'submitting' | 'submitted'
+  const [isAppealRejected, setIsAppealRejected] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  useEffect(() => {
+    const checkAppealStatus = async () => {
+      const userEmail = (banInfo?.email || user?.email || localStorage.getItem('tallyin_user_email') || '').toLowerCase();
+      if (!userEmail) return;
+
+      try {
+        const { data } = await supabase
+          .from('rooms')
+          .select('name')
+          .eq('id', '__SYSTEM_BAN_APPEALS__')
+          .maybeSingle();
+
+        if (data?.name && data.name.startsWith('[')) {
+          const appeals = JSON.parse(data.name);
+          const myAppeal = appeals.find(a => (a.email || '').toLowerCase() === userEmail);
+          if (myAppeal && myAppeal.status === 'rejected') {
+            setIsAppealRejected(true);
+          }
+        }
+      } catch (err) { console.warn(err); }
+    };
+
+    checkAppealStatus();
+
+    // Listen for Realtime rejection broadcast
+    const channel = supabase.channel('system_admin_channel');
+    channel.on('broadcast', { event: 'BAN_APPEAL_DECISION' }, (payload) => {
+      const targetEmail = (payload?.payload?.email || '').toLowerCase();
+      const myEmail = (banInfo?.email || user?.email || localStorage.getItem('tallyin_user_email') || '').toLowerCase();
+      if (targetEmail && myEmail && targetEmail === myEmail && payload?.payload?.status === 'rejected') {
+        setIsAppealRejected(true);
+      }
+    }).subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user, banInfo]);
 
   const handleSubmitAppeal = async (e) => {
     e.preventDefault();
@@ -203,61 +241,76 @@ export default function BannedUserView({
           )}
         </div>
 
-        {/* Interactive Appeal Box & Button */}
-        <div className="p-4 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl text-xs space-y-3 text-left">
-          <div className="flex items-center justify-between">
-            <p className="font-bold text-[#1A3827] dark:text-slate-200 flex items-center gap-1.5">
-              <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
-              <span>Need Help or Appeal?</span>
-            </p>
-            <button
-              onClick={() => setIsAppealOpen(!isAppealOpen)}
-              className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 rounded-xl text-[11px] font-black hover:bg-blue-100 transition-colors border border-blue-200 dark:border-blue-900/50"
-            >
-              {isAppealOpen ? 'Hide Form' : 'Submit Appeal'}
-            </button>
-          </div>
-
-          <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
-            If you believe this suspension was made in error, contact support at <a href="mailto:tallyin.alerts@gmail.com" className="font-bold text-emerald-700 dark:text-[#A3E635] underline">tallyin.alerts@gmail.com</a> or send an appeal directly to administration below.
-          </p>
-
-          {/* Interactive Appeal Form */}
-          {isAppealOpen && (
-            <div className="pt-2 border-t border-[#E3E8E3] dark:border-slate-800 space-y-3">
-              {appealStatus === 'submitted' ? (
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl space-y-1 text-center">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-[#A3E635] mx-auto" />
-                  <p className="font-extrabold text-[#1A3827] dark:text-slate-100 text-xs">Appeal Transmitted!</p>
-                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-300">
-                    Your appeal message has been delivered to System Administration via email & panel alert.
-                  </p>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmitAppeal} className="space-y-2.5">
-                  <textarea
-                    rows={3}
-                    placeholder="Explain why your account suspension should be reviewed or lifted..."
-                    value={appealText}
-                    onChange={e => setAppealText(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6] dark:bg-slate-950 text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-sans"
-                  />
-                  {errorMsg && (
-                    <p className="text-[10px] font-bold text-rose-600">{errorMsg}</p>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={appealStatus === 'submitting'}
-                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{appealStatus === 'submitting' ? 'Transmitting Appeal...' : 'Send Appeal to Admin'}</span>
-                  </button>
-                </form>
-              )}
+        {/* Appeal Section / Rejection Notice */}
+        {isAppealRejected ? (
+          <div className="p-4 bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-2xl text-left space-y-2">
+            <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300 font-extrabold text-xs">
+              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Appeal Reviewed & Rejected</span>
             </div>
-          )}
-        </div>
+            <p className="text-[11px] text-rose-900/80 dark:text-rose-200 leading-normal">
+              Your in-app appeal has been reviewed and <strong>rejected</strong> by System Administration. Additional in-app appeal submissions have been closed for your account.
+            </p>
+            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-300 pt-1">
+              If you have further questions or wish to present new information, please email support directly at <a href="mailto:tallyin.alerts@gmail.com" className="font-bold text-emerald-700 dark:text-[#A3E635] underline">tallyin.alerts@gmail.com</a>.
+            </p>
+          </div>
+        ) : (
+          <div className="p-4 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl text-xs space-y-3 text-left">
+            <div className="flex items-center justify-between">
+              <p className="font-bold text-[#1A3827] dark:text-slate-200 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+                <span>Need Help or Appeal?</span>
+              </p>
+              <button
+                onClick={() => setIsAppealOpen(!isAppealOpen)}
+                className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 rounded-xl text-[11px] font-black hover:bg-blue-100 transition-colors border border-blue-200 dark:border-blue-900/50"
+              >
+                {isAppealOpen ? 'Hide Form' : 'Submit Appeal'}
+              </button>
+            </div>
+
+            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+              If you believe this suspension was made in error, contact support at <a href="mailto:tallyin.alerts@gmail.com" className="font-bold text-emerald-700 dark:text-[#A3E635] underline">tallyin.alerts@gmail.com</a> or send an appeal directly to administration below.
+            </p>
+
+            {/* Interactive Appeal Form */}
+            {isAppealOpen && (
+              <div className="pt-2 border-t border-[#E3E8E3] dark:border-slate-800 space-y-3">
+                {appealStatus === 'submitted' ? (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl space-y-1 text-center">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-[#A3E635] mx-auto" />
+                    <p className="font-extrabold text-[#1A3827] dark:text-slate-100 text-xs">Appeal Transmitted!</p>
+                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-300">
+                      Your appeal message has been delivered to System Administration via email & panel alert.
+                    </p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSubmitAppeal} className="space-y-2.5">
+                    <textarea
+                      rows={3}
+                      placeholder="Explain why your account suspension should be reviewed or lifted..."
+                      value={appealText}
+                      onChange={e => setAppealText(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6] dark:bg-slate-950 text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-sans"
+                    />
+                    {errorMsg && (
+                      <p className="text-[10px] font-bold text-rose-600">{errorMsg}</p>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={appealStatus === 'submitting'}
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{appealStatus === 'submitting' ? 'Transmitting Appeal...' : 'Send Appeal to Admin'}</span>
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           onClick={handleSignOut}

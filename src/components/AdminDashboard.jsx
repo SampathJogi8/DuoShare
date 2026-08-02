@@ -297,20 +297,80 @@ export default function AdminDashboard({
     }
   }, []);
 
-  const handleDismissAppeal = async (appealId) => {
-    const updated = banAppeals.filter(a => a.id !== appealId);
-    setBanAppeals(updated);
+  const handleRejectAppeal = async (appeal) => {
+    const targetEmail = appeal.email;
+    const updatedAppeals = banAppeals.map(a => {
+      if (a.email === targetEmail || a.id === appeal.id) {
+        return { ...a, status: 'rejected', rejectedAt: new Date().toISOString() };
+      }
+      return a;
+    });
+    setBanAppeals(updatedAppeals);
+
+    // 1. Save updated appeals list to DB
     try {
       await supabase
         .from('rooms')
         .upsert({
           id: '__SYSTEM_BAN_APPEALS__',
-          name: JSON.stringify(updated),
+          name: JSON.stringify(updatedAppeals),
           created_by: 'system',
           created_at: new Date().toISOString()
         }, { onConflict: 'id' });
     } catch (err) { console.error(err); }
-    if (triggerToast) triggerToast('Appeal dismissed.');
+
+    // 2. Broadcast Realtime rejection event to user
+    try {
+      if (adminChannelRef.current) {
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'BAN_APPEAL_DECISION',
+          payload: { email: targetEmail, status: 'rejected' }
+        });
+      }
+    } catch (err) { console.warn(err); }
+
+    // 3. Send automated rejection email to user
+    try {
+      const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+      fetch(mailRelayUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: targetEmail,
+          subject: 'Notice Regarding Your Tallyin Account Suspension Appeal',
+          body: `Hello,\n\nYour recent account suspension appeal for ${targetEmail} has been reviewed by Tallyin System Administration and was REJECTED.\n\nFurther in-app appeals cannot be submitted. If you have questions or additional details to present, please email support directly at tallyin.alerts@gmail.com.\n\nSincerely,\nTallyin Administration`,
+          htmlBody: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+              <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #ef4444;">
+                <span style="background-color: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Appeal Decision Notice</span>
+                <h2 style="color: #1a3827; margin: 8px 0 0 0;">Suspension Appeal Rejected</h2>
+                <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tallyin Access & Security Operations</p>
+              </div>
+
+              <div style="padding: 20px 0; color: #334155; font-size: 14px; line-height: 1.6;">
+                <p>Hello,</p>
+                <p>Your recent account suspension appeal for <strong>${targetEmail}</strong> has been reviewed by Tallyin System Administration and was <strong>REJECTED</strong>.</p>
+
+                <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 8px; margin: 16px 0; color: #991b1b; font-size: 13px;">
+                  <strong>In-App Appeals Closed:</strong> Additional appeal submissions through the app screen have been permanently closed for this account.
+                </div>
+
+                <p>If you believe you have new documentation or further information to present, please email system support directly at <a href="mailto:tallyin.alerts@gmail.com" style="color: #2563eb; font-weight: 800; text-decoration: underline;">tallyin.alerts@gmail.com</a>.</p>
+              </div>
+
+              <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+                Official Decision Notice • Tallyin System Administration
+              </div>
+            </div>
+          `
+        })
+      }).catch(e => console.warn(e));
+    } catch (err) { console.warn("Rejection email dispatch notice:", err); }
+
+    if (triggerToast) triggerToast(`Appeal for ${targetEmail} REJECTED & user notified via email!`);
   };
 
   // Sync Banned Users with Supabase DB (rooms table + system_settings) + Realtime Channel
@@ -1725,16 +1785,34 @@ export default function AdminDashboard({
                     </div>
 
                     <div className="flex items-center justify-end gap-2 pt-1">
-                      <button
-                        onClick={() => handleDismissAppeal(appeal.id)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-xl text-[10px] font-bold transition-colors"
-                      >
-                        Dismiss Appeal
-                      </button>
+                      {appeal.status === 'rejected' ? (
+                        <span className="px-2.5 py-1 bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 rounded-lg text-[10px] font-black uppercase">
+                          Appeal Rejected & User Notified
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleRejectAppeal(appeal)}
+                          className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-[10px] font-extrabold transition-colors flex items-center gap-1"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                          <span>Reject & Notify User</span>
+                        </button>
+                      )}
                       <button
                         onClick={async () => {
                           await handleUnbanUser(appeal.email);
-                          await handleDismissAppeal(appeal.id);
+                          const updated = banAppeals.filter(a => a.id !== appeal.id);
+                          setBanAppeals(updated);
+                          try {
+                            await supabase
+                              .from('rooms')
+                              .upsert({
+                                id: '__SYSTEM_BAN_APPEALS__',
+                                name: JSON.stringify(updated),
+                                created_by: 'system',
+                                created_at: new Date().toISOString()
+                              }, { onConflict: 'id' });
+                          } catch (err) { console.error(err); }
                           if (triggerToast) triggerToast(`Approved & Unbanned ${appeal.email}!`);
                         }}
                         className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black transition-all shadow-sm flex items-center gap-1"
