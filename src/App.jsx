@@ -8496,6 +8496,63 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
           {/* Quick Actions (Right) */}
           <div className="flex items-center gap-2 sm:gap-4 relative">
+            {/* Broadcast Re-open / Toggle Button */}
+            {globalBroadcast?.active && (
+              <button
+                onClick={() => {
+                  const bKey = globalBroadcast.createdAt || globalBroadcast.text;
+                  const isCurrentlyClosed = dismissedBroadcastKey === bKey;
+                  if (isCurrentlyClosed) {
+                    setDismissedBroadcastKey(null);
+                    localStorage.removeItem('tallyin_dismissed_broadcast');
+                    if (triggerToast) triggerToast('Broadcast Banner restored');
+                  } else {
+                    setDismissedBroadcastKey(bKey);
+                    localStorage.setItem('tallyin_dismissed_broadcast', bKey);
+                    if (triggerToast) triggerToast('Broadcast Banner hidden');
+                  }
+                }}
+                className={`p-2 rounded-xl transition-all relative flex items-center gap-1.5 text-xs font-bold ${
+                  dismissedBroadcastKey === (globalBroadcast.createdAt || globalBroadcast.text)
+                    ? 'text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-slate-200/80 dark:border-slate-800'
+                    : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-500/30 shadow-sm'
+                }`}
+                title={dismissedBroadcastKey === (globalBroadcast.createdAt || globalBroadcast.text) ? 'Re-open System Broadcast Banner' : 'Hide System Broadcast Banner'}
+              >
+                <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
+                <span className="hidden sm:inline">Broadcast</span>
+              </button>
+            )}
+
+            {/* Pinned Announcement Re-open / Toggle Button */}
+            {userRoomId && (pinnedMessages?.[userRoomId] || pinnedMessages?.['ALL']) && (
+              <button
+                onClick={() => {
+                  const pMsg = pinnedMessages[userRoomId] || pinnedMessages['ALL'];
+                  const pKey = pMsg.updatedAt || pMsg.text;
+                  const isCurrentlyClosed = dismissedPinnedKey === pKey;
+                  if (isCurrentlyClosed) {
+                    setDismissedPinnedKey(null);
+                    localStorage.removeItem('tallyin_dismissed_pinned');
+                    if (triggerToast) triggerToast('Pinned Announcement restored');
+                  } else {
+                    setDismissedPinnedKey(pKey);
+                    localStorage.setItem('tallyin_dismissed_pinned', pKey);
+                    if (triggerToast) triggerToast('Pinned Announcement hidden');
+                  }
+                }}
+                className={`p-2 rounded-xl transition-all relative flex items-center gap-1.5 text-xs font-bold ${
+                  dismissedPinnedKey === ((pinnedMessages[userRoomId] || pinnedMessages['ALL']).updatedAt || (pinnedMessages[userRoomId] || pinnedMessages['ALL']).text)
+                    ? 'text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-slate-200/80 dark:border-slate-800'
+                    : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-500/30 shadow-sm'
+                }`}
+                title={dismissedPinnedKey === ((pinnedMessages[userRoomId] || pinnedMessages['ALL']).updatedAt || (pinnedMessages[userRoomId] || pinnedMessages['ALL']).text) ? 'Re-open Pinned Announcement' : 'Hide Pinned Announcement'}
+              >
+                <Pin className="w-4 h-4 text-amber-500 rotate-45" />
+                <span className="hidden sm:inline">Pinned</span>
+              </button>
+            )}
+
             <button 
               onClick={() => {
                 setIsDarkMode(!isDarkMode);
@@ -8671,10 +8728,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       if (activeBroadcastKey) {
                         setDismissedBroadcastKey(activeBroadcastKey);
                         localStorage.setItem('tallyin_dismissed_broadcast', activeBroadcastKey);
+                        if (triggerToast) triggerToast('Broadcast banner closed. Click Broadcast icon in header to re-open anytime.');
                       }
                     }}
                     className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-colors shrink-0"
-                    title="Close Broadcast Banner"
+                    title="Close Broadcast Banner (Can re-open from header icon)"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -8719,10 +8777,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       if (activePinnedKey) {
                         setDismissedPinnedKey(activePinnedKey);
                         localStorage.setItem('tallyin_dismissed_pinned', activePinnedKey);
+                        if (triggerToast) triggerToast('Pinned announcement closed. Click Pin icon in header to re-open anytime.');
                       }
                     }}
                     className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-colors shrink-0"
-                    title="Close Pinned Announcement"
+                    title="Close Pinned Announcement (Can re-open from header icon)"
                   >
                     <X className="w-4 h-4" />
                   </button>
