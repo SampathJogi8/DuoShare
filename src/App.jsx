@@ -9101,7 +9101,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         <div key={m.uid} className="flex justify-between items-center text-xs py-1.5 px-3 rounded-xl bg-white/5 border border-white/10">
                           <span className="text-white/80 font-semibold truncate max-w-[110px]">{m.nickname}</span>
                           <span className={`shrink-0 text-[11px] font-black ${bal > 0 ? 'text-[#A3E635]' : bal < 0 ? 'text-rose-400' : 'text-white/30'}`}>
-                            {bal > 0 ? `owes ${formatINR(bal)}` : bal < 0 ? `owed ${formatINR(Math.abs(bal))}` : 'settled'}
+                            {bal > 0 ? `is owed ${formatINR(bal)}` : bal < 0 ? `owes ${formatINR(Math.abs(bal))}` : 'settled'}
                           </span>
                         </div>
                       );
@@ -10508,9 +10508,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               ) : (
                 members.map(m => {
                   if (m.uid === currentUid) return null;
-                  const bal = computedStats.balances[m.uid] || 0;
-                  const iOwe = bal < -0.01;
-                  const owesMe = bal > 0.01;
+
+                  // Determine transfer relationship between current user and roommate m from suggestedTransfers
+                  const transferFromMToMe = suggestedTransfers.find(t => t.fromUid === m.uid && t.toUid === currentUid);
+                  const transferFromMeToM = suggestedTransfers.find(t => t.fromUid === currentUid && t.toUid === m.uid);
+
+                  const owesMe = Boolean(transferFromMToMe && transferFromMToMe.amount > 0.01);
+                  const iOwe = Boolean(transferFromMeToM && transferFromMeToM.amount > 0.01);
+                  const settleAmt = owesMe ? transferFromMToMe.amount : iOwe ? transferFromMeToM.amount : 0;
 
                   return (
                     <div 
@@ -10534,7 +10539,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             iOwe ? 'text-rose-500' :
                             'text-slate-400'
                           }`}>
-                            {owesMe ? `Owes you ${formatINR(bal)}` : iOwe ? `You owe ${formatINR(Math.abs(bal))}` : 'All settled up'}
+                            {owesMe ? `Owes you ${formatINR(settleAmt)}` : iOwe ? `You owe ${formatINR(settleAmt)}` : 'All settled up'}
                           </p>
                         </div>
                       </div>
@@ -10544,20 +10549,20 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         {iOwe ? (
                           <button
                             type="button"
-                            onClick={() => executeQuickSettle(currentUid, m.uid, Math.abs(bal))}
+                            onClick={() => executeQuickSettle(currentUid, m.uid, settleAmt)}
                             className="px-4 py-2.5 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs rounded-2xl hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/20 cursor-pointer flex items-center gap-1.5"
                           >
                             <Zap className="w-3.5 h-3.5 fill-current text-[#A3E635] dark:text-slate-950" />
-                            <span>Pay {formatINR(Math.abs(bal))}</span>
+                            <span>Pay {formatINR(settleAmt)}</span>
                           </button>
                         ) : owesMe ? (
                           <button
                             type="button"
-                            onClick={() => executeQuickSettle(m.uid, currentUid, bal)}
+                            onClick={() => executeQuickSettle(m.uid, currentUid, settleAmt)}
                             className="px-4 py-2.5 bg-emerald-600 dark:bg-emerald-500 text-white dark:text-slate-950 font-black text-xs rounded-2xl hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-600/20 cursor-pointer flex items-center gap-1.5"
                           >
                             <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            <span>Mark {formatINR(bal)} Paid</span>
+                            <span>Mark {formatINR(settleAmt)} Paid</span>
                           </button>
                         ) : (
                           <span className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-bold rounded-xl">
