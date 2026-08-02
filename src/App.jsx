@@ -773,37 +773,37 @@ export default function App() {
     return [];
   });
 
-  // Fetch Banned Users from Supabase on mount in App.jsx (with transactions table fallback)
+  // Fetch Banned Users from Supabase on mount in App.jsx (rooms table + system_settings)
   useEffect(() => {
     const fetchDBBannedUsers = async () => {
       let foundList = null;
 
-      // 1. Try system_settings
+      // 1. Try rooms table (__SYSTEM_BANNED_USERS__)
       try {
         const { data } = await supabase
-          .from('system_settings')
-          .select('value')
-          .eq('key', 'banned_users')
+          .from('rooms')
+          .select('name')
+          .eq('id', '__SYSTEM_BANNED_USERS__')
           .maybeSingle();
 
-        if (data?.value && Array.isArray(data.value)) {
-          foundList = data.value;
+        if (data?.name && data.name.startsWith('[')) {
+          foundList = JSON.parse(data.name);
         }
       } catch (err) {
         console.warn("DB banned users fetch notice:", err);
       }
 
-      // 2. Try transactions fallback
+      // 2. Try system_settings
       if (!foundList) {
         try {
           const { data } = await supabase
-            .from('transactions')
-            .select('notes')
-            .eq('title', '__BANNED_USERS__')
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'banned_users')
             .maybeSingle();
 
-          if (data?.notes) {
-            foundList = JSON.parse(data.notes);
+          if (data?.value && Array.isArray(data.value)) {
+            foundList = data.value;
           }
         } catch (err) {
           console.warn("DB banned users fallback notice:", err);

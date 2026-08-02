@@ -238,49 +238,36 @@ export default function AdminDashboard({
     };
   }, []);
 
-  // Sync Banned Users with Supabase DB + Guaranteed Fallback + Realtime Channel
+  // Sync Banned Users with Supabase DB (rooms table + system_settings) + Realtime Channel
   const syncBannedUsersToDatabase = async (updatedList) => {
     setBannedUsers(updatedList);
     if (typeof window !== 'undefined') {
       localStorage.setItem('tallyin_banned_users', JSON.stringify(updatedList));
     }
 
-    // 1. Primary: Save to system_settings table
+    const jsonStr = JSON.stringify(updatedList);
+
+    // 1. Primary: Save to rooms table under __SYSTEM_BANNED_USERS__
+    try {
+      await supabase
+        .from('rooms')
+        .upsert({
+          id: '__SYSTEM_BANNED_USERS__',
+          name: jsonStr,
+          created_by: 'system',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch (err) {
+      console.warn("Supabase rooms table upsert notice:", err);
+    }
+
+    // 2. Secondary: Save to system_settings table
     try {
       await supabase
         .from('system_settings')
         .upsert({ key: 'banned_users', value: updatedList }, { onConflict: 'key' });
     } catch (err) {
       console.warn("Supabase system_settings upsert notice:", err);
-    }
-
-    // 2. Guaranteed Fallback: Save to transactions table under system record
-    try {
-      const jsonStr = JSON.stringify(updatedList);
-      const { data: existing } = await supabase
-        .from('transactions')
-        .select('id')
-        .eq('title', '__BANNED_USERS__')
-        .maybeSingle();
-
-      if (existing) {
-        await supabase
-          .from('transactions')
-          .update({ notes: jsonStr, amount: updatedList.length })
-          .eq('id', existing.id);
-      } else {
-        await supabase
-          .from('transactions')
-          .insert({
-            title: '__BANNED_USERS__',
-            category: '__SYSTEM_SETTINGS__',
-            notes: jsonStr,
-            amount: updatedList.length,
-            paid_by: 'System'
-          });
-      }
-    } catch (err) {
-      console.warn("Fallback DB save notice:", err);
     }
 
     // 3. Broadcast via active Subscribed Realtime channel
@@ -300,36 +287,44 @@ export default function AdminDashboard({
   const fetchBannedUsers = useCallback(async () => {
     let foundList = null;
 
-    // 1. Try system_settings
+    // 1. Try rooms table (__SYSTEM_BANNED_USERS__)
     try {
       const { data } = await supabase
-        .from('system_settings')
-        .select('value')
-        .eq('key', 'banned_users')
+        .from('rooms')
+        .select('name')
+        .eq('id', '__SYSTEM_BANNED_USERS__')
         .maybeSingle();
 
-      if (data?.value && Array.isArray(data.value)) {
-        foundList = data.value;
+      if (data?.name && data.name.startsWith('[')) {
+        foundList = JSON.parse(data.name);
       }
     } catch (err) {
-      console.warn("Fetch system_settings notice:", err);
+      console.warn("Fetch rooms table ban list notice:", err);
     }
 
-    // 2. Try transactions fallback
+    // 2. Try system_settings
     if (!foundList) {
       try {
         const { data } = await supabase
-          .from('transactions')
-          .select('notes')
-          .eq('title', '__BANNED_USERS__')
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'banned_users')
           .maybeSingle();
 
-        if (data?.notes) {
-          foundList = JSON.parse(data.notes);
+        if (data?.value && Array.isArray(data.value)) {
+          foundList = data.value;
         }
       } catch (err) {
-        console.warn("Fetch transactions fallback notice:", err);
+        console.warn("Fetch system_settings notice:", err);
       }
+    }
+
+    // 3. Try localStorage
+    if (!foundList && typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_banned_users');
+        if (saved) foundList = JSON.parse(saved);
+      } catch (err) { console.error(err); }
     }
 
     if (foundList && Array.isArray(foundList)) {
