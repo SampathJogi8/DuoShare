@@ -47,7 +47,6 @@ import { supabase } from '../supabase';
 const ADMIN_EMAILS = [
   'tallyin.alerts@gmail.com'
 ];
-const DEFAULT_ADMIN_PASSKEY = 'tallyin2026';
 
 export default function AdminDashboard({
   user,
@@ -70,24 +69,13 @@ export default function AdminDashboard({
   setSimulatedLatency
 }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
-  const [adminAuthenticated, setAdminAuthenticated] = useState(() => {
-    if (typeof window !== 'undefined' && sessionStorage.getItem('tallyin_admin_logged_out') === 'true') {
-      return false;
-    }
-    return typeof window !== 'undefined' && localStorage.getItem('tallyin_admin_authenticated') === 'true';
-  });
-  const [passkeyInput, setPasskeyInput] = useState('');
-  const [passkeyError, setPasskeyError] = useState(null);
-
-  const [adminPasskey, setAdminPasskey] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('tallyin_custom_admin_passkey') || import.meta.env?.VITE_ADMIN_PASSKEY || DEFAULT_ADMIN_PASSKEY;
-    }
-    return DEFAULT_ADMIN_PASSKEY;
-  });
-  const [newPasskeyInput, setNewPasskeyInput] = useState('');
-  const [confirmPasskeyInput, setConfirmPasskeyInput] = useState('');
-  const [passkeyUpdateStatus, setPasskeyUpdateStatus] = useState(null);
+  const currentEmailClean = (
+    user?.email || 
+    localStorage.getItem('tallyin_user_email') || 
+    localStorage.getItem('user_email') || 
+    ''
+  ).trim().toLowerCase();
+  const isAuthorizedAdmin = currentEmailClean === 'tallyin.alerts@gmail.com';
 
   // Maintenance form states
   const [maintMsgInput, setMaintMsgInput] = useState(maintenanceMessage || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.');
@@ -636,70 +624,7 @@ export default function AdminDashboard({
     }
   }, [adminAuthenticated, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals]);
 
-  // Handle Passkey verification
-  const handlePasskeySubmit = (e) => {
-    e.preventDefault();
-    const activePasskey = localStorage.getItem('tallyin_custom_admin_passkey') || import.meta.env?.VITE_ADMIN_PASSKEY || DEFAULT_ADMIN_PASSKEY;
-    if (passkeyInput === activePasskey || (user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))) {
-      setAdminAuthenticated(true);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('tallyin_admin_authenticated', 'true');
-        sessionStorage.removeItem('tallyin_admin_logged_out');
-      }
-      setPasskeyError(null);
-      if (triggerToast) triggerToast('Admin Control Portal Authorized');
-    } else {
-      setPasskeyError('Invalid Admin Passkey. Access Denied.');
-    }
-  };
 
-  const handleAdminSignOut = () => {
-    setAdminAuthenticated(false);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('tallyin_admin_authenticated');
-      sessionStorage.setItem('tallyin_admin_logged_out', 'true');
-    }
-    setPasskeyInput('');
-    setPasskeyError(null);
-    if (triggerToast) triggerToast('Admin Portal Session Locked');
-  };
-
-  const handleExitAdmin = () => {
-    handleAdminSignOut();
-    if (onExitAdmin) onExitAdmin();
-  };
-
-  const handleUpdateAdminPasskey = (e) => {
-    e.preventDefault();
-    setPasskeyUpdateStatus(null);
-    const trimmed = newPasskeyInput.trim();
-    if (!trimmed) {
-      setPasskeyUpdateStatus({ type: 'error', text: 'New passkey cannot be empty.' });
-      return;
-    }
-    if (trimmed.length < 6) {
-      setPasskeyUpdateStatus({ type: 'error', text: 'Passkey must be at least 6 characters long.' });
-      return;
-    }
-    if (trimmed !== confirmPasskeyInput.trim()) {
-      setPasskeyUpdateStatus({ type: 'error', text: 'New passkeys do not match.' });
-      return;
-    }
-    localStorage.setItem('tallyin_custom_admin_passkey', trimmed);
-    setAdminPasskey(trimmed);
-    setNewPasskeyInput('');
-    setConfirmPasskeyInput('');
-    setPasskeyUpdateStatus({ type: 'success', text: 'Admin Security Passkey updated successfully!' });
-    if (triggerToast) triggerToast('Admin Passkey Updated!');
-  };
-
-  const handleResetAdminPasskey = () => {
-    localStorage.removeItem('tallyin_custom_admin_passkey');
-    const defaultVal = import.meta.env?.VITE_ADMIN_PASSKEY || DEFAULT_ADMIN_PASSKEY;
-    setAdminPasskey(defaultVal);
-    setPasskeyUpdateStatus({ type: 'success', text: 'Admin passkey reset to system default.' });
-    if (triggerToast) triggerToast('Admin Passkey Reset to Default');
-  };
 
   // Save Maintenance Message
   const handleSaveMaintenanceMessage = async () => {
@@ -977,68 +902,28 @@ export default function AdminDashboard({
   };
 
   // Lock Screen if unauthenticated
-  if (!adminAuthenticated) {
+  if (!isAuthorizedAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-[#F0F4F1] dark:bg-slate-950 text-left font-sans animate-fade-in relative overflow-hidden">
-        {/* Glow Effects */}
-        <div className="absolute top-1/3 left-1/3 w-80 h-80 bg-emerald-500/10 dark:bg-emerald-500/20 rounded-full blur-3xl -z-10"></div>
-        <div className="absolute bottom-1/3 right-1/3 w-80 h-80 bg-rose-500/10 dark:bg-rose-500/20 rounded-full blur-3xl -z-10"></div>
-
-        <div className="w-full max-w-md hud-card rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative border border-emerald-500/30">
-          <div className="text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-[#1A3827] text-[#A3E635] flex items-center justify-center mx-auto shadow-md">
-              <ShieldAlert className="w-7 h-7" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
-                Admin Control Portal
-              </h2>
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-medium">
-                Restricted to authorized system administrators.
-              </p>
-            </div>
+        <div className="w-full max-w-md hud-card rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative border border-rose-500/30 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto shadow-md">
+            <ShieldAlert className="w-7 h-7" />
           </div>
-
-          <form onSubmit={handlePasskeySubmit} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Admin Security Passkey</label>
-              <input
-                type="password"
-                placeholder="Enter Master Passkey"
-                value={passkeyInput}
-                onChange={e => setPasskeyInput(e.target.value)}
-                className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-mono text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-            </div>
-
-            {passkeyError && (
-              <p className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-xl border border-rose-200 dark:border-rose-900/50">
-                {passkeyError}
-              </p>
-            )}
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={onExitAdmin}
-                className="flex-1 py-3 border border-[#E3E8E3] dark:border-slate-800 text-xs font-extrabold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 rounded-xl transition-all"
-              >
-                Back to App
-              </button>
-              <button
-                type="submit"
-                className="flex-1 py-3 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hover:bg-[#255038] dark:hover:bg-[#b7f34c] font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Authenticate</span>
-              </button>
-            </div>
-          </form>
-
-          <p className="text-[10px] text-center text-slate-400 dark:text-slate-500 font-mono">
-            URL: /admin • Portal Version {appVersion || 'v3.5.1'}
-          </p>
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
+              Access Restricted
+            </h2>
+            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+              The Admin Control Portal is restricted exclusively to authorized Google administrator account <span className="font-bold text-rose-600 dark:text-rose-400">tallyin.alerts@gmail.com</span>.
+            </p>
+          </div>
+          <button
+            onClick={onExitAdmin}
+            className="w-full py-3 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hover:bg-[#255038] dark:hover:bg-[#b7f34c] font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+          >
+            <Home className="w-4 h-4" />
+            <span>Return to App Dashboard</span>
+          </button>
         </div>
       </div>
     );
@@ -1082,16 +967,7 @@ export default function AdminDashboard({
             </button>
 
             <button
-              onClick={handleAdminSignOut}
-              className="px-4 py-2.5 bg-rose-600/10 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-600 hover:text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5"
-              title="Lock Admin Portal & Require Passkey"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Lock Admin</span>
-            </button>
-
-            <button
-              onClick={handleExitAdmin}
+              onClick={onExitAdmin}
               className="px-4 py-2.5 bg-[#1A3827] text-white dark:bg-slate-800 dark:text-slate-200 hover:bg-[#255038] dark:hover:bg-slate-700 font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5"
             >
               <Home className="w-3.5 h-3.5" />
@@ -1323,18 +1199,6 @@ export default function AdminDashboard({
         >
           <Terminal className="w-3.5 h-3.5" />
           <span>Chaos & Flags</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('passkey_management')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'passkey_management'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Key className="w-3.5 h-3.5 text-amber-500" />
-          <span>Passkey Settings</span>
         </button>
       </div>
 
@@ -1810,93 +1674,13 @@ export default function AdminDashboard({
                     (simulatedLatency || 0) === delayMs
                       ? 'bg-blue-600 text-white border-blue-600 shadow-md'
                       : 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-slate-200 border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6]'
-                  }`}
+                  } disabled:opacity-50`}
                 >
                   {delayMs === 0 ? '0ms (Normal Real Speed)' : `${delayMs}ms (${delayMs === 1500 ? 'Slow 3G' : 'Throttled'})`}
                 </button>
               ))}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Tab: Admin Passkey Management */}
-      {activeTab === 'passkey_management' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6 max-w-2xl">
-          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
-            <div className="space-y-0.5">
-              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                <Key className="w-5 h-5 text-amber-500" />
-                Admin Security Passkey Management
-              </h3>
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                Configure and update the master security passkey required for Admin Portal login.
-              </p>
-            </div>
-          </div>
-
-          <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-extrabold uppercase text-amber-700 dark:text-amber-400 block">Active Master Passkey</span>
-              <p className="text-sm font-mono font-black text-[#1A3827] dark:text-slate-100">
-                {localStorage.getItem('tallyin_custom_admin_passkey') ? 'Custom Admin Passkey Active' : (import.meta.env?.VITE_ADMIN_PASSKEY ? 'Environment VITE_ADMIN_PASSKEY Active' : 'Default System Passkey Active')}
-              </p>
-            </div>
-            {localStorage.getItem('tallyin_custom_admin_passkey') && (
-              <button
-                type="button"
-                onClick={handleResetAdminPasskey}
-                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Reset Default</span>
-              </button>
-            )}
-          </div>
-
-          <form onSubmit={handleUpdateAdminPasskey} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">New Admin Security Passkey</label>
-              <input
-                type="password"
-                placeholder="Enter new passkey (minimum 6 characters)"
-                value={newPasskeyInput}
-                onChange={e => setNewPasskeyInput(e.target.value)}
-                className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-mono text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Confirm New Passkey</label>
-              <input
-                type="password"
-                placeholder="Re-enter new passkey"
-                value={confirmPasskeyInput}
-                onChange={e => setConfirmPasskeyInput(e.target.value)}
-                className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-mono text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-            </div>
-
-            {passkeyUpdateStatus && (
-              <p className={`text-xs font-bold p-3 rounded-xl border ${
-                passkeyUpdateStatus.type === 'error'
-                  ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/50'
-                  : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50'
-              }`}>
-                {passkeyUpdateStatus.text}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              className="w-full py-3 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hover:bg-[#255038] dark:hover:bg-[#b7f34c] font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
-            >
-              <Key className="w-4 h-4" />
-              <span>Save New Passkey</span>
-            </button>
-          </form>
         </div>
       )}
 
