@@ -69,12 +69,7 @@ export default function AdminDashboard({
   setSimulatedLatency
 }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
-  const currentEmailClean = (
-    user?.email || 
-    localStorage.getItem('tallyin_user_email') || 
-    localStorage.getItem('user_email') || 
-    ''
-  ).trim().toLowerCase();
+  const currentEmailClean = (user?.email || '').trim().toLowerCase();
   const isAuthorizedAdmin = currentEmailClean === 'tallyin.alerts@gmail.com';
 
   // Maintenance form states
