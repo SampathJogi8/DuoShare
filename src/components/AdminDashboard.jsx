@@ -214,6 +214,7 @@ export default function AdminDashboard({
   }, []);
 
   // Ban Management States
+  const adminChannelRef = useRef(null);
   const [bannedUsers, setBannedUsers] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
