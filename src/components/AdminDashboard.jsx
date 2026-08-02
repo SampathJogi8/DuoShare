@@ -253,12 +253,16 @@ export default function AdminDashboard({
       if (typeof window !== 'undefined') {
         localStorage.setItem('tallyin_audit_logs', JSON.stringify(updated));
       }
-      supabase.from('rooms').upsert({
-        id: '__SYSTEM_AUDIT_LOGS__',
-        name: JSON.stringify(updated),
-        created_by: 'system',
-        created_at: new Date().toISOString()
-      }, { onConflict: 'id' }).catch(e => console.warn(e));
+      try {
+        supabase.from('rooms').upsert({
+          id: '__SYSTEM_AUDIT_LOGS__',
+          name: JSON.stringify(updated),
+          created_by: 'system',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' }).then(({ error }) => {
+          if (error) console.warn("DB audit log sync notice:", error);
+        });
+      } catch (err) { console.warn("DB audit log error:", err); }
       return updated;
     });
   }, [user, userNickname]);
