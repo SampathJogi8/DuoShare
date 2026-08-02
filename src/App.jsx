@@ -584,6 +584,13 @@ export default function App() {
     return typeof window !== 'undefined' && localStorage.getItem('tallyin_pinned_minimized') === 'true';
   });
 
+  const [simulatedLatency, setSimulatedLatency] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return Number(localStorage.getItem('tallyin_simulated_latency')) || 0;
+    }
+    return 0;
+  });
+
   // Real-time System Admin Channel & Storage Sync
   useEffect(() => {
     const sysChannel = supabase.channel('system_admin_channel');
