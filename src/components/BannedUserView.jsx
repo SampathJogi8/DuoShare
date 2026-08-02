@@ -75,6 +75,60 @@ export default function BannedUserView({
         });
       } catch (err) { console.warn(err); }
 
+      // 4. Send Automated Email Alert to Admin Recipients
+      try {
+        const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+        const adminRecipients = ['tallyin.alerts@gmail.com', 'sampathjogipusala123@gmail.com'];
+
+        for (const adminEmail of adminRecipients) {
+          fetch(mailRelayUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              action: 'send_email',
+              to: adminEmail,
+              subject: `🚨 [Tallyin Appeal] Suspension Review Request from ${userEmail}`,
+              body: `Suspension Appeal Submitted by ${userEmail}:\n\nReason for Suspension: "${banInfo?.reason || 'Policy violation'}"\nUser Message: "${appealText.trim()}"\nDate: ${new Date().toLocaleString()}\n\nManage in Admin Console: https://tallyin.vercel.app/admin`,
+              htmlBody: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                  <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #ef4444;">
+                    <span style="background-color: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Security Shield Alert</span>
+                    <h2 style="color: #1a3827; margin: 8px 0 0 0;">New Account Suspension Appeal</h2>
+                    <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tallyin Operations & Access Control</p>
+                  </div>
+                  
+                  <div style="padding: 20px 0; color: #334155; font-size: 14px; line-height: 1.6;">
+                    <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;">
+                      <p style="margin: 0 0 4px 0; font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase;">Appellant Account</p>
+                      <p style="margin: 0; font-size: 15px; font-weight: 800; color: #1e3a8a;">${userEmail}</p>
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                      <p style="margin: 0 0 4px 0; font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase;">Original Ban Reason</p>
+                      <p style="margin: 0; font-size: 13px; font-style: italic; color: #ef4444; background-color: #fef2f2; padding: 8px 12px; border-radius: 6px;">"${banInfo?.reason || 'System policy violation'}"</p>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                      <p style="margin: 0 0 4px 0; font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase;">User Appeal Statement</p>
+                      <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 14px; border-radius: 10px; color: #1e40af; font-size: 13px; white-space: pre-wrap;">"${appealText.trim()}"</div>
+                    </div>
+
+                    <div style="text-align: center; margin-top: 24px;">
+                      <a href="https://tallyin.vercel.app/admin" style="display: inline-block; background-color: #10b981; color: #ffffff; font-weight: 800; font-size: 13px; padding: 12px 24px; border-radius: 12px; text-decoration: none; box-shadow: 0 2px 6px rgba(16,185,129,0.3);">Open Admin Operations Console</a>
+                    </div>
+                  </div>
+
+                  <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+                    Automated Alert • Tallyin Security & User Moderation Service
+                  </div>
+                </div>
+              `
+            })
+          }).catch(e => console.warn(e));
+        }
+      } catch (err) { console.warn("Email alert notice:", err); }
+
       setAppealStatus('submitted');
     } catch (err) {
       console.error("Appeal submission error:", err);
@@ -176,7 +230,7 @@ export default function BannedUserView({
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-[#A3E635] mx-auto" />
                   <p className="font-extrabold text-[#1A3827] dark:text-slate-100 text-xs">Appeal Transmitted!</p>
                   <p className="text-[10px] text-[#5C6E5C] dark:text-slate-300">
-                    Your appeal message has been delivered to System Administration. Your account status will be reviewed.
+                    Your appeal message has been delivered to System Administration via email & panel alert.
                   </p>
                 </div>
               ) : (
