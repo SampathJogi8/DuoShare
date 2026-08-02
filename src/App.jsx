@@ -2440,6 +2440,16 @@ export default function App() {
 
       if (deleteError) throw deleteError;
 
+      // Reset user room binding for all members of this room
+      try {
+        await supabase
+          .from('users')
+          .update({ room_id: null })
+          .eq('room_id', userRoomId);
+      } catch(e) {
+        console.warn("Could not unbind room_id for members:", e);
+      }
+
       // Clear local state first
       setUserRoomId(null);
       setHasConfirmedRoom(false);
@@ -2450,7 +2460,7 @@ export default function App() {
       setRoomCreatedBy(null);
       localStorage.removeItem('userRoomId');
       
-      // Reset user room binding
+      // Reset user room binding for current user
       if (user) {
         try {
           await supabase
@@ -14712,6 +14722,28 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 Leave room
               </button>
             </div>
+
+            {/* Delete Room Space */}
+            {userRoomId && (
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2 border-t border-[#F6F8F6] dark:border-slate-800">
+                <div>
+                  <p className="text-xs font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Delete room space</span>
+                  </p>
+                  <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                    Permanently delete this room space ({userRoomId}) and clear all transactions, receipts, and member links. Automatic JSON backup will download.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => handleDeleteRoom(true)}
+                  className="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-98 shrink-0 w-full sm:w-auto"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete room</span>
+                </button>
+              </div>
+            )}
 
             <div className="flex justify-between items-center py-2 border-t border-[#F6F8F6] dark:border-slate-800">
               <div>
