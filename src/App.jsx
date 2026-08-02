@@ -830,6 +830,33 @@ export default function App() {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
+  const banInfo = useMemo(() => {
+    if (!bannedUsers || bannedUsers.length === 0) return null;
+
+    const possibleIdentifiers = [
+      user?.email,
+      user?.uid,
+      userNickname,
+      codeLoginEmail,
+      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('user_email') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_nickname') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('user_nickname') : null
+    ]
+      .filter(Boolean)
+      .map(id => String(id).trim().toLowerCase());
+
+    if (possibleIdentifiers.length === 0) return null;
+
+    return bannedUsers.find(b => {
+      const bIdent = (b.identifier || b.email || b.id || '').trim().toLowerCase();
+      const bName = (b.name || '').trim().toLowerCase();
+      return possibleIdentifiers.some(id => id === bIdent || id === bName);
+    }) || null;
+  }, [user, userNickname, codeLoginEmail, bannedUsers]);
+
+  const isUserBanned = Boolean(banInfo);
+
   // Live polling while banned to detect unban in real time
   useEffect(() => {
     if (!isUserBanned) return;
@@ -857,33 +884,6 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [isUserBanned]);
-
-  const banInfo = useMemo(() => {
-    if (!bannedUsers || bannedUsers.length === 0) return null;
-
-    const possibleIdentifiers = [
-      user?.email,
-      user?.uid,
-      userNickname,
-      codeLoginEmail,
-      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : null,
-      typeof window !== 'undefined' ? localStorage.getItem('user_email') : null,
-      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_nickname') : null,
-      typeof window !== 'undefined' ? localStorage.getItem('user_nickname') : null
-    ]
-      .filter(Boolean)
-      .map(id => String(id).trim().toLowerCase());
-
-    if (possibleIdentifiers.length === 0) return null;
-
-    return bannedUsers.find(b => {
-      const bIdent = (b.identifier || b.email || b.id || '').trim().toLowerCase();
-      const bName = (b.name || '').trim().toLowerCase();
-      return possibleIdentifiers.some(id => id === bIdent || id === bName);
-    }) || null;
-  }, [user, userNickname, codeLoginEmail, bannedUsers]);
-
-  const isUserBanned = Boolean(banInfo);
   // Feature D: Expense Comments
   const [expenseComments, setExpenseComments] = useState(() => {
     try {
