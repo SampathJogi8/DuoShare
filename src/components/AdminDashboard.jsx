@@ -229,6 +229,40 @@ export default function AdminDashboard({
   // Ban Appeals State
   const [banAppeals, setBanAppeals] = useState([]);
 
+  // Audit Logs State
+  const [auditLogs, setAuditLogs] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_audit_logs');
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+
+  const logAuditAction = useCallback((action, details) => {
+    const newEntry = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      timestamp: new Date().toISOString(),
+      adminEmail: user?.email || userNickname || 'System Admin',
+      action,
+      details
+    };
+    setAuditLogs(prev => {
+      const updated = [newEntry, ...(prev || [])].slice(0, 150);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tallyin_audit_logs', JSON.stringify(updated));
+      }
+      supabase.from('rooms').upsert({
+        id: '__SYSTEM_AUDIT_LOGS__',
+        name: JSON.stringify(updated),
+        created_by: 'system',
+        created_at: new Date().toISOString()
+      }, { onConflict: 'id' }).catch(e => console.warn(e));
+      return updated;
+    });
+  }, [user, userNickname]);
+
   // Web Audio Alert Chime for Incoming Suspension Appeals
   const playAppealAlertSound = useCallback(() => {
     try {
@@ -641,6 +675,8 @@ export default function AdminDashboard({
       });
     } catch (e) { console.error("Realtime send maintenance error:", e); }
 
+    logAuditAction('TOGGLE_MAINTENANCE', nextState ? `Activated (Notice: ${textToSave})` : 'Deactivated');
+
     if (triggerToast) {
       triggerToast(nextState ? '🚨 SITE IS NOW UNDER MAINTENANCE' : '✅ Site maintenance mode DEACTIVATED');
     }
@@ -662,6 +698,8 @@ export default function AdminDashboard({
     };
     setGlobalBroadcast(newBroadcast);
     localStorage.setItem('tallyin_global_broadcast', JSON.stringify(newBroadcast));
+
+    logAuditAction('PUBLISH_BROADCAST', `[${broadcastType.toUpperCase()}] ${broadcastText.trim()}`);
 
     // Save to Supabase rooms table for database persistence across all mobile & web clients
     try {
@@ -693,6 +731,8 @@ export default function AdminDashboard({
     const cleared = { active: false, text: '', id: '', type: 'info', createdAt: new Date().toISOString() };
     setGlobalBroadcast(null);
     localStorage.removeItem('tallyin_global_broadcast');
+
+    logAuditAction('CLEAR_BROADCAST', 'Cleared global broadcast banner across all clients');
 
     try {
       await supabase
@@ -2149,6 +2189,105 @@ export default function AdminDashboard({
                       <Copy className="w-3.5 h-3.5" />
                     </button>
                   </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Security Audit Logs & Log Exporter */}
+      {activeTab === 'security_audit' && (
+        <div className="hud-card rounded-3xl p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                Administrative Security Audit Trail ({auditLogs.length})
+              </h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                Track all administrative actions, ban events, broadcasts, and system configuration modifications.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  const jsonStr = JSON.stringify(auditLogs, null, 2);
+                  const blob = new Blob([jsonStr], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `tallyin-security-audit-logs-${new Date().toISOString().slice(0, 10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  if (triggerToast) triggerToast('Downloaded Security Audit Logs as JSON!');
+                }}
+                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export JSON</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (!auditLogs || auditLogs.length === 0) {
+                    if (triggerToast) triggerToast('No audit logs available to export.');
+                    return;
+                  }
+                  const headers = ['ID', 'Timestamp', 'Admin Email', 'Action', 'Details'];
+                  const rows = auditLogs.map(l => [
+                    l.id || '',
+                    l.timestamp || '',
+                    l.adminEmail || '',
+                    `"${(l.action || '').replace(/"/g, '""')}"`,
+                    `"${(l.details || '').replace(/"/g, '""')}"`
+                  ]);
+                  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                  const blob = new Blob([csvContent], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `tallyin-security-audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  if (triggerToast) triggerToast('Downloaded Security Audit Logs as CSV!');
+                }}
+                className="px-3.5 py-2 bg-slate-900 text-white dark:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2 max-h-[550px] overflow-y-auto pr-1">
+            {auditLogs.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 space-y-2">
+                <ShieldCheck className="w-10 h-10 mx-auto text-slate-300 opacity-60" />
+                <p className="text-xs font-bold">No security audit records logged yet.</p>
+                <p className="text-[11px]">Admin actions such as banning, broadcasts, and maintenance toggles will appear here.</p>
+              </div>
+            ) : (
+              auditLogs.map(log => (
+                <div key={log.id} className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-start justify-between gap-3 text-xs shadow-sm">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase shrink-0 mt-0.5 ${
+                      log.action.includes('BAN') ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' :
+                      log.action.includes('BROADCAST') ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300' :
+                      log.action.includes('MAINTENANCE') ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
+                      'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                    }`}>
+                      {log.action}
+                    </span>
+                    <div className="space-y-0.5 min-w-0">
+                      <p className="font-extrabold text-[#1A3827] dark:text-slate-100 break-words">{log.details}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-mono">
+                        By <span className="font-bold text-[#1A3827] dark:text-slate-300">{log.adminEmail}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0">
+                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(log.timestamp).toLocaleDateString()}
+                  </span>
                 </div>
               ))
             )}
