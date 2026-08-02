@@ -1999,7 +1999,7 @@ export default function App() {
               room_id: null,
               updated_at: new Date().toISOString()
             }, { onConflict: 'uid' })
-            .catch(err => console.error(err));
+            .then(null, err => console.error('Error updating user room_id:', err));
         }
         await fetchUserRooms();
         triggerToast("Active room is no longer available.");
@@ -14683,7 +14683,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Disconnect from this room. Room data remains safe in Supabase.</p>
               </div>
               <button 
-                onClick={() => {
+                onClick={async () => {
                   if (confirm("Leave this room space? You'll be redirected back to the onboarding room setup.")) {
                     setUserRoomId(null);
                     setHasConfirmedRoom(false);
@@ -14692,14 +14692,17 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     setActivityLogs([]);
                     localStorage.removeItem('userRoomId');
                     if (user) {
-                      supabase
-                        .from('users')
-                        .upsert({
-                          uid: user.id,
-                          room_id: null,
-                          updated_at: new Date().toISOString()
-                        }, { onConflict: 'uid' })
-                        .catch(err => console.error(err));
+                      try {
+                        await supabase
+                          .from('users')
+                          .upsert({
+                            uid: user.id,
+                            room_id: null,
+                            updated_at: new Date().toISOString()
+                          }, { onConflict: 'uid' });
+                      } catch (err) {
+                        console.error('Error leaving room in database:', err);
+                      }
                     }
                     triggerToast("Left room workspace.");
                   }
