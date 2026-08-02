@@ -226,37 +226,81 @@ export default function AdminDashboard({
   const [banEmailInput, setBanEmailInput] = useState('');
   const [banReasonInput, setBanReasonInput] = useState('Violation of platform guidelines or debt non-payment');
   const [isBanModalOpen, setIsBanModalOpen] = useState(false);
+  const adminChannelRef = useRef(null);
 
-  // Sync Banned Users with Supabase DB + Realtime Channel
+  // Keep persistent subscribed Realtime channel for Admin broadcasts
+  useEffect(() => {
+    const channel = supabase.channel('system_admin_channel');
+    channel.subscribe();
+    adminChannelRef.current = channel;
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Sync Banned Users with Supabase DB + Guaranteed Fallback + Realtime Channel
   const syncBannedUsersToDatabase = async (updatedList) => {
     setBannedUsers(updatedList);
     if (typeof window !== 'undefined') {
       localStorage.setItem('tallyin_banned_users', JSON.stringify(updatedList));
     }
 
-    // 1. Save to Supabase DB system_settings
+    // 1. Primary: Save to system_settings table
     try {
       await supabase
         .from('system_settings')
         .upsert({ key: 'banned_users', value: updatedList }, { onConflict: 'key' });
     } catch (err) {
-      console.warn("Supabase system_settings upsert error:", err);
+      console.warn("Supabase system_settings upsert notice:", err);
     }
 
-    // 2. Broadcast via Supabase Realtime channel
+    // 2. Guaranteed Fallback: Save to transactions table under system record
     try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
-        type: 'broadcast',
-        event: 'USER_BAN_UPDATE',
-        payload: { bannedUsers: updatedList }
-      });
+      const jsonStr = JSON.stringify(updatedList);
+      const { data: existing } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('title', '__BANNED_USERS__')
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from('transactions')
+          .update({ notes: jsonStr, amount: updatedList.length })
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('transactions')
+          .insert({
+            title: '__BANNED_USERS__',
+            category: '__SYSTEM_SETTINGS__',
+            notes: jsonStr,
+            amount: updatedList.length,
+            paid_by: 'System'
+          });
+      }
+    } catch (err) {
+      console.warn("Fallback DB save notice:", err);
+    }
+
+    // 3. Broadcast via active Subscribed Realtime channel
+    try {
+      if (adminChannelRef.current) {
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'USER_BAN_UPDATE',
+          payload: { bannedUsers: updatedList }
+        });
+      }
     } catch (err) {
       console.warn("Realtime send ban error:", err);
     }
   };
 
   const fetchBannedUsers = useCallback(async () => {
+    let foundList = null;
+
+    // 1. Try system_settings
     try {
       const { data } = await supabase
         .from('system_settings')
@@ -265,13 +309,34 @@ export default function AdminDashboard({
         .maybeSingle();
 
       if (data?.value && Array.isArray(data.value)) {
-        setBannedUsers(data.value);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('tallyin_banned_users', JSON.stringify(data.value));
-        }
+        foundList = data.value;
       }
     } catch (err) {
-      console.warn("Fetch banned users error:", err);
+      console.warn("Fetch system_settings notice:", err);
+    }
+
+    // 2. Try transactions fallback
+    if (!foundList) {
+      try {
+        const { data } = await supabase
+          .from('transactions')
+          .select('notes')
+          .eq('title', '__BANNED_USERS__')
+          .maybeSingle();
+
+        if (data?.notes) {
+          foundList = JSON.parse(data.notes);
+        }
+      } catch (err) {
+        console.warn("Fetch transactions fallback notice:", err);
+      }
+    }
+
+    if (foundList && Array.isArray(foundList)) {
+      setBannedUsers(foundList);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tallyin_banned_users', JSON.stringify(foundList));
+      }
     }
   }, []);
 
@@ -1476,62 +1541,74 @@ export default function AdminDashboard({
                     (u.roomId && u.roomId.toLowerCase().includes(q))
                   );
                 })
-                .map(u => (
-                  <div key={u.id || u.email} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {u.photoURL ? (
-                        <img src={u.photoURL} alt={u.name} className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
-                      ) : (
-                        <div className="w-9 h-9 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 flex items-center justify-center font-black text-xs shrink-0">
-                          {u.name ? u.name.charAt(0).toUpperCase() : 'U'}
+                .map(u => {
+                  const userTarget = (u.email && u.email !== 'N/A') ? u.email : (u.name || u.id);
+                  const isBanned = bannedUsers.some(b => {
+                    const bId = (b.identifier || b.email || b.id || '').toLowerCase();
+                    const bName = (b.name || '').toLowerCase();
+                    const uEmail = (u.email || '').toLowerCase();
+                    const uName = (u.name || '').toLowerCase();
+                    const uId = (u.id || '').toLowerCase();
+                    return (uEmail && uEmail !== 'n/a' && bId === uEmail) || (uName && bName === uName) || (uId && bId === uId);
+                  });
+
+                  return (
+                    <div key={u.id || u.email} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {u.photoURL ? (
+                          <img src={u.photoURL} alt={u.name} className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 flex items-center justify-center font-black text-xs shrink-0">
+                            {u.name ? u.name.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{u.name}</p>
+                          <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 truncate">{u.email}</p>
+                          <p className="text-[10px] font-mono text-emerald-700 dark:text-[#A3E635]">Room: {u.roomId}</p>
                         </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{u.name}</p>
-                        <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 truncate">{u.email}</p>
-                        <p className="text-[10px] font-mono text-emerald-700 dark:text-[#A3E635]">Room: {u.roomId}</p>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => {
-                          setEmailRecipientGroup('CUSTOM');
-                          setCustomEmails(u.email);
-                          setActiveTab('email');
-                          if (triggerToast) triggerToast(`Composing email to ${u.email}`);
-                        }}
-                        className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700"
-                        title="Send Mail"
-                      >
-                        <Mail className="w-3.5 h-3.5" />
-                      </button>
-
-                      {bannedUsers.some(b => b.email === u.email?.toLowerCase()) ? (
-                        <button
-                          onClick={() => handleUnbanUser(u.email)}
-                          className="px-2.5 py-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black hover:bg-emerald-200 transition-colors flex items-center gap-1"
-                          title="Unban User Account"
-                        >
-                          <UserCheck className="w-3.5 h-3.5" />
-                          <span>Unban</span>
-                        </button>
-                      ) : (
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           onClick={() => {
-                            setBanEmailInput(u.email);
-                            handleBanUser(u.email, banReasonInput);
+                            setEmailRecipientGroup('CUSTOM');
+                            setCustomEmails(u.email);
+                            setActiveTab('email');
+                            if (triggerToast) triggerToast(`Composing email to ${u.email}`);
                           }}
-                          className="px-2.5 py-1.5 bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-[10px] font-black hover:bg-rose-200 transition-colors flex items-center gap-1"
-                          title="Ban & Block User Account"
+                          className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700"
+                          title="Send Mail"
                         >
-                          <Ban className="w-3.5 h-3.5" />
-                          <span>Ban</span>
+                          <Mail className="w-3.5 h-3.5" />
                         </button>
-                      )}
+
+                        {isBanned ? (
+                          <button
+                            onClick={() => handleUnbanUser(userTarget)}
+                            className="px-2.5 py-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black hover:bg-emerald-200 transition-colors flex items-center gap-1"
+                            title="Unban User Account"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>Unban</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setBanEmailInput(userTarget);
+                              handleBanUser(userTarget, banReasonInput, { name: u.name, id: u.id });
+                            }}
+                            className="px-2.5 py-1.5 bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-[10px] font-black hover:bg-rose-200 transition-colors flex items-center gap-1"
+                            title="Ban & Block User Account"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                            <span>Ban</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
             )}
           </div>
         </div>

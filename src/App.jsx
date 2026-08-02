@@ -773,9 +773,12 @@ export default function App() {
     return [];
   });
 
-  // Fetch Banned Users from Supabase on mount in App.jsx
+  // Fetch Banned Users from Supabase on mount in App.jsx (with transactions table fallback)
   useEffect(() => {
     const fetchDBBannedUsers = async () => {
+      let foundList = null;
+
+      // 1. Try system_settings
       try {
         const { data } = await supabase
           .from('system_settings')
@@ -784,14 +787,47 @@ export default function App() {
           .maybeSingle();
 
         if (data?.value && Array.isArray(data.value)) {
-          setBannedUsers(data.value);
-          localStorage.setItem('tallyin_banned_users', JSON.stringify(data.value));
+          foundList = data.value;
         }
       } catch (err) {
-        console.warn("DB banned users fetch error:", err);
+        console.warn("DB banned users fetch notice:", err);
+      }
+
+      // 2. Try transactions fallback
+      if (!foundList) {
+        try {
+          const { data } = await supabase
+            .from('transactions')
+            .select('notes')
+            .eq('title', '__BANNED_USERS__')
+            .maybeSingle();
+
+          if (data?.notes) {
+            foundList = JSON.parse(data.notes);
+          }
+        } catch (err) {
+          console.warn("DB banned users fallback notice:", err);
+        }
+      }
+
+      if (foundList && Array.isArray(foundList)) {
+        setBannedUsers(foundList);
+        localStorage.setItem('tallyin_banned_users', JSON.stringify(foundList));
       }
     };
+
     fetchDBBannedUsers();
+
+    // Cross-tab storage listener
+    const handleStorage = (e) => {
+      if (e.key === 'tallyin_banned_users' && e.newValue) {
+        try {
+          setBannedUsers(JSON.parse(e.newValue));
+        } catch (err) { console.error(err); }
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   const banInfo = useMemo(() => {
