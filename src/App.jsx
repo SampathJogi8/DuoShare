@@ -806,6 +806,7 @@ export default function App() {
     const saved = localStorage.getItem('theme');
     return saved === 'dark';
   });
+  const isInitialThemeMount = useRef(true);
   const [offlineMode, setOfflineMode] = useState(false);
   const [isDbSynced, setIsDbSynced] = useState(false);
   const [hasConfirmedRoom, setHasConfirmedRoom] = useState(false);
@@ -1842,16 +1843,32 @@ export default function App() {
     };
   }, []);
 
-  // Sync with dark mode class on document element and body
+  // Sync with dark mode class on document element and body with smooth transition
   useEffect(() => {
-    if (isDarkMode) {
-      document.body.classList.add('dark');
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
+    const applyTheme = () => {
+      if (isDarkMode) {
+        document.body.classList.add('dark');
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+      } else {
+        document.body.classList.remove('dark');
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+      }
+    };
+
+    if (isInitialThemeMount.current) {
+      isInitialThemeMount.current = false;
+      applyTheme();
+      return;
+    }
+
+    if (document.startViewTransition) {
+      document.startViewTransition(() => {
+        applyTheme();
+      });
     } else {
-      document.body.classList.remove('dark');
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+      applyTheme();
     }
   }, [isDarkMode]);
 

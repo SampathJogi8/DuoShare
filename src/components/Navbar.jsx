@@ -156,10 +156,12 @@ export default function Navbar({
                 setIsDarkMode(!isDarkMode);
                 if (triggerToast) triggerToast(isDarkMode ? 'Theme set to Clean Light' : 'Cosmic Slate mode active');
               }}
-              className="p-2 sm:p-2.5 text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+              className="p-2 sm:p-2.5 text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all duration-300 active:scale-95 border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm group"
               title="Toggle Theme"
             >
-              {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-emerald-800" />}
+              <span className="inline-block transition-transform duration-300 transform group-hover:rotate-12 group-active:scale-90">
+                {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-emerald-800 dark:text-emerald-400" />}
+              </span>
             </button>
 
             {/* Profile Dropdown */}
