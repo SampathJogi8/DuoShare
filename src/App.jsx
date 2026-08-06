@@ -688,6 +688,30 @@ export default function App() {
       })
       .subscribe();
 
+    // Expiration helper for broadcast messages (Default 2 Calendar Days validity)
+    const isBroadcastExpired = (bc) => {
+      if (!bc) return true;
+      if (bc.expiresAt) {
+        return new Date().getTime() > new Date(bc.expiresAt).getTime();
+      }
+      if (bc.createdAt) {
+        const validDays = bc.validDays || 2;
+        return (new Date().getTime() - new Date(bc.createdAt).getTime()) > (validDays * 24 * 60 * 60 * 1000);
+      }
+      return false;
+    };
+
+    // Default Deployment Broadcast for New Feature Release (Valid for 2 Calendar Days)
+    const FEATURE_RELEASE_BROADCAST = {
+      id: 'feat_itemized_bills_v3.30.1',
+      text: '🎉 NEW FEATURE RELEASE: Itemized Bill & Receipt Generator in b9lls! Enter transactions line-by-line, calculate totals & export detailed PDF receipts.',
+      type: 'feature',
+      active: true,
+      createdAt: '2026-08-06T12:50:00.000Z',
+      expiresAt: new Date(new Date('2026-08-06T12:50:00.000Z').getTime() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+      validDays: 2
+    };
+
     // Fetch latest global broadcast & pinned messages from Supabase DB on startup & sync
     const fetchDBGlobalBroadcastAndPins = async () => {
       try {
@@ -699,13 +723,19 @@ export default function App() {
 
         if (bcData?.name && bcData.name.startsWith('{')) {
           const parsed = JSON.parse(bcData.name);
-          if (parsed && parsed.active) {
+          if (parsed && parsed.active && !isBroadcastExpired(parsed)) {
             setGlobalBroadcast(parsed);
             localStorage.setItem('tallyin_global_broadcast', JSON.stringify(parsed));
+          } else if (!isBroadcastExpired(FEATURE_RELEASE_BROADCAST)) {
+            setGlobalBroadcast(FEATURE_RELEASE_BROADCAST);
+            localStorage.setItem('tallyin_global_broadcast', JSON.stringify(FEATURE_RELEASE_BROADCAST));
           } else {
             setGlobalBroadcast(null);
             localStorage.removeItem('tallyin_global_broadcast');
           }
+        } else if (!isBroadcastExpired(FEATURE_RELEASE_BROADCAST)) {
+          setGlobalBroadcast(FEATURE_RELEASE_BROADCAST);
+          localStorage.setItem('tallyin_global_broadcast', JSON.stringify(FEATURE_RELEASE_BROADCAST));
         } else {
           setGlobalBroadcast(null);
           localStorage.removeItem('tallyin_global_broadcast');
@@ -9069,9 +9099,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           {/* Live Broadcast Banner Overlay (Completely Closeable) */}
           {(() => {
             const activeBroadcastKey = globalBroadcast?.active
-              ? (globalBroadcast.createdAt || globalBroadcast.text)
+              ? (globalBroadcast.id || globalBroadcast.createdAt || globalBroadcast.text)
               : null;
-            const isBroadcastVisible = globalBroadcast?.active && dismissedBroadcastKey !== activeBroadcastKey;
+
+            const isExpired = globalBroadcast?.expiresAt 
+              ? new Date().getTime() > new Date(globalBroadcast.expiresAt).getTime()
+              : globalBroadcast?.createdAt
+                ? (new Date().getTime() - new Date(globalBroadcast.createdAt).getTime() > (globalBroadcast.validDays || 2) * 24 * 60 * 60 * 1000)
+                : false;
+
+            const isBroadcastVisible = globalBroadcast?.active && !isExpired && dismissedBroadcastKey !== activeBroadcastKey;
 
             if (!isBroadcastVisible) return null;
 
@@ -9127,7 +9164,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                               globalBroadcast.type === 'alert' ? 'bg-rose-500' : globalBroadcast.type === 'maintenance' ? 'bg-amber-500' : 'bg-emerald-500'
                             }`}></span>
                           </span>
-                          <span>{globalBroadcast.type === 'alert' ? 'Critical Alert' : globalBroadcast.type === 'maintenance' ? 'System Maintenance' : 'System Broadcast'}</span>
+                          <span>{globalBroadcast.type === 'alert' ? 'Critical Alert' : globalBroadcast.type === 'maintenance' ? 'System Maintenance' : globalBroadcast.type === 'feature' ? 'New Feature Release' : 'System Broadcast'}</span>
+                        </span>
+
+                        <span className="text-[9px] font-extrabold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                          ⏳ Active 2 Calendar Days
                         </span>
 
                         {globalBroadcast.createdAt && (

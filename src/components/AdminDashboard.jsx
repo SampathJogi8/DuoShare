@@ -77,8 +77,9 @@ export default function AdminDashboard({
 
   // Broadcast form states
   const [broadcastText, setBroadcastText] = useState('');
-  const [broadcastType, setBroadcastType] = useState('announcement'); // 'announcement' | 'alert' | 'maintenance' | 'feature'
+  const [broadcastType, setBroadcastType] = useState('feature'); // 'feature' | 'announcement' | 'alert' | 'maintenance'
   const [broadcastTargetRoom, setBroadcastTargetRoom] = useState('ALL');
+  const [broadcastDurationDays, setBroadcastDurationDays] = useState('2'); // default 2 calendar days
 
   // Email form states
   const [emailSubject, setEmailSubject] = useState('');
@@ -674,13 +675,22 @@ export default function AdminDashboard({
       if (triggerToast) triggerToast('Please enter broadcast message content.');
       return;
     }
+
+    const now = new Date();
+    const durationDays = Number(broadcastDurationDays) || 2;
+    const expiresAt = durationDays > 0 
+      ? new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
     const newBroadcast = {
       id: `bc-${Date.now()}`,
       text: broadcastText.trim(),
       type: broadcastType,
       targetRoom: broadcastTargetRoom,
       active: true,
-      createdAt: new Date().toISOString()
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt,
+      validDays: durationDays
     };
     setGlobalBroadcast(newBroadcast);
     localStorage.setItem('tallyin_global_broadcast', JSON.stringify(newBroadcast));
@@ -709,7 +719,7 @@ export default function AdminDashboard({
       }
     } catch (e) { console.error("Realtime send broadcast error:", e); }
 
-    if (triggerToast) triggerToast('Global Broadcast Live to all active clients!');
+    if (triggerToast) triggerToast(`Global Broadcast Live to all active clients! (Valid for ${durationDays > 0 ? `${durationDays} Calendar Days` : 'Indefinite'})`);
     setBroadcastText('');
   };
 
@@ -1359,7 +1369,7 @@ export default function AdminDashboard({
           </div>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Broadcast Type</label>
                 <select
@@ -1367,10 +1377,10 @@ export default function AdminDashboard({
                   onChange={e => setBroadcastType(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
                 >
+                  <option value="feature">✨ New Feature Release</option>
                   <option value="announcement">📢 Announcement</option>
                   <option value="alert">⚠️ Critical Alert</option>
                   <option value="maintenance">🔧 Maintenance Warning</option>
-                  <option value="feature">✨ New Feature Release</option>
                 </select>
               </div>
 
@@ -1385,6 +1395,21 @@ export default function AdminDashboard({
                   {(userRooms || []).map(r => (
                     <option key={r.roomId} value={r.roomId}>Specific Room: {r.roomName} ({r.roomId})</option>
                   ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Validity Duration</label>
+                <select
+                  value={broadcastDurationDays}
+                  onChange={e => setBroadcastDurationDays(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
+                >
+                  <option value="2">⏳ 2 Calendar Days (Default)</option>
+                  <option value="1">⏳ 1 Calendar Day</option>
+                  <option value="3">⏳ 3 Calendar Days</option>
+                  <option value="7">⏳ 7 Calendar Days</option>
+                  <option value="0">∞ Indefinite (Until Cleared)</option>
                 </select>
               </div>
             </div>
