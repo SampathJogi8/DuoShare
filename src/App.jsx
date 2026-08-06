@@ -608,13 +608,31 @@ export default function App() {
   });
 
   const [globalBroadcast, setGlobalBroadcast] = useState(() => {
+    const defaultBroadcast = {
+      id: `release_${APP_VERSION || 'v3.30.2'}_itemized_bills`,
+      text: `✨ New Feature (${APP_VERSION || 'v3.30.2'}): Itemized Bill & PDF Receipt Generator now live in Bills (b9lls).`,
+      type: 'feature',
+      active: true,
+      createdAt: '2026-08-06T12:50:00.000Z',
+      expiresAt: new Date(new Date('2026-08-06T12:50:00.000Z').getTime() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+      validDays: 2
+    };
+
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('tallyin_global_broadcast');
-        return saved ? JSON.parse(saved) : null;
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.active && parsed.createdAt) {
+            const isExp = parsed.expiresAt 
+              ? new Date().getTime() > new Date(parsed.expiresAt).getTime()
+              : (new Date().getTime() - new Date(parsed.createdAt).getTime()) > ((parsed.validDays || 2) * 24 * 60 * 60 * 1000);
+            if (!isExp) return parsed;
+          }
+        }
       } catch (e) { console.error(e); }
     }
-    return null;
+    return defaultBroadcast;
   });
 
   const [pinnedMessages, setPinnedMessages] = useState(() => {
@@ -698,13 +716,13 @@ export default function App() {
         const validDays = bc.validDays || 2;
         return (new Date().getTime() - new Date(bc.createdAt).getTime()) > (validDays * 24 * 60 * 60 * 1000);
       }
-      return false;
+      return true; // Legacy broadcasts without timestamps are expired
     };
 
-    // Default Deployment Broadcast for New Feature Release (Valid for 2 Calendar Days)
+    // Automatic Deployment Broadcast for New Feature Release (Valid for 2 Calendar Days)
     const FEATURE_RELEASE_BROADCAST = {
-      id: 'feat_itemized_bills_v3.30.1',
-      text: '🎉 NEW FEATURE RELEASE: Itemized Bill & Receipt Generator in b9lls! Enter transactions line-by-line, calculate totals & export detailed PDF receipts.',
+      id: `release_${APP_VERSION || 'v3.30.2'}_itemized_bills`,
+      text: `✨ New Feature (${APP_VERSION || 'v3.30.2'}): Itemized Bill & PDF Receipt Generator now live in Bills (b9lls).`,
       type: 'feature',
       active: true,
       createdAt: '2026-08-06T12:50:00.000Z',
