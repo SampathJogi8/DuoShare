@@ -47,8 +47,6 @@ kfc: 748`
   const [copiedText, setCopiedText] = useState(false);
   const [isSavingToRoom, setIsSavingToRoom] = useState(false);
 
-  if (!isOpen) return null;
-
   // Helper to format currency in Indian format
   const formatAmount = (val) => {
     const num = Number(val) || 0;
@@ -164,6 +162,8 @@ kfc: 748`;
   const receiptRefCode = useMemo(() => {
     return `RC-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
   }, [isOpen]);
+
+  if (!isOpen) return null;
 
   // Export handlers
   const handleTriggerPDF = () => {
