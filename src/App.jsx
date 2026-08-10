@@ -60,6 +60,8 @@ import {
 } from 'lucide-react';
 
 import { supabase } from './supabase';
+import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
+import { auth, googleProvider } from './firebase';
 import logoIcon from './assets/logo_icon.png';
 import logoFull from './assets/logo_full.png';
 import faviconLogo from './assets/favicon_logo.png';
@@ -1817,25 +1819,28 @@ export default function App() {
   }, [addMemberToRoom]);
 
   // Handle Supabase Auth state changes
+  const mapFirebaseUser = (fbUser) => {
+    if (!fbUser) return null;
+    return {
+      id: fbUser.uid,
+      email: fbUser.email,
+      user_metadata: {
+        avatar_url: fbUser.photoURL || '',
+        picture: fbUser.photoURL || '',
+        full_name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User'
+      }
+    };
+  };
+
   useEffect(() => {
     if (localStorage.getItem('tallyin_code_user')) {
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user || null;
-      setUser(currentUser);
-      if (currentUser) {
-        handleAuthUser(currentUser);
-      } else {
-        setAuthLoading(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (localStorage.getItem('tallyin_code_user')) return;
 
-      const currentUser = session?.user || null;
+      const currentUser = mapFirebaseUser(fbUser);
       setUser(currentUser);
       if (currentUser) {
         handleAuthUser(currentUser);
@@ -1852,7 +1857,7 @@ export default function App() {
     });
 
     return () => {
-      subscription.unsubscribe();
+      unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2405,18 +2410,9 @@ export default function App() {
     setAuthError(null);
     setAuthLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-          queryParams: {
-            prompt: 'select_account consent',
-          },
-        }
-      });
-      if (error) throw error;
+      await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      console.error("Supabase login error:", err);
+      console.error("Firebase login error:", err);
       setAuthError(`Auth Error: ${err.message}`);
       triggerToast(`Authentication failed: ${err.message}. (Please verify Supabase URL & Anon Key config)`);
       setAuthLoading(false);
@@ -2869,9 +2865,9 @@ export default function App() {
       setUser(null);
 
       try {
-        await supabase.auth.signOut();
+        await fbSignOut(auth);
       } catch (authErr) {
-        console.warn("Supabase auth signout warning:", authErr);
+        console.warn("Firebase auth signout warning:", authErr);
       }
 
       setTransactions([]);
@@ -2911,7 +2907,7 @@ export default function App() {
       }
 
       localStorage.clear();
-      await supabase.auth.signOut();
+      await fbSignOut(auth);
       
       setTransactions([]);
       setReceipts([]);
