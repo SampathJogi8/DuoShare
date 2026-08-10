@@ -22,8 +22,6 @@ class MockQueryBuilder {
   }
 
   select(columns = '*') {
-    // If select is called after insert/update/delete/upsert, it's just telling Supabase to return data.
-    // In our case, the backend always returns the data. So we do not change action if it's already set to something else.
     if (this.action === 'select') {
       this.action = 'select';
     }
@@ -98,7 +96,6 @@ class MockQueryBuilder {
     return this;
   }
 
-  // Promise/thenable implementation
   async then(onfulfilled, onrejected) {
     try {
       const response = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/query', {
@@ -134,15 +131,20 @@ class MockQueryBuilder {
       return onfulfilled({ data, error: null });
     } catch (err) {
       console.error(`MockQueryBuilder error for ${this.action} on ${this.table}:`, err);
-      // Return error in the Supabase format { data: null, error: ... }
       return onfulfilled({ data: null, error: { message: err.message, code: err.code || 'MOCK_ERROR' } });
     }
   }
 }
 
-export const supabase = {
-  ...realSupabase,
-  from(table) {
-    return new MockQueryBuilder(table);
+export const supabase = new Proxy(realSupabase, {
+  get(target, prop, receiver) {
+    if (prop === 'from') {
+      return (table) => new MockQueryBuilder(table);
+    }
+    const value = Reflect.get(target, prop, receiver);
+    if (typeof value === 'function') {
+      return value.bind(target);
+    }
+    return value;
   }
-};
+});
