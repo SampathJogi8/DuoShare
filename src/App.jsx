@@ -60,7 +60,7 @@ import {
 } from 'lucide-react';
 
 import { supabase } from './supabase';
-import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut as fbSignOut } from 'firebase/auth';
 import { auth as firebaseAuth, googleProvider } from './firebase';
 import logoIcon from './assets/logo_icon.png';
 import logoFull from './assets/logo_full.png';
@@ -2412,10 +2412,20 @@ export default function App() {
     try {
       await signInWithPopup(firebaseAuth, googleProvider);
     } catch (err) {
-      console.error("Firebase login error:", err);
-      setAuthError(`Auth Error: ${err.message}`);
-      triggerToast(`Authentication failed: ${err.message}. (Please verify Supabase URL & Anon Key config)`);
-      setAuthLoading(false);
+      if (err.code === 'auth/popup-blocked') {
+        try {
+          await signInWithRedirect(firebaseAuth, googleProvider);
+        } catch (redirErr) {
+          console.error("Firebase redirect login error:", redirErr);
+          setAuthError(`Auth Error: ${redirErr.message}`);
+          setAuthLoading(false);
+        }
+      } else {
+        console.error("Firebase login error:", err);
+        setAuthError(`Auth Error: ${err.message}`);
+        triggerToast(`Authentication failed: ${err.message}.`);
+        setAuthLoading(false);
+      }
     }
   };
 
