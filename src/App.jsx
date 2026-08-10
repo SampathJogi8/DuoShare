@@ -61,7 +61,7 @@ import {
 
 import { supabase } from './supabase';
 import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
-import { auth, googleProvider } from './firebase';
+import { auth as firebaseAuth, googleProvider } from './firebase';
 import logoIcon from './assets/logo_icon.png';
 import logoFull from './assets/logo_full.png';
 import faviconLogo from './assets/favicon_logo.png';
@@ -1837,7 +1837,7 @@ export default function App() {
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
       if (localStorage.getItem('tallyin_code_user')) return;
 
       const currentUser = mapFirebaseUser(fbUser);
@@ -2410,7 +2410,7 @@ export default function App() {
     setAuthError(null);
     setAuthLoading(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      await signInWithPopup(firebaseAuth, googleProvider);
     } catch (err) {
       console.error("Firebase login error:", err);
       setAuthError(`Auth Error: ${err.message}`);
@@ -2865,7 +2865,7 @@ export default function App() {
       setUser(null);
 
       try {
-        await fbSignOut(auth);
+        await fbSignOut(firebaseAuth);
       } catch (authErr) {
         console.warn("Firebase auth signout warning:", authErr);
       }
@@ -2907,7 +2907,7 @@ export default function App() {
       }
 
       localStorage.clear();
-      await fbSignOut(auth);
+      await fbSignOut(firebaseAuth);
       
       setTransactions([]);
       setReceipts([]);
