@@ -65,6 +65,7 @@ DROP TABLE IF EXISTS receipts;
 CREATE TABLE receipts (
   id TEXT PRIMARY KEY,
   transaction_id TEXT,
+  room_id TEXT,
   file_url TEXT,
   bg_class TEXT,
   rotation INTEGER DEFAULT 0,
