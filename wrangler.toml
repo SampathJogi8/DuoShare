@@ -1,0 +1,12 @@
+name = "duoshare-backend"
+main = "src/worker.js"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "duoshare-db"
+database_id = "71ebb0c0-fc5a-4a58-8bc4-f58e7cde2677"
+
+[[r2_buckets]]
+binding = "MY_BUCKET"
+bucket_name = "duoshare-storage"
