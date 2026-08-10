@@ -128,10 +128,12 @@ class MockQueryBuilder {
         }
       }
 
-      return onfulfilled({ data, error: null });
+      const result = { data, error: null };
+      return typeof onfulfilled === 'function' ? onfulfilled(result) : result;
     } catch (err) {
       console.error(`MockQueryBuilder error for ${this.action} on ${this.table}:`, err);
-      return onfulfilled({ data: null, error: { message: err.message, code: err.code || 'MOCK_ERROR' } });
+      const result = { data: null, error: { message: err.message, code: err.code || 'MOCK_ERROR' } };
+      return typeof onfulfilled === 'function' ? onfulfilled(result) : result;
     }
   }
 }
