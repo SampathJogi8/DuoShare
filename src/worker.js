@@ -1,3 +1,21 @@
+async function handleBase64Image(imageUrl, id, index, env) {
+  if (typeof imageUrl === 'string' && (imageUrl.startsWith('data:image/') || imageUrl.startsWith('data:application/pdf;base64,'))) {
+    const matches = imageUrl.match(/^data:([a-zA-Z0-9-\/]+);base64,(.+)$/);
+    if (matches) {
+      const mimeType = matches[1];
+      const base64Data = matches[2];
+      const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      
+      const fileId = index !== null ? `${id}_${index}` : id;
+      await env.MY_BUCKET.put(fileId, binaryData, {
+        httpMetadata: { contentType: mimeType }
+      });
+      return `/api/images/${fileId}`;
+    }
+  }
+  return imageUrl;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -109,6 +127,24 @@ export default {
             }
           }
 
+          // Prepend origin to relative R2 image URLs
+          if (table === "receipts") {
+            const origin = url.origin;
+            for (const row of results) {
+              if (row.image_url) {
+                if (row.image_url.startsWith("[")) {
+                  try {
+                    const parsed = JSON.parse(row.image_url);
+                    const mapped = parsed.map(u => u && u.startsWith("/api/images/") ? origin + u : u);
+                    row.image_url = JSON.stringify(mapped);
+                  } catch (e) {}
+                } else if (row.image_url.startsWith("/api/images/")) {
+                  row.image_url = origin + row.image_url;
+                }
+              }
+            }
+          }
+
           return Response.json({ data: results }, { headers: corsHeaders });
         }
 
@@ -118,6 +154,23 @@ export default {
           const insertResults = [];
 
           for (const row of rows) {
+            if (table === "receipts" && row.image_url) {
+              const id = row.id || crypto.randomUUID();
+              row.id = id;
+              if (row.image_url.startsWith("[")) {
+                try {
+                  const parsed = JSON.parse(row.image_url);
+                  const cleanUrls = [];
+                  for (let i = 0; i < parsed.length; i++) {
+                    cleanUrls.push(await handleBase64Image(parsed[i], id, i, env));
+                  }
+                  row.image_url = JSON.stringify(cleanUrls);
+                } catch (e) {}
+              } else {
+                row.image_url = await handleBase64Image(row.image_url, id, null, env);
+              }
+            }
+
             const keys = Object.keys(row).filter(isValidCol);
             const placeholders = keys.map(() => "?").join(", ");
             const values = Object.values(row).map(val => typeof val === "object" ? JSON.stringify(val) : val);
@@ -132,6 +185,25 @@ export default {
 
         // --- UPDATE ---
         if (action === "update") {
+          if (table === "receipts" && data.image_url) {
+            const idFilter = filters && filters.find(f => f.column === "id");
+            const id = idFilter ? idFilter.value : null;
+            if (id) {
+              if (data.image_url.startsWith("[")) {
+                try {
+                  const parsed = JSON.parse(data.image_url);
+                  const cleanUrls = [];
+                  for (let i = 0; i < parsed.length; i++) {
+                    cleanUrls.push(await handleBase64Image(parsed[i], id, i, env));
+                  }
+                  data.image_url = JSON.stringify(cleanUrls);
+                } catch (e) {}
+              } else {
+                data.image_url = await handleBase64Image(data.image_url, id, null, env);
+              }
+            }
+          }
+
           const keys = Object.keys(data).filter(isValidCol);
           const setClause = keys.map(k => `${k} = ?`).join(", ");
           const values = keys.map(k => typeof data[k] === "object" ? JSON.stringify(data[k]) : data[k]);
@@ -182,6 +254,23 @@ export default {
           const upsertResults = [];
 
           for (const row of rows) {
+            if (table === "receipts" && row.image_url) {
+              const id = row.id || crypto.randomUUID();
+              row.id = id;
+              if (row.image_url.startsWith("[")) {
+                try {
+                  const parsed = JSON.parse(row.image_url);
+                  const cleanUrls = [];
+                  for (let i = 0; i < parsed.length; i++) {
+                    cleanUrls.push(await handleBase64Image(parsed[i], id, i, env));
+                  }
+                  row.image_url = JSON.stringify(cleanUrls);
+                } catch (e) {}
+              } else {
+                row.image_url = await handleBase64Image(row.image_url, id, null, env);
+              }
+            }
+
             let existing = null;
             if (table === "members") {
               existing = await env.DB.prepare("SELECT * FROM members WHERE room_id = ? AND uid = ?").bind(row.room_id, row.uid).first();
@@ -265,6 +354,35 @@ export default {
           }
         }
         return Response.json(results, { headers: corsHeaders });
+      }
+
+      // 3. GET /api/images/:id
+      if (url.pathname.startsWith("/api/images/") && request.method === "GET") {
+        const id = url.pathname.slice("/api/images/".length);
+        if (!id) {
+          return new Response("Missing image ID", { status: 400, headers: corsHeaders });
+        }
+        
+        // Fetch from R2 bucket
+        const object = await env.MY_BUCKET.get(id);
+        if (!object) {
+          return new Response("Image not found", { status: 404, headers: corsHeaders });
+        }
+        
+        const headers = new Headers(corsHeaders);
+        object.writeHttpMetadata(headers);
+        headers.set("etag", object.httpEtag);
+        
+        // Automatically determine content-type if not set
+        const contentType = headers.get("content-type");
+        if (!contentType || contentType === "application/octet-stream") {
+          if (id.endsWith(".png")) headers.set("content-type", "image/png");
+          else if (id.endsWith(".pdf")) headers.set("content-type", "application/pdf");
+          else if (id.endsWith(".heic")) headers.set("content-type", "image/heic");
+          else headers.set("content-type", "image/jpeg");
+        }
+        
+        return new Response(object.body, { headers });
       }
 
       return Response.json({ error: "Route not found" }, { status: 404, headers: corsHeaders });
