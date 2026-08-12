@@ -331,6 +331,43 @@ export default {
         return Response.json({ error: `Unsupported action: ${action}` }, { status: 400, headers: corsHeaders });
       }
 
+      // Auth Migration Endpoint
+      if (url.pathname === "/api/auth/migrate" && request.method === "POST") {
+        const { email, uid } = await request.json();
+        if (!email || !uid) {
+          return Response.json({ error: "Missing email or uid" }, { status: 400, headers: corsHeaders });
+        }
+
+        console.log(`Running auth migration for email: ${email}, uid: ${uid}`);
+
+        // 1. Clean up duplicate member rows in the database (keeping only one member per room and email)
+        await env.DB.prepare(`
+          DELETE FROM members 
+          WHERE id NOT IN (
+            SELECT MIN(id) 
+            FROM members 
+            GROUP BY room_id, email
+          )
+        `).run();
+
+        // 2. Find all unique old UIDs for this email
+        const oldUidsResult = await env.DB.prepare("SELECT DISTINCT uid FROM members WHERE email = ? AND uid != ?").bind(email, uid).all();
+        const oldUids = oldUidsResult.results.map(r => r.uid);
+
+        console.log(`Found old UIDs to migrate: ${JSON.stringify(oldUids)}`);
+
+        // 3. Migrate each old UID to the new Firebase UID
+        for (const oldUid of oldUids) {
+          await env.DB.prepare("UPDATE members SET uid = ? WHERE email = ? AND uid = ?").bind(uid, email, oldUid).run();
+          await env.DB.prepare("UPDATE users SET id = ?, uid = ?, email = ? WHERE uid = ?").bind(uid, uid, email, oldUid).run();
+          await env.DB.prepare("UPDATE transactions SET paid_by_uid = ? WHERE paid_by_uid = ?").bind(uid, oldUid).run();
+          await env.DB.prepare("UPDATE transactions SET created_by = ? WHERE created_by = ?").bind(uid, oldUid).run();
+          await env.DB.prepare("UPDATE activity_logs SET user_id = ? WHERE user_id = ?").bind(uid, oldUid).run();
+        }
+
+        return Response.json({ success: true, migratedUidsCount: oldUids.length }, { headers: corsHeaders });
+      }
+
       // Legacy fallback endpoints
       if (url.pathname === "/api/users" && request.method === "GET") {
         const { results } = await env.DB.prepare("SELECT * FROM users").all();

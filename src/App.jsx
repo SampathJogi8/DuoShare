@@ -1749,6 +1749,24 @@ export default function App() {
   };
 
   const handleAuthUser = useCallback(async (currentUser) => {
+    // Run self-healing migration from old Supabase UIDs to Firebase UID
+    if (currentUser && currentUser.email) {
+      try {
+        await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/auth/migrate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: currentUser.email,
+            uid: currentUser.id
+          })
+        });
+      } catch (err) {
+        console.warn('Failed to run authentication migration:', err);
+      }
+    }
+
     const cachedNickname = localStorage.getItem('userNickname');
     const displayName = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name;
     const finalNickname = cachedNickname && cachedNickname !== 'You' ? cachedNickname : (displayName || 'You');
