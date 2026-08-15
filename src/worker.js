@@ -30,6 +30,24 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
     try {
+      // Self-healing migration for null IDs in SQLite database
+      const tablesToHeal = ["transactions", "receipts", "members", "rooms", "users"];
+      for (const tbl of tablesToHeal) {
+        try {
+          const nullRows = await env.DB.prepare(`SELECT rowid FROM ${tbl} WHERE id IS NULL LIMIT 50`).all();
+          if (nullRows && nullRows.results && nullRows.results.length > 0) {
+            console.log(`[Self-Healing] Resolving null IDs for ${nullRows.results.length} rows in ${tbl}`);
+            for (const r of nullRows.results) {
+              const prefix = tbl.slice(0, 3);
+              const newId = `${prefix}-${crypto.randomUUID()}`;
+              await env.DB.prepare(`UPDATE ${tbl} SET id = ? WHERE rowid = ?`).bind(newId, r.rowid).run();
+            }
+          }
+        } catch (e) {
+          console.error(`[Self-Healing] ${tbl} check failed:`, e);
+        }
+      }
+
       // 0. GET /
       if ((url.pathname === "/" || url.pathname === "/api") && request.method === "GET") {
         return Response.json({ status: "alive", message: "DuoShare Cloudflare Worker API is running successfully." }, { headers: corsHeaders });
@@ -154,9 +172,12 @@ export default {
           const insertResults = [];
 
           for (const row of rows) {
+            if (!row.id && ["transactions", "receipts", "members", "rooms", "users"].includes(table)) {
+              row.id = crypto.randomUUID();
+            }
+
             if (table === "receipts" && row.image_url) {
-              const id = row.id || crypto.randomUUID();
-              row.id = id;
+              const id = row.id;
               if (row.image_url.startsWith("[")) {
                 try {
                   const parsed = JSON.parse(row.image_url);
@@ -363,6 +384,31 @@ export default {
           await env.DB.prepare("UPDATE transactions SET paid_by_uid = ? WHERE paid_by_uid = ?").bind(uid, oldUid).run();
           await env.DB.prepare("UPDATE transactions SET created_by = ? WHERE created_by = ?").bind(uid, oldUid).run();
           await env.DB.prepare("UPDATE activity_logs SET user_id = ? WHERE user_id = ?").bind(uid, oldUid).run();
+
+          // 4. Migrate splits JSON array inside transactions table
+          const likePattern = `%${oldUid}%`;
+          const txsWithOldUid = await env.DB.prepare("SELECT id, splits FROM transactions WHERE splits LIKE ?").bind(likePattern).all();
+          if (txsWithOldUid && txsWithOldUid.results) {
+            for (const t of txsWithOldUid.results) {
+              try {
+                let splitsArr = typeof t.splits === 'string' ? JSON.parse(t.splits) : t.splits;
+                if (splitsArr && Array.isArray(splitsArr)) {
+                  let updated = false;
+                  splitsArr.forEach(s => {
+                    if (s.uid === oldUid) {
+                      s.uid = uid;
+                      updated = true;
+                    }
+                  });
+                  if (updated) {
+                    await env.DB.prepare("UPDATE transactions SET splits = ? WHERE id = ?").bind(JSON.stringify(splitsArr), t.id).run();
+                  }
+                }
+              } catch (e) {
+                console.error("Failed to update split JSON in auth migration:", e);
+              }
+            }
+          }
         }
 
         return Response.json({ success: true, migratedUidsCount: oldUids.length }, { headers: corsHeaders });

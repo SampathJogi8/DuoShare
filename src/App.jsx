@@ -3216,8 +3216,13 @@ export default function App() {
       // Determine payer UID
       let payerUid = t.paidByUid;
       if (!payerUid) {
-        const isSelf = t.paidBy === userNickname;
-        payerUid = isSelf ? currentUid : 'roommate';
+        const match = members.find(m => m.nickname === t.paidBy || m.name === t.paidBy || m.email === t.paidBy);
+        if (match) {
+          payerUid = match.uid;
+        } else {
+          const isSelf = t.paidBy === userNickname;
+          payerUid = isSelf ? currentUid : 'roommate';
+        }
       }
 
       if (isPayment) {
@@ -3240,9 +3245,20 @@ export default function App() {
 
         let receiverUid = null;
         if (splitsArr && Array.isArray(splitsArr)) {
-          const recSplit = splitsArr.find(s => s.uid !== payerUid && (Number(s.amount) > 0 || splitsArr.length === 2));
+          const recSplit = splitsArr.find(s => {
+            let sUid = s.uid;
+            if (!sUid) {
+              const match = members.find(m => m.nickname === s.nickname || m.name === s.nickname);
+              sUid = match ? match.uid : null;
+            }
+            return sUid !== payerUid && (Number(s.amount) > 0 || splitsArr.length === 2);
+          });
           if (recSplit) {
             receiverUid = recSplit.uid;
+            if (!receiverUid) {
+              const match = members.find(m => m.nickname === recSplit.nickname || m.name === recSplit.nickname);
+              receiverUid = match ? match.uid : null;
+            }
             if (!receiverUid) {
               const isSelf = recSplit.nickname === userNickname || recSplit.nickname === 'Alex';
               receiverUid = isSelf ? currentUid : 'roommate';
@@ -3275,9 +3291,13 @@ export default function App() {
         }
 
         // Subtract split shares from everyone
-        if (t.splits && Array.isArray(t.splits)) {
+        if (t.splits && Array.isArray(t.splits) && t.splits.length > 0) {
           t.splits.forEach(split => {
             let splitUid = split.uid;
+            if (!splitUid) {
+              const match = members.find(m => m.nickname === split.nickname || m.name === split.nickname);
+              splitUid = match ? match.uid : null;
+            }
             if (!splitUid) {
               const isSelf = split.nickname === userNickname || split.nickname === 'Alex';
               splitUid = isSelf ? currentUid : 'roommate';
@@ -3300,16 +3320,25 @@ export default function App() {
             }
           });
         } else {
-          // Legacy splits fallback (50/50 shared vs 100% personal)
+          // Fallback when splits is empty/missing: split equally among ALL room members
           if (t.isShared) {
             sharedSpend += amount;
-            const halfShare = amount / 2;
-            roomBalances[currentUid] -= halfShare;
-            const roommateUid = members.find(m => m.uid !== currentUid)?.uid || 'roommate';
-            if (roomBalances[roommateUid] !== undefined) {
-              roomBalances[roommateUid] -= halfShare;
+            const mKeys = Object.keys(roomBalances);
+            if (mKeys.length > 0) {
+              const share = amount / mKeys.length;
+              mKeys.forEach(k => {
+                roomBalances[k] -= share;
+              });
             } else {
-              roomBalances[roommateUid] = -halfShare;
+              // Legacy 50/50 fallback if no members list
+              const halfShare = amount / 2;
+              roomBalances[currentUid] -= halfShare;
+              const roommateUid = members.find(m => m.uid !== currentUid)?.uid || 'roommate';
+              if (roomBalances[roommateUid] !== undefined) {
+                roomBalances[roommateUid] -= halfShare;
+              } else {
+                roomBalances[roommateUid] = -halfShare;
+              }
             }
           } else {
             if (payerUid === currentUid) {

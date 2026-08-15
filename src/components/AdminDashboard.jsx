@@ -243,9 +243,20 @@ export default function AdminDashboard({
         }
 
         if (splitsArr && Array.isArray(splitsArr)) {
-          const recSplit = splitsArr.find(s => s.uid !== payerUid && (Number(s.amount) > 0 || splitsArr.length === 2));
+          const recSplit = splitsArr.find(s => {
+            let sUid = s.uid;
+            if (!sUid) {
+              const match = settleRoomMembers.find(m => m.nickname === s.nickname || m.name === s.nickname);
+              sUid = match ? (match.uid || match.id) : null;
+            }
+            return sUid !== payerUid && (Number(s.amount) > 0 || splitsArr.length === 2);
+          });
           if (recSplit) {
             receiverUid = recSplit.uid;
+            if (!receiverUid) {
+              const match = settleRoomMembers.find(m => m.nickname === recSplit.nickname || m.name === recSplit.nickname);
+              receiverUid = match ? (match.uid || match.id) : null;
+            }
           }
         }
 
