@@ -11870,16 +11870,22 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </tr>
             </thead>
             <tbody>
-              ${fundSpends.map(s => `
-                <tr>
-                  <td style="font-weight: 700;">${s.title}</td>
-                  <td><span class="badge">${getDisplayCategory(s.splitType, isAuditMode)}</span></td>
-                  <td>${new Date(s.date).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                  <td class="amount-col ${s.amount < 0 ? 'inflow' : 'outflow'}">
-                    ${s.amount < 0 ? `+ ${formatINR(Math.abs(s.amount))}` : `- ${formatINR(s.amount)}`}
-                  </td>
-                </tr>
-              `).join('')}
+              ${fundSpends.map(s => {
+                const dateObj = s.date ? new Date(s.date) : null;
+                const formattedDate = (dateObj && !isNaN(dateObj.getTime()))
+                  ? dateObj.toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' })
+                  : 'N/A';
+                return `
+                  <tr>
+                    <td style="font-weight: 700;">${s.title}</td>
+                    <td><span class="badge">${getDisplayCategory(s.splitType, isAuditMode)}</span></td>
+                    <td>${formattedDate}</td>
+                    <td class="amount-col ${s.amount < 0 ? 'inflow' : 'outflow'}">
+                      ${s.amount < 0 ? `+ ${formatINR(Math.abs(s.amount))}` : `- ${formatINR(s.amount)}`}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
 
@@ -11900,13 +11906,34 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       iframe.contentDocument.close();
       
       setTimeout(() => {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 1000);
+        try {
+          if (typeof iframe.contentWindow.print !== 'function') {
+            throw new Error('print function not available on contentWindow');
+          }
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+          }, 1000);
+          triggerToast('Opening PDF print dialog...');
+        } catch (printErr) {
+          console.warn('iframe.print failed, falling back to file download:', printErr);
+          try {
+            document.body.removeChild(iframe);
+          } catch(e) {}
+          // Fallback: download HTML blob
+          const blob = new Blob([htmlContent], { type: 'text/html' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${fund.title.replace(/\s+/g, '_')}_statement.html`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          triggerToast('Print not supported. Statement downloaded as HTML file.');
+        }
       }, 500);
-      triggerToast('Opening PDF print dialog...');
     } catch (err) {
       console.error(err);
       triggerToast('Failed to generate PDF statement.');
