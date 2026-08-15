@@ -662,6 +662,14 @@ export default function App() {
     return 0;
   });
 
+  // Force disable simulated latency on mount to ensure real-time speed
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tallyin_simulated_latency', '0');
+      setSimulatedLatency(0);
+    }
+  }, []);
+
   // Real-time System Admin Channel & Storage Sync
   useEffect(() => {
     const sysChannel = supabase.channel('system_admin_channel');
@@ -1985,9 +1993,9 @@ export default function App() {
         }))
         .filter(t => {
           const currentUid = user?.id || auth.currentUser?.uid || 'anonymous';
-          // Fund tracker logs (__FUND_INIT__, __FUND_SPEND__) are shown only to their creator/payer
+          // Fund tracker logs (__FUND_INIT__, __FUND_SPEND__) are shown to all members of the room
           if (t.category === '__FUND_INIT__' || t.category === '__FUND_SPEND__') {
-            return t.paidByUid === currentUid || t.createdBy === currentUid;
+            return true;
           }
           // Private bills (__BILL__, __CHORE__) with isShared === false are shown only to their creator/payer
           if ((t.category === '__BILL__' || t.category === '__CHORE__') && t.isShared === false) {
