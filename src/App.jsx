@@ -1970,7 +1970,16 @@ export default function App() {
           isEdited: t.is_edited,
           splitType: t.split_type,
           split: t.split,
-          splits: t.splits,
+          splits: (() => {
+            if (typeof t.splits === 'string') {
+              try {
+                return JSON.parse(t.splits);
+              } catch (e) {
+                return [];
+              }
+            }
+            return t.splits || [];
+          })(),
           createdBy: t.created_by,
           imageUrl: t.image_url
         }))
@@ -3211,57 +3220,103 @@ export default function App() {
         payerUid = isSelf ? currentUid : 'roommate';
       }
 
-      // Add paid amount to payer's balance
-      if (roomBalances[payerUid] !== undefined) {
-        roomBalances[payerUid] += amount;
-      } else {
-        roomBalances[payerUid] = amount;
-      }
+      if (isPayment) {
+        // Add paid amount to payer's balance (since they paid, their net balance increases)
+        if (roomBalances[payerUid] !== undefined) {
+          roomBalances[payerUid] += amount;
+        } else {
+          roomBalances[payerUid] = amount;
+        }
 
-      // Subtract split shares from everyone
-      if (t.splits && Array.isArray(t.splits)) {
-        t.splits.forEach(split => {
-          let splitUid = split.uid;
-          if (!splitUid) {
-            const isSelf = split.nickname === userNickname || split.nickname === 'Alex';
-            splitUid = isSelf ? currentUid : 'roommate';
+        // Parse splits safely if string
+        let splitsArr = t.splits;
+        if (typeof splitsArr === 'string') {
+          try {
+            splitsArr = JSON.parse(splitsArr);
+          } catch (e) {
+            splitsArr = null;
           }
-          
-          if (roomBalances[splitUid] !== undefined) {
-            roomBalances[splitUid] -= Number(split.amount) || 0;
-          } else {
-            roomBalances[splitUid] = -(Number(split.amount) || 0);
-          }
+        }
 
-          // Accumulate spend categories for the current logged-in user based on their share:
-          if (splitUid === currentUid && !isPayment) {
-            const shareAmt = Number(split.amount) || 0;
-            if (t.isShared) {
-              sharedSpend += shareAmt;
-            } else {
-              personalSpend += shareAmt;
+        let receiverUid = null;
+        if (splitsArr && Array.isArray(splitsArr)) {
+          const recSplit = splitsArr.find(s => s.uid !== payerUid && (Number(s.amount) > 0 || splitsArr.length === 2));
+          if (recSplit) {
+            receiverUid = recSplit.uid;
+            if (!receiverUid) {
+              const isSelf = recSplit.nickname === userNickname || recSplit.nickname === 'Alex';
+              receiverUid = isSelf ? currentUid : 'roommate';
             }
           }
-        });
-      } else {
-        // Legacy splits fallback (50/50 shared vs 100% personal)
-        if (t.isShared) {
-          if (!isPayment) {
-            sharedSpend += amount;
-          }
-          const halfShare = amount / 2;
-          roomBalances[currentUid] -= halfShare;
-          const roommateUid = members.find(m => m.uid !== currentUid)?.uid || 'roommate';
-          if (roomBalances[roommateUid] !== undefined) {
-            roomBalances[roommateUid] -= halfShare;
+        }
+
+        // Fallback receiver if splits are empty or invalid
+        if (!receiverUid) {
+          const otherMember = members.find(m => m.uid !== payerUid);
+          if (otherMember) {
+            receiverUid = otherMember.uid;
           } else {
-            roomBalances[roommateUid] = -halfShare;
+            receiverUid = payerUid === currentUid ? 'roommate' : currentUid;
           }
+        }
+
+        // Subtract paid amount from receiver's balance (since they received, their net balance decreases)
+        if (roomBalances[receiverUid] !== undefined) {
+          roomBalances[receiverUid] -= amount;
         } else {
-          if (payerUid === currentUid && !isPayment) {
-            personalSpend += amount;
+          roomBalances[receiverUid] = -amount;
+        }
+      } else {
+        // Regular expense balance calculation
+        if (roomBalances[payerUid] !== undefined) {
+          roomBalances[payerUid] += amount;
+        } else {
+          roomBalances[payerUid] = amount;
+        }
+
+        // Subtract split shares from everyone
+        if (t.splits && Array.isArray(t.splits)) {
+          t.splits.forEach(split => {
+            let splitUid = split.uid;
+            if (!splitUid) {
+              const isSelf = split.nickname === userNickname || split.nickname === 'Alex';
+              splitUid = isSelf ? currentUid : 'roommate';
+            }
+            
+            if (roomBalances[splitUid] !== undefined) {
+              roomBalances[splitUid] -= Number(split.amount) || 0;
+            } else {
+              roomBalances[splitUid] = -(Number(split.amount) || 0);
+            }
+
+            // Accumulate spend categories for the current logged-in user based on their share:
+            if (splitUid === currentUid) {
+              const shareAmt = Number(split.amount) || 0;
+              if (t.isShared) {
+                sharedSpend += shareAmt;
+              } else {
+                personalSpend += shareAmt;
+              }
+            }
+          });
+        } else {
+          // Legacy splits fallback (50/50 shared vs 100% personal)
+          if (t.isShared) {
+            sharedSpend += amount;
+            const halfShare = amount / 2;
+            roomBalances[currentUid] -= halfShare;
+            const roommateUid = members.find(m => m.uid !== currentUid)?.uid || 'roommate';
+            if (roomBalances[roommateUid] !== undefined) {
+              roomBalances[roommateUid] -= halfShare;
+            } else {
+              roomBalances[roommateUid] = -halfShare;
+            }
+          } else {
+            if (payerUid === currentUid) {
+              personalSpend += amount;
+            }
+            roomBalances[payerUid] -= amount;
           }
-          roomBalances[payerUid] -= amount;
         }
       }
     });

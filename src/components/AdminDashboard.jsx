@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   ShieldAlert, 
   Power, 
@@ -24,6 +24,7 @@ import {
   PieChart,
   Building2,
   Flame,
+  HandCoins,
   Terminal,
   FileText,
   Download,
@@ -106,6 +107,381 @@ export default function AdminDashboard({
     totalTransactions: 0,
     totalReceipts: 0
   });
+
+  // Settlements form states
+  const [selectedSettleRoomId, setSelectedSettleRoomId] = useState('');
+  const [settleRoomMembers, setSettleRoomMembers] = useState([]);
+  const [settleRoomTransactions, setSettleRoomTransactions] = useState([]);
+  const [loadingSettleRoom, setLoadingSettleRoom] = useState(false);
+  const [customSettlePayer, setCustomSettlePayer] = useState('');
+  const [customSettleReceiver, setCustomSettleReceiver] = useState('');
+  const [customSettleAmount, setCustomSettleAmount] = useState('');
+  const [isSubmittingAdminSettle, setIsSubmittingAdminSettle] = useState(false);
+
+  // Redesigned Settlements tab states
+  const [settleMode, setSettleMode] = useState('fast'); // 'fast' | 'advanced'
+  const [advSettleTitle, setAdvSettleTitle] = useState('');
+  const [advSettleDate, setAdvSettleDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [advSettleTime, setAdvSettleTime] = useState(() => {
+    const d = new Date();
+    const hrs = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    return `${hrs}:${mins}`;
+  });
+  const [advSettleMethod, setAdvSettleMethod] = useState('UPI'); // 'UPI' | 'Cash' | 'Bank Transfer' | 'Other'
+  const [advSettleNotes, setAdvSettleNotes] = useState('');
+  const [advSettleIsShared, setAdvSettleIsShared] = useState(true);
+
+  // Fetch Room Members & Transactions for Settlements tab
+  const fetchSettleRoomData = useCallback(async (roomId) => {
+    if (!roomId) return;
+    setLoadingSettleRoom(true);
+    try {
+      const [membersRes, txRes] = await Promise.all([
+        supabase.from('members').select('*').eq('room_id', roomId),
+        supabase.from('transactions').select('*').eq('room_id', roomId)
+      ]);
+      
+      if (membersRes.data) {
+        setSettleRoomMembers(membersRes.data);
+        if (membersRes.data.length > 0) {
+          const defaultPayerUid = membersRes.data[0].uid || membersRes.data[0].id || '';
+          const nextMember = membersRes.data.find(m => (m.uid || m.id) !== defaultPayerUid);
+          const defaultReceiverUid = nextMember ? (nextMember.uid || nextMember.id) : '';
+          
+          setCustomSettlePayer(defaultPayerUid);
+          setCustomSettleReceiver(defaultReceiverUid);
+          
+          const pName = membersRes.data[0].nickname || membersRes.data[0].name || 'Payer';
+          const rName = nextMember ? (nextMember.nickname || nextMember.name) : 'Receiver';
+          setAdvSettleTitle(`Payment: ${pName} to ${rName}`);
+        }
+      }
+      if (txRes.data) {
+        const parsedTx = txRes.data.map(t => {
+          let splits = t.splits;
+          if (typeof splits === 'string') {
+            try {
+              splits = JSON.parse(splits);
+            } catch (e) {
+              splits = null;
+            }
+          }
+          return { ...t, splits };
+        });
+        setSettleRoomTransactions(parsedTx);
+      }
+    } catch (e) {
+      console.error("Failed to fetch room data for settlement:", e);
+      if (triggerToast) triggerToast("Failed to load room data.");
+    } finally {
+      setLoadingSettleRoom(false);
+    }
+  }, [triggerToast]);
+
+  useEffect(() => {
+    if (selectedSettleRoomId) {
+      fetchSettleRoomData(selectedSettleRoomId);
+    } else {
+      setSettleRoomMembers([]);
+      setSettleRoomTransactions([]);
+    }
+  }, [selectedSettleRoomId, fetchSettleRoomData]);
+
+  useEffect(() => {
+    if (settleRoomMembers.length > 0 && customSettlePayer && customSettleReceiver) {
+      const p = settleRoomMembers.find(m => (m.uid || m.id) === customSettlePayer);
+      const r = settleRoomMembers.find(m => (m.uid || m.id) === customSettleReceiver);
+      if (p && r) {
+        setAdvSettleTitle(`Payment: ${p.nickname || p.name} to ${r.nickname || r.name}`);
+      }
+    }
+  }, [customSettlePayer, customSettleReceiver, settleRoomMembers]);
+
+  // Calculate roommate balances for selected room
+  const settleRoomBalances = useMemo(() => {
+    const data = settleRoomTransactions.filter(t => t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__BILL__' && t.category !== '__CHORE__' && t.category !== '__DELETE_PROPOSAL__');
+    const roomBalances = {};
+    
+    // Initialize balances for all room members
+    settleRoomMembers.forEach(m => {
+      const key = m.uid || m.id;
+      if (key) roomBalances[key] = 0;
+    });
+
+    data.forEach(t => {
+      const amount = Number(t.amount) || 0;
+      const isPayment = t.category === 'Payment';
+      let payerUid = t.paid_by_uid || t.paidByUid;
+
+      if (!payerUid) {
+        const match = settleRoomMembers.find(m => m.nickname === t.paid_by || m.name === t.paid_by);
+        if (match) {
+          payerUid = match.uid || match.id;
+        }
+      }
+
+      // Add paid amount to payer's balance
+      if (payerUid) {
+        if (roomBalances[payerUid] !== undefined) {
+          roomBalances[payerUid] += amount;
+        } else {
+          roomBalances[payerUid] = amount;
+        }
+      }
+
+      // Handle split shares
+      if (isPayment) {
+        let receiverUid = null;
+        let splitsArr = t.splits;
+        if (typeof splitsArr === 'string') {
+          try {
+            splitsArr = JSON.parse(splitsArr);
+          } catch (e) {
+            splitsArr = null;
+          }
+        }
+
+        if (splitsArr && Array.isArray(splitsArr)) {
+          const recSplit = splitsArr.find(s => s.uid !== payerUid && (Number(s.amount) > 0 || splitsArr.length === 2));
+          if (recSplit) {
+            receiverUid = recSplit.uid;
+          }
+        }
+
+        if (!receiverUid && payerUid) {
+          const otherMember = settleRoomMembers.find(m => (m.uid || m.id) !== payerUid);
+          if (otherMember) {
+            receiverUid = otherMember.uid || otherMember.id;
+          }
+        }
+
+        if (receiverUid) {
+          if (roomBalances[receiverUid] !== undefined) {
+            roomBalances[receiverUid] -= amount;
+          } else {
+            roomBalances[receiverUid] = -amount;
+          }
+        }
+      } else {
+        // Regular expense split logic
+        let splitsArr = t.splits;
+        if (typeof splitsArr === 'string') {
+          try {
+            splitsArr = JSON.parse(splitsArr);
+          } catch (e) {
+            splitsArr = null;
+          }
+        }
+
+        if (splitsArr && Array.isArray(splitsArr) && splitsArr.length > 0) {
+          splitsArr.forEach(split => {
+            let splitUid = split.uid;
+            if (!splitUid) {
+              const match = settleRoomMembers.find(m => m.nickname === split.nickname || m.name === split.nickname);
+              if (match) splitUid = match.uid || match.id;
+            }
+
+            if (splitUid) {
+              if (roomBalances[splitUid] !== undefined) {
+                roomBalances[splitUid] -= Number(split.amount) || 0;
+              } else {
+                roomBalances[splitUid] = -(Number(split.amount) || 0);
+              }
+            }
+          });
+        } else {
+          const mKeys = Object.keys(roomBalances);
+          if (mKeys.length > 0) {
+            const share = amount / mKeys.length;
+            mKeys.forEach(k => {
+              roomBalances[k] -= share;
+            });
+          }
+        }
+      }
+    });
+
+    Object.keys(roomBalances).forEach(k => {
+      roomBalances[k] = Math.round(roomBalances[k] * 100) / 100;
+    });
+
+    return roomBalances;
+  }, [settleRoomTransactions, settleRoomMembers]);
+
+  // Suggested Transfers to settle up cleanly
+  const settleRoomSuggestedTransfers = useMemo(() => {
+    const debtors = [];
+    const creditors = [];
+    
+    Object.entries(settleRoomBalances).forEach(([uid, bal]) => {
+      const member = settleRoomMembers.find(m => (m.uid || m.id) === uid);
+      if (member) {
+        if (bal < -0.01) {
+          debtors.push({ uid, nickname: member.nickname || member.name || uid, amount: Math.abs(bal) });
+        } else if (bal > 0.01) {
+          creditors.push({ uid, nickname: member.nickname || member.name || uid, amount: bal });
+        }
+      }
+    });
+    
+    debtors.sort((a, b) => b.amount - a.amount);
+    creditors.sort((a, b) => b.amount - a.amount);
+    
+    const transfers = [];
+    let dIdx = 0;
+    let cIdx = 0;
+    
+    while (dIdx < debtors.length && cIdx < creditors.length) {
+      const debtor = debtors[dIdx];
+      const creditor = creditors[cIdx];
+      
+      const payment = Math.min(debtor.amount, creditor.amount);
+      if (payment > 0.01) {
+        transfers.push({
+          fromUid: debtor.uid,
+          fromName: debtor.nickname || debtor.name || debtor.uid,
+          toUid: creditor.uid,
+          toName: creditor.nickname || creditor.name || creditor.uid,
+          amount: payment
+        });
+      }
+      
+      debtor.amount -= payment;
+      creditor.amount -= payment;
+      
+      if (debtor.amount <= 0.01) dIdx++;
+      if (creditor.amount <= 0.01) cIdx++;
+    }
+    
+    return transfers;
+  }, [settleRoomBalances, settleRoomMembers]);
+
+  const handleAdminSubmitSettle = async (e) => {
+    if (e) e.preventDefault();
+    const amountNum = parseFloat(customSettleAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      if (triggerToast) triggerToast('Please enter a valid settlement amount.');
+      return;
+    }
+    if (!customSettlePayer || !customSettleReceiver || customSettlePayer === customSettleReceiver) {
+      if (triggerToast) triggerToast('Payer and receiver cannot be the same roommate.');
+      return;
+    }
+
+    setIsSubmittingAdminSettle(true);
+    try {
+      const payer = settleRoomMembers.find(m => (m.uid || m.id) === customSettlePayer);
+      const receiver = settleRoomMembers.find(m => (m.uid || m.id) === customSettleReceiver);
+      if (!payer || !receiver) {
+        if (triggerToast) triggerToast('Payer or receiver not found in room.');
+        return;
+      }
+
+      // Time formatter helper
+      const formatTimeTo12h = (time24) => {
+        if (!time24) return '';
+        try {
+          const [hrs, mins] = time24.split(':').map(Number);
+          const suffix = hrs >= 12 ? 'PM' : 'AM';
+          const displayHrs = hrs % 12 || 12;
+          return `${displayHrs}:${String(mins).padStart(2, '0')} ${suffix}`;
+        } catch (err) {
+          return time24;
+        }
+      };
+
+      const title = settleMode === 'advanced' && advSettleTitle.trim()
+        ? advSettleTitle.trim()
+        : `Admin Payment: ${payer.nickname || payer.name} to ${receiver.nickname || receiver.name}`;
+      
+      const date = settleMode === 'advanced' && advSettleDate
+        ? advSettleDate
+        : new Date().toISOString().slice(0, 10);
+
+      const time = settleMode === 'advanced' && advSettleTime
+        ? formatTimeTo12h(advSettleTime)
+        : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+
+      const isShared = settleMode === 'advanced' ? advSettleIsShared : true;
+
+      // Pack payment method and custom notes into split string
+      const paymentMetadata = {
+        recordedBy: 'Admin Portal',
+        method: settleMode === 'advanced' ? advSettleMethod : 'Direct Settle',
+        notes: settleMode === 'advanced' ? advSettleNotes.trim() : ''
+      };
+
+      const newPayment = {
+        room_id: selectedSettleRoomId,
+        title,
+        amount: amountNum,
+        category: 'Payment',
+        date,
+        time,
+        paid_by: payer.nickname || payer.name || payer.email || 'Admin',
+        paid_by_uid: customSettlePayer,
+        is_shared: isShared ? 1 : 0,
+        split_type: 'amount',
+        split: JSON.stringify(paymentMetadata),
+        splits: [
+          { uid: customSettlePayer, nickname: payer.nickname || payer.name || payer.email, amount: 0 },
+          { uid: customSettleReceiver, nickname: receiver.nickname || receiver.name || receiver.email, amount: amountNum }
+        ]
+      };
+
+      const { data, error } = await supabase.from('transactions').insert([newPayment]);
+      if (error) throw error;
+
+      if (triggerToast) triggerToast(`Payment of ₹${amountNum} recorded successfully!`);
+      logAuditAction('settle_payment', `Admin recorded payment of ₹${amountNum} in room ${selectedSettleRoomId} (Mode: ${settleMode.toUpperCase()})`);
+      
+      setCustomSettleAmount('');
+      setAdvSettleNotes('');
+      fetchSettleRoomData(selectedSettleRoomId);
+    } catch (err) {
+      console.error(err);
+      if (triggerToast) triggerToast(`Failed to record payment: ${err.message}`);
+    } finally {
+      setIsSubmittingAdminSettle(false);
+    }
+  };
+
+  const handleAdminQuickSettle = async (fromUid, toUid, amount) => {
+    const payer = settleRoomMembers.find(m => (m.uid || m.id) === fromUid);
+    const receiver = settleRoomMembers.find(m => (m.uid || m.id) === toUid);
+    if (!payer || !receiver || amount <= 0) return;
+
+    try {
+      const newPayment = {
+        room_id: selectedSettleRoomId,
+        title: `Admin Payment: ${payer.nickname || payer.name} to ${receiver.nickname || receiver.name}`,
+        amount: Number(amount),
+        category: 'Payment',
+        date: new Date().toISOString().slice(0, 10),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+        paid_by: payer.nickname || payer.name || payer.email || 'Admin',
+        paid_by_uid: fromUid,
+        is_shared: true,
+        split_type: 'amount',
+        splits: [
+          { uid: fromUid, nickname: payer.nickname || payer.name || payer.email, amount: 0 },
+          { uid: toUid, nickname: receiver.nickname || receiver.name || receiver.email, amount: Number(amount) }
+        ]
+      };
+
+      const { data, error } = await supabase.from('transactions').insert([newPayment]);
+      if (error) throw error;
+
+      if (triggerToast) triggerToast(`⚡ Quick settled ₹${amount} successfully!`);
+      logAuditAction('settle_payment', `Admin recorded quick payment of ₹${amount} in room ${selectedSettleRoomId} from ${payer.nickname || payer.name} to ${receiver.nickname || receiver.name}`);
+      
+      fetchSettleRoomData(selectedSettleRoomId);
+    } catch (err) {
+      console.error(err);
+      if (triggerToast) triggerToast(`Failed to record quick payment: ${err.message}`);
+    }
+  };
 
   // Measure Supabase REST Ping Latency
   const measurePing = useCallback(async () => {
@@ -1108,6 +1484,18 @@ export default function AdminDashboard({
         >
           <PieChart className="w-3.5 h-3.5 text-emerald-500" />
           <span>Financial Audit</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('settlements')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'settlements'
+              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+          }`}
+        >
+          <HandCoins className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+          <span>Settle Payments</span>
         </button>
 
         <button
@@ -2134,6 +2522,409 @@ export default function AdminDashboard({
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tab: Settle Payments */}
+      {activeTab === 'settlements' && (
+        <div className="hud-card rounded-3xl p-6 space-y-6">
+          
+          {/* Header & Room Selector */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4 gap-4">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                <HandCoins className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
+                Platform Room Settlement Center
+              </h3>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                Audit roommate balances, suggested transfers, and record custom or fast settlement payments.
+              </p>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Room Dropdown Selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">Select Room:</span>
+                <select
+                  value={selectedSettleRoomId}
+                  onChange={e => setSelectedSettleRoomId(e.target.value)}
+                  className="px-3.5 py-2 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
+                >
+                  <option value="">-- Choose Room --</option>
+                  {allSystemRooms.map(r => (
+                    <option key={r.roomId} value={r.roomId}>
+                      🏠 {r.roomName} ({r.roomId})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Mode Toggle Switch (Tabs look-and-feel) */}
+              {selectedSettleRoomId && (
+                <div className="bg-[#F4F7F4] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-0.5 rounded-xl flex items-center shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setSettleMode('fast')}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black tracking-wide uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                      settleMode === 'fast'
+                        ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                        : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-white'
+                    }`}
+                  >
+                    <Zap className="w-3 h-3" />
+                    <span>1-Tap Settle</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettleMode('advanced')}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black tracking-wide uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                      settleMode === 'advanced'
+                        ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                        : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-white'
+                    }`}
+                  >
+                    <Sliders className="w-3 h-3" />
+                    <span>Advanced</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Main content body */}
+          {!selectedSettleRoomId ? (
+            <div className="text-center py-16 space-y-3 bg-[#F4F7F4]/40 dark:bg-[#161D20]/40 rounded-3xl border border-dashed border-[#E3E8E3] dark:border-slate-800">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#A3E635] flex items-center justify-center mx-auto shadow-sm">
+                <Home className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-black text-[#1A3827] dark:text-slate-200">No Room Selected</p>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400 max-w-sm mx-auto">
+                  Choose a shared roommate space from the dropdown selector above to analyze balances and settle payments.
+                </p>
+              </div>
+            </div>
+          ) : loadingSettleRoom ? (
+            <div className="flex flex-col items-center justify-center py-16 space-y-3">
+              <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-bold">Retrieving room financial state...</p>
+            </div>
+          ) : (
+            <div className="space-y-6 animate-fade-in">
+              
+              {/* Common Indicators: Members, Imbalance */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-2xl space-y-1">
+                  <span className="text-[10px] font-extrabold uppercase text-emerald-800 dark:text-emerald-300">Total Imbalance</span>
+                  <p className="text-2xl font-mono font-black text-emerald-900 dark:text-emerald-200">
+                    ₹{(() => {
+                      const totalImbalance = Object.values(settleRoomBalances)
+                        .filter(b => b > 0)
+                        .reduce((sum, b) => sum + b, 0);
+                      return totalImbalance.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+                    })()}
+                  </p>
+                  <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Sum of outstanding roommate credit</p>
+                </div>
+
+                <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl space-y-1">
+                  <span className="text-[10px] font-extrabold uppercase text-blue-800 dark:text-blue-300">Redesigned Settle Mode</span>
+                  <p className="text-xl font-black text-blue-900 dark:text-blue-200 uppercase tracking-wide mt-1 animate-pulse">
+                    {settleMode === 'fast' ? '⚡ 1-Tap Settle' : '⚙️ Advanced Options'}
+                  </p>
+                  <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400">Mode switchable via top toggle</p>
+                </div>
+
+                <div className="p-4 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/50 rounded-2xl space-y-1">
+                  <span className="text-[10px] font-extrabold uppercase text-purple-800 dark:text-purple-300">Suggested Transfers</span>
+                  <p className="text-2xl font-mono font-black text-purple-900 dark:text-purple-200">
+                    {settleRoomSuggestedTransfers.length}
+                  </p>
+                  <p className="text-[10px] font-bold text-purple-700 dark:text-purple-400">Greedy settlement paths</p>
+                </div>
+              </div>
+
+              {/* Mode 1: 1-Tap Fast Settle Mode View */}
+              {settleMode === 'fast' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+                  
+                  {/* Left Side: Roommate Balances */}
+                  <div className="hud-card p-5 rounded-3xl space-y-3">
+                    <div>
+                      <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-blue-500" />
+                        Roommate Debt & Credit Sheet
+                      </h4>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Real-time status of roommate accounts.</p>
+                    </div>
+
+                    <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
+                      {settleRoomMembers.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">No roommates registered.</p>
+                      ) : (
+                        settleRoomMembers.map(m => {
+                          const uid = m.uid || m.id;
+                          const bal = settleRoomBalances[uid] || 0;
+                          const owes = bal < -0.01;
+                          const owed = bal > 0.01;
+                          
+                          return (
+                            <div key={uid} className="p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-sm hover:border-emerald-500/30 transition-all">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`w-8 h-8 rounded-xl font-black flex items-center justify-center shrink-0 ${
+                                  owed ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-[#A3E635]' :
+                                  owes ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400' :
+                                  'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                                }`}>
+                                  {(m.nickname || m.name || 'U').charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{m.nickname || m.name}</p>
+                                  <p className="font-mono text-[9px] text-slate-400 truncate">{uid}</p>
+                                </div>
+                              </div>
+                              
+                              <div className="shrink-0 text-right">
+                                <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                  owed ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-[#A3E635] border border-emerald-300 dark:border-emerald-800' :
+                                  owes ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-300 dark:border-rose-800' :
+                                  'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                                }`}>
+                                  {owed ? `Owed ₹${bal.toFixed(2)}` : owes ? `Owes ₹${Math.abs(bal).toFixed(2)}` : 'Settled'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Side: Suggested Transfers with Quick Settle Action */}
+                  <div className="hud-card p-5 rounded-3xl space-y-3">
+                    <div>
+                      <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <Zap className="w-4 h-4 text-[#A3E635]" />
+                        1-Tap Suggested Debt Settlements
+                      </h4>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Click Quick Settle to clear outstanding transfers instantly.</p>
+                    </div>
+
+                    <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
+                      {settleRoomSuggestedTransfers.length === 0 ? (
+                        <div className="p-12 bg-[#F4F7F4]/20 dark:bg-[#161D20]/20 border border-dashed border-[#E3E8E3] dark:border-slate-800 rounded-3xl text-center text-xs font-medium text-[#5C6E5C] dark:text-slate-400 space-y-2">
+                          <p className="text-lg">🎉</p>
+                          <p className="font-extrabold text-[#1A3827] dark:text-slate-200">Everything is Clear!</p>
+                          <p className="text-[10px] text-slate-400">No roommate suggested transfers are pending in this room.</p>
+                        </div>
+                      ) : (
+                        settleRoomSuggestedTransfers.map((t, index) => (
+                          <div key={index} className="p-3.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-sm hover:border-emerald-500/30 transition-all">
+                            <div className="min-w-0">
+                              <p className="font-bold text-[#1A3827] dark:text-slate-100">
+                                <span className="font-extrabold text-rose-500">{t.fromName}</span> pays{' '}
+                                <span className="font-extrabold text-emerald-600 dark:text-[#A3E635]">{t.toName}</span>
+                              </p>
+                              <p className="font-mono font-black text-[12px] text-[#1A3827] dark:text-[#A3E635] mt-0.5">
+                                ₹{t.amount.toFixed(2)}
+                              </p>
+                            </div>
+                            
+                            <button
+                              onClick={() => handleAdminQuickSettle(t.fromUid, t.toUid, t.amount)}
+                              className="px-3.5 py-2.5 bg-emerald-600 text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl text-[10px] font-black hover:scale-105 active:scale-95 transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
+                            >
+                              <Zap className="w-3.5 h-3.5 fill-current text-white dark:text-slate-950" />
+                              <span>Quick Settle</span>
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {/* Mode 2: Advanced Settle Mode View */}
+              {settleMode === 'advanced' && (
+                <div className="hud-card p-6 rounded-3xl space-y-6 animate-fade-in">
+                  <div>
+                    <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sliders className="w-4 h-4 text-blue-500" />
+                      Advanced Custom Settlement Form
+                    </h4>
+                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                      Record custom payments with detailed parameters (custom titles, payment types, dates, notes, and visibility).
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleAdminSubmitSettle} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      
+                      {/* Payer */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Payer (Who Pays)</label>
+                        <select
+                          value={customSettlePayer}
+                          onChange={e => setCustomSettlePayer(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        >
+                          {settleRoomMembers.map(m => (
+                            <option key={m.uid || m.id} value={m.uid || m.id}>
+                              {m.nickname || m.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Receiver */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Receiver (Who Gets Paid)</label>
+                        <select
+                          value={customSettleReceiver}
+                          onChange={e => setCustomSettleReceiver(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        >
+                          {settleRoomMembers.filter(m => (m.uid || m.id) !== customSettlePayer).map(m => (
+                            <option key={m.uid || m.id} value={m.uid || m.id}>
+                              {m.nickname || m.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Amount */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Amount (₹)</label>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          required
+                          placeholder="Enter settlement amount..."
+                          value={customSettleAmount}
+                          onChange={e => setCustomSettleAmount(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      
+                      {/* Title/Description */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Transaction Title</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Custom Cash Settlement"
+                          value={advSettleTitle}
+                          onChange={e => setAdvSettleTitle(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      {/* Date */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Date</label>
+                        <input
+                          type="date"
+                          required
+                          value={advSettleDate}
+                          onChange={e => setAdvSettleDate(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      {/* Time */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Time (24h)</label>
+                        <input
+                          type="time"
+                          required
+                          value={advSettleTime}
+                          onChange={e => setAdvSettleTime(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                      
+                      {/* Payment Method */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Payment Method</label>
+                        <select
+                          value={advSettleMethod}
+                          onChange={e => setAdvSettleMethod(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        >
+                          <option value="UPI">UPI / Google Pay</option>
+                          <option value="Cash">Cash Handover</option>
+                          <option value="Bank Transfer">Direct Bank IMPS/NEFT</option>
+                          <option value="Other">Other Adjustment</option>
+                        </select>
+                      </div>
+
+                      {/* Shared / Private toggle */}
+                      <div className="flex items-center gap-3 p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl h-[46px] shadow-sm select-none">
+                        <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Show to Roommates?</span>
+                        <button
+                          type="button"
+                          onClick={() => setAdvSettleIsShared(!advSettleIsShared)}
+                          className={`w-9 h-5 rounded-full relative transition-all duration-200 focus:outline-none ${
+                            advSettleIsShared ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
+                          }`}
+                        >
+                          <span className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.75 transition-all duration-200 shadow-sm ${
+                            advSettleIsShared ? 'left-4.5' : 'left-1'
+                          }`}></span>
+                        </button>
+                      </div>
+
+                      {/* Transaction splits preview block */}
+                      <div className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 p-2 bg-[#F6F8F6] dark:bg-slate-800/40 rounded-xl border border-dashed border-[#E3E8E3]/60 dark:border-slate-700/60 leading-normal">
+                        ⚡ <span className="text-[#1A3827] dark:text-white font-extrabold uppercase">Transaction Splits:</span><br />
+                        • Payer gets <strong>+₹{Number(customSettleAmount || 0).toFixed(2)}</strong> credit<br />
+                        • Receiver gets <strong>-₹{Number(customSettleAmount || 0).toFixed(2)}</strong> charge
+                      </div>
+
+                    </div>
+
+                    {/* Notes */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold uppercase text-[#5C6E5C] dark:text-slate-400">Administrative Remarks / Reference ID (Optional)</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Add details like Transaction ID, UPI Ref, reason for adjustments, etc..."
+                        value={advSettleNotes}
+                        onChange={e => setAdvSettleNotes(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={isSubmittingAdminSettle}
+                      className="w-full py-3 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl text-xs font-black hover:opacity-90 active:scale-95 transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isSubmittingAdminSettle ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4" />
+                      )}
+                      <span>Record Advanced Settlement Payment</span>
+                    </button>
+                  </form>
+                </div>
+              )}
+
+            </div>
+          )}
         </div>
       )}
 
