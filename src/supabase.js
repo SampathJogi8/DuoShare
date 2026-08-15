@@ -30,6 +30,14 @@ class MockQueryBuilder {
 
   insert(data) {
     this.action = 'insert';
+    if (['transactions', 'receipts', 'members', 'rooms', 'users'].includes(this.table)) {
+      const rows = Array.isArray(data) ? data : [data];
+      rows.forEach(row => {
+        if (!row.id) {
+          row.id = crypto.randomUUID();
+        }
+      });
+    }
     this.payload = data;
     return this;
   }

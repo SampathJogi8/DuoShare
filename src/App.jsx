@@ -12309,7 +12309,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {myFunds.map(f => {
               const stats = fundStats[f.id] || { total: f.amount, spent: 0, remaining: f.amount, percentage: 0 };
               return (
-                <div key={f.id} className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between min-h-[220px]">
+                <div 
+                  key={f.id} 
+                  onClick={() => setSelectedFundId(f.id)}
+                  className="cursor-pointer bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between min-h-[220px]"
+                >
                   <div className="space-y-1">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-2 flex-wrap min-w-0">
