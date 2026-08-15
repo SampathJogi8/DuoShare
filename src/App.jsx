@@ -3606,6 +3606,20 @@ export default function App() {
     const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
     const payerName = t.paidByUid === currentUid ? 'You' : t.paidBy;
     
+    if (t.category === 'Payment') {
+      let receiverName = '';
+      if (t.splits && Array.isArray(t.splits)) {
+        const receiver = t.splits.find(s => s.uid !== t.paidByUid);
+        if (receiver) {
+          receiverName = receiver.uid === currentUid ? 'You' : receiver.nickname;
+        }
+      }
+      if (receiverName) {
+        return `${payerName} paid • Settlement to ${receiverName}`;
+      }
+      return `${payerName} paid • Direct Settlement Payment`;
+    }
+
     let splitText;
     if (!t.isShared) {
       // Find who the personal expense is for
