@@ -3052,10 +3052,14 @@ export default function App() {
     };
 
     fetchUserRequestStatus();
-    const interval = setInterval(fetchUserRequestStatus, 3500);
+    const interval = setInterval(() => {
+      if (typeof window !== 'undefined' && navigator.onLine && document.visibilityState === 'visible') {
+        fetchUserRequestStatus();
+      }
+    }, 15000);
 
     return () => clearInterval(interval);
-  }, [user, hasConfirmedRoom, fetchUserRooms]);
+  }, [user, hasConfirmedRoom]);
 
   const fetchMembers = useCallback(async (roomId) => {
     try {
@@ -3268,22 +3272,22 @@ export default function App() {
         console.log(`Realtime subscription status for room ${userRoomId}:`, status);
       });
 
-    // Background Auto-Sync Poll Loop for Cloudflare Worker D1 HTTP REST API backend (3.5s real-time sync)
+    // Background Auto-Sync Poll Loop for Cloudflare Worker D1 HTTP REST API backend (15s lightweight poll, blocked when offline)
     const syncInterval = setInterval(() => {
-      if (document.visibilityState === 'visible' && userRoomId) {
+      if (typeof window !== 'undefined' && navigator.onLine && document.visibilityState === 'visible' && userRoomId) {
         fetchTransactions(userRoomId);
         fetchReceipts(userRoomId);
         fetchRoomSettings(userRoomId);
         fetchMembers(userRoomId);
         fetchActivityLogs(userRoomId);
       }
-    }, 3500);
+    }, 15000);
 
     return () => {
       clearInterval(syncInterval);
       supabase.removeChannel(channel);
     };
-  }, [user, userRoomId, fetchTransactions, fetchReceipts, fetchRoomSettings, fetchMembers, fetchActivityLogs]);
+  }, [user, userRoomId]);
 
 
 
