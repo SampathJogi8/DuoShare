@@ -512,7 +512,26 @@ export default function App() {
   }), [user]);
 
   // Room members & settings
-  const [members, setMembers] = useState([]);
+  const [members, setMembers] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const activeRoom = localStorage.getItem('userRoomId');
+        if (activeRoom) {
+          const roomCache = localStorage.getItem(`tallyin_cache_members_${activeRoom}`);
+          if (roomCache) {
+            const parsed = JSON.parse(roomCache);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          }
+        }
+        const globalCache = localStorage.getItem('tallyin_cache_members_latest');
+        if (globalCache) {
+          const parsed = JSON.parse(globalCache);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
   const [monthlyBudget, setMonthlyBudget] = useState(() => Number(localStorage.getItem('monthlyBudget')) || 22000);
   const [monthlyBudgetInput, setMonthlyBudgetInput] = useState(() => String(localStorage.getItem('monthlyBudget') || 22000));
   const [personalCap, setPersonalCap] = useState(() => Number(localStorage.getItem('personalCap')) || 2500);
@@ -980,8 +999,47 @@ export default function App() {
   const [isAuditMode, setIsAuditMode] = useState(false);
 
   // Core Data States
-  const [transactions, setTransactions] = useState([]);
-  const [receipts, setReceipts] = useState([]);
+  const [transactions, setTransactions] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const activeRoom = localStorage.getItem('userRoomId');
+        if (activeRoom) {
+          const roomCache = localStorage.getItem(`tallyin_cache_transactions_${activeRoom}`);
+          if (roomCache) {
+            const parsed = JSON.parse(roomCache);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          }
+        }
+        const globalCache = localStorage.getItem('tallyin_cache_transactions_latest');
+        if (globalCache) {
+          const parsed = JSON.parse(globalCache);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  const [receipts, setReceipts] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const activeRoom = localStorage.getItem('userRoomId');
+        if (activeRoom) {
+          const roomCache = localStorage.getItem(`tallyin_cache_receipts_${activeRoom}`);
+          if (roomCache) {
+            const parsed = JSON.parse(roomCache);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          }
+        }
+        const globalCache = localStorage.getItem('tallyin_cache_receipts_latest');
+        if (globalCache) {
+          const parsed = JSON.parse(globalCache);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
   
   // Theme option (default light, read from localStorage)
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -1009,7 +1067,49 @@ export default function App() {
   const [nicknamePromptAction, setNicknamePromptAction] = useState(null); // null | 'create' | 'join'
   const [onboardingStep, setOnboardingStep] = useState('selection'); // 'selection' | 'room-name' | 'room-mode' | 'room-budget' | 'share-code'
   const [selectedRoomMode, setSelectedRoomMode] = useState('quota'); // 'quota' | 'split'
-  const [activityLogs, setActivityLogs] = useState([]);
+  const [activityLogs, setActivityLogs] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const activeRoom = localStorage.getItem('userRoomId');
+        if (activeRoom) {
+          const roomCache = localStorage.getItem(`tallyin_cache_activity_${activeRoom}`);
+          if (roomCache) {
+            const parsed = JSON.parse(roomCache);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          }
+        }
+        const globalCache = localStorage.getItem('tallyin_cache_activity_latest');
+        if (globalCache) {
+          const parsed = JSON.parse(globalCache);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+  // Auto-sync transactions & members to room cache and global latest offline cache
+  useEffect(() => {
+    if (transactions.length > 0) {
+      try {
+        if (userRoomId) {
+          localStorage.setItem(`tallyin_cache_transactions_${userRoomId}`, JSON.stringify(transactions));
+        }
+        localStorage.setItem('tallyin_cache_transactions_latest', JSON.stringify(transactions));
+      } catch (e) {}
+    }
+  }, [transactions, userRoomId]);
+
+  useEffect(() => {
+    if (members.length > 0) {
+      try {
+        if (userRoomId) {
+          localStorage.setItem(`tallyin_cache_members_${userRoomId}`, JSON.stringify(members));
+        }
+        localStorage.setItem('tallyin_cache_members_latest', JSON.stringify(members));
+      } catch (e) {}
+    }
+  }, [members, userRoomId]);
+
   // Feature 15: Onboarding Tutorial
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('tallyin_onboarding_done'));
   const [onboardingTipIndex, setOnboardingTipIndex] = useState(0);
@@ -2210,12 +2310,13 @@ export default function App() {
       setIsDbSynced(true);
       try {
         localStorage.setItem(`tallyin_cache_transactions_${roomId}`, JSON.stringify(mapped));
+        localStorage.setItem('tallyin_cache_transactions_latest', JSON.stringify(mapped));
       } catch (e) {}
     } catch (err) {
       console.warn("Error fetching transactions, using offline cache:", err);
       setIsDbSynced(false);
       try {
-        const cached = localStorage.getItem(`tallyin_cache_transactions_${roomId}`);
+        const cached = localStorage.getItem(`tallyin_cache_transactions_${roomId}`) || localStorage.getItem('tallyin_cache_transactions_latest');
         if (cached) {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed) && parsed.length > 0) {
@@ -2986,11 +3087,12 @@ export default function App() {
       setMembers(mappedMembers);
       try {
         localStorage.setItem(`tallyin_cache_members_${roomId}`, JSON.stringify(mappedMembers));
+        localStorage.setItem('tallyin_cache_members_latest', JSON.stringify(mappedMembers));
       } catch (e) {}
     } catch (err) {
       console.warn("Members fetch error, using offline cache:", err);
       try {
-        const cached = localStorage.getItem(`tallyin_cache_members_${roomId}`);
+        const cached = localStorage.getItem(`tallyin_cache_members_${roomId}`) || localStorage.getItem('tallyin_cache_members_latest');
         if (cached) {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed) && parsed.length > 0) {
