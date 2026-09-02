@@ -62,6 +62,20 @@ export default {
         // Column room_mode already exists or migrated
       }
 
+      // Self-healing schema migration: ensure co_host_uid column exists in rooms table
+      try {
+        await env.DB.prepare("ALTER TABLE rooms ADD COLUMN co_host_uid TEXT").run();
+      } catch (e) {
+        // Column co_host_uid already exists or migrated
+      }
+
+      // Self-healing schema migration: ensure individual_budget column exists in members table
+      try {
+        await env.DB.prepare("ALTER TABLE members ADD COLUMN individual_budget REAL DEFAULT 2000").run();
+      } catch (e) {
+        // Column individual_budget already exists or migrated
+      }
+
       // 0. GET /
       if ((url.pathname === "/" || url.pathname === "/api") && request.method === "GET") {
         return Response.json({ status: "alive", message: "DuoShare Cloudflare Worker API is running successfully." }, { headers: corsHeaders });

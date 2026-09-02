@@ -35,7 +35,9 @@ export default function DashboardHome({
   setActiveReceiptZoom,
   handleDeleteTransaction,
   handleEditTransaction,
-  setCurrentView
+  setCurrentView,
+  isQuotaMode,
+  isHostOrCoHost
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
@@ -163,13 +165,24 @@ export default function DashboardHome({
                 <span>Add Expense</span>
               </button>
 
-              <button
-                onClick={() => setIsSettleModalOpen(true)}
-                className="flex-1 sm:flex-none px-4 py-3 bg-white dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 hover:bg-[#F0F4F1] dark:hover:bg-slate-700 font-extrabold text-xs rounded-2xl border border-[#E3E8E3] dark:border-slate-700 shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95"
-              >
-                <HandCoins className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
-                <span>Settle Up</span>
-              </button>
+              {isQuotaMode && !isHostOrCoHost ? (
+                <button
+                  onClick={() => setCurrentView('insights')}
+                  className="flex-1 sm:flex-none px-4 py-3 bg-[#F0F4F1] dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 font-extrabold text-xs rounded-2xl border border-[#E3E8E3] dark:border-slate-700 shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                  title="Only Admin or Co-Host can trigger Settle Up in Quota Mode"
+                >
+                  <HandCoins className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>View Quota Insights</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsSettleModalOpen(true)}
+                  className="flex-1 sm:flex-none px-4 py-3 bg-white dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 hover:bg-[#F0F4F1] dark:hover:bg-slate-700 font-extrabold text-xs rounded-2xl border border-[#E3E8E3] dark:border-slate-700 shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                >
+                  <HandCoins className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>{isQuotaMode ? '⚡ Settle Up (Admin)' : 'Settle Up'}</span>
+                </button>
+              )}
             </div>
           </div>
 
