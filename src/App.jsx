@@ -4178,6 +4178,13 @@ export default function App() {
       });
     }
 
+    // Filter out micro-penny rounding artifacts (e.g. ±0.01 / ±0.02) from division remainders
+    Object.keys(roomBalances).forEach(uid => {
+      if (Math.abs(roomBalances[uid]) <= 0.02) {
+        roomBalances[uid] = 0;
+      }
+    });
+
     totalSpend = Math.round(totalSpend * 100) / 100;
     totalRoomSpend = Math.round(totalRoomSpend * 100) / 100;
     sharedSpend = Math.round(sharedSpend * 100) / 100;
