@@ -689,20 +689,23 @@ export default function App() {
       const email = user.email || '';
       let autoName = userNickname;
 
-      if (!autoName) {
+      if (!autoName || autoName === 'You') {
         if (code.startsWith('TY100')) {
           const num = code.slice(-1);
           autoName = `Tester ${num}`;
         } else if (email.startsWith('tester')) {
           const num = email.replace('tester', '').split('@')[0];
           autoName = `Tester ${num || '1'}`;
+        } else if (user.user_metadata?.full_name) {
+          autoName = user.user_metadata.full_name;
         }
       }
 
-      if (autoName) {
+      if (autoName && autoName !== 'You') {
         setUserNickname(autoName);
         setNicknameInput(autoName);
         localStorage.setItem('userNickname', autoName);
+        setIsNicknameFixed(true);
       }
     }
   }, [user]);
@@ -3201,6 +3204,7 @@ export default function App() {
       setUserNickname(autoName);
       setNicknameInput(autoName);
       localStorage.setItem('userNickname', autoName);
+      setIsNicknameFixed(true);
 
       const realEmail = codeLoginEmail.trim().toLowerCase() || `tester${code.slice(-1)}@tallyin.app`;
       const simulatedUser = {
