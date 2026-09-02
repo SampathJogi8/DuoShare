@@ -517,6 +517,7 @@ export default function App() {
   const [monthlyBudgetInput, setMonthlyBudgetInput] = useState(() => String(localStorage.getItem('monthlyBudget') || 22000));
   const [personalCap, setPersonalCap] = useState(() => Number(localStorage.getItem('personalCap')) || 2500);
   const [isEditingPersonalCap, setIsEditingPersonalCap] = useState(false);
+  const [roomCreatedBy, setRoomCreatedBy] = useState(null); // uid of room creator (host)
   // Co-Host & Role permissions
   const [coHostUid, setCoHostUid] = useState(null);
   const isHostOrCoHost = useMemo(() => {
@@ -1023,7 +1024,6 @@ export default function App() {
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [userRooms, setUserRooms] = useState([]);
   const [isFetchingRooms, setIsFetchingRooms] = useState(false);
-  const [roomCreatedBy, setRoomCreatedBy] = useState(null); // uid of room creator (host)
   const [roomMaxMembers, setRoomMaxMembers] = useState(6);
   const [roomMaxMembersInput, setRoomMaxMembersInput] = useState(6);
   const [settingsMaxMembersInput, setSettingsMaxMembersInput] = useState(6);
