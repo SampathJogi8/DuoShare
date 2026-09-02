@@ -683,6 +683,30 @@ export default function App() {
       .catch(err => console.warn("Fetch system settings error:", err));
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      const code = user.loginCode || '';
+      const email = user.email || '';
+      let autoName = userNickname;
+
+      if (!autoName) {
+        if (code.startsWith('TY100')) {
+          const num = code.slice(-1);
+          autoName = `Tester ${num}`;
+        } else if (email.startsWith('tester')) {
+          const num = email.replace('tester', '').split('@')[0];
+          autoName = `Tester ${num || '1'}`;
+        }
+      }
+
+      if (autoName) {
+        setUserNickname(autoName);
+        setUserNicknameInput(autoName);
+        localStorage.setItem('userNickname', autoName);
+      }
+    }
+  }, [user]);
+
   const [globalBroadcast, setGlobalBroadcast] = useState(() => {
     const defaultBroadcast = {
       id: `release_${APP_VERSION || 'v3.30.2'}_itemized_bills`,
@@ -3164,12 +3188,26 @@ export default function App() {
       if (memberError) console.warn("Member fetch warning for code user:", memberError);
       const member = memberData?.[0];
       
-      const realEmail = codeLoginEmail.trim().toLowerCase();
+      const TEST_CODE_NAMES = {
+        'TY1001': 'Tester 1',
+        'TY1002': 'Tester 2',
+        'TY1003': 'Tester 3',
+        'TY1004': 'Tester 4',
+        'TY1005': 'Tester 5',
+        'TY1006': 'Tester 6',
+      };
+      const autoName = TEST_CODE_NAMES[code] || member?.nickname || 'Roommate';
+
+      setUserNickname(autoName);
+      setUserNicknameInput(autoName);
+      localStorage.setItem('userNickname', autoName);
+
+      const realEmail = codeLoginEmail.trim().toLowerCase() || `tester${code.slice(-1)}@tallyin.app`;
       const simulatedUser = {
         id: userProfile.uid,
         email: realEmail || member?.email || '',
         user_metadata: {
-          full_name: member?.nickname || 'Roommate',
+          full_name: autoName,
           avatar_url: member?.photo_url || ''
         },
         isCodeLogin: true,
