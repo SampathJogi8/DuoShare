@@ -21,6 +21,7 @@ CREATE TABLE rooms (
   pin TEXT,
   created_by TEXT,
   monthly_budget REAL,
+  max_members INTEGER DEFAULT 6,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
