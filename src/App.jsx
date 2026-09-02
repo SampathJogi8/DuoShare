@@ -916,6 +916,14 @@ export default function App() {
   const [settingsMaxMembersInput, setSettingsMaxMembersInput] = useState(6);
   const [pendingJoinRequests, setPendingJoinRequests] = useState([]);
   const [joinRequestModalInfo, setJoinRequestModalInfo] = useState(null);
+  const [pendingUserRequests, setPendingUserRequests] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tallyin_pending_user_requests');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [selectedMonth, setSelectedMonth] = useState(() => getLocalMonthStr());
 
   // Notification Config States
@@ -1706,6 +1714,14 @@ export default function App() {
         }));
       setUserRooms(formatted);
       localStorage.setItem(cachedKey, JSON.stringify(formatted));
+
+      // Filter out any pending requests for rooms where user is now an approved member
+      const approvedRoomIds = formatted.map(r => r.roomId);
+      setPendingUserRequests(prev => {
+        const next = prev.filter(p => !approvedRoomIds.includes(p.roomId));
+        localStorage.setItem('tallyin_pending_user_requests', JSON.stringify(next));
+        return next;
+      });
     } catch (err) {
       console.warn("Error fetching user rooms:", err);
     } finally {
@@ -2328,9 +2344,22 @@ export default function App() {
 
       if (upsertErr) throw upsertErr;
 
+      // Save pending request locally so Home Screen room list displays "Pending Approval"
+      const targetRoomName = joinRequestModalInfo?.roomName || targetRoomId;
+      setPendingUserRequests(prev => {
+        const next = [...prev.filter(p => p.roomId !== targetRoomId), { roomId: targetRoomId, roomName: targetRoomName, requestedAt: new Date().toISOString() }];
+        localStorage.setItem('tallyin_pending_user_requests', JSON.stringify(next));
+        return next;
+      });
+
       await logActivity('settings', `${nickname} sent a request to join room ${targetRoomId}`);
-      triggerToast('📩 Join request sent to room Admin!');
+      triggerToast('📩 Join request sent to room Admin! Redirecting to your rooms screen...');
       setJoinRequestModalInfo(null);
+      
+      // Drive user back to the Home / Room Selection Screen
+      setUserRoomId(null);
+      setHasConfirmedRoom(false);
+      setOnboardingStep('selection');
     } catch (err) {
       console.error('Failed to send join request:', err);
       triggerToast(`Failed to send request: ${err.message}`);
@@ -2461,14 +2490,17 @@ export default function App() {
     }
   };
 
-  const sendDeclineEmail = async (req, roomId, roomDisplayName) => {
+  const sendDeclineEmail = async (req, roomId, roomDisplayName, hostName, hostEmail) => {
     if (!req.email || !req.email.includes('@')) {
       console.warn("No valid email provided for join request decline notification:", req);
       return;
     }
 
     const subject = `Tallyin Join Request Update for "${roomDisplayName || roomId}"`;
-    
+    const adminContactLine = hostEmail
+      ? `Room Admin: <strong>${hostName || 'Host'}</strong> (<a href="mailto:${hostEmail}" style="color: #0284C7; text-decoration: underline;">${hostEmail}</a>)`
+      : `Room Admin: <strong>${hostName || 'Host'}</strong>`;
+
     const htmlBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #F6F8F6; border-radius: 24px;">
         <div style="text-align: center; margin-bottom: 20px;">
@@ -2487,6 +2519,9 @@ export default function App() {
           <div style="background-color: #F8FAFC; padding: 14px; border-radius: 14px; text-align: left; border: 1px solid #E2E8F0;">
             <div style="font-size: 11px; color: #64748B; font-weight: 700; text-transform: uppercase;">Room Info</div>
             <div style="font-size: 13px; font-weight: 700; color: #1E293B; margin-top: 4px;">${roomDisplayName || 'Shared Room'} (Code: ${roomId})</div>
+            <div style="font-size: 12px; color: #334155; margin-top: 6px; font-weight: 600;">
+              ${adminContactLine}
+            </div>
             <p style="font-size: 11px; color: #64748B; margin-top: 6px; margin-bottom: 0;">
               If you need access or believe this was done in error, please contact the room Admin directly.
             </p>
@@ -2495,7 +2530,7 @@ export default function App() {
       </div>
     `;
 
-    const textBody = `Hello ${req.nickname},\n\nYour request to join room "${roomDisplayName || roomId}" on Tallyin was declined by the room Admin.\n\nRoom Code: ${roomId}`;
+    const textBody = `Hello ${req.nickname},\n\nYour request to join room "${roomDisplayName || roomId}" on Tallyin was declined by the room Admin (${hostName || 'Host'}${hostEmail ? ` - ${hostEmail}` : ''}).\n\nRoom Code: ${roomId}`;
 
     try {
       await fetch(CENTRAL_EMAIL_SCRIPT_URL, {
@@ -2530,7 +2565,7 @@ export default function App() {
         }, { onConflict: 'key' });
 
       await logActivity('settings', `${userNickname} declined join request from ${req.nickname}`);
-      await sendDeclineEmail(req, userRoomId, roomName);
+      await sendDeclineEmail(req, userRoomId, roomName, userNickname, user?.email);
 
       triggerToast(`Declined join request for ${req.nickname}. Notification email sent.`);
     } catch (err) {
@@ -8328,75 +8363,102 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                     <Loader className="w-5 h-5 text-[#1A3827] dark:text-[#A3E635] animate-spin" />
                   </div>
                 </div>
-              ) : userRooms.length > 0 && (
-                <div className="space-y-2 text-left pt-3 border-t border-[#E3E8E3]/50 dark:border-slate-800/50">
-                  <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest block font-sans">
-                    Or choose one of your spaces ({userRooms.length})
-                  </label>
-                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                    {userRooms.map(r => {
-                      const isActive = r.roomId === userRoomId;
-                      return (
-                        <div 
-                          key={r.roomId}
-                          onClick={async () => {
-                            if (!nicknameInput.trim() || nicknameInput === 'You') {
-                              triggerToast('Please enter your display name first.');
-                              return;
-                            }
-                            setUserRoomId(r.roomId);
-                            localStorage.setItem('userRoomId', r.roomId);
-                            // Optimistically use cached name while we fetch fresh settings
-                            if (r.roomName) {
-                              setRoomName(r.roomName);
-                              localStorage.setItem('roomName', r.roomName);
-                            }
-                            setHasConfirmedRoom(true);
-                            setCurrentView('home');
-                            setIsMobileMenuOpen(false);
-                            setIsInviteModalOpen(false);
-                            setIsManageRoomOpen(false);
-                            triggerToast(`Entering room: ${r.roomName}...`);
-                            // Always fetch fresh budget and created_by from DB
-                            await fetchRoomSettings(r.roomId);
-                            if (user) {
-                              (async () => {
-                                try {
-                                  await supabase
-                                    .from('users')
-                                    .upsert({
-                                      uid: user.id,
-                                      room_id: r.roomId,
-                                      updated_at: new Date().toISOString()
-                                    }, { onConflict: 'uid' });
-                                } catch (e) { console.error(e); }
-                              })();
-                            }
-                          }}
-                          className={`flex items-center justify-between p-3 rounded-2xl border text-xs cursor-pointer transition-all ${
-                            isActive 
-                              ? 'border-[#1A3827] dark:border-[#A3E635] bg-[#EAF0EC]/20 dark:bg-[#A3E635]/5 font-bold' 
-                              : 'border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6]/40 dark:hover:bg-slate-800/20'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-base shrink-0">🏠</span>
-                            <div className="min-w-0">
-                              <p className="font-bold text-[#1A3827] dark:text-slate-100 truncate">{r.roomName}</p>
-                              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-mono truncate">{r.roomId}</p>
+              ) : (() => {
+                const combinedRooms = [...userRooms];
+                pendingUserRequests.forEach(p => {
+                  if (!combinedRooms.some(r => r.roomId === p.roomId)) {
+                    combinedRooms.push({
+                      roomId: p.roomId,
+                      roomName: p.roomName || p.roomId,
+                      isPendingReq: true
+                    });
+                  }
+                });
+
+                if (combinedRooms.length === 0) return null;
+
+                return (
+                  <div className="space-y-2 text-left pt-3 border-t border-[#E3E8E3]/50 dark:border-slate-800/50">
+                    <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest block font-sans">
+                      Your Spaces & Requests ({combinedRooms.length})
+                    </label>
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {combinedRooms.map(r => {
+                        const isActive = r.roomId === userRoomId;
+                        const isPending = r.isPendingReq || pendingUserRequests.some(p => p.roomId === r.roomId);
+
+                        return (
+                          <div 
+                            key={r.roomId}
+                            onClick={async () => {
+                              if (isPending) {
+                                triggerToast('⏳ Your join request for this room is pending review by the room Admin.');
+                                return;
+                              }
+                              if (!nicknameInput.trim() || nicknameInput === 'You') {
+                                triggerToast('Please enter your display name first.');
+                                return;
+                              }
+                              setUserRoomId(r.roomId);
+                              localStorage.setItem('userRoomId', r.roomId);
+                              // Optimistically use cached name while we fetch fresh settings
+                              if (r.roomName) {
+                                setRoomName(r.roomName);
+                                localStorage.setItem('roomName', r.roomName);
+                              }
+                              setHasConfirmedRoom(true);
+                              setCurrentView('home');
+                              setIsMobileMenuOpen(false);
+                              setIsInviteModalOpen(false);
+                              setIsManageRoomOpen(false);
+                              triggerToast(`Entering room: ${r.roomName}...`);
+                              // Always fetch fresh budget and created_by from DB
+                              await fetchRoomSettings(r.roomId);
+                              if (user) {
+                                (async () => {
+                                  try {
+                                    await supabase
+                                      .from('users')
+                                      .upsert({
+                                        uid: user.id,
+                                        room_id: r.roomId,
+                                        updated_at: new Date().toISOString()
+                                      }, { onConflict: 'uid' });
+                                  } catch (e) { console.error(e); }
+                                })();
+                              }
+                            }}
+                            className={`flex items-center justify-between p-3 rounded-2xl border text-xs transition-all ${
+                              isPending
+                                ? 'bg-purple-50/70 dark:bg-purple-950/20 border-purple-300 dark:border-purple-900/50 cursor-default'
+                                : isActive 
+                                ? 'border-[#1A3827] dark:border-[#A3E635] bg-[#EAF0EC]/20 dark:bg-[#A3E635]/5 font-bold cursor-pointer' 
+                                : 'border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6]/40 dark:hover:bg-slate-800/20 cursor-pointer'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="text-base shrink-0">{isPending ? '⏳' : '🏠'}</span>
+                              <div className="min-w-0">
+                                <p className="font-bold text-[#1A3827] dark:text-slate-100 truncate">{r.roomName}</p>
+                                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-mono truncate">{r.roomId}</p>
+                              </div>
                             </div>
+                            {isPending ? (
+                              <span className="text-[9px] bg-purple-100 text-purple-900 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-300 dark:border-purple-800 px-2.5 py-1 rounded-full font-extrabold shrink-0">
+                                ⏳ Pending Approval
+                              </span>
+                            ) : isActive ? (
+                              <span className="text-[9px] bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-2 py-0.5 rounded-full font-bold shrink-0">Active</span>
+                            ) : (
+                              <span className="text-[9px] text-[#5C6E5C] dark:text-slate-400 shrink-0">Enter</span>
+                            )}
                           </div>
-                          {isActive ? (
-                            <span className="text-[9px] bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-2 py-0.5 rounded-full font-bold">Active</span>
-                          ) : (
-                            <span className="text-[9px] text-[#5C6E5C] dark:text-slate-400">Enter</span>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
                 </div>
               )}
             </div>
@@ -12097,11 +12159,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // Join Request Modal when room is full / locked
   function renderJoinRequestModal() {
     if (!joinRequestModalInfo) return null;
-    const { roomId, roomName, hostNickname, hostEmail, currentCount, maxLimit } = joinRequestModalInfo;
+    const { roomId, roomName, hostNickname, currentCount, maxLimit } = joinRequestModalInfo;
     const displayName = roomName && roomName !== 'Tallyin' ? `${roomName} (${roomId})` : roomId;
-    const mailtoUrl = hostEmail
-      ? `mailto:${hostEmail}?subject=${encodeURIComponent(`Access Request for Tallyin Room "${roomName || roomId}"`)}&body=${encodeURIComponent(`Hi ${hostNickname || 'Admin'},\n\nI would like to join room "${roomName || roomId}" (${roomId}) on Tallyin. Please approve my join request or expand room capacity.\n\nThank you!`)}`
-      : null;
 
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
@@ -12119,34 +12178,17 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </p>
           </div>
           
-          {/* Admin / Host Contact Info Box */}
-          <div className="p-3.5 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 space-y-2">
+          {/* Admin / Host Info Box (Name Only) */}
+          <div className="p-3.5 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-extrabold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">Room Admin / Host</span>
+              <span className="text-[10px] font-extrabold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">Room Admin</span>
               <span className="text-[10px] font-black text-emerald-800 dark:text-[#A3E635] bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">Host</span>
             </div>
-            <div>
-              <p className="text-xs font-black text-[#1A3827] dark:text-slate-100">{hostNickname || 'Room Admin'}</p>
-              {hostEmail ? (
-                <p className="text-[11px] font-mono text-[#5C6E5C] dark:text-slate-400 truncate mt-0.5">{hostEmail}</p>
-              ) : (
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 italic mt-0.5">Admin details available in-app</p>
-              )}
-            </div>
-
-            {mailtoUrl && (
-              <a
-                href={mailtoUrl}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline pt-1"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                <span>Email Host ({hostNickname})</span>
-              </a>
-            )}
+            <p className="text-xs font-black text-[#1A3827] dark:text-slate-100">{hostNickname || 'Room Admin'}</p>
           </div>
 
           <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-            Send an in-app request to <strong>{hostNickname || 'the Admin'}</strong> for quick approval & capacity expansion (+1).
+            Send an in-app join request to <strong>{hostNickname || 'the Admin'}</strong> to expand capacity (+1) and enter the room.
           </p>
 
           <div className="flex gap-2.5 pt-1">
