@@ -67,7 +67,9 @@ export default function AdminDashboard({
   pinnedMessages,
   setPinnedMessages,
   simulatedLatency,
-  setSimulatedLatency
+  setSimulatedLatency,
+  allowedMaintenanceAccounts = ['tallyin.alerts@gmail.com'],
+  setAllowedMaintenanceAccounts
 }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
   const currentEmailClean = (user?.email || '').trim().toLowerCase();
@@ -75,6 +77,7 @@ export default function AdminDashboard({
 
   // Maintenance form states
   const [maintMsgInput, setMaintMsgInput] = useState(maintenanceMessage || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.');
+  const [newAllowedAccountInput, setNewAllowedAccountInput] = useState('');
 
   // Broadcast form states
   const [broadcastText, setBroadcastText] = useState('');
@@ -1056,6 +1059,71 @@ export default function AdminDashboard({
     }
   };
 
+  // Handle Add Allowed Testing Account (Maintenance Bypass)
+  const handleAddAllowedAccount = async () => {
+    const clean = newAllowedAccountInput.trim().toLowerCase();
+    if (!clean) {
+      if (triggerToast) triggerToast('Please enter an email or UID.');
+      return;
+    }
+    if (allowedMaintenanceAccounts.some(acc => acc.toLowerCase() === clean)) {
+      if (triggerToast) triggerToast('Account is already in the allowed list.');
+      return;
+    }
+
+    const nextList = [...allowedMaintenanceAccounts, clean];
+    if (setAllowedMaintenanceAccounts) setAllowedMaintenanceAccounts(nextList);
+    localStorage.setItem('tallyin_maintenance_allowed_accounts', JSON.stringify(nextList));
+    setNewAllowedAccountInput('');
+
+    try {
+      await supabase.from('system_settings').upsert({
+        key: 'maintenance_allowed_accounts',
+        value: JSON.stringify(nextList),
+        created_at: new Date().toISOString()
+      }, { onConflict: 'key' });
+    } catch (e) {}
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'MAINTENANCE_ALLOWED_ACCOUNTS',
+        payload: { accounts: nextList }
+      });
+    } catch (e) {}
+
+    logAuditAction('UPDATE_MAINTENANCE_WHITELIST', `Added ${clean} to maintenance testing whitelist`);
+    if (triggerToast) triggerToast(`Added ${clean} to maintenance testing allowed list!`);
+  };
+
+  // Handle Remove Allowed Testing Account
+  const handleRemoveAllowedAccount = async (accountToRemove) => {
+    const nextList = allowedMaintenanceAccounts.filter(acc => acc.toLowerCase() !== accountToRemove.toLowerCase());
+    if (setAllowedMaintenanceAccounts) setAllowedMaintenanceAccounts(nextList);
+    localStorage.setItem('tallyin_maintenance_allowed_accounts', JSON.stringify(nextList));
+
+    try {
+      await supabase.from('system_settings').upsert({
+        key: 'maintenance_allowed_accounts',
+        value: JSON.stringify(nextList),
+        created_at: new Date().toISOString()
+      }, { onConflict: 'key' });
+    } catch (e) {}
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'MAINTENANCE_ALLOWED_ACCOUNTS',
+        payload: { accounts: nextList }
+      });
+    } catch (e) {}
+
+    logAuditAction('UPDATE_MAINTENANCE_WHITELIST', `Removed ${accountToRemove} from maintenance testing whitelist`);
+    if (triggerToast) triggerToast(`Removed ${accountToRemove} from allowed list.`);
+  };
+
   // Publish Global Broadcast
   const handlePublishBroadcast = async () => {
     if (!broadcastText.trim()) {
@@ -1738,6 +1806,62 @@ export default function AdminDashboard({
                 <Power className="w-4 h-4" />
                 <span>{isSystemMaintenanceActive ? 'Deactivate Maintenance (Site LIVE)' : 'ACTIVATE MAINTENANCE (Site DOWN)'}</span>
               </button>
+            </div>
+
+            {/* Allowed Testing Accounts for Maintenance Bypass */}
+            <div className="border-t border-[#E3E8E3] dark:border-slate-800 pt-6 space-y-4">
+              <div className="space-y-1">
+                <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                  Allowed Testing Accounts (Maintenance Bypass)
+                </h4>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  Accounts listed here will bypass the Maintenance Mode screen and can log in, access rooms, and test the app while Maintenance Mode is active.
+                </p>
+              </div>
+
+              {/* Add Account Form */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Enter email or UID to whitelist (e.g. tester@gmail.com)"
+                  value={newAllowedAccountInput}
+                  onChange={e => setNewAllowedAccountInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddAllowedAccount(); }}
+                  className="flex-1 px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddAllowedAccount}
+                  className="px-4 py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Add Account</span>
+                </button>
+              </div>
+
+              {/* Account Badges */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {allowedMaintenanceAccounts.map(account => (
+                  <div 
+                    key={account}
+                    className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm"
+                  >
+                    <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                    <span>{account}</span>
+                    {account.toLowerCase() !== 'tallyin.alerts@gmail.com' && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAllowedAccount(account)}
+                        className="ml-1 text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 text-xs font-black p-0.5 rounded transition-colors cursor-pointer"
+                        title="Remove from allowed list"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
