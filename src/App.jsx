@@ -2348,14 +2348,15 @@ export default function App() {
         return;
       }
 
-      // Always update from DB — never trust stale cache
+      // Only update monthly_budget from DB if user is NOT currently editing budget
       if (data.monthly_budget !== undefined && data.monthly_budget !== null) {
         const b = Number(data.monthly_budget);
-        setMonthlyBudget(b);
-        if (typeof document !== 'undefined' && document.activeElement?.id !== 'monthly_budget_input') {
+        const isEditing = isManageRoomOpen || onboardingStep === 'room-budget' || (typeof document !== 'undefined' && document.activeElement?.id === 'monthly_budget_input');
+        if (!isEditing) {
+          setMonthlyBudget(b);
           setMonthlyBudgetInput(String(b));
+          localStorage.setItem('monthlyBudget', String(b));
         }
-        localStorage.setItem('monthlyBudget', String(b));
       }
       if (data.name) {
         setRoomName(data.name);
@@ -16919,6 +16920,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     const num = Number(rawVal);
                     if (!isNaN(num) && num > 0) {
                       setMonthlyBudget(num);
+                      localStorage.setItem('monthlyBudget', String(num));
+                      if (userRoomId) {
+                        supabase.from('rooms').update({ monthly_budget: num }).eq('id', userRoomId).then(null, () => {});
+                      }
                     }
                   }}
                   className="w-28 px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
