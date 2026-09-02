@@ -566,6 +566,9 @@ export default function App() {
   const [enableMemberBudgets, setEnableMemberBudgets] = useState(() => {
     return localStorage.getItem('enableMemberBudgets') !== 'false';
   });
+  const [isQuotaMode, setIsQuotaMode] = useState(() => {
+    return localStorage.getItem('isQuotaMode') !== 'false';
+  });
   const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
   const [activeReceiptZoom, setActiveReceiptZoom] = useState(null);
   const [activeReceiptImageIndex, setActiveReceiptImageIndex] = useState(0);
@@ -3406,8 +3409,6 @@ export default function App() {
     sharedSpend = Math.round(sharedSpend * 100) / 100;
     personalSpend = Math.round(personalSpend * 100) / 100;
 
-    const currentUserBalance = roomBalances[currentUid] || 0;
-
     // Settlement Statistics
     const settlementTransactions = data.filter(t => t.category === 'Payment' || t.splitType === 'settlement' || (t.title && t.title.startsWith('Payment:')));
     const settlementCount = settlementTransactions.length;
@@ -3440,16 +3441,76 @@ export default function App() {
     mySettlementsPaid = Math.round(mySettlementsPaid * 100) / 100;
     mySettlementsReceived = Math.round(mySettlementsReceived * 100) / 100;
 
+    let finalBalances = roomBalances;
+    let totalExcessPool = 0;
+    let excessSharePerMember = 0;
+
+    if (isQuotaMode && members.length > 0) {
+      const quotaBalances = {};
+      const memberExcessMap = {};
+      
+      members.forEach(m => {
+        const spent = memberOutofPocket[m.uid] || 0;
+        const budget = Number(m.individualBudget) || 2000;
+        const excess = Math.max(0, spent - budget);
+        memberExcessMap[m.uid] = excess;
+        totalExcessPool += excess;
+      });
+
+      excessSharePerMember = totalExcessPool / members.length;
+
+      members.forEach(m => {
+        const excess = memberExcessMap[m.uid] || 0;
+        let netBal = excess - excessSharePerMember;
+        quotaBalances[m.uid] = Math.round(netBal * 100) / 100;
+      });
+
+      // Factor in direct settlements/payments
+      settlementTransactions.forEach(t => {
+        const amt = Number(t.amount) || 0;
+        let payerUid = t.paidByUid;
+        if (!payerUid) {
+          payerUid = t.paidBy === userNickname ? currentUid : 'roommate';
+        }
+        if (quotaBalances[payerUid] !== undefined) {
+          quotaBalances[payerUid] += amt;
+        }
+        
+        let receiverUid = null;
+        if (t.splits && Array.isArray(t.splits)) {
+          const recSplit = t.splits.find(s => s.uid !== payerUid && Number(s.amount) > 0);
+          if (recSplit) receiverUid = recSplit.uid;
+        }
+        if (!receiverUid) {
+          const other = members.find(m => m.uid !== payerUid);
+          if (other) receiverUid = other.uid;
+        }
+        if (receiverUid && quotaBalances[receiverUid] !== undefined) {
+          quotaBalances[receiverUid] -= amt;
+        }
+      });
+
+      Object.keys(quotaBalances).forEach(uid => {
+        quotaBalances[uid] = Math.round(quotaBalances[uid] * 100) / 100;
+      });
+
+      finalBalances = quotaBalances;
+    }
+
     const totalRoomBudgetPool = members.reduce((sum, m) => sum + (Number(m.individualBudget) || 2000), 0);
     const memberBudgetStats = members.map(m => {
       const spent = memberOutofPocket[m.uid] || 0;
       const budget = Number(m.individualBudget) || 2000;
+      const quotaUsed = Math.min(spent, budget);
+      const excess = Math.max(0, spent - budget);
       const remaining = Math.max(0, budget - spent);
       const pct = budget > 0 ? Math.min(100, Math.round((spent / budget) * 100)) : 0;
       return {
         ...m,
         spent: Math.round(spent * 100) / 100,
         budget,
+        quotaUsed: Math.round(quotaUsed * 100) / 100,
+        excess: Math.round(excess * 100) / 100,
         remaining: Math.round(remaining * 100) / 100,
         pct,
         isExhausted: spent >= budget
@@ -3461,12 +3522,14 @@ export default function App() {
       suggestedNextBuyer = [...memberBudgetStats].sort((a, b) => b.remaining - a.remaining)[0];
     }
 
+    const currentUserBalance = finalBalances[currentUid] || 0;
+
     return {
       totalSpend,
       totalRoomSpend,
       sharedSpend,
       personalSpend,
-      balances: roomBalances,
+      balances: finalBalances,
       currentUserBalance,
       totalCount: data.length,
       juneSpend: totalSpend,
@@ -3478,9 +3541,11 @@ export default function App() {
       mySettlementsReceived,
       memberBudgetStats,
       totalRoomBudgetPool,
-      suggestedNextBuyer
+      suggestedNextBuyer,
+      totalExcessPool: Math.round(totalExcessPool * 100) / 100,
+      excessSharePerMember: Math.round(excessSharePerMember * 100) / 100
     };
-  }, [transactions, members, userNickname, auth.currentUser]);
+  }, [transactions, members, userNickname, auth.currentUser, isQuotaMode]);
 
   // Suggested Transfers to settle up debts cleanly
   const suggestedTransfers = useMemo(() => {
@@ -4548,14 +4613,26 @@ export default function App() {
 
     // Calculate splits array
     let splitsArray = [];
-    const checkedUids = Object.keys(selectedSplitMembers).filter(uid => selectedSplitMembers[uid]);
+    const checkedUids = isQuotaMode 
+      ? (members.length > 0 ? members.map(m => m.uid) : [formPaidBy || (auth.currentUser?.uid || 'anonymous')])
+      : Object.keys(selectedSplitMembers).filter(uid => selectedSplitMembers[uid]);
     
     if (checkedUids.length === 0) {
       triggerToast('Please select at least one roommate to split with.');
       return;
     }
     
-    if (splitType === 'equal') {
+    if (isQuotaMode) {
+      const shareAmount = amountNum / checkedUids.length;
+      splitsArray = checkedUids.map(uid => {
+        const mem = members.find(m => m.uid === uid) || { nickname: uid === (auth.currentUser?.uid || 'anonymous') ? userNickname : 'Unknown' };
+        return {
+          uid,
+          nickname: mem.nickname,
+          amount: shareAmount
+        };
+      });
+    } else if (splitType === 'equal') {
       const shareAmount = amountNum / checkedUids.length;
       splitsArray = checkedUids.map(uid => {
         const mem = members.find(m => m.uid === uid) || { nickname: uid === (auth.currentUser?.uid || 'anonymous') ? userNickname : 'Unknown' };
@@ -9658,6 +9735,54 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           )}
         </div>
 
+        {/* ─── Futuristic Quota Mode Header Banner ─── */}
+        <div className="mb-5 bg-gradient-to-r from-[#0F291E] via-[#163E2D] to-[#0A1F16] text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-emerald-500/20 relative overflow-hidden">
+          <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-500/10 blur-3xl rounded-full pointer-events-none -mr-20 -mt-20" />
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1 ${
+                  isQuotaMode ? 'bg-[#A3E635] text-slate-950' : 'bg-slate-700 text-slate-300'
+                }`}>
+                  <span>{isQuotaMode ? '⚡ QUOTA & EXCESS POOL MODE' : 'CLASSIC EQUAL SPLIT MODE'}</span>
+                </span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                {isQuotaMode ? 'Personal Quotas & Excess Pool' : 'Standard Expense Splitter'}
+              </h2>
+              <p className="text-xs text-slate-300/80 max-w-xl leading-relaxed">
+                {isQuotaMode 
+                  ? 'Members spend towards their preset quotas. Extra spending beyond quota forms an Excess Pool, split equally at month-end.'
+                  : 'Classic Splitwise mode where shared expenses are divided on each transaction.'}
+              </p>
+            </div>
+
+            {/* Feature Toggle Switch Button */}
+            <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shrink-0">
+              <div className="text-right">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#A3E635]">Quota Mode</p>
+                <p className="text-[10px] text-white/70">{isQuotaMode ? 'ACTIVE' : 'OFF'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isQuotaMode;
+                  setIsQuotaMode(next);
+                  localStorage.setItem('isQuotaMode', next ? 'true' : 'false');
+                  triggerToast(next ? 'Quota & Excess Mode ENABLED' : 'Standard Split Mode ENABLED');
+                }}
+                className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-all cursor-pointer ${
+                  isQuotaMode ? 'bg-[#A3E635]' : 'bg-slate-700'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full bg-slate-950 shadow-md transform transition-transform ${
+                  isQuotaMode ? 'translate-x-5' : 'translate-x-0'
+                }`} />
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* ─── Greeting + CTA Button ─── */}
         <div className="flex items-center justify-between mb-5">
           <div>
@@ -9850,6 +9975,51 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       );
                     })}
                   </div>
+                  {/* Excess Redistribution Matrix Card */}
+                  {isQuotaMode && (
+                    <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 text-white border border-emerald-500/30 rounded-2xl p-4 shadow-xl space-y-3 mt-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-[9px] font-black uppercase tracking-widest text-[#A3E635]">⚡ END-OF-MONTH EXCESS MATRIX</span>
+                          <h4 className="text-sm font-black text-white">Excess Redistribution Pool</h4>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[9px] text-slate-400">Total Excess Pool</span>
+                          <p className="text-base font-black text-[#A3E635]">{formatINR(computedStats.totalExcessPool || 0)}</p>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        Total excess spent beyond quotas is <strong className="text-white">{formatINR(computedStats.totalExcessPool || 0)}</strong>. Divided equally among members ({members.length}), each member's equal excess share is <strong className="text-[#A3E635]">{formatINR(computedStats.excessSharePerMember || 0)}</strong>.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                        {computedStats.memberBudgetStats.map(m => {
+                          const netBal = computedStats.balances[m.uid] || 0;
+                          return (
+                            <div key={m.uid} className="p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="font-bold text-white truncate">{m.nickname}</span>
+                                <span className="text-[9px] font-bold text-slate-400">Quota: {formatINR(m.budget)}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px]">
+                                <span className="text-slate-400">Spent: <strong className="text-white">{formatINR(m.spent)}</strong></span>
+                                <span className={m.excess > 0 ? 'text-purple-400 font-bold' : 'text-slate-400'}>
+                                  {m.excess > 0 ? `+${formatINR(m.excess)} Excess` : 'Quota Met'}
+                                </span>
+                              </div>
+                              <div className="pt-1 border-t border-white/10 flex justify-between items-center text-[10px]">
+                                <span className="text-slate-400">Net Settlement</span>
+                                <span className={`font-black ${netBal > 0 ? 'text-[#A3E635]' : netBal < 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                                  {netBal > 0 ? `+${formatINR(netBal)} (Gets)` : netBal < 0 ? `-${formatINR(Math.abs(netBal))} (Owes)` : 'Settled'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -9899,7 +10069,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             {t.title}
                             {t.isEdited && <span onClick={e => { e.stopPropagation(); setActiveEditHistoryTx(t); }} className="ml-1.5 text-[9px] text-rose-500 italic font-bold cursor-pointer">(Edited)</span>}
                           </p>
-                          <p className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 truncate">{getTransactionSubtitle(t)}</p>
+                          <p className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap truncate">
+                            <span>{getTransactionSubtitle(t)}</span>
+                            {isQuotaMode && t.category !== 'Payment' && (
+                              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-[#A3E635] border border-emerald-300/50">
+                                ⚡ Quota Entry
+                              </span>
+                            )}
+                          </p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className={`text-xs sm:text-sm font-bold ${isPayer ? 'text-[#1A3827] dark:text-[#A3E635]' : 'text-slate-400 dark:text-slate-500'}`}>
