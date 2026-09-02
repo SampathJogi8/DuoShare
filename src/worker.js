@@ -48,6 +48,13 @@ export default {
         }
       }
 
+      // Self-healing schema migration: ensure max_members column exists in rooms table
+      try {
+        await env.DB.prepare("ALTER TABLE rooms ADD COLUMN max_members INTEGER DEFAULT 6").run();
+      } catch (e) {
+        // Column max_members already exists or migrated
+      }
+
       // 0. GET /
       if ((url.pathname === "/" || url.pathname === "/api") && request.method === "GET") {
         return Response.json({ status: "alive", message: "DuoShare Cloudflare Worker API is running successfully." }, { headers: corsHeaders });
