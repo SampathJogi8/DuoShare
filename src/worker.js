@@ -66,13 +66,18 @@ export default {
         try {
           const tables = ["users", "rooms", "members", "transactions", "receipts", "activity_logs", "system_settings"];
           const snapshot = {};
+          const errors = [];
           for (const tbl of tables) {
             try {
               const res = await env.DB.prepare(`SELECT * FROM ${tbl}`).all();
               snapshot[tbl] = res?.results || [];
             } catch(e) {
+              errors.push(`${tbl}: ${e.message}`);
               snapshot[tbl] = [];
             }
+          }
+          if (errors.length > 0) {
+            return Response.json({ error: errors[0], errors }, { status: 503, headers: corsHeaders });
           }
           return Response.json({ status: "ok", exportedAt: new Date().toISOString(), data: snapshot }, { headers: corsHeaders });
         } catch (err) {

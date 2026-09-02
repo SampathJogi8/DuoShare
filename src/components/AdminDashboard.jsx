@@ -44,7 +44,7 @@ import {
   Database
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
-import { supabase } from '../supabase';
+import { supabase, realSupabase } from '../supabase';
 
 const ADMIN_EMAILS = [
   'tallyin.alerts@gmail.com'
@@ -1150,36 +1150,72 @@ export default function AdminDashboard({
 
   const [isMigratingD1ToSupabase, setIsMigratingD1ToSupabase] = useState(false);
 
+  const [migrationLog, setMigrationLog] = useState([]);
+
   const handleMigrateD1ToSupabase = async () => {
     setIsMigratingD1ToSupabase(true);
+    setMigrationLog([]);
+    const addLog = (msg) => setMigrationLog(prev => [...prev, msg]);
+
     try {
-      if (triggerToast) triggerToast('Fetching snapshot from Cloudflare D1...');
+      addLog('📡 Connecting to Cloudflare D1...');
+      if (triggerToast) triggerToast('📡 Fetching all data from Cloudflare D1...');
+
       const response = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/export-all-data');
-      if (!response.ok) throw new Error(`D1 Export failed with HTTP ${response.status}`);
-      
-      const snapshot = await response.json();
-      if (!snapshot || !snapshot.data) throw new Error('Invalid export snapshot returned from D1');
+      const json = await response.json();
+
+      if (!response.ok) {
+        const errMsg = json?.error || `HTTP ${response.status}`;
+        addLog(`❌ D1 Export failed: ${errMsg}`);
+        if (triggerToast) triggerToast(`❌ D1 not available: ${errMsg}`);
+        return;
+      }
+
+      if (!json || !json.data) {
+        addLog('❌ Invalid snapshot from D1');
+        if (triggerToast) triggerToast('❌ Invalid data snapshot from Cloudflare D1');
+        return;
+      }
 
       const tables = ["users", "rooms", "members", "transactions", "receipts", "activity_logs", "system_settings"];
       let totalMigrated = 0;
+      let totalRows = 0;
+      tables.forEach(t => { totalRows += (json.data[t] || []).length; });
+
+      addLog(`✅ D1 Export success. Found ${totalRows} total rows across ${tables.length} tables.`);
+      if (triggerToast) triggerToast(`✅ D1 Export: ${totalRows} rows found. Writing to Supabase...`);
+
+      if (totalRows === 0) {
+        addLog('⚠️ D1 returned 0 rows — nothing to migrate. D1 may still be rate-limited.');
+        if (triggerToast) triggerToast('⚠️ D1 returned 0 rows. It may still be rate-limited. Try again after midnight UTC (5:30 AM IST).');
+        return;
+      }
 
       for (const tbl of tables) {
-        const rows = snapshot.data[tbl];
-        if (Array.isArray(rows) && rows.length > 0) {
-          const { error } = await supabase.from(tbl).upsert(rows);
-          if (error) {
-            console.warn(`Migration notice for table ${tbl}:`, error);
-          } else {
-            totalMigrated += rows.length;
-          }
+        const rows = json.data[tbl];
+        if (!Array.isArray(rows) || rows.length === 0) {
+          addLog(`⏭️ ${tbl}: 0 rows — skipped`);
+          continue;
+        }
+        addLog(`🔄 ${tbl}: upserting ${rows.length} rows into Supabase...`);
+        // Use realSupabase to write DIRECTLY to Supabase PostgreSQL, bypassing Cloudflare
+        const { error } = await realSupabase.from(tbl).upsert(rows, { onConflict: 'id' });
+        if (error) {
+          addLog(`⚠️ ${tbl}: ${error.message}`);
+          console.warn(`Migration warning for table ${tbl}:`, error);
+        } else {
+          addLog(`✅ ${tbl}: ${rows.length} rows migrated`);
+          totalMigrated += rows.length;
         }
       }
 
-      logAuditAction('DATABASE_MIGRATION', `Migrated ${totalMigrated} records from Cloudflare D1 to Supabase PostgreSQL`);
-      if (triggerToast) triggerToast(`✅ Zero-Data-Loss Migration Complete! Synced ${totalMigrated} records to Supabase.`);
+      logAuditAction('DATABASE_MIGRATION', `Migrated ${totalMigrated}/${totalRows} records from Cloudflare D1 to Supabase`);
+      if (triggerToast) triggerToast(`🎉 Migration Complete! ${totalMigrated}/${totalRows} records synced to Supabase.`);
+      addLog(`🎉 Done! ${totalMigrated}/${totalRows} records migrated to Supabase PostgreSQL.`);
     } catch (err) {
       console.error('Migration error:', err);
-      if (triggerToast) triggerToast(`Migration notice: ${err.message}`);
+      addLog(`❌ Error: ${err.message}`);
+      if (triggerToast) triggerToast(`❌ Migration failed: ${err.message}`);
     } finally {
       setIsMigratingD1ToSupabase(false);
     }
@@ -1969,6 +2005,17 @@ export default function AdminDashboard({
                     </>
                   )}
                 </button>
+
+                {/* Live Migration Log */}
+                {migrationLog.length > 0 && (
+                  <div className="bg-slate-900 dark:bg-black rounded-xl p-3 space-y-1 font-mono text-[10px] max-h-48 overflow-y-auto">
+                    {migrationLog.map((line, i) => (
+                      <div key={i} className={`leading-relaxed ${line.startsWith('❌') ? 'text-red-400' : line.startsWith('⚠️') ? 'text-yellow-400' : line.startsWith('✅') || line.startsWith('🎉') ? 'text-emerald-400' : 'text-slate-300'}`}>
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
