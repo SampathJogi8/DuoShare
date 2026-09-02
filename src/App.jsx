@@ -2221,7 +2221,6 @@ export default function App() {
       }
       if (data.name) {
         setRoomName(data.name);
-        setSettingsRoomNameInput(data.name);
         localStorage.setItem('roomName', data.name);
       }
       // Track host (creator) for permission checks
@@ -2230,7 +2229,12 @@ export default function App() {
       }
       const limitVal = data.max_members ? Number(data.max_members) : 6;
       setRoomMaxMembers(limitVal);
-      setSettingsMaxMembersInput(limitVal);
+
+      // Do not overwrite draft editing inputs if Manage Room modal is currently open
+      if (!isManageRoomOpen) {
+        setSettingsMaxMembersInput(limitVal);
+        if (data.name) setSettingsRoomNameInput(data.name);
+      }
 
       // Fetch pending join requests for this room
       try {
@@ -2579,6 +2583,14 @@ export default function App() {
   }, [user, userRoomId, fetchTransactions, fetchReceipts, fetchRoomSettings, fetchMembers, fetchActivityLogs]);
 
 
+
+  // Initialize settings draft inputs whenever Manage Room modal is opened
+  useEffect(() => {
+    if (isManageRoomOpen) {
+      setSettingsMaxMembersInput(roomMaxMembers);
+      setSettingsRoomNameInput(roomName);
+    }
+  }, [isManageRoomOpen, roomMaxMembers, roomName]);
 
   // Check for due recurring expenses (Feature 1)
   useEffect(() => {
