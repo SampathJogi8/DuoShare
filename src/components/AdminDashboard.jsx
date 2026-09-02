@@ -1021,6 +1021,14 @@ export default function AdminDashboard({
     localStorage.setItem('tallyin_maintenance_message', textToSave);
 
     try {
+      await supabase.from('system_settings').upsert({
+        key: 'system_maintenance_message',
+        value: textToSave,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'key' });
+    } catch (e) {}
+
+    try {
       const sysChan = supabase.channel('system_admin_channel');
       await sysChan.send({
         type: 'broadcast',
@@ -1042,6 +1050,21 @@ export default function AdminDashboard({
     }
     localStorage.setItem('tallyin_system_maintenance_active', String(nextState));
     localStorage.setItem('tallyin_maintenance_message', textToSave);
+
+    try {
+      await Promise.all([
+        supabase.from('system_settings').upsert({
+          key: 'system_maintenance_active',
+          value: String(nextState),
+          created_at: new Date().toISOString()
+        }, { onConflict: 'key' }),
+        supabase.from('system_settings').upsert({
+          key: 'system_maintenance_message',
+          value: textToSave,
+          created_at: new Date().toISOString()
+        }, { onConflict: 'key' })
+      ]);
+    } catch (e) { console.error("Database save maintenance error:", e); }
 
     try {
       const sysChan = supabase.channel('system_admin_channel');

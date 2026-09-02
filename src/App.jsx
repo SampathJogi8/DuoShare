@@ -630,23 +630,39 @@ export default function App() {
   });
 
   useEffect(() => {
+    // Fetch maintenance control settings from DB on mount
     supabase
       .from('system_settings')
-      .select('value')
-      .eq('key', 'maintenance_allowed_accounts')
-      .maybeSingle()
+      .select('key, value')
+      .in('key', ['system_maintenance_active', 'system_maintenance_message', 'maintenance_allowed_accounts'])
       .then(({ data }) => {
-        if (data?.value) {
-          try {
-            const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setAllowedMaintenanceAccounts(parsed);
-              localStorage.setItem('tallyin_maintenance_allowed_accounts', JSON.stringify(parsed));
+        if (data && Array.isArray(data)) {
+          data.forEach(item => {
+            if (item.key === 'system_maintenance_active') {
+              const isActive = item.value === 'true' || item.value === true || (typeof item.value === 'string' && item.value.toLowerCase() === 'true');
+              setIsSystemMaintenanceActive(isActive);
+              localStorage.setItem('tallyin_system_maintenance_active', String(isActive));
             }
-          } catch (e) {}
+            if (item.key === 'system_maintenance_message') {
+              const msg = typeof item.value === 'string' ? item.value : null;
+              if (msg) {
+                setMaintenanceMessage(msg);
+                localStorage.setItem('tallyin_maintenance_message', msg);
+              }
+            }
+            if (item.key === 'maintenance_allowed_accounts') {
+              try {
+                const parsed = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  setAllowedMaintenanceAccounts(parsed);
+                  localStorage.setItem('tallyin_maintenance_allowed_accounts', JSON.stringify(parsed));
+                }
+              } catch (e) {}
+            }
+          });
         }
       })
-      .catch(() => {});
+      .catch(err => console.warn("Fetch system settings error:", err));
   }, []);
 
   const [globalBroadcast, setGlobalBroadcast] = useState(() => {
