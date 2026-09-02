@@ -3272,7 +3272,16 @@ export default function App() {
         console.log(`Realtime subscription status for room ${userRoomId}:`, status);
       });
 
-    // Background Auto-Sync Poll Loop for Cloudflare Worker D1 HTTP REST API backend (15s lightweight poll, blocked when offline)
+    // Immediate fetch on room mount/load
+    if (typeof window !== 'undefined' && navigator.onLine && userRoomId) {
+      fetchTransactions(userRoomId);
+      fetchReceipts(userRoomId);
+      fetchRoomSettings(userRoomId);
+      fetchMembers(userRoomId);
+      fetchActivityLogs(userRoomId);
+    }
+
+    // Background Auto-Sync Poll Loop for Cloudflare Worker D1 HTTP REST API backend (15s lightweight poll)
     const syncInterval = setInterval(() => {
       if (typeof window !== 'undefined' && navigator.onLine && document.visibilityState === 'visible' && userRoomId) {
         fetchTransactions(userRoomId);
@@ -3287,7 +3296,7 @@ export default function App() {
       clearInterval(syncInterval);
       supabase.removeChannel(channel);
     };
-  }, [user, userRoomId]);
+  }, [user, userRoomId, fetchTransactions, fetchReceipts, fetchRoomSettings, fetchMembers, fetchActivityLogs]);
 
 
 
@@ -10669,16 +10678,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <div className="flex items-center gap-1.5 mt-0.5">
                   {/* Live Sync Status Indicator */}
                   <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-black tracking-wider uppercase transition-all ${
-                    isDbSynced 
-                      ? 'bg-emerald-500/10 dark:bg-emerald-400/10 border-emerald-500/20 dark:border-emerald-400/20 text-emerald-700 dark:text-[#A3E635]' 
-                      : 'bg-amber-500/10 dark:bg-amber-400/10 border-amber-500/20 dark:border-amber-400/20 text-amber-700 dark:text-amber-400'
+                    !navigator.onLine || offlineMode
+                      ? 'bg-amber-500/10 dark:bg-amber-400/10 border-amber-500/20 dark:border-amber-400/20 text-amber-700 dark:text-amber-400'
+                      : isDbSynced 
+                        ? 'bg-emerald-500/10 dark:bg-emerald-400/10 border-emerald-500/20 dark:border-emerald-400/20 text-emerald-700 dark:text-[#A3E635]' 
+                        : 'bg-yellow-500/10 dark:bg-yellow-400/10 border-yellow-500/20 dark:border-yellow-400/20 text-yellow-700 dark:text-yellow-400'
                   }`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${
-                      isDbSynced 
-                        ? 'bg-emerald-500 shadow-[0_0_8px_#10B981]' 
-                        : 'bg-amber-500 animate-pulse'
+                      !navigator.onLine || offlineMode
+                        ? 'bg-amber-500 animate-pulse'
+                        : isDbSynced 
+                          ? 'bg-emerald-500 shadow-[0_0_8px_#10B981]' 
+                          : 'bg-yellow-400 animate-ping'
                     }`}></span>
-                    <span>{isDbSynced ? 'LIVE SYNC' : 'OFFLINE CACHE'}</span>
+                    <span>{
+                      !navigator.onLine || offlineMode
+                        ? 'OFFLINE CACHE'
+                        : isDbSynced
+                          ? 'LIVE SYNC'
+                          : 'SYNCING...'
+                    }</span>
                   </div>
                 </div>
               </div>
