@@ -1740,18 +1740,19 @@ export default function App() {
       if (!isAlreadyMember) {
         const { data: roomData, error: roomErr } = await supabase
           .from('rooms')
-          .select('max_members')
+          .select('name, max_members')
           .eq('id', roomId)
           .maybeSingle();
 
         if (roomErr) console.warn("Room capacity query notice:", roomErr);
 
+        const roomName = roomData?.name || 'Tallyin Room';
         const maxLimit = roomData?.max_members ? Number(roomData.max_members) : 6;
         const currentCount = existingMembers ? existingMembers.length : 0;
 
         if (currentCount >= maxLimit) {
-          triggerToast(`🔒 Room ${roomId} is full (${currentCount}/${maxLimit} members).`);
-          setJoinRequestModalInfo({ roomId, currentCount, maxLimit });
+          triggerToast(`🔒 Room "${roomName}" (${roomId}) is full (${currentCount}/${maxLimit} members).`);
+          setJoinRequestModalInfo({ roomId, roomName, currentCount, maxLimit });
           // Reset local room state if user tried to auto-join a full room
           if (userRoomId === roomId) {
             setUserRoomId(null);
@@ -3425,7 +3426,7 @@ export default function App() {
       const currentCount = existingMembers ? existingMembers.length : 0;
 
       if (!isAlreadyMember && currentCount >= maxLimit) {
-        triggerToast(`🔒 Room ${cleanId} is full (${currentCount}/${maxLimit} members). Room is locked. Ask room admin to increase capacity.`);
+        setJoinRequestModalInfo({ roomId: cleanId, roomName: room.name || 'Tallyin Room', currentCount, maxLimit });
         return;
       }
 
@@ -11813,7 +11814,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // Join Request Modal when room is full / locked
   function renderJoinRequestModal() {
     if (!joinRequestModalInfo) return null;
-    const { roomId, currentCount, maxLimit } = joinRequestModalInfo;
+    const { roomId, roomName, currentCount, maxLimit } = joinRequestModalInfo;
+    const displayName = roomName && roomName !== 'Tallyin' ? `${roomName} (${roomId})` : roomId;
+
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
         <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-[#E3E8E3] dark:border-slate-800 text-left space-y-4">
@@ -11821,14 +11824,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             🔒
           </div>
           <div>
-            <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100">Room is Locked (Full)</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100">Room is Locked</h3>
+              <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/60 px-2 py-0.5 rounded-full uppercase">Full</span>
+            </div>
             <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1">
-              Room <strong className="text-[#1A3827] dark:text-slate-200">{roomId}</strong> has reached its capacity limit of <strong>{maxLimit}</strong> members ({currentCount}/{maxLimit}).
+              Room <strong className="text-[#1A3827] dark:text-slate-200">{displayName}</strong> has reached its capacity limit of <strong>{maxLimit}</strong> members ({currentCount}/{maxLimit}).
             </p>
           </div>
-          <p className="text-xs text-[#5C6E5C] dark:text-slate-300 font-medium bg-[#F6F8F6] dark:bg-slate-950 p-3 rounded-xl border border-[#E3E8E3] dark:border-slate-800 leading-relaxed">
-            Would you like to send a join request to the room Admin? The Admin can let you in by expanding capacity (+1).
-          </p>
+          
+          <div className="p-3 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 space-y-1.5">
+            <p className="text-xs font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-1.5">
+              <span>📩 Request Admin Approval</span>
+            </p>
+            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+              Send a join request to the room Admin for <strong>{roomName || roomId}</strong>. The Admin can approve your request to let you in.
+            </p>
+          </div>
+
           <div className="flex gap-2.5 pt-1">
             <button
               onClick={() => setJoinRequestModalInfo(null)}
@@ -11841,7 +11854,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               className="flex-1 px-4 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs hover:opacity-90 flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
             >
               <UserPlus className="w-3.5 h-3.5" />
-              <span>Send Request</span>
+              <span>Send Join Request</span>
             </button>
           </div>
         </div>
