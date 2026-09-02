@@ -2208,9 +2208,21 @@ export default function App() {
       // Replace state: real DB rows supercede any optimistic entries
       setTransactions(mapped);
       setIsDbSynced(true);
+      try {
+        localStorage.setItem(`tallyin_cache_transactions_${roomId}`, JSON.stringify(mapped));
+      } catch (e) {}
     } catch (err) {
-      console.error("Error fetching transactions:", err);
+      console.warn("Error fetching transactions, using offline cache:", err);
       setIsDbSynced(false);
+      try {
+        const cached = localStorage.getItem(`tallyin_cache_transactions_${roomId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setTransactions(parsed);
+          }
+        }
+      } catch (e) {}
     }
   }, [user]);
 
@@ -2224,6 +2236,9 @@ export default function App() {
         .limit(100);
 
       if (error) throw error;
+      try {
+        localStorage.setItem(`tallyin_cache_activity_${roomId}`, JSON.stringify(data || []));
+      } catch(e) {}
       // Merge with any optimistic logs that haven't been confirmed yet
       setActivityLogs(prev => {
         const serverIds = new Set((data || []).map(l => l.id));
@@ -2233,7 +2248,16 @@ export default function App() {
         return [...pendingOptimistic, ...(data || [])].slice(0, 100);
       });
     } catch (err) {
-      console.warn("Error fetching activity logs:", err);
+      console.warn("Error fetching activity logs, using offline cache:", err);
+      try {
+        const cached = localStorage.getItem(`tallyin_cache_activity_${roomId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setActivityLogs(parsed);
+          }
+        }
+      } catch (e) {}
     }
   }, []);
 
@@ -2322,8 +2346,20 @@ export default function App() {
         imageUrl: r.image_url
       }));
       setReceipts(mappedReceipts);
+      try {
+        localStorage.setItem(`tallyin_cache_receipts_${roomId}`, JSON.stringify(mappedReceipts));
+      } catch (e) {}
     } catch (err) {
-      console.error("Error fetching receipts:", err);
+      console.warn("Error fetching receipts, using offline cache:", err);
+      try {
+        const cached = localStorage.getItem(`tallyin_cache_receipts_${roomId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setReceipts(parsed);
+          }
+        }
+      } catch (e) {}
     }
   }, []);
 
@@ -2948,18 +2984,48 @@ export default function App() {
       }
 
       setMembers(mappedMembers);
+      try {
+        localStorage.setItem(`tallyin_cache_members_${roomId}`, JSON.stringify(mappedMembers));
+      } catch (e) {}
     } catch (err) {
-      console.warn("Members fetch error:", err);
+      console.warn("Members fetch error, using offline cache:", err);
+      try {
+        const cached = localStorage.getItem(`tallyin_cache_members_${roomId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMembers(parsed);
+          }
+        }
+      } catch (e) {}
     }
   }, [user, triggerToast]);
 
-  // Reset room-specific states and reset view to home when switching rooms
+  // Load cached offline data immediately on room selection/mount
   useEffect(() => {
-    setTransactions([]);
-    setReceipts([]);
-    setMembers([]);
-    setActivityLogs([]);
-    setRoomCreatedBy(null);
+    if (userRoomId) {
+      try {
+        const cachedTxs = localStorage.getItem(`tallyin_cache_transactions_${userRoomId}`);
+        if (cachedTxs) setTransactions(JSON.parse(cachedTxs));
+
+        const cachedMems = localStorage.getItem(`tallyin_cache_members_${userRoomId}`);
+        if (cachedMems) setMembers(JSON.parse(cachedMems));
+
+        const cachedRecs = localStorage.getItem(`tallyin_cache_receipts_${userRoomId}`);
+        if (cachedRecs) setReceipts(JSON.parse(cachedRecs));
+
+        const cachedLogs = localStorage.getItem(`tallyin_cache_activity_${userRoomId}`);
+        if (cachedLogs) setActivityLogs(JSON.parse(cachedLogs));
+      } catch (e) {
+        console.warn("Offline initial cache load notice:", e);
+      }
+    } else {
+      setTransactions([]);
+      setReceipts([]);
+      setMembers([]);
+      setActivityLogs([]);
+      setRoomCreatedBy(null);
+    }
     if (currentView !== 'admin') {
       setCurrentView('home');
     }
