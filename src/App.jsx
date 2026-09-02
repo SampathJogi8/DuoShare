@@ -4157,10 +4157,26 @@ export default function App() {
       }
     });
 
-    // Round values to 2 decimal places to avoid floating-point math issues (e.g. -0.00 owes)
+    // Round values to 2 decimal places and auto-reconcile orphan balances for active members
     Object.keys(roomBalances).forEach(uid => {
       roomBalances[uid] = Math.round(roomBalances[uid] * 100) / 100;
     });
+
+    const activeMemberUids = members.map(m => m.uid);
+    if (activeMemberUids.length > 0) {
+      Object.keys(roomBalances).forEach(k => {
+        if (!activeMemberUids.includes(k) && roomBalances[k] !== 0) {
+          const orphanBal = roomBalances[k];
+          if (activeMemberUids.length === 2) {
+            const otherMemberUid = activeMemberUids.find(id => id !== currentUid) || activeMemberUids[0];
+            if (otherMemberUid) {
+              roomBalances[otherMemberUid] = Math.round(((roomBalances[otherMemberUid] || 0) + orphanBal) * 100) / 100;
+            }
+          }
+          delete roomBalances[k];
+        }
+      });
+    }
 
     totalSpend = Math.round(totalSpend * 100) / 100;
     totalRoomSpend = Math.round(totalRoomSpend * 100) / 100;
