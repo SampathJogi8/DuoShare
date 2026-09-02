@@ -3301,13 +3301,29 @@ export default function App() {
         console.warn("Failed to auto-download statement CSV:", e);
       }
 
-      // 2. Delete room from rooms table (will cascade delete members, transactions, receipts)
+      // 2. Cascade delete all child table records for userRoomId FIRST to avoid Foreign Key constraint errors in D1/SQLite
+      try {
+        await Promise.all([
+          supabase.from('transactions').delete().eq('room_id', userRoomId),
+          supabase.from('receipts').delete().eq('room_id', userRoomId),
+          supabase.from('members').delete().eq('room_id', userRoomId),
+          supabase.from('activity_logs').delete().eq('room_id', userRoomId),
+          supabase.from('system_settings').delete().eq('key', `room_mode_${userRoomId}`),
+          supabase.from('system_settings').delete().eq('key', `join_requests_${userRoomId}`)
+        ]);
+      } catch (childErr) {
+        console.warn("Child records cleanup notice:", childErr);
+      }
+
+      // 3. Delete room from rooms table
       const { error: deleteError } = await supabase
         .from('rooms')
         .delete()
         .eq('id', userRoomId);
 
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        console.warn("Room table delete notice:", deleteError);
+      }
 
       // Reset user room binding for all members of this room
       try {
