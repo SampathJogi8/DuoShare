@@ -2560,7 +2560,19 @@ export default function App() {
         console.log(`Realtime subscription status for room ${userRoomId}:`, status);
       });
 
+    // Background Auto-Sync Poll Loop for Cloudflare Worker D1 HTTP REST API backend (3.5s real-time sync)
+    const syncInterval = setInterval(() => {
+      if (document.visibilityState === 'visible' && userRoomId) {
+        fetchTransactions(userRoomId);
+        fetchReceipts(userRoomId);
+        fetchRoomSettings(userRoomId);
+        fetchMembers(userRoomId);
+        fetchActivityLogs(userRoomId);
+      }
+    }, 3500);
+
     return () => {
+      clearInterval(syncInterval);
       supabase.removeChannel(channel);
     };
   }, [user, userRoomId, fetchTransactions, fetchReceipts, fetchRoomSettings, fetchMembers, fetchActivityLogs]);
