@@ -2475,28 +2475,16 @@ export default function App() {
       if (error) throw error;
       
       if (!data) {
-        // Room does not exist anymore (e.g. deleted by someone else or cleanup)! Clear active room.
-        console.warn(`Room ${roomId} does not exist. Clearing active room.`);
-        setUserRoomId(null);
-        setHasConfirmedRoom(false);
-        setTransactions([]);
-        setReceipts([]);
-        setMembers([]);
-        setActivityLogs([]);
-        setRoomCreatedBy(null);
-        localStorage.removeItem('userRoomId');
-        if (user) {
-          supabase
-            .from('users')
-            .upsert({
-              uid: user.id,
-              room_id: null,
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'uid' })
-            .then(null, err => console.error('Error updating user room_id:', err));
-        }
-        await fetchUserRooms();
-        triggerToast("Active room is no longer available.");
+        console.warn(`Room ${roomId} not found in database rooms table. Auto-provisioning row...`);
+        try {
+          await supabase.from('rooms').upsert({
+            id: roomId,
+            name: localStorage.getItem('roomName') || 'Tallyin Room',
+            monthly_budget: Number(localStorage.getItem('monthlyBudget')) || 22000,
+            max_members: 6,
+            created_by: user?.id || null
+          }, { onConflict: 'id' });
+        } catch(e) {}
         return;
       }
 
