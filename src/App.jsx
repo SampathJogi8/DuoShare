@@ -3112,6 +3112,31 @@ export default function App() {
 
       if (deleteError) throw deleteError;
 
+      // Auto-adjust room capacity limit down upon member exit
+      try {
+        const { data: remMembers } = await supabase
+          .from('members')
+          .select('uid')
+          .eq('room_id', userRoomId);
+
+        const remainingCount = remMembers ? remMembers.length : 0;
+        const { data: currentRoom } = await supabase
+          .from('rooms')
+          .select('max_members')
+          .eq('id', userRoomId)
+          .maybeSingle();
+
+        const currentMax = currentRoom?.max_members ? Number(currentRoom.max_members) : 6;
+        const adjustedCapacity = Math.max(2, Math.min(currentMax - 1, Math.max(remainingCount, 2)));
+
+        await supabase
+          .from('rooms')
+          .update({ max_members: adjustedCapacity })
+          .eq('id', userRoomId);
+      } catch (capErr) {
+        console.warn("Notice: failed to auto-adjust room capacity on exit:", capErr);
+      }
+
       // Log the leave action before clearing state
       try {
         await supabase
@@ -3178,6 +3203,28 @@ export default function App() {
         .eq('uid', memberUid);
 
       if (deleteError) throw deleteError;
+
+      // Auto-adjust room capacity limit down upon member removal
+      try {
+        const { data: remMembers } = await supabase
+          .from('members')
+          .select('uid')
+          .eq('room_id', userRoomId);
+
+        const remainingCount = remMembers ? remMembers.length : 0;
+        const currentMax = roomMaxMembers ? Number(roomMaxMembers) : 6;
+        const adjustedCapacity = Math.max(2, Math.min(currentMax - 1, Math.max(remainingCount, 2)));
+
+        await supabase
+          .from('rooms')
+          .update({ max_members: adjustedCapacity })
+          .eq('id', userRoomId);
+
+        setRoomMaxMembers(adjustedCapacity);
+        setSettingsMaxMembersInput(adjustedCapacity);
+      } catch (capErr) {
+        console.warn("Notice: failed to auto-adjust room capacity on member removal:", capErr);
+      }
 
       // If the removed member is the current user, clear their active room
       if (user && memberUid === user.id) {
