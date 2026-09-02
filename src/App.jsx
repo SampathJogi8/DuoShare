@@ -2444,6 +2444,62 @@ export default function App() {
     }
   };
 
+  const sendDeclineEmail = async (req, roomId, roomDisplayName) => {
+    if (!req.email || !req.email.includes('@')) {
+      console.warn("No valid email provided for join request decline notification:", req);
+      return;
+    }
+
+    const subject = `Tallyin Join Request Update for "${roomDisplayName || roomId}"`;
+    
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #F6F8F6; border-radius: 24px;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h2 style="color: #1A3827; margin: 0; font-size: 20px; font-weight: 800;">Tallyin Room Update</h2>
+          <p style="color: #5C6E5C; font-size: 12px; margin-top: 4px;">YouthFirst DuoShare Expense Manager</p>
+        </div>
+
+        <div style="background-color: #ffffff; padding: 24px; border-radius: 20px; border: 1px solid #E3E8E3; text-align: center;">
+          <div style="font-size: 40px; margin-bottom: 12px;">ℹ️</div>
+          <h3 style="color: #1A3827; margin: 0 0 8px 0; font-size: 18px; font-weight: 800;">Join Request Declined</h3>
+          <p style="color: #5C6E5C; font-size: 13px; line-height: 1.5; margin: 0 0 20px 0;">
+            Hello <strong>${req.nickname}</strong>,<br>
+            Your request to join room <strong>"${roomDisplayName || roomId}"</strong> was reviewed and declined by the room Admin.
+          </p>
+
+          <div style="background-color: #F8FAFC; padding: 14px; border-radius: 14px; text-align: left; border: 1px solid #E2E8F0;">
+            <div style="font-size: 11px; color: #64748B; font-weight: 700; text-transform: uppercase;">Room Info</div>
+            <div style="font-size: 13px; font-weight: 700; color: #1E293B; margin-top: 4px;">${roomDisplayName || 'Shared Room'} (Code: ${roomId})</div>
+            <p style="font-size: 11px; color: #64748B; margin-top: 6px; margin-bottom: 0;">
+              If you need access or believe this was done in error, please contact the room Admin directly.
+            </p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const textBody = `Hello ${req.nickname},\n\nYour request to join room "${roomDisplayName || roomId}" on Tallyin was declined by the room Admin.\n\nRoom Code: ${roomId}`;
+
+    try {
+      if (typeof activeScriptUrl !== 'undefined' && activeScriptUrl) {
+        await fetch(activeScriptUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            to: req.email,
+            subject: subject,
+            htmlBody: htmlBody,
+            textBody: textBody
+          })
+        });
+        console.log(`Decline email sent successfully to ${req.email}`);
+      }
+    } catch (e) {
+      console.warn("Failed to send decline email:", e);
+    }
+  };
+
   const handleDeclineJoinRequest = async (req) => {
     if (!userRoomId) return;
     try {
@@ -2458,7 +2514,10 @@ export default function App() {
           created_at: new Date().toISOString()
         }, { onConflict: 'key' });
 
-      triggerToast(`Declined join request for ${req.nickname}.`);
+      await logActivity('settings', `${userNickname} declined join request from ${req.nickname}`);
+      await sendDeclineEmail(req, userRoomId, roomName);
+
+      triggerToast(`Declined join request for ${req.nickname}. Notification email sent.`);
     } catch (err) {
       console.error("Decline join request error:", err);
       triggerToast(`Failed to decline request: ${err.message}`);
