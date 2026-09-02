@@ -38,6 +38,7 @@ import {
   Upload,
   UserCheck,
   UserPlus,
+  Mail,
   Menu,
   ShieldCheck,
   Share2,
@@ -50,7 +51,6 @@ import {
   FileSpreadsheet,
   MessageSquare,
   Bell,
-  Mail,
   HandCoins,
   CheckCircle2,
   ArrowLeftRight,
@@ -1740,19 +1740,37 @@ export default function App() {
       if (!isAlreadyMember) {
         const { data: roomData, error: roomErr } = await supabase
           .from('rooms')
-          .select('name, max_members')
+          .select('name, created_by, max_members')
           .eq('id', roomId)
           .maybeSingle();
 
         if (roomErr) console.warn("Room capacity query notice:", roomErr);
 
         const roomName = roomData?.name || 'Tallyin Room';
+        const hostUid = roomData?.created_by;
+        let hostNickname = 'Room Admin';
+        let hostEmail = '';
+
+        if (hostUid) {
+          const { data: hostMember } = await supabase
+            .from('members')
+            .select('nickname, email')
+            .eq('room_id', roomId)
+            .eq('uid', hostUid)
+            .maybeSingle();
+
+          if (hostMember) {
+            hostNickname = hostMember.nickname || 'Room Admin';
+            hostEmail = hostMember.email || '';
+          }
+        }
+
         const maxLimit = roomData?.max_members ? Number(roomData.max_members) : 6;
         const currentCount = existingMembers ? existingMembers.length : 0;
 
         if (currentCount >= maxLimit) {
           triggerToast(`🔒 Room "${roomName}" (${roomId}) is full (${currentCount}/${maxLimit} members).`);
-          setJoinRequestModalInfo({ roomId, roomName, currentCount, maxLimit });
+          setJoinRequestModalInfo({ roomId, roomName, hostNickname, hostEmail, currentCount, maxLimit });
           // Reset local room state if user tried to auto-join a full room
           if (userRoomId === roomId) {
             setUserRoomId(null);
@@ -3611,7 +3629,32 @@ export default function App() {
       const currentCount = existingMembers ? existingMembers.length : 0;
 
       if (!isAlreadyMember && currentCount >= maxLimit) {
-        setJoinRequestModalInfo({ roomId: cleanId, roomName: room.name || 'Tallyin Room', currentCount, maxLimit });
+        const hostUid = room.created_by;
+        let hostNickname = 'Room Admin';
+        let hostEmail = '';
+
+        if (hostUid) {
+          const { data: hostMember } = await supabase
+            .from('members')
+            .select('nickname, email')
+            .eq('room_id', cleanId)
+            .eq('uid', hostUid)
+            .maybeSingle();
+
+          if (hostMember) {
+            hostNickname = hostMember.nickname || 'Room Admin';
+            hostEmail = hostMember.email || '';
+          }
+        }
+
+        setJoinRequestModalInfo({
+          roomId: cleanId,
+          roomName: room.name || 'Tallyin Room',
+          hostNickname,
+          hostEmail,
+          currentCount,
+          maxLimit
+        });
         return;
       }
 
@@ -12057,8 +12100,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // Join Request Modal when room is full / locked
   function renderJoinRequestModal() {
     if (!joinRequestModalInfo) return null;
-    const { roomId, roomName, currentCount, maxLimit } = joinRequestModalInfo;
+    const { roomId, roomName, hostNickname, hostEmail, currentCount, maxLimit } = joinRequestModalInfo;
     const displayName = roomName && roomName !== 'Tallyin' ? `${roomName} (${roomId})` : roomId;
+    const mailtoUrl = hostEmail
+      ? `mailto:${hostEmail}?subject=${encodeURIComponent(`Access Request for Tallyin Room "${roomName || roomId}"`)}&body=${encodeURIComponent(`Hi ${hostNickname || 'Admin'},\n\nI would like to join room "${roomName || roomId}" (${roomId}) on Tallyin. Please approve my join request or expand room capacity.\n\nThank you!`)}`
+      : null;
 
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
@@ -12076,14 +12122,35 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </p>
           </div>
           
-          <div className="p-3 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 space-y-1.5">
-            <p className="text-xs font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-1.5">
-              <span>📩 Request Admin Approval</span>
-            </p>
-            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-              Send a join request to the room Admin for <strong>{roomName || roomId}</strong>. The Admin can approve your request to let you in.
-            </p>
+          {/* Admin / Host Contact Info Box */}
+          <div className="p-3.5 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-extrabold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">Room Admin / Host</span>
+              <span className="text-[10px] font-black text-emerald-800 dark:text-[#A3E635] bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">Host</span>
+            </div>
+            <div>
+              <p className="text-xs font-black text-[#1A3827] dark:text-slate-100">{hostNickname || 'Room Admin'}</p>
+              {hostEmail ? (
+                <p className="text-[11px] font-mono text-[#5C6E5C] dark:text-slate-400 truncate mt-0.5">{hostEmail}</p>
+              ) : (
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 italic mt-0.5">Admin details available in-app</p>
+              )}
+            </div>
+
+            {mailtoUrl && (
+              <a
+                href={mailtoUrl}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline pt-1"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>Email Host ({hostNickname})</span>
+              </a>
+            )}
           </div>
+
+          <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+            Send an in-app request to <strong>{hostNickname || 'the Admin'}</strong> for quick approval & capacity expansion (+1).
+          </p>
 
           <div className="flex gap-2.5 pt-1">
             <button
