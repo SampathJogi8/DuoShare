@@ -2323,11 +2323,12 @@ export default function App() {
         return;
       }
 
+      const resolvedEmail = activeUser.email || auth.currentUser?.email || localStorage.getItem('tallyin_user_email') || localStorage.getItem('user_email') || '';
       const newRequest = {
         id: crypto.randomUUID(),
         uid: activeUser.id,
         nickname: nickname,
-        email: activeUser.email || '',
+        email: resolvedEmail,
         requested_at: new Date().toISOString(),
         room_id: targetRoomId
       };
@@ -2344,13 +2345,48 @@ export default function App() {
 
       if (upsertErr) throw upsertErr;
 
-      // Save pending request locally so Home Screen room list displays "Pending Approval"
+      // Save pending request locally & in DB for user_requests_${activeUser.id}
       const targetRoomName = joinRequestModalInfo?.roomName || targetRoomId;
+      const newUserReqItem = {
+        roomId: targetRoomId,
+        roomName: targetRoomName,
+        status: 'pending',
+        requestedAt: new Date().toISOString()
+      };
+
       setPendingUserRequests(prev => {
-        const next = [...prev.filter(p => p.roomId !== targetRoomId), { roomId: targetRoomId, roomName: targetRoomName, requestedAt: new Date().toISOString() }];
+        const next = [...prev.filter(p => p.roomId !== targetRoomId), newUserReqItem];
         localStorage.setItem('tallyin_pending_user_requests', JSON.stringify(next));
         return next;
       });
+
+      try {
+        const { data: userReqData } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `user_requests_${activeUser.id}`)
+          .maybeSingle();
+
+        let userReqList = [];
+        if (userReqData?.value) {
+          try {
+            userReqList = typeof userReqData.value === 'string' ? JSON.parse(userReqData.value) : userReqData.value;
+            if (!Array.isArray(userReqList)) userReqList = [];
+          } catch(e) { userReqList = []; }
+        }
+
+        const updatedUserReqList = [...userReqList.filter(r => r.roomId !== targetRoomId), newUserReqItem];
+
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: `user_requests_${activeUser.id}`,
+            value: JSON.stringify(updatedUserReqList),
+            created_at: new Date().toISOString()
+          }, { onConflict: 'key' });
+      } catch (e) {
+        console.warn("Notice: failed to save user request state to DB:", e);
+      }
 
       await logActivity('settings', `${nickname} sent a request to join room ${targetRoomId}`);
       triggerToast('📩 Join request sent to room Admin! Redirecting to your rooms screen...');
@@ -2367,7 +2403,20 @@ export default function App() {
   };
 
   const sendApprovalEmail = async (req, roomId, roomDisplayName) => {
-    if (!req.email || !req.email.includes('@')) {
+    let recipientEmail = req.email;
+    if (!recipientEmail || !recipientEmail.includes('@')) {
+      try {
+        const { data: uData } = await supabase
+          .from('users')
+          .select('email')
+          .eq('uid', req.uid)
+          .maybeSingle();
+
+        if (uData?.email) recipientEmail = uData.email;
+      } catch (e) {}
+    }
+
+    if (!recipientEmail || !recipientEmail.includes('@')) {
       console.warn("No valid recipient email provided for join request approval notification:", req);
       return;
     }
@@ -2415,13 +2464,13 @@ export default function App() {
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
-          to: req.email,
+          to: recipientEmail,
           subject: subject,
           htmlBody: htmlBody,
           textBody: textBody
         })
       });
-      console.log(`Approval email dispatched to ${req.email}`);
+      console.log(`Approval email dispatched to ${recipientEmail}`);
     } catch (e) {
       console.warn("Failed to send approval email:", e);
     }
@@ -2465,12 +2514,39 @@ export default function App() {
           created_at: new Date().toISOString()
         }, { onConflict: 'key' });
 
+      // 4. Update status in user_requests_${req.uid}
+      try {
+        const { data: userReqData } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `user_requests_${req.uid}`)
+          .maybeSingle();
+
+        let userReqList = [];
+        if (userReqData?.value) {
+          try {
+            userReqList = typeof userReqData.value === 'string' ? JSON.parse(userReqData.value) : userReqData.value;
+            if (!Array.isArray(userReqList)) userReqList = [];
+          } catch(e) { userReqList = []; }
+        }
+
+        const updatedUserReqList = userReqList.map(r => r.roomId === userRoomId ? { ...r, status: 'approved', approvedAt: new Date().toISOString() } : r);
+
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: `user_requests_${req.uid}`,
+            value: JSON.stringify(updatedUserReqList),
+            created_at: new Date().toISOString()
+          }, { onConflict: 'key' });
+      } catch (e) { console.warn("Notice: failed to update approved user request state:", e); }
+
       await fetchMembers(userRoomId);
       
-      // 4. Log activity so all roommates see the new roommate joined
+      // 5. Log activity so all roommates see the new roommate joined
       await logActivity('settings', `🎉 ${req.nickname} joined the room! (Approved by ${userNickname})`);
 
-      // 5. Notify all roommates via browser push notification
+      // 6. Notify all roommates via browser push notification & email
       if (Notification.permission === 'granted' && localStorage.getItem('pushNotificationsEnabled') === 'true') {
         try {
           new Notification("New Roommate Joined!", {
@@ -2480,7 +2556,18 @@ export default function App() {
         } catch (e) {}
       }
 
-      // 6. Send Email Notification to Approved User with direct join link
+      // Notify roommates via email dispatch
+      try {
+        sendEmailNotification({
+          title: `🎉 ${req.nickname} joined room ${roomName || userRoomId}!`,
+          amount: 0,
+          paidBy: req.nickname,
+          category: 'General',
+          date: getLocalDateStr()
+        }, 'add');
+      } catch (e) {}
+
+      // 7. Send Email Notification to Approved User with direct join link
       await sendApprovalEmail(req, userRoomId, roomName);
 
       triggerToast(`🎉 Approved ${req.nickname}! Room capacity expanded to ${newLimit} members & email sent.`);
@@ -2491,7 +2578,20 @@ export default function App() {
   };
 
   const sendDeclineEmail = async (req, roomId, roomDisplayName, hostName, hostEmail) => {
-    if (!req.email || !req.email.includes('@')) {
+    let recipientEmail = req.email;
+    if (!recipientEmail || !recipientEmail.includes('@')) {
+      try {
+        const { data: uData } = await supabase
+          .from('users')
+          .select('email')
+          .eq('uid', req.uid)
+          .maybeSingle();
+
+        if (uData?.email) recipientEmail = uData.email;
+      } catch (e) {}
+    }
+
+    if (!recipientEmail || !recipientEmail.includes('@')) {
       console.warn("No valid email provided for join request decline notification:", req);
       return;
     }
@@ -2538,13 +2638,13 @@ export default function App() {
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
-          to: req.email,
+          to: recipientEmail,
           subject: subject,
           htmlBody: htmlBody,
           textBody: textBody
         })
       });
-      console.log(`Decline email dispatched to ${req.email}`);
+      console.log(`Decline email dispatched to ${recipientEmail}`);
     } catch (e) {
       console.warn("Failed to send decline email:", e);
     }
@@ -2564,6 +2664,33 @@ export default function App() {
           created_at: new Date().toISOString()
         }, { onConflict: 'key' });
 
+      // Update declined status in user_requests_${req.uid}
+      try {
+        const { data: userReqData } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `user_requests_${req.uid}`)
+          .maybeSingle();
+
+        let userReqList = [];
+        if (userReqData?.value) {
+          try {
+            userReqList = typeof userReqData.value === 'string' ? JSON.parse(userReqData.value) : userReqData.value;
+            if (!Array.isArray(userReqList)) userReqList = [];
+          } catch(e) { userReqList = []; }
+        }
+
+        const updatedUserReqList = userReqList.map(r => r.roomId === userRoomId ? { ...r, status: 'declined', declinedAt: new Date().toISOString() } : r);
+
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: `user_requests_${req.uid}`,
+            value: JSON.stringify(updatedUserReqList),
+            created_at: new Date().toISOString()
+          }, { onConflict: 'key' });
+      } catch (e) { console.warn("Notice: failed to update declined user request state:", e); }
+
       await logActivity('settings', `${userNickname} declined join request from ${req.nickname}`);
       await sendDeclineEmail(req, userRoomId, roomName, userNickname, user?.email);
 
@@ -2573,6 +2700,39 @@ export default function App() {
       triggerToast(`Failed to decline request: ${err.message}`);
     }
   };
+
+  // Real-time Home Screen Request Status Poller (runs every 3.5s while user is on Home/Selection screen)
+  useEffect(() => {
+    if (!user || hasConfirmedRoom) return;
+
+    const fetchUserRequestStatus = async () => {
+      try {
+        const { data: userReqData } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `user_requests_${user.id}`)
+          .maybeSingle();
+
+        if (userReqData?.value) {
+          const parsed = typeof userReqData.value === 'string' ? JSON.parse(userReqData.value) : userReqData.value;
+          if (Array.isArray(parsed)) {
+            setPendingUserRequests(parsed);
+            localStorage.setItem('tallyin_pending_user_requests', JSON.stringify(parsed));
+          }
+        }
+
+        // Also refresh user rooms to check for newly approved memberships
+        await fetchUserRooms();
+      } catch (e) {
+        console.warn("Home request status poll error:", e);
+      }
+    };
+
+    fetchUserRequestStatus();
+    const interval = setInterval(fetchUserRequestStatus, 3500);
+
+    return () => clearInterval(interval);
+  }, [user, hasConfirmedRoom, fetchUserRooms]);
 
   const fetchMembers = useCallback(async (roomId) => {
     try {
@@ -8370,27 +8530,50 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                     combinedRooms.push({
                       roomId: p.roomId,
                       roomName: p.roomName || p.roomId,
-                      isPendingReq: true
+                      status: p.status || 'pending',
+                      declinedAt: p.declinedAt,
+                      approvedAt: p.approvedAt
                     });
                   }
                 });
 
-                if (combinedRooms.length === 0) return null;
+                // Filter out declined cards older than 24 hours (86,400,000 ms)
+                const visibleRooms = combinedRooms.filter(r => {
+                  const reqItem = pendingUserRequests.find(p => p.roomId === r.roomId) || r;
+                  if (reqItem && reqItem.status === 'declined') {
+                    const declinedTime = reqItem.declinedAt ? new Date(reqItem.declinedAt).getTime() : 0;
+                    if (declinedTime > 0 && (Date.now() - declinedTime >= 24 * 60 * 60 * 1000)) {
+                      return false; // Auto-vanish after 24 hours
+                    }
+                  }
+                  return true;
+                });
+
+                if (visibleRooms.length === 0) return null;
 
                 return (
                   <div className="space-y-2 text-left pt-3 border-t border-[#E3E8E3]/50 dark:border-slate-800/50">
                     <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest block font-sans">
-                      Your Spaces & Requests ({combinedRooms.length})
+                      Your Spaces & Requests ({visibleRooms.length})
                     </label>
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {combinedRooms.map(r => {
+                      {visibleRooms.map(r => {
                         const isActive = r.roomId === userRoomId;
-                        const isPending = r.isPendingReq || pendingUserRequests.some(p => p.roomId === r.roomId);
+                        const reqItem = pendingUserRequests.find(p => p.roomId === r.roomId) || r;
+                        const isUserMember = userRooms.some(u => u.roomId === r.roomId);
+                        
+                        const isApproved = isUserMember || reqItem.status === 'approved';
+                        const isDeclined = !isUserMember && reqItem.status === 'declined';
+                        const isPending = !isUserMember && !isDeclined && (reqItem.status === 'pending' || r.isPendingReq);
 
                         return (
                           <div 
                             key={r.roomId}
                             onClick={async () => {
+                              if (isDeclined) {
+                                triggerToast('❌ Your join request for this room was declined by the Admin.');
+                                return;
+                              }
                               if (isPending) {
                                 triggerToast('⏳ Your join request for this room is pending review by the room Admin.');
                                 return;
@@ -8401,7 +8584,6 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                               }
                               setUserRoomId(r.roomId);
                               localStorage.setItem('userRoomId', r.roomId);
-                              // Optimistically use cached name while we fetch fresh settings
                               if (r.roomName) {
                                 setRoomName(r.roomName);
                                 localStorage.setItem('roomName', r.roomName);
@@ -8411,8 +8593,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                               setIsMobileMenuOpen(false);
                               setIsInviteModalOpen(false);
                               setIsManageRoomOpen(false);
-                              triggerToast(`Entering room: ${r.roomName}...`);
-                              // Always fetch fresh budget and created_by from DB
+                              triggerToast(isApproved ? `🎉 Entering approved room: ${r.roomName}!` : `Entering room: ${r.roomName}...`);
                               await fetchRoomSettings(r.roomId);
                               if (user) {
                                 (async () => {
@@ -8429,23 +8610,35 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                               }
                             }}
                             className={`flex items-center justify-between p-3 rounded-2xl border text-xs transition-all ${
-                              isPending
+                              isDeclined
+                                ? 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-300 dark:border-rose-900/50 cursor-default'
+                                : isPending
                                 ? 'bg-purple-50/70 dark:bg-purple-950/20 border-purple-300 dark:border-purple-900/50 cursor-default'
+                                : isApproved && !isActive
+                                ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-700 shadow-sm cursor-pointer animate-pulse'
                                 : isActive 
                                 ? 'border-[#1A3827] dark:border-[#A3E635] bg-[#EAF0EC]/20 dark:bg-[#A3E635]/5 font-bold cursor-pointer' 
                                 : 'border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6]/40 dark:hover:bg-slate-800/20 cursor-pointer'
                             }`}
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="text-base shrink-0">{isPending ? '⏳' : '🏠'}</span>
+                              <span className="text-base shrink-0">{isDeclined ? '❌' : isPending ? '⏳' : isApproved ? '🎉' : '🏠'}</span>
                               <div className="min-w-0">
                                 <p className="font-bold text-[#1A3827] dark:text-slate-100 truncate">{r.roomName}</p>
                                 <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-mono truncate">{r.roomId}</p>
                               </div>
                             </div>
-                            {isPending ? (
+                            {isDeclined ? (
+                              <span className="text-[9px] bg-rose-100 text-rose-900 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-800 px-2.5 py-1 rounded-full font-black shrink-0">
+                                ❌ Request Declined
+                              </span>
+                            ) : isPending ? (
                               <span className="text-[9px] bg-purple-100 text-purple-900 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-300 dark:border-purple-800 px-2.5 py-1 rounded-full font-extrabold shrink-0">
                                 ⏳ Pending Approval
+                              </span>
+                            ) : isApproved && !isActive ? (
+                              <span className="text-[9px] bg-emerald-800 text-white dark:bg-[#A3E635] dark:text-slate-950 px-2.5 py-1 rounded-full font-black shrink-0 shadow-sm">
+                                🎉 Approved! Explore New Room
                               </span>
                             ) : isActive ? (
                               <span className="text-[9px] bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 px-2 py-0.5 rounded-full font-bold shrink-0">Active</span>
