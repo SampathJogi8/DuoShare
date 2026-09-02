@@ -3117,10 +3117,12 @@ export default function App() {
 
   // Delete Room handler
   const handleDeleteRoom = async (bypassHostCheck = false, skipConfirmation = false) => {
-    if (!userRoomId) return;
-    // Permission check
-    if (!bypassHostCheck && user && roomCreatedBy && roomCreatedBy !== user.id) {
-      triggerToast('Only the room host can delete the room.');
+    if (!userRoomId || !user) return;
+    const isHost = roomCreatedBy && roomCreatedBy === user.id;
+
+    // Strict Permission check: non-hosts cannot delete room directly
+    if (!bypassHostCheck && !isHost) {
+      triggerToast('⛔ Only the Room Host (Admin) can delete this room space.');
       return;
     }
     if (!skipConfirmation) {
@@ -3230,6 +3232,12 @@ export default function App() {
   // Propose Room Deletion
   const handleProposeDeleteRoom = async () => {
     if (!userRoomId || !user) return;
+    const isHost = roomCreatedBy && roomCreatedBy === user.id;
+    if (!isHost) {
+      triggerToast('⛔ Only the Room Host (Admin) can propose room deletion.');
+      return;
+    }
+
     const confirmed = window.confirm("Are you sure you want to propose deleting this room permanently? This requires approval from all members.");
     if (!confirmed) return;
 
@@ -12766,20 +12774,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               {!deleteProposal ? (
                 <>
                   <p className="text-[11px] text-rose-600/80 dark:text-rose-400/70">
-                    Deleting the room will permanently remove all transactions, members, and data. This requires approval from all room members.
+                    Deleting the room will permanently remove all transactions, members, and data. {roomCreatedBy === user?.id ? "This requires approval from all room members." : "Only the Host can propose room deletion."}
                   </p>
-                  <button
-                    onClick={() => {
-                      if (members.length <= 1) {
-                        handleDeleteRoom();
-                      } else {
-                        handleProposeDeleteRoom();
-                      }
-                    }}
-                    className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
-                  >
-                    {members.length <= 1 ? "Delete Room Permanently" : "Propose Room Deletion"}
-                  </button>
+                  {roomCreatedBy === user?.id ? (
+                    <button
+                      onClick={() => {
+                        if (members.length <= 1) {
+                          handleDeleteRoom(false);
+                        } else {
+                          handleProposeDeleteRoom();
+                        }
+                      }}
+                      className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
+                    >
+                      {members.length <= 1 ? "Delete Room Permanently" : "Propose Room Deletion"}
+                    </button>
+                  ) : (
+                    <p className="text-[10px] text-rose-500 font-medium italic">
+                      🔒 Only the Room Host (Admin) can delete or propose room deletion.
+                    </p>
+                  )}
                 </>
               ) : (
                 <div className="space-y-3">
@@ -16822,8 +16836,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </button>
             </div>
 
-            {/* Delete Room Space */}
-            {userRoomId && (
+            {/* Delete Room Space — Host Only */}
+            {userRoomId && user && roomCreatedBy === user.id && (
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2 border-t border-[#F6F8F6] dark:border-slate-800">
                 <div>
                   <p className="text-xs font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
@@ -16835,11 +16849,17 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   </p>
                 </div>
                 <button 
-                  onClick={() => handleDeleteRoom(true)}
+                  onClick={() => {
+                    if (members.length <= 1) {
+                      handleDeleteRoom(false);
+                    } else {
+                      handleProposeDeleteRoom();
+                    }
+                  }}
                   className="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-98 shrink-0 w-full sm:w-auto"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete room</span>
+                  <span>{members.length <= 1 ? "Delete room" : "Propose Deletion"}</span>
                 </button>
               </div>
             )}
