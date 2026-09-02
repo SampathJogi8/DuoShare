@@ -37,6 +37,7 @@ import {
   DollarSign as CategoryIcon,
   Upload,
   UserCheck,
+  UserPlus,
   Menu,
   ShieldCheck,
   Share2,
