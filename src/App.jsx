@@ -561,6 +561,8 @@ export default function App() {
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isManageRoomOpen, setIsManageRoomOpen] = useState(false);
+  const [editingMemberBudget, setEditingMemberBudget] = useState(null); // { uid, nickname, currentBudget }
+  const [newMemberBudgetVal, setNewMemberBudgetVal] = useState('');
   const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
   const [activeReceiptZoom, setActiveReceiptZoom] = useState(null);
   const [activeReceiptImageIndex, setActiveReceiptImageIndex] = useState(0);
@@ -2194,6 +2196,7 @@ export default function App() {
         nickname: m.nickname,
         photoURL: m.photo_url || '',
         email: m.email || '',
+        individualBudget: Number(m.individual_budget) || 2000,
         joinedAt: m.joined_at
       }));
       
@@ -2903,6 +2906,30 @@ export default function App() {
     }
   };
 
+  // Update member individual budget handler
+  const handleUpdateMemberBudget = async (memberUid, budgetVal) => {
+    if (!userRoomId || !memberUid) return;
+    const bNum = Math.max(0, Number(budgetVal) || 0);
+    try {
+      const { error } = await supabase
+        .from('members')
+        .update({ individual_budget: bNum })
+        .eq('room_id', userRoomId)
+        .eq('uid', memberUid);
+
+      if (error) throw error;
+
+      setMembers(prev => prev.map(m => m.uid === memberUid ? { ...m, individualBudget: bNum } : m));
+      triggerToast('Roommate budget updated!');
+      setEditingMemberBudget(null);
+      setNewMemberBudgetVal('');
+      logActivity('update_budget', `Updated budget for roommate to ₹${bNum}`);
+    } catch (err) {
+      console.error('Error updating member budget:', err);
+      triggerToast('Failed to update roommate budget.');
+    }
+  };
+
   // Sign out handler
   const handleSignOut = async () => {
     try {
@@ -3198,16 +3225,20 @@ export default function App() {
     
     // Map of member uid to net balance: paid - share
     const roomBalances = {};
+    const memberOutofPocket = {};
     
-    // Initialize balances for all current members
+    // Initialize balances and spent amounts for all current members
     members.forEach(m => {
       roomBalances[m.uid] = 0;
+      memberOutofPocket[m.uid] = 0;
     });
     
     // Default fallback if members list is empty
     if (members.length === 0) {
       roomBalances[currentUid] = 0;
       roomBalances['roommate'] = 0;
+      memberOutofPocket[currentUid] = 0;
+      memberOutofPocket['roommate'] = 0;
     }
 
     data.forEach(t => {
@@ -3231,6 +3262,10 @@ export default function App() {
           const isSelf = t.paidBy === userNickname;
           payerUid = isSelf ? currentUid : 'roommate';
         }
+      }
+
+      if (!isPayment) {
+        memberOutofPocket[payerUid] = (memberOutofPocket[payerUid] || 0) + amount;
       }
 
       if (isPayment) {
@@ -3402,6 +3437,27 @@ export default function App() {
     mySettlementsPaid = Math.round(mySettlementsPaid * 100) / 100;
     mySettlementsReceived = Math.round(mySettlementsReceived * 100) / 100;
 
+    const totalRoomBudgetPool = members.reduce((sum, m) => sum + (Number(m.individualBudget) || 2000), 0);
+    const memberBudgetStats = members.map(m => {
+      const spent = memberOutofPocket[m.uid] || 0;
+      const budget = Number(m.individualBudget) || 2000;
+      const remaining = Math.max(0, budget - spent);
+      const pct = budget > 0 ? Math.min(100, Math.round((spent / budget) * 100)) : 0;
+      return {
+        ...m,
+        spent: Math.round(spent * 100) / 100,
+        budget,
+        remaining: Math.round(remaining * 100) / 100,
+        pct,
+        isExhausted: spent >= budget
+      };
+    });
+
+    let suggestedNextBuyer = null;
+    if (memberBudgetStats.length > 0) {
+      suggestedNextBuyer = [...memberBudgetStats].sort((a, b) => b.remaining - a.remaining)[0];
+    }
+
     return {
       totalSpend,
       totalRoomSpend,
@@ -3416,7 +3472,10 @@ export default function App() {
       settlementCount,
       totalSettledAmount,
       mySettlementsPaid,
-      mySettlementsReceived
+      mySettlementsReceived,
+      memberBudgetStats,
+      totalRoomBudgetPool,
+      suggestedNextBuyer
     };
   }, [transactions, members, userNickname, auth.currentUser]);
 
@@ -4541,6 +4600,22 @@ export default function App() {
           uid,
           nickname: mem.nickname,
           amount: amt
+        };
+      });
+    } else if (splitType === 'budget_weighted') {
+      const totalBudgetForChecked = checkedUids.reduce((sum, uid) => {
+        const mem = members.find(m => m.uid === uid);
+        return sum + (Number(mem?.individualBudget) || 2000);
+      }, 0);
+
+      splitsArray = checkedUids.map(uid => {
+        const mem = members.find(m => m.uid === uid) || { nickname: uid === (auth.currentUser?.uid || 'anonymous') ? userNickname : 'Unknown', individualBudget: 2000 };
+        const bAmt = Number(mem.individualBudget) || 2000;
+        const shareAmt = totalBudgetForChecked > 0 ? (amountNum * (bAmt / totalBudgetForChecked)) : (amountNum / checkedUids.length);
+        return {
+          uid,
+          nickname: mem.nickname,
+          amount: Math.round(shareAmt * 100) / 100
         };
       });
     }
@@ -9458,6 +9533,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Manage Room Modal */}
         {isManageRoomOpen && renderManageRoomModal()}
+        {editingMemberBudget && renderMemberBudgetModal()}
         {nicknamePromptAction && renderNicknamePromptModal()}
 
         {/* Tallyin Diamond VIP Analytics Modal */}
@@ -10842,7 +10918,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             <div className="space-y-2">
               <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Split type</label>
               <div className="bg-[#F6F8F6] dark:bg-slate-950 p-1 rounded-xl flex gap-1 border border-[#E3E8E3]/50 dark:border-slate-800">
-                {['equal', 'percentage', 'amount'].map(type => (
+                {['equal', 'percentage', 'amount', 'budget_weighted'].map(type => (
                   <button
                     key={type}
                     type="button"
@@ -10853,7 +10929,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827]'
                     }`}
                   >
-                    {type === 'equal' ? 'Equally' : type === 'percentage' ? 'By %' : 'By ₹'}
+                    {type === 'equal' ? 'Equally' : type === 'percentage' ? 'By %' : type === 'amount' ? 'By ₹' : 'Budget Ratio'}
                   </button>
                 ))}
               </div>
@@ -10866,8 +10942,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 {members.map(m => {
                   const isChecked = selectedSplitMembers[m.uid] !== false;
                   const amountNum = parseFloat(formAmount) || 0;
-                  const checkedCount = members.filter(mm => selectedSplitMembers[mm.uid] !== false).length || 1;
+                  const checkedMembers = members.filter(mm => selectedSplitMembers[mm.uid] !== false);
+                  const checkedCount = checkedMembers.length || 1;
                   const equalShare = amountNum / checkedCount;
+                  const totalCheckedBudget = checkedMembers.reduce((sum, mm) => sum + (Number(mm.individualBudget) || 2000), 0);
+                  const mBudget = Number(m.individualBudget) || 2000;
+                  const budgetWeightedShare = totalCheckedBudget > 0 ? (amountNum * (mBudget / totalCheckedBudget)) : equalShare;
                   return (
                     <div key={m.uid} className="flex items-center gap-2 py-1">
                       <input
@@ -10892,6 +10972,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       </span>
                       {splitType === 'equal' && isChecked && (
                         <span className="text-[11px] font-bold text-[#1A3827] dark:text-[#A3E635]">{formatINR(equalShare)}</span>
+                      )}
+                      {splitType === 'budget_weighted' && isChecked && (
+                        <span className="text-[11px] font-bold text-[#1A3827] dark:text-[#A3E635]">
+                          {formatINR(budgetWeightedShare)} <span className="text-[9px] font-normal text-slate-400">({totalCheckedBudget > 0 ? Math.round((mBudget / totalCheckedBudget) * 100) : 0}%)</span>
+                        </span>
                       )}
                       {splitType === 'percentage' && isChecked && (
                         <div className="flex items-center gap-1">
@@ -11424,6 +11509,54 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderMemberBudgetModal() {
+    if (!editingMemberBudget) return null;
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-slate-800 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-base text-[#1A3827] dark:text-slate-100">Set Roommate Budget Cap</h3>
+            <button onClick={() => setEditingMemberBudget(null)} className="p-1 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+            Set individual monthly room expense budget cap for <strong>{editingMemberBudget.nickname}</strong>.
+          </p>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Monthly Budget Cap (₹)</label>
+            <input
+              type="number"
+              value={newMemberBudgetVal}
+              onChange={e => setNewMemberBudgetVal(e.target.value)}
+              placeholder="e.g. 2000, 3000, 10000"
+              className="w-full px-3.5 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-sm bg-white dark:bg-slate-950 text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827]"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setEditingMemberBudget(null)}
+              className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleUpdateMemberBudget(editingMemberBudget.uid, newMemberBudgetVal)}
+              className="px-4 py-2 text-xs font-bold bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl transition-all shadow-md cursor-pointer"
+            >
+              Save Budget
+            </button>
           </div>
         </div>
       </div>

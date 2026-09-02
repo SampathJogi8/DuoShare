@@ -34,6 +34,7 @@ CREATE TABLE members (
   photo_url TEXT,
   email TEXT,
   role TEXT DEFAULT 'member',
+  individual_budget REAL DEFAULT 2000,
   joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

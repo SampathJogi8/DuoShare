@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS members (
   room_id TEXT,
   uid TEXT,
   role TEXT DEFAULT 'member',
+  individual_budget REAL DEFAULT 2000,
   joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
