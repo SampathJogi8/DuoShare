@@ -13164,26 +13164,40 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <div className="flex items-center gap-2">
                 <span className="text-xs text-[#5C6E5C] font-semibold">₹</span>
                 <input
-                  type="number"
-                  min="1000"
-                  value={monthlyBudget}
-                  onChange={e => setMonthlyBudget(Number(e.target.value))}
+                  id="monthly_budget_input"
+                  type="text"
+                  inputMode="numeric"
+                  value={monthlyBudgetInput}
+                  onChange={e => {
+                    const rawVal = e.target.value;
+                    setMonthlyBudgetInput(rawVal);
+                    const num = Number(rawVal);
+                    if (!isNaN(num) && num > 0) {
+                      setMonthlyBudget(num);
+                      localStorage.setItem('monthlyBudget', String(num));
+                      if (userRoomId) {
+                        supabase.from('rooms').update({ monthly_budget: num }).eq('id', userRoomId).then(null, () => {});
+                      }
+                    }
+                  }}
                   disabled={!isHost}
                   className={`flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 ${!isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
                 />
                 {isHost && (
                   <button
                     onClick={async () => {
-                      localStorage.setItem('monthlyBudget', monthlyBudget);
+                      const finalB = Number(monthlyBudgetInput) || monthlyBudget || 22000;
+                      setMonthlyBudget(finalB);
+                      localStorage.setItem('monthlyBudget', String(finalB));
                       if (userRoomId) {
                         try {
                           const { error: updateError } = await supabase
                             .from('rooms')
-                            .update({ monthly_budget: monthlyBudget })
+                            .update({ monthly_budget: finalB })
                             .eq('id', userRoomId);
                           if (updateError) throw updateError;
-                          await logActivity('settings', `${userNickname} updated the monthly budget to ₹${monthlyBudget}`);
-                          triggerToast('Budget updated for all room members!');
+                          await logActivity('settings', `${userNickname} updated the monthly budget to ₹${finalB.toLocaleString('en-IN')}`);
+                          triggerToast(`Monthly budget cap updated to ₹${finalB.toLocaleString('en-IN')} for all room members!`);
                         } catch {
                           triggerToast('Budget saved locally.');
                         }
@@ -13191,7 +13205,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         triggerToast('Budget saved locally.');
                       }
                     }}
-                    className="px-3 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 shrink-0"
+                    className="px-3.5 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 shrink-0 cursor-pointer shadow-sm"
                   >Save</button>
                 )}
                 {!isHost && (
