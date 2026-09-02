@@ -10679,17 +10679,32 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Whitelisted Account Maintenance Mode Testing Banner */}
         {isSystemMaintenanceActive && isUserWhitelistedForMaintenance && (
-          <div className="mb-4 bg-amber-500 text-slate-950 px-4 py-2.5 rounded-2xl text-xs font-black flex items-center justify-between shadow-md border border-amber-400">
-            <div className="flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-slate-950 shrink-0" />
-              <span>🚨 SITE MAINTENANCE IS ACTIVE — You are testing via Whitelisted Admin Access ({currentEmailClean || 'Tester'})</span>
+          <div className="mb-5 relative overflow-hidden rounded-2xl bg-slate-950/90 dark:bg-slate-900/95 backdrop-blur-md border border-amber-500/30 p-3.5 shadow-xl shadow-amber-500/5 transition-all text-left">
+            {/* Ambient glowing gradient accent line */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-amber-500 via-[#A3E635] to-amber-500 animate-pulse"></div>
+            <div className="flex items-center justify-between gap-3 relative z-10">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                  <ShieldAlert className="w-4 h-4 text-amber-400 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest shrink-0">
+                      Maintenance Mode Active
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-bold text-slate-200 mt-0.5 truncate">
+                    Browsing via Whitelisted Admin Access <span className="text-amber-400 font-extrabold">({currentEmailClean || 'Tester'})</span>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setCurrentView('admin')}
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 shrink-0 flex items-center gap-1.5"
+              >
+                <span>Admin Console</span>
+              </button>
             </div>
-            <button 
-              onClick={() => setCurrentView('admin')}
-              className="px-2.5 py-1 bg-slate-950 text-white rounded-lg text-[10px] font-extrabold hover:bg-slate-800 transition-colors shrink-0"
-            >
-              Open Admin
-            </button>
           </div>
         )}
 

@@ -73,68 +73,74 @@ export default function MaintenanceView({
       </div>
 
       {/* Ambient Glow Background Blobs */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-200/30 dark:bg-amber-950/20 rounded-full blur-3xl opacity-50 -z-10 animate-pulse-glow"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-200/30 dark:bg-emerald-950/20 rounded-full blur-3xl opacity-50 -z-10 animate-pulse-glow"></div>
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-gradient-to-tr from-amber-500/15 via-emerald-500/10 to-purple-500/15 rounded-full blur-3xl opacity-70 -z-10 animate-pulse-slow"></div>
 
-      <div className="w-full max-w-lg hud-card rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col space-y-6 animate-fade-in">
+      <div className="w-full max-w-lg hud-card rounded-3xl p-6 sm:p-9 shadow-2xl flex flex-col space-y-7 animate-fade-in border border-white/40 dark:border-slate-800/80 backdrop-blur-xl relative overflow-hidden">
+        {/* Subtle top glowing line */}
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent opacity-80"></div>
         
         {/* Header & Stealth Logo Listener */}
-        <div className="text-center space-y-4">
-          <div 
-            className="relative inline-block cursor-pointer select-none"
-            onClick={handleLogoClick}
-            title="Tallyin Status"
-          >
-            <img 
-              src={faviconLogo} 
-              alt="Tallyin Logo" 
-              className="w-16 h-16 object-cover rounded-2xl mx-auto shadow-md active:scale-95 transition-transform"
-            />
-            <div className="absolute -bottom-1 -right-1 bg-amber-500 text-white p-1.5 rounded-full shadow-lg border-2 border-white dark:border-slate-900">
-              <Wrench className="w-4 h-4 animate-bounce" />
+        <div className="text-center space-y-5">
+          <div className="relative inline-block select-none">
+            {/* Live Pulsing Beacon Ring */}
+            <div className="absolute -inset-2 rounded-3xl bg-gradient-to-r from-amber-500 to-[#A3E635] opacity-20 blur-md animate-pulse"></div>
+            
+            <div 
+              className="relative cursor-pointer active:scale-95 transition-all duration-200"
+              onClick={handleLogoClick}
+              title="Tallyin Status — Click for Admin Bypass"
+            >
+              <img 
+                src={faviconLogo} 
+                alt="Tallyin Logo" 
+                className="w-16 h-16 object-cover rounded-2xl mx-auto shadow-lg border border-white/20 dark:border-slate-800"
+              />
+              <div className="absolute -bottom-1 -right-1 bg-slate-950 text-amber-400 p-1.5 rounded-xl shadow-md border border-amber-400/40">
+                <Wrench className="w-3.5 h-3.5 animate-spin-slow" />
+              </div>
             </div>
           </div>
 
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wider mx-auto">
-            <Hammer className="w-3.5 h-3.5" />
-            <span>Under Maintenance & Major Redesign</span>
+          {/* Minimal Pill Status */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-[11px] font-black uppercase tracking-widest mx-auto backdrop-blur-sm shadow-inner">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0"></span>
+            <span>System Maintenance Active</span>
           </div>
 
           <div className="space-y-2">
             <h1 className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
-              Tallyin is Upgrading! 🚀
+              Tallyin is Upgrading ⚡
             </h1>
-            <p className="text-xs sm:text-sm text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/50 max-w-md mx-auto leading-relaxed p-3.5 rounded-2xl font-semibold shadow-sm">
-              {maintenanceMessage || "We are currently undergoing a major platform redesign to bring you a faster, smarter, and more beautiful experience. Normal access is temporarily paused."}
+            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-300 bg-white/60 dark:bg-slate-900/60 border border-[#E3E8E3] dark:border-slate-800/80 max-w-md mx-auto leading-relaxed p-4 rounded-2xl font-medium shadow-sm">
+              {maintenanceMessage || "We are currently undergoing planned maintenance and platform enhancements. Normal access will resume shortly."}
             </p>
           </div>
         </div>
 
         {/* Feature Teaser Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-[#F6F8F6] dark:bg-slate-950/70 border border-[#E3E8E3] dark:border-slate-800/80 rounded-2xl p-3.5 text-center space-y-1">
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 flex items-center justify-center mx-auto mb-1">
+          <div className="bg-white/50 dark:bg-slate-900/50 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3.5 text-center space-y-1 hover:border-emerald-500/30 transition-colors">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-[#A3E635] flex items-center justify-center mx-auto mb-1">
               <Zap className="w-4 h-4" />
             </div>
-            <h3 className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Next-Gen Speed</h3>
-            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Blazing fast sync</p>
+            <h3 className="text-xs font-black text-[#1A3827] dark:text-slate-200">Ultra Fast</h3>
+            <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">Cloudflare D1 engine</p>
           </div>
 
-          <div className="bg-[#F6F8F6] dark:bg-slate-950/70 border border-[#E3E8E3] dark:border-slate-800/80 rounded-2xl p-3.5 text-center space-y-1">
-            <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 flex items-center justify-center mx-auto mb-1">
+          <div className="bg-white/50 dark:bg-slate-900/50 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3.5 text-center space-y-1 hover:border-purple-500/30 transition-colors">
+            <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center mx-auto mb-1">
               <Sparkles className="w-4 h-4" />
             </div>
-            <h3 className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Major Redesign</h3>
-            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">All-new visual UI</p>
+            <h3 className="text-xs font-black text-[#1A3827] dark:text-slate-200">Redesigned UI</h3>
+            <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">Minimal aesthetic</p>
           </div>
 
-          <div className="bg-[#F6F8F6] dark:bg-slate-950/70 border border-[#E3E8E3] dark:border-slate-800/80 rounded-2xl p-3.5 text-center space-y-1">
-            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 flex items-center justify-center mx-auto mb-1">
+          <div className="bg-white/50 dark:bg-slate-900/50 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3.5 text-center space-y-1 hover:border-blue-500/30 transition-colors">
+            <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-1">
               <ShieldCheck className="w-4 h-4" />
             </div>
-            <h3 className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Enhanced Security</h3>
-            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Protected data</p>
+            <h3 className="text-xs font-black text-[#1A3827] dark:text-slate-200">Encrypted Sync</h3>
+            <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">Protected storage</p>
           </div>
         </div>
 
