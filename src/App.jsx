@@ -701,7 +701,7 @@ export default function App() {
 
       if (autoName) {
         setUserNickname(autoName);
-        setUserNicknameInput(autoName);
+        setNicknameInput(autoName);
         localStorage.setItem('userNickname', autoName);
       }
     }
@@ -3199,7 +3199,7 @@ export default function App() {
       const autoName = TEST_CODE_NAMES[code] || member?.nickname || 'Roommate';
 
       setUserNickname(autoName);
-      setUserNicknameInput(autoName);
+      setNicknameInput(autoName);
       localStorage.setItem('userNickname', autoName);
 
       const realEmail = codeLoginEmail.trim().toLowerCase() || `tester${code.slice(-1)}@tallyin.app`;
