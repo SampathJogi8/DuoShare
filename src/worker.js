@@ -30,55 +30,35 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
     try {
-      // Self-healing migration for null IDs in SQLite database
-      const tablesToHeal = ["transactions", "receipts", "members", "rooms", "users"];
-      for (const tbl of tablesToHeal) {
-        try {
-          const nullRows = await env.DB.prepare(`SELECT rowid FROM ${tbl} WHERE id IS NULL LIMIT 50`).all();
-          if (nullRows && nullRows.results && nullRows.results.length > 0) {
-            console.log(`[Self-Healing] Resolving null IDs for ${nullRows.results.length} rows in ${tbl}`);
-            for (const r of nullRows.results) {
-              const prefix = tbl.slice(0, 3);
-              const newId = `${prefix}-${crypto.randomUUID()}`;
-              await env.DB.prepare(`UPDATE ${tbl} SET id = ? WHERE rowid = ?`).bind(newId, r.rowid).run();
-            }
-          }
-        } catch (e) {
-          console.error(`[Self-Healing] ${tbl} check failed:`, e);
-        }
-      }
-
-      // Self-healing schema migration: ensure max_members column exists in rooms table
-      try {
-        await env.DB.prepare("ALTER TABLE rooms ADD COLUMN max_members INTEGER DEFAULT 6").run();
-      } catch (e) {
-        // Column max_members already exists or migrated
-      }
-
-      // Self-healing schema migration: ensure room_mode column exists in rooms table
-      try {
-        await env.DB.prepare("ALTER TABLE rooms ADD COLUMN room_mode TEXT DEFAULT 'split'").run();
-      } catch (e) {
-        // Column room_mode already exists or migrated
-      }
-
-      // Self-healing schema migration: ensure co_host_uid column exists in rooms table
-      try {
-        await env.DB.prepare("ALTER TABLE rooms ADD COLUMN co_host_uid TEXT").run();
-      } catch (e) {
-        // Column co_host_uid already exists or migrated
-      }
-
-      // Self-healing schema migration: ensure individual_budget column exists in members table
-      try {
-        await env.DB.prepare("ALTER TABLE members ADD COLUMN individual_budget REAL DEFAULT 2000").run();
-      } catch (e) {
-        // Column individual_budget already exists or migrated
-      }
-
       // 0. GET /
       if ((url.pathname === "/" || url.pathname === "/api") && request.method === "GET") {
         return Response.json({ status: "alive", message: "DuoShare Cloudflare Worker API is running successfully." }, { headers: corsHeaders });
+      }
+
+      // Explicit Migration Endpoint (Run on demand / deploy)
+      if (url.pathname === "/api/migrate") {
+        try {
+          const tablesToHeal = ["transactions", "receipts", "members", "rooms", "users"];
+          for (const tbl of tablesToHeal) {
+            try {
+              const nullRows = await env.DB.prepare(`SELECT rowid FROM ${tbl} WHERE id IS NULL LIMIT 50`).all();
+              if (nullRows && nullRows.results && nullRows.results.length > 0) {
+                for (const r of nullRows.results) {
+                  const prefix = tbl.slice(0, 3);
+                  const newId = `${prefix}-${crypto.randomUUID()}`;
+                  await env.DB.prepare(`UPDATE ${tbl} SET id = ? WHERE rowid = ?`).bind(newId, r.rowid).run();
+                }
+              }
+            } catch (e) {}
+          }
+          try { await env.DB.prepare("ALTER TABLE rooms ADD COLUMN max_members INTEGER DEFAULT 6").run(); } catch (e) {}
+          try { await env.DB.prepare("ALTER TABLE rooms ADD COLUMN room_mode TEXT DEFAULT 'split'").run(); } catch (e) {}
+          try { await env.DB.prepare("ALTER TABLE rooms ADD COLUMN co_host_uid TEXT").run(); } catch (e) {}
+          try { await env.DB.prepare("ALTER TABLE members ADD COLUMN individual_budget REAL DEFAULT 2000").run(); } catch (e) {}
+          return Response.json({ status: "ok", message: "Schema migration complete." }, { headers: corsHeaders });
+        } catch (err) {
+          return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
+        }
       }
 
       // 1. Generic POST /api/query
