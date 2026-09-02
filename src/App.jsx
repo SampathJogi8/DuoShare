@@ -2318,6 +2318,69 @@ export default function App() {
     }
   };
 
+  const sendApprovalEmail = async (req, roomId, roomDisplayName) => {
+    if (!req.email || !req.email.includes('@')) {
+      console.warn("No valid recipient email provided for join request approval notification:", req);
+      return;
+    }
+
+    const joinUrl = `https://tallyin.vercel.app/?room=${roomId}`;
+    const subject = `🎉 Approved! Join "${roomDisplayName || roomId}" on Tallyin`;
+    
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #F6F8F6; border-radius: 24px;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h2 style="color: #1A3827; margin: 0; font-size: 20px; font-weight: 800;">Tallyin Room Approval</h2>
+          <p style="color: #5C6E5C; font-size: 12px; margin-top: 4px;">YouthFirst DuoShare Expense Manager</p>
+        </div>
+
+        <div style="background-color: #ffffff; padding: 24px; border-radius: 20px; border: 1px solid #E3E8E3; text-align: center;">
+          <div style="font-size: 40px; margin-bottom: 12px;">🎉</div>
+          <h3 style="color: #1A3827; margin: 0 0 8px 0; font-size: 18px; font-weight: 800;">Join Request Approved!</h3>
+          <p style="color: #5C6E5C; font-size: 13px; line-height: 1.5; margin: 0 0 20px 0;">
+            Hello <strong>${req.nickname}</strong>,<br>
+            The room Admin has approved your request to join <strong>"${roomDisplayName || roomId}"</strong> and expanded the room capacity!
+          </p>
+
+          <div style="background-color: #EAF0EC; padding: 14px; border-radius: 14px; margin-bottom: 24px; text-align: left;">
+            <div style="font-size: 11px; color: #5C6E5C; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Room Details</div>
+            <div style="font-size: 14px; font-weight: 800; color: #1A3827; margin-top: 4px;">${roomDisplayName || 'Shared Room'}</div>
+            <div style="font-size: 12px; font-family: monospace; color: #1A3827; margin-top: 2px;">Code: <strong>${roomId}</strong></div>
+          </div>
+
+          <a href="${joinUrl}" style="display: inline-block; background-color: #1A3827; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 14px; font-weight: 800; font-size: 14px; box-shadow: 0 4px 12px rgba(26,56,39,0.2);">
+            👉 Enter Room Now (${roomId})
+          </a>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #889988;">
+          Or copy link: <a href="${joinUrl}" style="color: #1A3827;">${joinUrl}</a>
+        </div>
+      </div>
+    `;
+
+    const textBody = `Hello ${req.nickname},\n\nYour request to join room "${roomDisplayName || roomId}" on Tallyin has been approved by the room Admin!\n\nClick the link below to enter the room:\n${joinUrl}\n\nRoom Code: ${roomId}`;
+
+    try {
+      if (typeof activeScriptUrl !== 'undefined' && activeScriptUrl) {
+        await fetch(activeScriptUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            to: req.email,
+            subject: subject,
+            htmlBody: htmlBody,
+            textBody: textBody
+          })
+        });
+        console.log(`Approval email sent successfully to ${req.email}`);
+      }
+    } catch (e) {
+      console.warn("Failed to send approval email:", e);
+    }
+  };
+
   const handleApproveJoinRequest = async (req) => {
     if (!userRoomId) return;
     try {
@@ -2357,8 +2420,24 @@ export default function App() {
         }, { onConflict: 'key' });
 
       await fetchMembers(userRoomId);
-      await logActivity('settings', `${userNickname} approved join request for ${req.nickname} and expanded capacity to ${newLimit}`);
-      triggerToast(`Approved ${req.nickname}! Room capacity expanded to ${newLimit} members.`);
+      
+      // 4. Log activity so all roommates see the new roommate joined
+      await logActivity('settings', `🎉 ${req.nickname} joined the room! (Approved by ${userNickname})`);
+
+      // 5. Notify all roommates via browser push notification
+      if (Notification.permission === 'granted' && localStorage.getItem('pushNotificationsEnabled') === 'true') {
+        try {
+          new Notification("New Roommate Joined!", {
+            body: `${req.nickname} has joined ${roomName || userRoomId}`,
+            icon: faviconLogo || '/favicon.ico'
+          });
+        } catch (e) {}
+      }
+
+      // 6. Send Email Notification to Approved User with direct join link
+      await sendApprovalEmail(req, userRoomId, roomName);
+
+      triggerToast(`🎉 Approved ${req.nickname}! Room capacity expanded to ${newLimit} members & email sent.`);
     } catch (err) {
       console.error("Approve join request error:", err);
       triggerToast(`Failed to approve request: ${err.message}`);
