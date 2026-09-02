@@ -9862,167 +9862,166 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             </div>
 
-            {/* ─── Roommate Budgets & Spending Limits Card ─── */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                    <span>👥 Roommate Budgets & Spent Limits</span>
-                  </h3>
-                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Track individual monthly budget caps & spending capacity</p>
+            {/* ─── Roommate Budgets & Spending Limits Card (Visible ONLY when toggle is ON) ─── */}
+            {enableMemberBudgets && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                      <span>👥 Roommate Budgets & Spent Limits</span>
+                    </h3>
+                    <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Track individual monthly budget caps & spending capacity</p>
+                  </div>
+                  
+                  {/* Feature Toggle Switch */}
+                  <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-800/60 px-3 py-1.5 rounded-2xl border border-[#E3E8E3] dark:border-slate-700">
+                    <span className="text-[10px] font-bold text-[#1A3827] dark:text-slate-300">
+                      {enableMemberBudgets ? 'Enabled' : 'Disabled'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextState = !enableMemberBudgets;
+                        setEnableMemberBudgets(nextState);
+                        localStorage.setItem('enableMemberBudgets', nextState ? 'true' : 'false');
+                        triggerToast(nextState ? 'Per-person room budgets enabled' : 'Per-person room budgets disabled');
+                      }}
+                      className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
+                        enableMemberBudgets ? 'bg-[#1A3827] dark:bg-[#A3E635]' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded-full bg-white dark:bg-slate-900 shadow-md transform transition-transform ${
+                        enableMemberBudgets ? 'translate-x-4' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
                 </div>
-                
-                {/* Feature Toggle Switch */}
-                <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-800/60 px-3 py-1.5 rounded-2xl border border-[#E3E8E3] dark:border-slate-700">
-                  <span className="text-[10px] font-bold text-[#1A3827] dark:text-slate-300">
-                    {enableMemberBudgets ? 'Enabled' : 'Disabled'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextState = !enableMemberBudgets;
-                      setEnableMemberBudgets(nextState);
-                      localStorage.setItem('enableMemberBudgets', nextState ? 'true' : 'false');
-                      triggerToast(nextState ? 'Per-person room budgets enabled' : 'Per-person room budgets disabled');
-                    }}
-                    className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
-                      enableMemberBudgets ? 'bg-[#1A3827] dark:bg-[#A3E635]' : 'bg-slate-300 dark:bg-slate-700'
-                    }`}
-                  >
-                    <div className={`w-4 h-4 rounded-full bg-white dark:bg-slate-900 shadow-md transform transition-transform ${
-                      enableMemberBudgets ? 'translate-x-4' : 'translate-x-0'
-                    }`} />
-                  </button>
-                </div>
-              </div>
 
-              {enableMemberBudgets && (
-                <>
-                  {computedStats.suggestedNextBuyer && (
-                    <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
-                        💡 Suggested Next Buyer: <strong>{computedStats.suggestedNextBuyer.nickname}</strong> ({formatINR(computedStats.suggestedNextBuyer.remaining)} remaining capacity)
-                      </span>
+                {computedStats.suggestedNextBuyer && (
+                  <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
+                      💡 Suggested Next Buyer: <strong>{computedStats.suggestedNextBuyer.nickname}</strong> ({formatINR(computedStats.suggestedNextBuyer.remaining)} remaining capacity)
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {computedStats.memberBudgetStats.map(m => {
+                    const isSelf = auth.currentUser && m.uid === auth.currentUser.uid;
+                    return (
+                      <div key={m.uid} className={`p-3 rounded-2xl border transition-all ${
+                        m.isExhausted 
+                          ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50' 
+                          : 'bg-[#F6F8F6] dark:bg-slate-800/40 border-[#E3E8E3] dark:border-slate-800'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {m.photoURL ? (
+                              <img src={m.photoURL} alt={m.nickname} className="w-6 h-6 rounded-full object-cover shrink-0" />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-[#1A3827] text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                                {m.nickname?.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200 truncate">
+                              {m.nickname}{isSelf ? ' (You)' : ''}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setEditingMemberBudget(m);
+                              setNewMemberBudgetVal(m.budget);
+                            }}
+                            className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline"
+                          >
+                            Set Cap
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[10px]">
+                            <span className="text-[#5C6E5C] dark:text-slate-400">Spent: <strong className="text-[#1A3827] dark:text-white">{formatINR(m.spent)}</strong></span>
+                            <span className="text-[#5C6E5C] dark:text-slate-400">Budget: <strong className="text-[#1A3827] dark:text-white">{formatINR(m.budget)}</strong></span>
+                          </div>
+
+                          <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                m.pct >= 100 
+                                  ? 'bg-rose-500' 
+                                  : m.pct >= 80 
+                                  ? 'bg-amber-500' 
+                                  : 'bg-emerald-500'
+                              }`}
+                              style={{ width: `${Math.min(100, m.pct)}%` }}
+                            />
+                          </div>
+
+                          <div className="flex justify-between items-center text-[9px]">
+                            {m.isExhausted ? (
+                              <span className="font-extrabold text-rose-600 dark:text-rose-400">
+                                ⚠️ Limit Reached (100%)
+                              </span>
+                            ) : (
+                              <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                                {formatINR(m.remaining)} remaining
+                              </span>
+                            )}
+                            <span className="font-bold text-slate-500">{m.pct}% used</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Excess Redistribution Matrix Card */}
+                {isQuotaMode && (
+                  <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 text-white border border-emerald-500/30 rounded-2xl p-4 shadow-xl space-y-3 mt-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-[#A3E635]">⚡ END-OF-MONTH EXCESS MATRIX</span>
+                        <h4 className="text-sm font-black text-white">Excess Redistribution Pool</h4>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[9px] text-slate-400">Total Excess Pool</span>
+                        <p className="text-base font-black text-[#A3E635]">{formatINR(computedStats.totalExcessPool || 0)}</p>
+                      </div>
                     </div>
-                  )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {computedStats.memberBudgetStats.map(m => {
-                      const isSelf = auth.currentUser && m.uid === auth.currentUser.uid;
-                      return (
-                        <div key={m.uid} className={`p-3 rounded-2xl border transition-all ${
-                          m.isExhausted 
-                            ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50' 
-                            : 'bg-[#F6F8F6] dark:bg-slate-800/40 border-[#E3E8E3] dark:border-slate-800'
-                        }`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              {m.photoURL ? (
-                                <img src={m.photoURL} alt={m.nickname} className="w-6 h-6 rounded-full object-cover shrink-0" />
-                              ) : (
-                                <div className="w-6 h-6 rounded-full bg-[#1A3827] text-white font-bold text-[9px] flex items-center justify-center shrink-0">
-                                  {m.nickname?.charAt(0).toUpperCase()}
-                                </div>
-                              )}
-                              <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200 truncate">
-                                {m.nickname}{isSelf ? ' (You)' : ''}
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Total excess spent beyond quotas is <strong className="text-white">{formatINR(computedStats.totalExcessPool || 0)}</strong>. Divided equally among members ({members.length}), each member's equal excess share is <strong className="text-[#A3E635]">{formatINR(computedStats.excessSharePerMember || 0)}</strong>.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                      {computedStats.memberBudgetStats.map(m => {
+                        const netBal = computedStats.balances[m.uid] || 0;
+                        return (
+                          <div key={m.uid} className="p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-bold text-white truncate">{m.nickname}</span>
+                              <span className="text-[9px] font-bold text-slate-400">Quota: {formatINR(m.budget)}</span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-slate-400">Spent: <strong className="text-white">{formatINR(m.spent)}</strong></span>
+                              <span className={m.excess > 0 ? 'text-purple-400 font-bold' : 'text-slate-400'}>
+                                {m.excess > 0 ? `+${formatINR(m.excess)} Excess` : 'Quota Met'}
                               </span>
                             </div>
-                            <button
-                              onClick={() => {
-                                setEditingMemberBudget(m);
-                                setNewMemberBudgetVal(m.budget);
-                              }}
-                              className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline"
-                            >
-                              Set Cap
-                            </button>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <div className="flex justify-between text-[10px]">
-                              <span className="text-[#5C6E5C] dark:text-slate-400">Spent: <strong className="text-[#1A3827] dark:text-white">{formatINR(m.spent)}</strong></span>
-                              <span className="text-[#5C6E5C] dark:text-slate-400">Budget: <strong className="text-[#1A3827] dark:text-white">{formatINR(m.budget)}</strong></span>
-                            </div>
-
-                            <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full rounded-full transition-all duration-300 ${
-                                  m.pct >= 100 
-                                    ? 'bg-rose-500' 
-                                    : m.pct >= 80 
-                                    ? 'bg-amber-500' 
-                                    : 'bg-emerald-500'
-                                }`}
-                                style={{ width: `${Math.min(100, m.pct)}%` }}
-                              />
-                            </div>
-
-                            <div className="flex justify-between items-center text-[9px]">
-                              {m.isExhausted ? (
-                                <span className="font-extrabold text-rose-600 dark:text-rose-400">
-                                  ⚠️ Limit Reached (100%)
-                                </span>
-                              ) : (
-                                <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                                  {formatINR(m.remaining)} remaining
-                                </span>
-                              )}
-                              <span className="font-bold text-slate-500">{m.pct}% used</span>
+                            <div className="pt-1 border-t border-white/10 flex justify-between items-center text-[10px]">
+                              <span className="text-slate-400">Net Settlement</span>
+                              <span className={`font-black ${netBal > 0 ? 'text-[#A3E635]' : netBal < 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                                {netBal > 0 ? `+${formatINR(netBal)} (Gets)` : netBal < 0 ? `-${formatINR(Math.abs(netBal))} (Owes)` : 'Settled'}
+                              </span>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* Excess Redistribution Matrix Card */}
-                  {isQuotaMode && (
-                    <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 text-white border border-emerald-500/30 rounded-2xl p-4 shadow-xl space-y-3 mt-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-[#A3E635]">⚡ END-OF-MONTH EXCESS MATRIX</span>
-                          <h4 className="text-sm font-black text-white">Excess Redistribution Pool</h4>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[9px] text-slate-400">Total Excess Pool</span>
-                          <p className="text-base font-black text-[#A3E635]">{formatINR(computedStats.totalExcessPool || 0)}</p>
-                        </div>
-                      </div>
-
-                      <p className="text-[11px] text-slate-300 leading-relaxed">
-                        Total excess spent beyond quotas is <strong className="text-white">{formatINR(computedStats.totalExcessPool || 0)}</strong>. Divided equally among members ({members.length}), each member's equal excess share is <strong className="text-[#A3E635]">{formatINR(computedStats.excessSharePerMember || 0)}</strong>.
-                      </p>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                        {computedStats.memberBudgetStats.map(m => {
-                          const netBal = computedStats.balances[m.uid] || 0;
-                          return (
-                            <div key={m.uid} className="p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
-                              <div className="flex justify-between items-center text-xs">
-                                <span className="font-bold text-white truncate">{m.nickname}</span>
-                                <span className="text-[9px] font-bold text-slate-400">Quota: {formatINR(m.budget)}</span>
-                              </div>
-                              <div className="flex justify-between text-[10px]">
-                                <span className="text-slate-400">Spent: <strong className="text-white">{formatINR(m.spent)}</strong></span>
-                                <span className={m.excess > 0 ? 'text-purple-400 font-bold' : 'text-slate-400'}>
-                                  {m.excess > 0 ? `+${formatINR(m.excess)} Excess` : 'Quota Met'}
-                                </span>
-                              </div>
-                              <div className="pt-1 border-t border-white/10 flex justify-between items-center text-[10px]">
-                                <span className="text-slate-400">Net Settlement</span>
-                                <span className={`font-black ${netBal > 0 ? 'text-[#A3E635]' : netBal < 0 ? 'text-rose-400' : 'text-slate-400'}`}>
-                                  {netBal > 0 ? `+${formatINR(netBal)} (Gets)` : netBal < 0 ? `-${formatINR(Math.abs(netBal))} (Owes)` : 'Settled'}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                        );
+                      })}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Quick Actions ── */}
             <div>
