@@ -72,6 +72,7 @@ import BannedUserView from './components/BannedUserView';
 import QuickBillModal from './components/QuickBillModal';
 
 const ADMIN_EMAILS = ['tallyin.alerts@gmail.com'];
+const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v3.1.8';
 
 if (typeof window !== 'undefined') {
@@ -2380,20 +2381,18 @@ export default function App() {
     const textBody = `Hello ${req.nickname},\n\nYour request to join room "${roomDisplayName || roomId}" on Tallyin has been approved by the room Admin!\n\nClick the link below to enter the room:\n${joinUrl}\n\nRoom Code: ${roomId}`;
 
     try {
-      if (typeof activeScriptUrl !== 'undefined' && activeScriptUrl) {
-        await fetch(activeScriptUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({
-            to: req.email,
-            subject: subject,
-            htmlBody: htmlBody,
-            textBody: textBody
-          })
-        });
-        console.log(`Approval email sent successfully to ${req.email}`);
-      }
+      await fetch(CENTRAL_EMAIL_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          to: req.email,
+          subject: subject,
+          htmlBody: htmlBody,
+          textBody: textBody
+        })
+      });
+      console.log(`Approval email dispatched to ${req.email}`);
     } catch (e) {
       console.warn("Failed to send approval email:", e);
     }
@@ -2499,20 +2498,18 @@ export default function App() {
     const textBody = `Hello ${req.nickname},\n\nYour request to join room "${roomDisplayName || roomId}" on Tallyin was declined by the room Admin.\n\nRoom Code: ${roomId}`;
 
     try {
-      if (typeof activeScriptUrl !== 'undefined' && activeScriptUrl) {
-        await fetch(activeScriptUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({
-            to: req.email,
-            subject: subject,
-            htmlBody: htmlBody,
-            textBody: textBody
-          })
-        });
-        console.log(`Decline email sent successfully to ${req.email}`);
-      }
+      await fetch(CENTRAL_EMAIL_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          to: req.email,
+          subject: subject,
+          htmlBody: htmlBody,
+          textBody: textBody
+        })
+      });
+      console.log(`Decline email dispatched to ${req.email}`);
     } catch (e) {
       console.warn("Failed to send decline email:", e);
     }
