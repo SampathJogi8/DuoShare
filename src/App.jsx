@@ -1718,11 +1718,47 @@ export default function App() {
     }
   }, [user, userRoomId, fetchUserRooms]);
 
-  // Helper to add member to room in Supabase
+  // Helper to add member to room in Supabase with Capacity Lock Enforcement
   const addMemberToRoom = useCallback(async (roomId, nickname, currentUserObj = null) => {
     const activeUser = currentUserObj || user;
-    if (!activeUser) return;
+    if (!activeUser || !roomId) return { success: false, reason: 'no_user_or_room' };
     try {
+      // 1. Check if user is ALREADY a member of this room
+      const { data: existingMembers, error: membersErr } = await supabase
+        .from('members')
+        .select('uid')
+        .eq('room_id', roomId);
+
+      if (membersErr) console.warn("Members check notice:", membersErr);
+
+      const isAlreadyMember = (existingMembers || []).some(m => m.uid === activeUser.id);
+
+      // 2. If NOT already a member, check room capacity limit (max_members)
+      if (!isAlreadyMember) {
+        const { data: roomData, error: roomErr } = await supabase
+          .from('rooms')
+          .select('max_members')
+          .eq('id', roomId)
+          .maybeSingle();
+
+        if (roomErr) console.warn("Room capacity query notice:", roomErr);
+
+        const maxLimit = roomData?.max_members ? Number(roomData.max_members) : 6;
+        const currentCount = existingMembers ? existingMembers.length : 0;
+
+        if (currentCount >= maxLimit) {
+          triggerToast(`🔒 Cannot join room ${roomId}: Capacity full (${currentCount}/${maxLimit} members). Ask room admin to increase capacity.`);
+          // Reset local room state if user tried to auto-join a full room
+          if (userRoomId === roomId) {
+            setUserRoomId(null);
+            localStorage.removeItem('userRoomId');
+            setHasConfirmedRoom(false);
+          }
+          return { success: false, reason: 'capacity_full', currentCount, maxLimit };
+        }
+      }
+
+      // 3. Upsert member
       const avatarUrl = activeUser.user_metadata?.avatar_url || activeUser.user_metadata?.picture || '';
       const { error } = await supabase
         .from('members')
@@ -1736,10 +1772,12 @@ export default function App() {
         }, { onConflict: 'room_id,uid' });
       
       if (error) throw error;
+      return { success: true };
     } catch (err) {
       console.error('Failed to add member to room in Supabase:', err);
+      return { success: false, reason: err.message };
     }
-  }, [user]);
+  }, [user, userRoomId, triggerToast]);
 
   const generateUniqueLoginCode = async () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -11747,13 +11785,28 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <span className="text-[10px] font-extrabold text-[#5C6E5C] dark:text-slate-400">Current Limit: {roomMaxMembers}</span>
               </div>
               <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Restrict total members in this room. Room locks automatically when limit is reached.</p>
+              
+              {members.length > roomMaxMembers && (
+                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 flex items-center justify-between text-xs font-bold text-amber-800 dark:text-amber-300">
+                  <span>⚠️ Active members ({members.length}) exceed limit ({roomMaxMembers}).</span>
+                  {isHost && (
+                    <button
+                      onClick={() => setSettingsMaxMembersInput(members.length)}
+                      className="px-2 py-1 bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 rounded-lg text-[10px] font-black hover:underline"
+                    >
+                      Set to {members.length}
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  min="2"
+                  min={Math.max(2, members.length)}
                   max="50"
                   value={settingsMaxMembersInput}
-                  onChange={e => setSettingsMaxMembersInput(Math.max(2, Math.min(50, Number(e.target.value) || 2)))}
+                  onChange={e => setSettingsMaxMembersInput(Math.max(2, Number(e.target.value) || 2))}
                   disabled={!isHost}
                   className={`flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 ${!isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
                 />
@@ -11764,6 +11817,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       if (userRoomId) {
                         try {
                           const newLimit = Number(settingsMaxMembersInput) || 6;
+                          if (newLimit < members.length) {
+                            triggerToast(`Cannot set limit to ${newLimit}. Room currently has ${members.length} members. Set limit to at least ${members.length} or remove a member.`);
+                            return;
+                          }
                           const { error: updateError } = await supabase
                             .from('rooms')
                             .update({ max_members: newLimit })
