@@ -2315,6 +2315,9 @@ export default function App() {
     } catch (err) {
       console.warn("Error fetching transactions, using offline cache:", err);
       setIsDbSynced(false);
+      if (err.message && (err.message.includes('D1_ERROR') || err.message.includes('free tier') || err.message.includes('limit'))) {
+        setOfflineMode(true);
+      }
       try {
         const cached = localStorage.getItem(`tallyin_cache_transactions_${roomId}`) || localStorage.getItem('tallyin_cache_transactions_latest');
         if (cached) {

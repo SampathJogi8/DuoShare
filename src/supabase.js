@@ -123,7 +123,12 @@ class MockQueryBuilder {
 
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(errText || `HTTP ${response.status}`);
+        let errMsg = errText || `HTTP ${response.status}`;
+        try {
+          const parsedErr = JSON.parse(errText);
+          if (parsedErr.error) errMsg = parsedErr.error;
+        } catch(e) {}
+        throw new Error(errMsg);
       }
 
       const res = await response.json();
