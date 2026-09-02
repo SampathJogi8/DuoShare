@@ -11613,7 +11613,20 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             <p className="font-bold text-sm text-[#1A3827] dark:text-slate-100 truncate">{m.nickname}</p>
                             {isThisHost && <span className="text-[8px] font-black text-white bg-[#1A3827] dark:bg-[#A3E635] dark:text-slate-950 px-1.5 py-0.5 rounded-full">Host</span>}
                           </div>
-                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-mono truncate">{isSelf ? 'You' : m.uid?.substring(0,8) + '...'}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                              Quota: <strong className="text-[#1A3827] dark:text-slate-200">{formatINR(m.individualBudget || 2000)}</strong>
+                            </span>
+                            <button
+                              onClick={() => {
+                                setEditingMemberBudget(m);
+                                setNewMemberBudgetVal(m.individualBudget || 2000);
+                              }}
+                              className="text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline"
+                            >
+                              Edit Quota
+                            </button>
+                          </div>
                         </div>
                         {isSelf ? (
                           // Self: show "You" tag. If not host, also show leave button
