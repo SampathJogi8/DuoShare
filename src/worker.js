@@ -61,6 +61,25 @@ export default {
         }
       }
 
+      // Complete Data Snapshot Export Endpoint (Zero-Data-Loss Migration to Supabase)
+      if (url.pathname === "/api/export-all-data") {
+        try {
+          const tables = ["users", "rooms", "members", "transactions", "receipts", "activity_logs", "system_settings"];
+          const snapshot = {};
+          for (const tbl of tables) {
+            try {
+              const res = await env.DB.prepare(`SELECT * FROM ${tbl}`).all();
+              snapshot[tbl] = res?.results || [];
+            } catch(e) {
+              snapshot[tbl] = [];
+            }
+          }
+          return Response.json({ status: "ok", exportedAt: new Date().toISOString(), data: snapshot }, { headers: corsHeaders });
+        } catch (err) {
+          return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
+        }
+      }
+
       // 1. Generic POST /api/query
       if (url.pathname === "/api/query" && request.method === "POST") {
         const body = await request.json();

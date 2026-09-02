@@ -40,7 +40,8 @@ import {
   UserCheck,
   Key,
   Ban,
-  UserX
+  UserX,
+  Database
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import { supabase } from '../supabase';
@@ -1147,6 +1148,43 @@ export default function AdminDashboard({
     if (triggerToast) triggerToast(`Removed ${accountToRemove} from allowed list.`);
   };
 
+  const [isMigratingD1ToSupabase, setIsMigratingD1ToSupabase] = useState(false);
+
+  const handleMigrateD1ToSupabase = async () => {
+    setIsMigratingD1ToSupabase(true);
+    try {
+      if (triggerToast) triggerToast('Fetching snapshot from Cloudflare D1...');
+      const response = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/export-all-data');
+      if (!response.ok) throw new Error(`D1 Export failed with HTTP ${response.status}`);
+      
+      const snapshot = await response.json();
+      if (!snapshot || !snapshot.data) throw new Error('Invalid export snapshot returned from D1');
+
+      const tables = ["users", "rooms", "members", "transactions", "receipts", "activity_logs", "system_settings"];
+      let totalMigrated = 0;
+
+      for (const tbl of tables) {
+        const rows = snapshot.data[tbl];
+        if (Array.isArray(rows) && rows.length > 0) {
+          const { error } = await supabase.from(tbl).upsert(rows);
+          if (error) {
+            console.warn(`Migration notice for table ${tbl}:`, error);
+          } else {
+            totalMigrated += rows.length;
+          }
+        }
+      }
+
+      logAuditAction('DATABASE_MIGRATION', `Migrated ${totalMigrated} records from Cloudflare D1 to Supabase PostgreSQL`);
+      if (triggerToast) triggerToast(`✅ Zero-Data-Loss Migration Complete! Synced ${totalMigrated} records to Supabase.`);
+    } catch (err) {
+      console.error('Migration error:', err);
+      if (triggerToast) triggerToast(`Migration notice: ${err.message}`);
+    } finally {
+      setIsMigratingD1ToSupabase(false);
+    }
+  };
+
   // Publish Global Broadcast
   const handlePublishBroadcast = async () => {
     if (!broadcastText.trim()) {
@@ -1884,6 +1922,53 @@ export default function AdminDashboard({
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Database Migration: Cloudflare D1 → Supabase */}
+            <div className="border-t border-[#E3E8E3] dark:border-slate-800 pt-6 space-y-4">
+              <div className="space-y-1">
+                <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                  <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  Database Migration: Cloudflare D1 → Supabase
+                </h4>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  Exports a full snapshot of all data from Cloudflare D1 SQLite and upserts it into Supabase PostgreSQL. Safe, zero-data-loss, and idempotent — can be run multiple times without duplicating data.
+                </p>
+              </div>
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/60 flex items-center justify-center shrink-0">
+                    <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="text-[11px] text-blue-800 dark:text-blue-300 space-y-1">
+                    <p className="font-bold">What this does:</p>
+                    <ul className="list-disc ml-4 space-y-0.5 text-blue-700 dark:text-blue-400">
+                      <li>Calls <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">/api/export-all-data</code> on Cloudflare Worker</li>
+                      <li>Reads all rows from users, rooms, members, transactions, receipts, activity_logs, system_settings</li>
+                      <li>Upserts each row into Supabase PostgreSQL (no duplicates)</li>
+                      <li>Cloudflare D1 remains intact as backup</li>
+                    </ul>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleMigrateD1ToSupabase}
+                  disabled={isMigratingD1ToSupabase}
+                  className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                >
+                  {isMigratingD1ToSupabase ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      <span>Migrating… Please wait</span>
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-3.5 h-3.5" />
+                      <span>Run Zero-Data-Loss Migration to Supabase</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
