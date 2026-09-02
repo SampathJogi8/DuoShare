@@ -2350,8 +2350,12 @@ export default function App() {
 
       // Always update from DB — never trust stale cache
       if (data.monthly_budget !== undefined && data.monthly_budget !== null) {
-        setMonthlyBudget(Number(data.monthly_budget));
-        localStorage.setItem('monthlyBudget', data.monthly_budget);
+        const b = Number(data.monthly_budget);
+        setMonthlyBudget(b);
+        if (typeof document !== 'undefined' && document.activeElement?.id !== 'monthly_budget_input') {
+          setMonthlyBudgetInput(String(b));
+        }
+        localStorage.setItem('monthlyBudget', String(b));
       }
       if (data.name) {
         setRoomName(data.name);
@@ -3891,6 +3895,9 @@ export default function App() {
     try {
       // 1. Create a metadata document for the room to claim it
       const initialMaxMembers = Number(roomMaxMembersInput) || 6;
+      const finalMonthlyBudget = Number(monthlyBudgetInput) || monthlyBudget || 22000;
+      setMonthlyBudget(finalMonthlyBudget);
+      localStorage.setItem('monthlyBudget', String(finalMonthlyBudget));
       let roomError = null;
 
       try {
@@ -3900,7 +3907,7 @@ export default function App() {
             id: uniqueCode,
             created_by: user ? user.id : 'anonymous',
             created_at: new Date().toISOString(),
-            monthly_budget: monthlyBudget,
+            monthly_budget: finalMonthlyBudget,
             max_members: initialMaxMembers,
             name: roomNameInput.trim() || 'Tallyin',
             room_mode: selectedRoomMode
@@ -3914,7 +3921,7 @@ export default function App() {
               id: uniqueCode,
               created_by: user ? user.id : 'anonymous',
               created_at: new Date().toISOString(),
-              monthly_budget: monthlyBudget,
+              monthly_budget: finalMonthlyBudget,
               max_members: initialMaxMembers,
               name: roomNameInput.trim() || 'Tallyin'
             });
@@ -3927,7 +3934,7 @@ export default function App() {
             id: uniqueCode,
             created_by: user ? user.id : 'anonymous',
             created_at: new Date().toISOString(),
-            monthly_budget: monthlyBudget,
+            monthly_budget: finalMonthlyBudget,
             max_members: initialMaxMembers,
             name: roomNameInput.trim() || 'Tallyin'
           });
@@ -16902,23 +16909,33 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <div className="flex items-center gap-2">
                 <span className="text-xs text-[#5C6E5C] font-semibold">₹</span>
                 <input
-                  type="number"
-                  min="1000"
-                  value={monthlyBudget}
-                  onChange={e => setMonthlyBudget(Number(e.target.value))}
-                  className="w-24 px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
+                  id="monthly_budget_input"
+                  type="text"
+                  inputMode="numeric"
+                  value={monthlyBudgetInput}
+                  onChange={e => {
+                    const rawVal = e.target.value;
+                    setMonthlyBudgetInput(rawVal);
+                    const num = Number(rawVal);
+                    if (!isNaN(num) && num > 0) {
+                      setMonthlyBudget(num);
+                    }
+                  }}
+                  className="w-28 px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
                 />
                 <button
                   onClick={async () => {
-                    localStorage.setItem('monthlyBudget', monthlyBudget);
+                    const finalB = Number(monthlyBudgetInput) || monthlyBudget || 22000;
+                    setMonthlyBudget(finalB);
+                    localStorage.setItem('monthlyBudget', String(finalB));
                     if (userRoomId) {
                       try {
                         const { error: updateError } = await supabase
                           .from('rooms')
-                          .update({ monthly_budget: monthlyBudget })
+                          .update({ monthly_budget: finalB })
                           .eq('id', userRoomId);
                         if (updateError) throw updateError;
-                        triggerToast('Budget updated for all room members!');
+                        triggerToast(`Monthly budget cap updated to ₹${finalB.toLocaleString('en-IN')}!`);
                       } catch {
                         triggerToast('Budget saved locally.');
                       }
@@ -16926,7 +16943,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       triggerToast('Budget saved locally.');
                     }
                   }}
-                  className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 shrink-0"
+                  className="px-3.5 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 shrink-0 cursor-pointer shadow-sm"
                 >Save</button>
               </div>
             </div>
