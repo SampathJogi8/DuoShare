@@ -912,6 +912,8 @@ export default function App() {
   const [roomMaxMembers, setRoomMaxMembers] = useState(6);
   const [roomMaxMembersInput, setRoomMaxMembersInput] = useState(6);
   const [settingsMaxMembersInput, setSettingsMaxMembersInput] = useState(6);
+  const [pendingJoinRequests, setPendingJoinRequests] = useState([]);
+  const [joinRequestModalInfo, setJoinRequestModalInfo] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(() => getLocalMonthStr());
 
   // Notification Config States
@@ -1747,7 +1749,8 @@ export default function App() {
         const currentCount = existingMembers ? existingMembers.length : 0;
 
         if (currentCount >= maxLimit) {
-          triggerToast(`🔒 Cannot join room ${roomId}: Capacity full (${currentCount}/${maxLimit} members). Ask room admin to increase capacity.`);
+          triggerToast(`🔒 Room ${roomId} is full (${currentCount}/${maxLimit} members).`);
+          setJoinRequestModalInfo({ roomId, currentCount, maxLimit });
           // Reset local room state if user tried to auto-join a full room
           if (userRoomId === roomId) {
             setUserRoomId(null);
@@ -2227,10 +2230,155 @@ export default function App() {
       const limitVal = data.max_members ? Number(data.max_members) : 6;
       setRoomMaxMembers(limitVal);
       setSettingsMaxMembersInput(limitVal);
+
+      // Fetch pending join requests for this room
+      try {
+        const { data: sysData } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `join_requests_${roomId}`)
+          .maybeSingle();
+
+        if (sysData?.value) {
+          const parsed = typeof sysData.value === 'string' ? JSON.parse(sysData.value) : sysData.value;
+          setPendingJoinRequests(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setPendingJoinRequests([]);
+        }
+      } catch (e) {
+        setPendingJoinRequests([]);
+      }
     } catch (err) {
       console.warn("Room settings fetch error:", err);
     }
   }, [user, fetchUserRooms, triggerToast]);
+
+  const handleSendJoinRequest = async (targetRoomId, targetNickname = null) => {
+    const activeUser = user;
+    if (!activeUser || !targetRoomId) {
+      triggerToast('Please sign in first to send a join request.');
+      return;
+    }
+    const nickname = targetNickname || userNickname || 'Roommate';
+    try {
+      const { data: existingData } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', `join_requests_${targetRoomId}`)
+        .maybeSingle();
+
+      let currentList = [];
+      if (existingData?.value) {
+        try {
+          currentList = typeof existingData.value === 'string' ? JSON.parse(existingData.value) : existingData.value;
+          if (!Array.isArray(currentList)) currentList = [];
+        } catch (e) { currentList = []; }
+      }
+
+      const alreadyRequested = currentList.some(r => r.uid === activeUser.id || (r.email && r.email === activeUser.email));
+      if (alreadyRequested) {
+        triggerToast('📩 Your join request is already pending review by the room Admin.');
+        setJoinRequestModalInfo(null);
+        return;
+      }
+
+      const newRequest = {
+        id: crypto.randomUUID(),
+        uid: activeUser.id,
+        nickname: nickname,
+        email: activeUser.email || '',
+        requested_at: new Date().toISOString(),
+        room_id: targetRoomId
+      };
+
+      const updatedList = [...currentList, newRequest];
+
+      const { error: upsertErr } = await supabase
+        .from('system_settings')
+        .upsert({
+          key: `join_requests_${targetRoomId}`,
+          value: JSON.stringify(updatedList),
+          created_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+
+      if (upsertErr) throw upsertErr;
+
+      await logActivity('settings', `${nickname} sent a request to join room ${targetRoomId}`);
+      triggerToast('📩 Join request sent to room Admin!');
+      setJoinRequestModalInfo(null);
+    } catch (err) {
+      console.error('Failed to send join request:', err);
+      triggerToast(`Failed to send request: ${err.message}`);
+    }
+  };
+
+  const handleApproveJoinRequest = async (req) => {
+    if (!userRoomId) return;
+    try {
+      // 1. Expand room capacity (+1)
+      const newLimit = roomMaxMembers + 1;
+      const { error: roomErr } = await supabase
+        .from('rooms')
+        .update({ max_members: newLimit })
+        .eq('id', userRoomId);
+
+      if (roomErr) throw roomErr;
+      setRoomMaxMembers(newLimit);
+      setSettingsMaxMembersInput(newLimit);
+
+      // 2. Add member to room
+      await supabase
+        .from('members')
+        .upsert({
+          room_id: userRoomId,
+          uid: req.uid,
+          nickname: req.nickname,
+          photo_url: '',
+          email: req.email || '',
+          joined_at: new Date().toISOString()
+        }, { onConflict: 'room_id,uid' });
+
+      // 3. Remove request from pending list
+      const updatedRequests = pendingJoinRequests.filter(r => r.id !== req.id && r.uid !== req.uid);
+      setPendingJoinRequests(updatedRequests);
+
+      await supabase
+        .from('system_settings')
+        .upsert({
+          key: `join_requests_${userRoomId}`,
+          value: JSON.stringify(updatedRequests),
+          created_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+
+      await fetchMembers(userRoomId);
+      await logActivity('settings', `${userNickname} approved join request for ${req.nickname} and expanded capacity to ${newLimit}`);
+      triggerToast(`Approved ${req.nickname}! Room capacity expanded to ${newLimit} members.`);
+    } catch (err) {
+      console.error("Approve join request error:", err);
+      triggerToast(`Failed to approve request: ${err.message}`);
+    }
+  };
+
+  const handleDeclineJoinRequest = async (req) => {
+    if (!userRoomId) return;
+    try {
+      const updatedRequests = pendingJoinRequests.filter(r => r.id !== req.id && r.uid !== req.uid);
+      setPendingJoinRequests(updatedRequests);
+
+      await supabase
+        .from('system_settings')
+        .upsert({
+          key: `join_requests_${userRoomId}`,
+          value: JSON.stringify(updatedRequests),
+          created_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+
+      triggerToast(`Declined join request for ${req.nickname}.`);
+    } catch (err) {
+      console.error("Decline join request error:", err);
+      triggerToast(`Failed to decline request: ${err.message}`);
+    }
+  };
 
   const fetchMembers = useCallback(async (roomId) => {
     try {
@@ -9696,6 +9844,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Manage Room Modal */}
         {isManageRoomOpen && renderManageRoomModal()}
+        {joinRequestModalInfo && renderJoinRequestModal()}
         {editingMemberBudget && renderMemberBudgetModal()}
         {nicknamePromptAction && renderNicknamePromptModal()}
 
@@ -11636,6 +11785,45 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     );
   }
 
+  // Join Request Modal when room is full / locked
+  function renderJoinRequestModal() {
+    if (!joinRequestModalInfo) return null;
+    const { roomId, currentCount, maxLimit } = joinRequestModalInfo;
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-[#E3E8E3] dark:border-slate-800 text-left space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-400 flex items-center justify-center font-black text-xl">
+            🔒
+          </div>
+          <div>
+            <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100">Room is Locked (Full)</h3>
+            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1">
+              Room <strong className="text-[#1A3827] dark:text-slate-200">{roomId}</strong> has reached its capacity limit of <strong>{maxLimit}</strong> members ({currentCount}/{maxLimit}).
+            </p>
+          </div>
+          <p className="text-xs text-[#5C6E5C] dark:text-slate-300 font-medium bg-[#F6F8F6] dark:bg-slate-950 p-3 rounded-xl border border-[#E3E8E3] dark:border-slate-800 leading-relaxed">
+            Would you like to send a join request to the room Admin? The Admin can let you in by expanding capacity (+1).
+          </p>
+          <div className="flex gap-2.5 pt-1">
+            <button
+              onClick={() => setJoinRequestModalInfo(null)}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 font-bold text-xs hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => handleSendJoinRequest(roomId)}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs hover:opacity-90 flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Send Request</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ==========================================
   // MANAGE ROOM MODAL
   // ==========================================
@@ -11675,6 +11863,51 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 Share invite link
               </button>
             </div>
+
+            {/* Pending Join Requests Section (Host only) */}
+            {isHost && (
+              <div className="border border-purple-200 dark:border-purple-900/50 bg-purple-50/50 dark:bg-purple-950/20 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <p className="text-xs font-black text-[#1A3827] dark:text-slate-100">Pending Join Requests</p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-200 text-purple-900 dark:bg-purple-900 dark:text-purple-200">
+                    {pendingJoinRequests.length} Pending
+                  </span>
+                </div>
+
+                {pendingJoinRequests.length === 0 ? (
+                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400 italic py-1">No pending join requests.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {pendingJoinRequests.map(req => (
+                      <div key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/60 rounded-xl">
+                        <div>
+                          <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100">{req.nickname}</p>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 truncate">{req.email || 'No email provided'}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => handleApproveJoinRequest(req)}
+                            className="px-2.5 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-lg text-[10px] font-black hover:opacity-90 flex items-center gap-1"
+                          >
+                            <Check className="w-3 h-3" />
+                            <span>Approve (+1 Capacity)</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeclineJoinRequest(req)}
+                            className="px-2 py-1.5 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg text-[10px] font-bold"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Members List */}
             <div>
