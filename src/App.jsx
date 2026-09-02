@@ -4797,7 +4797,101 @@ export default function App() {
       `;
     }
 
-    const htmlBody = `
+    const htmlBody = actionType === 'new_member' ? `
+      <div style="background-color: #F1F5F9; padding: 40px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid #E2E8F0;">
+          
+          <!-- Top MNC Banner -->
+          <div style="background-color: #1A3827; padding: 32px 36px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="vertical-align: middle;">
+                  <table style="border-collapse: collapse;">
+                    <tr>
+                      <td style="padding-right: 12px; vertical-align: middle;">
+                        <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="T" width="40" height="40" style="display: block; border-radius: 12px;" />
+                      </td>
+                      <td style="vertical-align: middle;">
+                        <span style="font-size: 22px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px;">Tallyin</span>
+                        <span style="display: block; font-size: 10px; color: #A3E635; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-top: 2px;">ROOMMATE EXPENSE SYNC</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td style="text-align: right; vertical-align: middle;">
+                  <span style="background-color: rgba(163, 230, 53, 0.2); color: #A3E635; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; padding: 7px 14px; border-radius: 20px; display: inline-block;">NEW ROOMMATE</span>
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Main Body -->
+          <div style="padding: 36px 36px 28px 36px;">
+            <h2 style="color: #0F172A; margin: 0 0 6px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">🎉 New Roommate Joined!</h2>
+            <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 16px 0;">
+              Hello Roommate,
+            </p>
+            <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 24px 0;">
+              Great news! <strong>${txPaidBy}</strong> has joined your Tallyin shared space <strong>"${roomName || roomDisplayName}"</strong> (Code: <strong>${roomDisplayName}</strong>). Give them a warm welcome!
+            </p>
+
+            <!-- Welcome Greeting Card -->
+            <div style="background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 18px; padding: 24px; margin-bottom: 28px; text-align: center;">
+              <div style="font-size: 42px; margin-bottom: 8px;">👋</div>
+              <div style="font-size: 18px; font-weight: 800; color: #065F46; margin-bottom: 4px;">Say hello to ${txPaidBy}!</div>
+              <div style="font-size: 13px; color: #047857;">New roommate approved & added to room <strong>${roomName || roomDisplayName}</strong>.</div>
+            </div>
+
+            <!-- Detailed Grid Info Cards -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+              <tr>
+                <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">NEW ROOMMATE</span>
+                    <span style="font-size: 14px; font-weight: 800; color: #1A3827;">${txPaidBy}</span>
+                  </div>
+                </td>
+                <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">SHARED SPACE</span>
+                    <span style="font-size: 14px; font-weight: 800; color: #0F172A;">${roomName || roomDisplayName}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="width: 50%; padding-right: 8px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">ROOM CODE</span>
+                    <span style="font-size: 13px; font-weight: 800; color: #1A3827; font-family: monospace;">${roomDisplayName}</span>
+                  </div>
+                </td>
+                <td style="width: 50%; padding-left: 8px;">
+                  <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">JOIN DATE</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txDateTime}</span>
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <!-- CTA -->
+            <div style="text-align: center; margin-top: 32px;">
+              <a href="https://tallyin.vercel.app" style="background-color: #1A3827; color: #ffffff; padding: 14px 32px; border-radius: 12px; font-weight: 800; font-size: 14px; text-decoration: none; display: inline-block; box-shadow: 0 4px 12px rgba(26, 56, 39, 0.2);">👉 Open Tallyin Room Ledger</a>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div style="background-color: #F8FAFC; padding: 24px 36px; border-top: 1px solid #E2E8F0; text-align: center;">
+            <p style="font-size: 11px; color: #64748B; line-height: 1.5; margin: 0 0 6px 0;">
+              Automated roommate alert from Tallyin Roommate Sync Engine for room <strong>${roomName || roomDisplayName}</strong>.
+            </p>
+            <p style="font-size: 10px; color: #94A3B8; margin: 0;">
+              © 2026 Tallyin Corporation. All rights reserved.
+            </p>
+          </div>
+        </div>
+      </div>
+    ` : `
       <div style="background-color: #F1F5F9; padding: 40px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid #E2E8F0;">
           
