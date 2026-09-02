@@ -235,6 +235,36 @@ export default function MaintenanceView({
                     />
                   </div>
 
+                  {/* Quick 1-Click Test Accounts Chips */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-[10px] font-extrabold text-[#5C6E5C] dark:text-slate-400 block uppercase tracking-wider">
+                      ⚡ Quick Test Accounts (1-Tap Select)
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { code: 'TY1001', email: 'tester1@tallyin.app', name: 'Tester 1' },
+                        { code: 'TY1002', email: 'tester2@tallyin.app', name: 'Tester 2' },
+                        { code: 'TY1003', email: 'tester3@tallyin.app', name: 'Tester 3' },
+                        { code: 'TY1004', email: 'tester4@tallyin.app', name: 'Tester 4' },
+                        { code: 'TY1005', email: 'tester5@tallyin.app', name: 'Tester 5' },
+                        { code: 'TY1006', email: 'tester6@tallyin.app', name: 'Tester 6' },
+                      ].map(acc => (
+                        <button
+                          key={acc.code}
+                          type="button"
+                          onClick={() => {
+                            if (setAccessCodeInput) setAccessCodeInput(acc.code);
+                            if (setCodeLoginEmail) setCodeLoginEmail(acc.email);
+                          }}
+                          className="px-2 py-1.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[10px] font-bold text-[#1A3827] dark:text-slate-200 hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors text-center shadow-xs cursor-pointer"
+                        >
+                          <span className="font-black text-[#1A3827] dark:text-[#A3E635] block">{acc.name}</span>
+                          <span className="text-[9px] text-[#5C6E5C] dark:text-slate-400 font-mono">{acc.code}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="flex gap-2 pt-1">
                     <button
                       type="button"

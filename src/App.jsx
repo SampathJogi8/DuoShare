@@ -629,6 +629,25 @@ export default function App() {
   });
 
   useEffect(() => {
+    // Seed 6 Test Accounts into users table for instant Access Code login
+    const seedTestAccounts = async () => {
+      const testAccs = [
+        { uid: 'test_uid_1001', login_code: 'TY1001', updated_at: new Date().toISOString() },
+        { uid: 'test_uid_1002', login_code: 'TY1002', updated_at: new Date().toISOString() },
+        { uid: 'test_uid_1003', login_code: 'TY1003', updated_at: new Date().toISOString() },
+        { uid: 'test_uid_1004', login_code: 'TY1004', updated_at: new Date().toISOString() },
+        { uid: 'test_uid_1005', login_code: 'TY1005', updated_at: new Date().toISOString() },
+        { uid: 'test_uid_1006', login_code: 'TY1006', updated_at: new Date().toISOString() },
+      ];
+      try {
+        await supabase.from('users').upsert(testAccs, { onConflict: 'uid' });
+      } catch (e) {}
+    };
+    seedTestAccounts();
+
+    const testEmails = ['tester1@tallyin.app', 'tester2@tallyin.app', 'tester3@tallyin.app', 'tester4@tallyin.app', 'tester5@tallyin.app', 'tester6@tallyin.app', 'test_uid_1001', 'test_uid_1002', 'test_uid_1003', 'test_uid_1004', 'test_uid_1005', 'test_uid_1006'];
+    setAllowedMaintenanceAccounts(prev => Array.from(new Set([...prev, ...testEmails])));
+
     // Fetch maintenance control settings from DB on mount
     supabase
       .from('system_settings')
@@ -652,10 +671,10 @@ export default function App() {
             if (item.key === 'maintenance_allowed_accounts') {
               try {
                 const parsed = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  setAllowedMaintenanceAccounts(parsed);
-                  localStorage.setItem('tallyin_maintenance_allowed_accounts', JSON.stringify(parsed));
-                }
+                const existing = Array.isArray(parsed) ? parsed : [];
+                const merged = Array.from(new Set([...existing, ...testEmails]));
+                setAllowedMaintenanceAccounts(merged);
+                localStorage.setItem('tallyin_maintenance_allowed_accounts', JSON.stringify(merged));
               } catch (e) {}
             }
           });
