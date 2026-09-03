@@ -560,6 +560,7 @@ export default function App() {
   const [splitType, setSplitType] = useState('equal');
   const [selectedSplitMembers, setSelectedSplitMembers] = useState({});
   const [customSplitValues, setCustomSplitValues] = useState({});
+  const [enableQuotaSplit, setEnableQuotaSplit] = useState(false);
 
   // Settle Up Modal States
   const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
@@ -1515,6 +1516,7 @@ export default function App() {
       }
       setSelectedSplitMembers(initialSplits);
       setCustomSplitValues(initialCustomValues);
+      setEnableQuotaSplit(Boolean(tx.splitType && tx.splitType !== 'quota' && (tx.splits?.length > 1 || !tx.isShared)));
 
       // Try to load the corresponding receipt image from the receipts list
       if (tx.isShared) {
@@ -1545,6 +1547,7 @@ export default function App() {
       setSuggestedCategory(null);
       setFormReceiptImages([]);
       setSplitType('equal');
+      setEnableQuotaSplit(false);
       const initialSplits = {};
       members.forEach(m => {
         initialSplits[m.uid] = true;
@@ -6059,7 +6062,8 @@ export default function App() {
 
     // Calculate splits array
     let splitsArray = [];
-    const checkedUids = isQuotaMode 
+    const isCustomSplitActive = !isQuotaMode || enableQuotaSplit;
+    const checkedUids = (!isCustomSplitActive)
       ? (members.length > 0 ? members.map(m => m.uid) : [formPaidBy || (auth.currentUser?.uid || 'anonymous')])
       : Object.keys(selectedSplitMembers).filter(uid => selectedSplitMembers[uid]);
     
@@ -6068,7 +6072,7 @@ export default function App() {
       return;
     }
     
-    if (isQuotaMode) {
+    if (isQuotaMode && !enableQuotaSplit) {
       const shareAmount = amountNum / checkedUids.length;
       splitsArray = checkedUids.map(uid => {
         const mem = members.find(m => m.uid === uid) || { nickname: uid === (auth.currentUser?.uid || 'anonymous') ? userNickname : 'Unknown' };
@@ -6156,8 +6160,8 @@ export default function App() {
     // Determine split label text and classification
     let splitLabel;
     let isSharedExpense = true;
-    const finalSplitType = isQuotaMode ? 'quota' : splitType;
-    if (isQuotaMode) {
+    const finalSplitType = (isQuotaMode && !enableQuotaSplit) ? 'quota' : splitType;
+    if (isQuotaMode && !enableQuotaSplit) {
       splitLabel = 'Quota Entry';
       isSharedExpense = true;
     } else if (splitsArray.length === 1) {
@@ -13046,14 +13050,38 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </select>
             </div>
 
-            {/* Split Type Tabs & Breakdown (Classic Split Mode Only) */}
-            {!isQuotaMode && (
+            {/* In Quota Mode: Optional Split Toggle (Off by default) */}
+            {isQuotaMode && (
+              <div className="p-3.5 bg-[#F6F8F6] dark:bg-slate-900/40 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl flex items-center justify-between transition-all">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-[#1A3827] dark:text-slate-100">Split Mode</span>
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">Optional</span>
+                  </div>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                    {enableQuotaSplit ? 'Custom roommate split active.' : 'Off by default — expense credits directly to quota.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEnableQuotaSplit(!enableQuotaSplit)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${enableQuotaSplit ? 'bg-[#1A3827] dark:bg-[#A3E635]' : 'bg-slate-300 dark:bg-slate-700'}`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white dark:bg-slate-900 shadow-md ring-0 transition duration-200 ease-in-out ${enableQuotaSplit ? 'translate-x-5' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
+            )}
+
+            {/* Split Type Tabs & Breakdown (Classic Split Mode or Quota Mode with Toggle ON) */}
+            {(!isQuotaMode || enableQuotaSplit) && (
               <>
                 {/* Split Type Tabs */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Split type</label>
                   <div className="bg-[#F6F8F6] dark:bg-slate-950 p-1 rounded-xl flex gap-1 border border-[#E3E8E3]/50 dark:border-slate-800">
-                    {['equal', 'percentage', 'amount'].map(type => (
+                    {(isQuotaMode ? ['equal', 'percentage', 'amount', 'budget_weighted'] : ['equal', 'percentage', 'amount']).map(type => (
                       <button
                         key={type}
                         type="button"
@@ -13064,7 +13092,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827]'
                         }`}
                       >
-                        {type === 'equal' ? 'Equally' : type === 'percentage' ? 'By %' : 'By ₹'}
+                        {type === 'equal' ? 'Equally' : type === 'percentage' ? 'By %' : type === 'amount' ? 'By ₹' : 'Budget Ratio'}
                       </button>
                     ))}
                   </div>
@@ -13080,6 +13108,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       const checkedMembers = members.filter(mm => selectedSplitMembers[mm.uid] !== false);
                       const checkedCount = checkedMembers.length || 1;
                       const equalShare = amountNum / checkedCount;
+                      const totalCheckedBudget = checkedMembers.reduce((sum, mm) => sum + (Number(mm.individualBudget) || 2000), 0);
+                      const mBudget = Number(m.individualBudget) || 2000;
+                      const budgetWeightedShare = totalCheckedBudget > 0 ? (amountNum * (mBudget / totalCheckedBudget)) : equalShare;
                       return (
                         <div key={m.uid} className="flex items-center gap-2 py-1">
                           <input
@@ -13104,6 +13135,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           </span>
                           {splitType === 'equal' && isChecked && (
                             <span className="text-[11px] font-bold text-[#1A3827] dark:text-[#A3E635]">{formatINR(equalShare)}</span>
+                          )}
+                          {splitType === 'budget_weighted' && isChecked && (
+                            <span className="text-[11px] font-bold text-[#1A3827] dark:text-[#A3E635]">
+                              {formatINR(budgetWeightedShare)} <span className="text-[9px] font-normal text-slate-400">({totalCheckedBudget > 0 ? Math.round((mBudget / totalCheckedBudget) * 100) : 0}%)</span>
+                            </span>
                           )}
                           {splitType === 'percentage' && isChecked && (
                             <div className="flex items-center gap-1">

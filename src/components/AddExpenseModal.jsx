@@ -17,6 +17,7 @@ export default function AddExpenseModal({
   const [splitType, setSplitType] = useState('equal');
   const [selectedSplitMembers, setSelectedSplitMembers] = useState({});
   const [customSplitValues, setCustomSplitValues] = useState({});
+  const [enableQuotaSplit, setEnableQuotaSplit] = useState(false);
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -143,8 +144,32 @@ export default function AddExpenseModal({
             </div>
           </div>
 
-          {/* Split Mode Selector (Classic Split Mode Only) */}
-          {!isQuotaMode && (
+          {/* In Quota Mode: Optional Split Toggle */}
+          {isQuotaMode && (
+            <div className="p-3 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-[#1A3827] dark:text-slate-100">Split Mode</span>
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">Optional</span>
+                </div>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                  {enableQuotaSplit ? 'Custom roommate split active.' : 'Off by default — expense credits directly to quota.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEnableQuotaSplit(!enableQuotaSplit)}
+                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${enableQuotaSplit ? 'bg-[#1A3827] dark:bg-[#A3E635]' : 'bg-slate-300 dark:bg-slate-700'}`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white dark:bg-slate-900 shadow-md ring-0 transition duration-200 ease-in-out ${enableQuotaSplit ? 'translate-x-5' : 'translate-x-0'}`}
+                />
+              </button>
+            </div>
+          )}
+
+          {/* Split Mode Selector (Classic Split Mode or Quota Mode with Toggle ON) */}
+          {(!isQuotaMode || enableQuotaSplit) && (
             <div className="space-y-1.5 pt-2">
               <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Split Mode</label>
               <div className="grid grid-cols-3 gap-2">
