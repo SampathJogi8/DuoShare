@@ -11083,77 +11083,90 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           {/* Room Switcher Dropdown */}
-          {user && userRooms.length > 0 && (
-            <div className="mb-4 space-y-1">
-              <label className="text-[9px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest block font-sans">Active Workspace</label>
-              <select
-                value={userRoomId || ''}
-                onChange={async (e) => {
-                  const selectedRoomId = e.target.value;
-                  if (selectedRoomId && selectedRoomId !== userRoomId) {
-                    // Optimistically set name from cache, but immediately fetch fresh settings
-                    const cachedRoom = userRooms.find(r => r.roomId === selectedRoomId);
-                    setUserRoomId(selectedRoomId);
-                    localStorage.setItem('userRoomId', selectedRoomId);
-                    if (cachedRoom?.roomName) {
-                      setRoomName(cachedRoom.roomName);
-                    }
-                    setHasConfirmedRoom(true);
-                    setCurrentView('home');
-                    setIsMobileMenuOpen(false);
-                    setIsInviteModalOpen(false);
-                    setIsManageRoomOpen(false);
-                    triggerToast(`Switching to: ${cachedRoom?.roomName || selectedRoomId}...`);
+          {user && (() => {
+            const allSelectableRooms = [...userRooms.filter(r => r && r.roomId && r.roomId !== 'null' && r.roomId !== 'undefined')];
+            if (userRoomId && !allSelectableRooms.some(r => r.roomId === userRoomId)) {
+              allSelectableRooms.unshift({
+                roomId: userRoomId,
+                roomName: roomName || 'Tallyin Room',
+                monthlyBudget: monthlyBudget || 22000
+              });
+            }
 
-                    // Always fetch fresh budget, name, and created_by from DB
-                    await fetchRoomSettings(selectedRoomId);
-                    
-                    if (user) {
-                      (async () => {
-                        try {
-                          await supabase
-                            .from('users')
-                            .upsert({
-                              uid: user.id,
-                              room_id: selectedRoomId,
-                              updated_at: new Date().toISOString()
-                            }, { onConflict: 'uid' });
-                        } catch (e) { console.error(e); }
-                      })();
+            if (allSelectableRooms.length === 0) return null;
+
+            return (
+              <div className="mb-4 space-y-1">
+                <label className="text-[9px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest block font-sans">Active Workspace</label>
+                <select
+                  value={userRoomId || allSelectableRooms[0]?.roomId || ''}
+                  onChange={async (e) => {
+                    const selectedRoomId = e.target.value;
+                    if (selectedRoomId && selectedRoomId !== userRoomId) {
+                      const cachedRoom = allSelectableRooms.find(r => r.roomId === selectedRoomId);
+                      setUserRoomId(selectedRoomId);
+                      localStorage.setItem('userRoomId', selectedRoomId);
+                      if (cachedRoom?.roomName) {
+                        setRoomName(cachedRoom.roomName);
+                      }
+                      setHasConfirmedRoom(true);
+                      setCurrentView('home');
+                      setIsMobileMenuOpen(false);
+                      setIsInviteModalOpen(false);
+                      setIsManageRoomOpen(false);
+                      triggerToast(`Switching to: ${cachedRoom?.roomName || selectedRoomId}...`);
+
+                      // Always fetch fresh budget, name, and created_by from DB
+                      await fetchRoomSettings(selectedRoomId);
+                      await fetchMembers(selectedRoomId);
+                      
+                      if (user) {
+                        (async () => {
+                          try {
+                            await supabase
+                              .from('users')
+                              .upsert({
+                                uid: user.id,
+                                room_id: selectedRoomId,
+                                updated_at: new Date().toISOString()
+                              }, { onConflict: 'uid' });
+                          } catch (e) { console.error(e); }
+                        })();
+                      }
                     }
-                  }
-                }}
-                className="w-full bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-slate-100 rounded-xl px-3 py-2.5 text-xs font-bold focus:outline-none cursor-pointer hover:border-[#1A3827]/25 dark:hover:border-slate-700 transition-all font-sans"
-              >
-                {userRooms.map(r => (
-                  <option key={r.roomId} value={r.roomId}>
-                    🏠 {r.roomName} ({r.roomId})
-                  </option>
-                ))}
-              </select>
-              {/* Quick room action buttons */}
-              <div className="flex gap-1.5 pt-1">
-                <button
-                  onClick={() => {
-                    setHasConfirmedRoom(false);
-                    setOnboardingStep('room-name');
                   }}
-                  className="flex-1 py-1.5 rounded-lg border border-dashed border-[#1A3827]/30 dark:border-slate-700 text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all text-center"
+                  className="w-full bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-slate-100 rounded-xl px-3 py-2.5 text-xs font-bold focus:outline-none cursor-pointer hover:border-[#1A3827]/25 dark:hover:border-slate-700 transition-all font-sans"
                 >
-                  + New Room
-                </button>
-                <button
-                  onClick={() => {
-                    setHasConfirmedRoom(false);
-                    setOnboardingStep('join-room');
-                  }}
-                  className="flex-1 py-1.5 rounded-lg border border-dashed border-[#1A3827]/30 dark:border-slate-700 text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all text-center"
-                >
-                  Join Room
-                </button>
+                  {allSelectableRooms.map(r => (
+                    <option key={r.roomId} value={r.roomId}>
+                      🏠 {r.roomName} {r.roomId ? `(${r.roomId})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {/* Quick room action buttons */}
+                <div className="flex gap-1.5 pt-1">
+                  <button
+                    onClick={() => {
+                      setHasConfirmedRoom(false);
+                      setOnboardingStep('room-name');
+                    }}
+                    className="flex-1 py-1.5 rounded-lg border border-dashed border-[#1A3827]/30 dark:border-slate-700 text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all text-center cursor-pointer"
+                  >
+                    + New Room
+                  </button>
+                  <button
+                    onClick={() => {
+                      setHasConfirmedRoom(false);
+                      setOnboardingStep('join-room');
+                    }}
+                    className="flex-1 py-1.5 rounded-lg border border-dashed border-[#1A3827]/30 dark:border-slate-700 text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all text-center cursor-pointer"
+                  >
+                    Join Room
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Navigation Links */}
           <nav className="space-y-1">
