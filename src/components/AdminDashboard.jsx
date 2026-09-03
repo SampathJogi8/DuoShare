@@ -63,6 +63,8 @@ export default function AdminDashboard({
   setIsSystemMaintenanceActive,
   maintenanceMessage,
   setMaintenanceMessage,
+  maintenanceFeatures,
+  setMaintenanceFeatures,
   globalBroadcast,
   setGlobalBroadcast,
   pinnedMessages,
