@@ -11165,18 +11165,18 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
           {/* Frozen Room Administrative Lock Banner */}
           {userRoomId && frozenRoomIds.includes(userRoomId) && (
-            <div className="w-full mb-4 p-4 rounded-2xl bg-cyan-950/20 dark:bg-cyan-950/40 border border-cyan-500/40 text-cyan-900 dark:text-cyan-200 shadow-lg flex items-center gap-3 animate-fade-in">
-              <div className="w-9 h-9 rounded-xl bg-cyan-500/20 flex items-center justify-center shrink-0">
-                <Lock className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+            <div className="w-full mb-4 p-4 rounded-2xl bg-cyan-700 dark:bg-cyan-950 border-2 border-cyan-800 dark:border-cyan-700 text-white shadow-md flex items-center gap-3.5 animate-fade-in">
+              <div className="w-10 h-10 rounded-xl bg-cyan-800 dark:bg-cyan-900 border border-cyan-600/50 flex items-center justify-center shrink-0 shadow-xs">
+                <Lock className="w-5 h-5 text-white" />
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-black text-xs uppercase tracking-wider text-cyan-700 dark:text-cyan-300">Room Temporarily Frozen</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-500/30 text-cyan-800 dark:text-cyan-200">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-xs uppercase tracking-wider text-white">Room Temporarily Frozen</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-white text-cyan-900 shadow-xs shrink-0">
                     Read-Only Mode
                   </span>
                 </div>
-                <p className="text-xs text-cyan-800 dark:text-cyan-300 mt-0.5">
+                <p className="text-xs text-cyan-100 font-medium mt-1 leading-relaxed">
                   This shared space has been placed on administrative hold for dispute resolution or balance verification. Adding or modifying expenses is paused.
                 </p>
               </div>
