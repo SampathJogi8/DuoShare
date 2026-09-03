@@ -1076,6 +1076,143 @@ export default function AdminDashboard({
     }
   }, []);
 
+  // User Directory & Search states
+  const [allRegisteredUsers, setAllRegisteredUsers] = useState([]);
+
+  // Automated Email Dispatcher for User Bans and Unbans
+  const sendUserBanStatusEmail = async ({ type, targetEmail, targetName, reason }) => {
+    if (!targetEmail || !targetEmail.includes('@') || targetEmail.toLowerCase() === 'n/a') {
+      console.warn("Skipping ban/unban email: target email is invalid or N/A:", targetEmail);
+      return;
+    }
+
+    const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+    const logoUrl = 'https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/public/tallyin_security_shield.png';
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const randHex = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const isBan = type === 'BAN';
+    const refId = isBan ? `BAN-${dateStr}-${randHex}` : `RST-${dateStr}-${randHex}`;
+
+    const subject = isBan
+      ? `[SECURITY NOTICE] Tallyin Account Suspension — Ref: ${refId}`
+      : `[ACCOUNT RESTORED] Tallyin Account Suspension Lifted — Ref: ${refId}`;
+
+    const htmlBody = isBan ? `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; background-color: #ffffff; border-radius: 20px; border: 1px solid #fca5a5; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
+        <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #ef4444;">
+          <div style="margin: 0 auto 14px auto; text-align: center;">
+            <img src="${logoUrl}" alt="Tallyin Security" width="88" height="88" style="width: 88px; height: 88px; display: inline-block; object-fit: contain;" />
+          </div>
+          <div style="display: inline-block; padding: 5px 14px; background-color: #fee2e2; border: 1px solid #fecaca; border-radius: 9999px; color: #991b1b; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
+            Account Suspension Notice
+          </div>
+          <h1 style="color: #991b1b; margin: 12px 0 6px 0; font-size: 22px; font-weight: 900;">Tallyin Account Suspended</h1>
+          <p style="color: #64748b; font-size: 13px; margin: 0;">Tallyin Trust & Security Governance</p>
+        </div>
+
+        <div style="margin: 22px 0; padding: 18px 20px; background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 14px;">
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #9f1239; margin-bottom: 6px;">
+            Official Suspension Reference ID
+          </div>
+          <div style="font-family: ui-monospace, monospace; font-size: 18px; font-weight: 900; color: #be123c; letter-spacing: 1px;">
+            ${refId}
+          </div>
+          <div style="margin-top: 14px; font-size: 12px; color: #475569; line-height: 1.6; border-top: 1px solid #fecdd3; padding-top: 12px;">
+            <div><strong>Target Account:</strong> ${targetEmail}</div>
+            <div><strong>Status:</strong> Immediate Platform Suspension</div>
+            <div><strong>Suspended By:</strong> System Administration (${user?.email || 'Super Admin'})</div>
+            <div><strong>Timestamp:</strong> ${new Date().toUTCString()}</div>
+          </div>
+        </div>
+
+        <div style="color: #334155; font-size: 14px; line-height: 1.65; margin-bottom: 22px;">
+          <p>Hello <strong>${targetName || targetEmail}</strong>,</p>
+          <p>This automated communication serves as formal notice that your <strong>Tallyin account access has been suspended</strong> by System Administration.</p>
+          <p><strong>Reason for Administrative Suspension:</strong></p>
+          <blockquote style="margin: 10px 0; padding: 12px 16px; background-color: #fff1f2; border-left: 3px solid #ef4444; font-style: italic; color: #9f1239; border-radius: 6px;">
+            ${reason || 'Account suspended for policy violations or disputed roommate activities.'}
+          </blockquote>
+          <p>While suspended, you will be unable to access shared rooms, add expenses, or interact on the platform. If you believe this suspension was issued in error, you may submit a reinstatement appeal directly through the Tallyin website.</p>
+        </div>
+
+        <div style="text-align: center; margin: 26px 0;">
+          <a href="https://tallyin.vercel.app" style="display: inline-block; padding: 12px 28px; background-color: #991b1b; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 900; font-size: 13px; box-shadow: 0 4px 12px rgba(153,27,27,0.25);">
+            Submit Reinstatement Appeal →
+          </a>
+        </div>
+
+        <div style="text-align: center; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+          Tallyin Corporate Trust & Safety • tallyin.alerts@gmail.com<br/>
+          Official Reference ID: <strong>${refId}</strong>
+        </div>
+      </div>
+    ` : `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; background-color: #ffffff; border-radius: 20px; border: 1px solid #cbd5e1; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
+        <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #10b981;">
+          <div style="margin: 0 auto 14px auto; text-align: center;">
+            <img src="${logoUrl}" alt="Tallyin Security" width="88" height="88" style="width: 88px; height: 88px; display: inline-block; object-fit: contain;" />
+          </div>
+          <div style="display: inline-block; padding: 5px 14px; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; color: #047857; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
+            Access Re-instatement Notice
+          </div>
+          <h1 style="color: #1a3827; margin: 12px 0 6px 0; font-size: 22px; font-weight: 900;">Account Suspension Lifted</h1>
+          <p style="color: #64748b; font-size: 13px; margin: 0;">Tallyin Trust & Security Governance</p>
+        </div>
+
+        <div style="margin: 22px 0; padding: 18px 20px; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 14px;">
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #166534; margin-bottom: 6px;">
+            Reinstatement Acknowledgement Reference
+          </div>
+          <div style="font-family: ui-monospace, monospace; font-size: 18px; font-weight: 900; color: #15803d; letter-spacing: 1px;">
+            ${refId}
+          </div>
+          <div style="margin-top: 14px; font-size: 12px; color: #475569; line-height: 1.6; border-top: 1px solid #bbf7d0; padding-top: 12px;">
+            <div><strong>Target Account:</strong> ${targetEmail}</div>
+            <div><strong>Status:</strong> Restored in Full Good Standing</div>
+            <div><strong>Authorized By:</strong> System Administration (${user?.email || 'Super Admin'})</div>
+            <div><strong>Timestamp:</strong> ${new Date().toUTCString()}</div>
+          </div>
+        </div>
+
+        <div style="color: #334155; font-size: 14px; line-height: 1.65; margin-bottom: 22px;">
+          <p>Hello <strong>${targetName || targetEmail}</strong>,</p>
+          <p>We are pleased to inform you that your <strong>Tallyin account suspension has been lifted</strong> and your access privileges have been <strong>fully restored</strong> by System Administration.</p>
+          <p>You may now log in to your account, access shared rooms, view expenses, and settle balances normally.</p>
+        </div>
+
+        <div style="text-align: center; margin: 26px 0;">
+          <a href="https://tallyin.vercel.app" style="display: inline-block; padding: 12px 28px; background-color: #1a3827; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 900; font-size: 13px; box-shadow: 0 4px 12px rgba(26,56,39,0.25);">
+            Access Tallyin Dashboard →
+          </a>
+        </div>
+
+        <div style="text-align: center; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+          Tallyin Corporate Trust & Safety • tallyin.alerts@gmail.com<br/>
+          Official Reference ID: <strong>${refId}</strong>
+        </div>
+      </div>
+    `;
+
+    try {
+      fetch(mailRelayUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: targetEmail,
+          subject,
+          body: `Tallyin Account Notice:\nRef: ${refId}\nType: ${type}\nTarget: ${targetEmail}`,
+          htmlBody
+        })
+      }).catch(e => console.warn("Ban email relay background error:", e));
+
+      logAuditAction(isBan ? 'USER_BAN_EMAIL_DISPATCHED' : 'USER_UNBAN_EMAIL_DISPATCHED', `Dispatched ${type} notification to ${targetEmail} (Ref: ${refId})`);
+    } catch (err) {
+      console.warn("Mail relay dispatch failed:", err);
+    }
+  };
+
   // Ban User Handler
   const handleBanUser = async (targetIdentifier, targetReason, extraData = {}) => {
     if (!userPermissions.user_management) {
@@ -1090,11 +1227,24 @@ export default function AdminDashboard({
 
     const cleanTarget = rawTarget.toLowerCase();
 
+    // Determine target email for dispatch
+    const matchedUser = allRegisteredUsers.find(u => 
+      (u.email && u.email.toLowerCase() === cleanTarget) ||
+      (u.name && u.name.toLowerCase() === cleanTarget) ||
+      (u.id && String(u.id).toLowerCase() === cleanTarget)
+    );
+
+    const targetEmail = cleanTarget.includes('@')
+      ? cleanTarget
+      : (extraData.email && extraData.email.includes('@') ? extraData.email : matchedUser?.email);
+
+    const targetName = extraData.name || matchedUser?.name || rawTarget;
+
     const newBanObj = {
       identifier: cleanTarget,
-      email: cleanTarget,
-      name: extraData.name || rawTarget,
-      id: extraData.id || rawTarget,
+      email: targetEmail || cleanTarget,
+      name: targetName,
+      id: extraData.id || matchedUser?.id || rawTarget,
       reason: targetReason?.trim() || 'Account suspended by administrator.',
       bannedAt: new Date().toISOString(),
       bannedBy: user?.email || 'Admin'
@@ -1103,7 +1253,19 @@ export default function AdminDashboard({
     const updatedBanned = [...bannedUsers.filter(b => (b.identifier || b.email)?.toLowerCase() !== cleanTarget), newBanObj];
     await syncBannedUsersToDatabase(updatedBanned);
 
-    if (triggerToast) triggerToast(`User "${rawTarget}" SUSPENDED & BANNED!`);
+    // Send Ban Email Notification if valid email found
+    if (targetEmail && targetEmail.includes('@')) {
+      sendUserBanStatusEmail({
+        type: 'BAN',
+        targetEmail,
+        targetName,
+        reason: newBanObj.reason
+      });
+      if (triggerToast) triggerToast(`User "${targetName}" suspended and notification email dispatched!`);
+    } else {
+      if (triggerToast) triggerToast(`User "${rawTarget}" SUSPENDED & BANNED!`);
+    }
+
     setBanEmailInput('');
     setIsBanModalOpen(false);
   };
@@ -1115,14 +1277,40 @@ export default function AdminDashboard({
       return;
     }
     const cleanTarget = String(targetIdentifier || '').trim().toLowerCase();
+
+    const existingBan = bannedUsers.find(b => 
+      (b.identifier || '').toLowerCase() === cleanTarget || 
+      (b.email || '').toLowerCase() === cleanTarget ||
+      (b.name || '').toLowerCase() === cleanTarget
+    );
+
+    const matchedUser = allRegisteredUsers.find(u => 
+      (u.email && u.email.toLowerCase() === cleanTarget) ||
+      (u.name && u.name.toLowerCase() === cleanTarget) ||
+      (u.id && String(u.id).toLowerCase() === cleanTarget)
+    );
+
+    const targetEmail = cleanTarget.includes('@')
+      ? cleanTarget
+      : (existingBan?.email && existingBan.email.includes('@') ? existingBan.email : matchedUser?.email);
+
+    const targetName = existingBan?.name || matchedUser?.name || targetIdentifier;
+
     const updatedBanned = bannedUsers.filter(b => (b.identifier || b.email)?.toLowerCase() !== cleanTarget);
     await syncBannedUsersToDatabase(updatedBanned);
 
-    if (triggerToast) triggerToast(`User "${targetIdentifier}" RESTORED & UNBANNED!`);
+    // Send Unban / Reinstatement Email Notification if valid email found
+    if (targetEmail && targetEmail.includes('@')) {
+      sendUserBanStatusEmail({
+        type: 'UNBAN',
+        targetEmail,
+        targetName
+      });
+      if (triggerToast) triggerToast(`User "${targetName}" RESTORED and reinstatement email dispatched!`);
+    } else {
+      if (triggerToast) triggerToast(`User "${targetIdentifier}" RESTORED & UNBANNED!`);
+    }
   };
-
-  // User Directory & Search states
-  const [allRegisteredUsers, setAllRegisteredUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [securityLogs, setSecurityLogs] = useState(() => {
     if (typeof window !== 'undefined') {
