@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, Receipt, Plus, Trash2, Download, Copy, Check, FileSpreadsheet, 
-  Sparkles, DollarSign, ArrowRight, ShieldCheck, Printer, RefreshCw, Send
+  Sparkles, DollarSign, Printer, RefreshCw, Send
 } from 'lucide-react';
 
 export default function QuickBillModal({
@@ -157,10 +157,12 @@ kfc: 748`;
     return items.reduce((sum, item) => sum + (item.amount * (item.qty || 1)), 0);
   }, [items]);
 
-  const grandTotal = subtotal;
+  const [receiptRefCode, setReceiptRefCode] = useState('');
 
-  const receiptRefCode = useMemo(() => {
-    return `RC-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  useEffect(() => {
+    if (isOpen) {
+      setReceiptRefCode(`RC-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`);
+    }
   }, [isOpen]);
 
   if (!isOpen) return null;
