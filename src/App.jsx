@@ -3989,124 +3989,71 @@ export default function App() {
       if (!confirmed) return;
     }
     try {
-      // 1. Generate and download JSON backup for host
-      const backupData = {
-        roomId: userRoomId,
-        roomName: roomName,
-        monthlyBudget: monthlyBudget,
-        exportedAt: new Date().toISOString(),
-        exportedBy: userNickname,
-        members: members,
-        transactions: transactions,
-        receipts: receipts,
-        activityLogs: activityLogs
-      };
+      const deletedRoomId = userRoomId;
+      const deletedRoomName = roomName;
+      const memberListForEmail = [...members];
+      const validTx = transactions.filter(t => t.category !== '__DELETE_PROPOSAL__' && t.category !== 'Payment');
+      const currentHostUid = user.id;
 
+      // 1. Generate and download JSON backup for host
       try {
+        const backupData = {
+          roomId: deletedRoomId,
+          roomName: deletedRoomName,
+          monthlyBudget: monthlyBudget,
+          exportedAt: new Date().toISOString(),
+          exportedBy: userNickname,
+          members: members,
+          transactions: transactions,
+          receipts: receipts,
+          activityLogs: activityLogs
+        };
         const backupStr = JSON.stringify(backupData, null, 2);
         const blob = new Blob([backupStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `tallyin_room_backup_${userRoomId}_${new Date().toISOString().split('T')[0]}.json`;
+        link.download = `tallyin_room_backup_${deletedRoomId}_${new Date().toISOString().split('T')[0]}.json`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
       } catch (e) {}
 
-      // 1b. Dispatch Individual & Room Financial Statements via Email to All Roommates
+      // 2. Cascade delete all child table records & room from database synchronously
+      await supabase.from('transactions').delete().eq('room_id', deletedRoomId);
+      await supabase.from('receipts').delete().eq('room_id', deletedRoomId);
+      await supabase.from('members').delete().eq('room_id', deletedRoomId);
+      await supabase.from('activity_logs').delete().eq('room_id', deletedRoomId);
+      await supabase.from('system_settings').delete().eq('key', `room_mode_${deletedRoomId}`);
+      await supabase.from('system_settings').delete().eq('key', `join_requests_${deletedRoomId}`);
+      await supabase.from('system_settings').delete().eq('key', `co_host_${deletedRoomId}`);
+
+      // 3. Delete room from rooms table
+      await supabase.from('rooms').delete().eq('id', deletedRoomId);
+
+      // 4. Reset user room binding for all members
       try {
-        const validTx = transactions.filter(t => t.category !== '__DELETE_PROPOSAL__' && t.category !== 'Payment');
-        const totalRoomSpend = validTx.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-        const formattedTotalSpend = `₹${totalRoomSpend.toLocaleString('en-IN')}`;
-        const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+        await supabase.from('users').update({ room_id: null }).eq('room_id', deletedRoomId);
+      } catch(e) {}
 
-        for (const m of members) {
-          const targetEmail = m.email || (m.uid === user.id ? user.email : '');
-          if (!targetEmail || !targetEmail.includes('@')) continue;
-
-          const myPaidTx = validTx.filter(t => (t.paidByUid && t.paidByUid === m.uid) || (t.paid_by && t.paid_by === m.nickname) || (t.paidBy && t.paidBy === m.nickname));
-          const totalMyPaid = myPaidTx.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-          const myQuota = Number(m.individualBudget || m.individual_budget) || 0;
-
-          const emailHtml = `
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0F172A; margin: 0; padding: 32px 16px;">
-              <div style="max-width: 580px; margin: 0 auto; background-color: #1E293B; border-radius: 20px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
-                <div style="background: linear-gradient(135deg, #1A3827 0%, #0F172A 100%); padding: 32px 24px; text-align: center; border-bottom: 1px solid #334155;">
-                  <div style="display: inline-block; background-color: #A3E635; color: #0F172A; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px;">
-                    Final Financial Statement
-                  </div>
-                  <h1 style="color: #F8FAFC; font-size: 22px; font-weight: 900; margin: 0 0 6px 0;">Room "${roomName || userRoomId}" Closed</h1>
-                  <p style="color: #94A3B8; font-size: 13px; margin: 0;">Personal Ledger & Settlement Statement for <strong>${m.nickname}</strong></p>
-                </div>
-                <div style="padding: 28px 24px; color: #E2E8F0; font-size: 14px; line-height: 1.6;">
-                  <p style="margin: 0 0 16px 0;">Hi <strong>${m.nickname}</strong>,</p>
-                  <p style="margin: 0 0 20px 0;">The shared room <strong>"${roomName || userRoomId}"</strong> has been permanently closed. Below is your final financial ledger statement before records were purged:</p>
-                  
-                  <div style="background-color: #0F172A; border: 1px solid #334155; border-radius: 14px; padding: 18px; margin-bottom: 20px;">
-                    <div style="font-size: 11px; font-weight: 800; color: #A3E635; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">YOUR PERSONAL SUMMARY</div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
-                      <span style="color: #94A3B8;">Total Amount Paid by You:</span>
-                      <strong style="color: #F8FAFC;">₹${totalMyPaid.toLocaleString('en-IN')}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
-                      <span style="color: #94A3B8;">Assigned Quota Limit:</span>
-                      <strong style="color: #F8FAFC;">₹${myQuota.toLocaleString('en-IN')}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
-                      <span style="color: #94A3B8;">Transactions Logged by You:</span>
-                      <strong style="color: #F8FAFC;">${myPaidTx.length}</strong>
-                    </div>
-                  </div>
-
-                  <div style="background-color: #0F172A; border: 1px solid #334155; border-radius: 14px; padding: 18px; margin-bottom: 24px;">
-                    <div style="font-size: 11px; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">ROOM TOTALS</div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
-                      <span style="color: #94A3B8;">Total Group Expenses:</span>
-                      <strong style="color: #F8FAFC;">${formattedTotalSpend}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
-                      <span style="color: #94A3B8;">Total Roommates:</span>
-                      <strong style="color: #F8FAFC;">${members.length}</strong>
-                    </div>
-                  </div>
-
-                  <p style="color: #94A3B8; font-size: 12px; margin: 0 0 24px 0;">All transactions and room data have been permanently archived. You can create or join a new shared space anytime on Tallyin.</p>
-                  
-                  <div style="text-align: center;">
-                    <a href="https://tallyin.vercel.app" style="display: inline-block; background-color: #A3E635; color: #0F172A; font-weight: 800; font-size: 13px; padding: 12px 28px; border-radius: 12px; text-decoration: none;">Open Tallyin</a>
-                  </div>
-                </div>
-                <div style="background-color: #0F172A; padding: 16px; text-align: center; border-top: 1px solid #334155; color: #64748B; font-size: 11px;">
-                  Tallyin Automated Space Governance • Final Room Statement
-                </div>
-              </div>
-            </body>
-            </html>
-          `;
-
-          await fetch(mailRelayUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              recipients: [targetEmail],
-              subject: `[Tallyin Statement] Final Financial Report for Room "${roomName || userRoomId}"`,
-              htmlBody: emailHtml,
-              senderName: 'Tallyin Financial Statements'
-            })
-          });
+      // 5. Clear pending user requests referencing this room in system_settings
+      try {
+        const { data: myReqs } = await supabase.from('system_settings').select('value').eq('key', `user_requests_${currentHostUid}`).maybeSingle();
+        if (myReqs?.value) {
+          const parsed = typeof myReqs.value === 'string' ? JSON.parse(myReqs.value) : myReqs.value;
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter(p => p.roomId !== deletedRoomId);
+            await supabase.from('system_settings').upsert({
+              key: `user_requests_${currentHostUid}`,
+              value: JSON.stringify(cleaned),
+              created_at: new Date().toISOString()
+            }, { onConflict: 'key' });
+          }
         }
-      } catch (mailErr) {
-        console.warn("Statement email dispatch warning:", mailErr);
-      }
+      } catch(e) {}
 
-      // 2. Broadcast ROOM_DELETED across realtime channels
-      const deletedRoomId = userRoomId;
-      const deletedRoomName = roomName;
+      // 6. Broadcast ROOM_DELETED across realtime channels
       try {
         const roomChannel = supabase.channel(`room_realtime_${deletedRoomId}`);
         await roomChannel.send({
@@ -4122,24 +4069,7 @@ export default function App() {
         });
       } catch (bcErr) {}
 
-      // 3. Cascade delete all child table records
-      await supabase.from('transactions').delete().eq('room_id', deletedRoomId);
-      await supabase.from('receipts').delete().eq('room_id', deletedRoomId);
-      await supabase.from('members').delete().eq('room_id', deletedRoomId);
-      await supabase.from('activity_logs').delete().eq('room_id', deletedRoomId);
-      await supabase.from('system_settings').delete().eq('key', `room_mode_${deletedRoomId}`);
-      await supabase.from('system_settings').delete().eq('key', `join_requests_${deletedRoomId}`);
-      await supabase.from('system_settings').delete().eq('key', `co_host_${deletedRoomId}`);
-
-      // 4. Delete room from rooms table
-      await supabase.from('rooms').delete().eq('id', deletedRoomId);
-
-      // 5. Reset user room binding for all members
-      try {
-        await supabase.from('users').update({ room_id: null }).eq('room_id', deletedRoomId);
-      } catch(e) {}
-
-      // Clear local state
+      // 7. Clear all local state and caches
       setUserRoomId(null);
       setHasConfirmedRoom(false);
       setTransactions([]);
@@ -4148,20 +4078,113 @@ export default function App() {
       setActivityLogs([]);
       setRoomCreatedBy(null);
       localStorage.removeItem('userRoomId');
+      localStorage.removeItem('roomName');
       localStorage.removeItem(`roomMode_${deletedRoomId}`);
+      localStorage.removeItem(`userRooms_${currentHostUid}`);
+      localStorage.removeItem(`tallyin_cache_members_${deletedRoomId}`);
       
       setUserRooms(prev => prev.filter(r => r.roomId !== deletedRoomId));
       setPendingUserRequests(prev => prev.filter(p => p.roomId !== deletedRoomId));
       
       if (user) {
-        localStorage.removeItem(`userRooms_${user.id}`);
         try {
           await supabase.from('users').upsert({ uid: user.id, room_id: null, updated_at: new Date().toISOString() }, { onConflict: 'uid' });
         } catch(e) {}
       }
+
       await fetchUserRooms();
       setOnboardingStep('selection');
-      triggerToast('Room permanently deleted. Final statements emailed to all members.');
+      triggerToast('Room permanently deleted from database.');
+
+      // 8. Asynchronously dispatch statement emails in background without blocking UI
+      (async () => {
+        try {
+          const totalRoomSpend = validTx.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+          const formattedTotalSpend = `₹${totalRoomSpend.toLocaleString('en-IN')}`;
+          const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+
+          for (const m of memberListForEmail) {
+            const targetEmail = m.email || (m.uid === currentHostUid ? user?.email : '');
+            if (!targetEmail || !targetEmail.includes('@')) continue;
+
+            const myPaidTx = validTx.filter(t => (t.paidByUid && t.paidByUid === m.uid) || (t.paid_by && t.paid_by === m.nickname) || (t.paidBy && t.paidBy === m.nickname));
+            const totalMyPaid = myPaidTx.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+            const myQuota = Number(m.individualBudget || m.individual_budget) || 0;
+
+            const emailHtml = `
+              <!DOCTYPE html>
+              <html>
+              <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0F172A; margin: 0; padding: 32px 16px;">
+                <div style="max-width: 580px; margin: 0 auto; background-color: #1E293B; border-radius: 20px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+                  <div style="background: linear-gradient(135deg, #1A3827 0%, #0F172A 100%); padding: 32px 24px; text-align: center; border-bottom: 1px solid #334155;">
+                    <div style="display: inline-block; background-color: #A3E635; color: #0F172A; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px;">
+                      Final Financial Statement
+                    </div>
+                    <h1 style="color: #F8FAFC; font-size: 22px; font-weight: 900; margin: 0 0 6px 0;">Room "${deletedRoomName || deletedRoomId}" Closed</h1>
+                    <p style="color: #94A3B8; font-size: 13px; margin: 0;">Personal Ledger & Settlement Statement for <strong>${m.nickname}</strong></p>
+                  </div>
+                  <div style="padding: 28px 24px; color: #E2E8F0; font-size: 14px; line-height: 1.6;">
+                    <p style="margin: 0 0 16px 0;">Hi <strong>${m.nickname}</strong>,</p>
+                    <p style="margin: 0 0 20px 0;">The shared room <strong>"${deletedRoomName || deletedRoomId}"</strong> has been permanently closed. Below is your final financial ledger statement before records were purged:</p>
+                    
+                    <div style="background-color: #0F172A; border: 1px solid #334155; border-radius: 14px; padding: 18px; margin-bottom: 20px;">
+                      <div style="font-size: 11px; font-weight: 800; color: #A3E635; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">YOUR PERSONAL SUMMARY</div>
+                      <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+                        <span style="color: #94A3B8;">Total Amount Paid by You:</span>
+                        <strong style="color: #F8FAFC;">₹${totalMyPaid.toLocaleString('en-IN')}</strong>
+                      </div>
+                      <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+                        <span style="color: #94A3B8;">Assigned Quota Limit:</span>
+                        <strong style="color: #F8FAFC;">₹${myQuota.toLocaleString('en-IN')}</strong>
+                      </div>
+                      <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                        <span style="color: #94A3B8;">Transactions Logged by You:</span>
+                        <strong style="color: #F8FAFC;">${myPaidTx.length}</strong>
+                      </div>
+                    </div>
+
+                    <div style="background-color: #0F172A; border: 1px solid #334155; border-radius: 14px; padding: 18px; margin-bottom: 24px;">
+                      <div style="font-size: 11px; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">ROOM TOTALS</div>
+                      <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+                        <span style="color: #94A3B8;">Total Group Expenses:</span>
+                        <strong style="color: #F8FAFC;">${formattedTotalSpend}</strong>
+                      </div>
+                      <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                        <span style="color: #94A3B8;">Total Roommates:</span>
+                        <strong style="color: #F8FAFC;">${memberListForEmail.length}</strong>
+                      </div>
+                    </div>
+
+                    <p style="color: #94A3B8; font-size: 12px; margin: 0 0 24px 0;">All transactions and room data have been permanently archived. You can create or join a new shared space anytime on Tallyin.</p>
+                    
+                    <div style="text-align: center;">
+                      <a href="https://tallyin.vercel.app" style="display: inline-block; background-color: #A3E635; color: #0F172A; font-weight: 800; font-size: 13px; padding: 12px 28px; border-radius: 12px; text-decoration: none;">Open Tallyin</a>
+                    </div>
+                  </div>
+                  <div style="background-color: #0F172A; padding: 16px; text-align: center; border-top: 1px solid #334155; color: #64748B; font-size: 11px;">
+                    Tallyin Automated Space Governance • Final Room Statement
+                  </div>
+                </div>
+              </body>
+              </html>
+            `;
+
+            fetch(mailRelayUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                recipients: [targetEmail],
+                subject: `[Tallyin Statement] Final Financial Report for Room "${deletedRoomName || deletedRoomId}"`,
+                htmlBody: emailHtml,
+                senderName: 'Tallyin Financial Statements'
+              })
+            }).catch(() => {});
+          }
+        } catch (mailErr) {
+          console.warn("Statement email dispatch warning:", mailErr);
+        }
+      })();
     } catch (err) {
       console.error('Delete room error:', err);
       setUserRoomId(null);
@@ -4169,7 +4192,7 @@ export default function App() {
       localStorage.removeItem('userRoomId');
       await fetchUserRooms();
       setOnboardingStep('selection');
-      triggerToast('Room deleted.');
+      triggerToast('Room deletion process completed.');
     }
   };
 
@@ -14169,103 +14192,172 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   function renderAssignQuotaModal() {
     if (!assigningQuotaReq) return null;
     const req = assigningQuotaReq;
-    const roomBudget = monthlyBudget;
-    const currentSum = members.reduce((sum, m) => sum + (Number(m.individualBudget) || 0), 0);
+    const roomBudget = Number(monthlyBudget) || 22000;
+    const currentAllocatedSum = members.reduce((sum, m) => sum + (Number(m.individualBudget || m.individual_budget) || 0), 0);
+    const remainingPool = Math.max(0, roomBudget - currentAllocatedSum);
     const proposedVal = Number(assignQuotaVal) || 0;
-    const totalProposed = currentSum + proposedVal;
-    const diff = roomBudget - totalProposed;
-    const isMatched = Math.abs(diff) <= 1;
+    const newTotalProposed = currentAllocatedSum + proposedVal;
+    const isExceeded = proposedVal > remainingPool;
+    const leftoverAfterApproval = roomBudget - newTotalProposed;
+    const isPerfectMatch = Math.abs(leftoverAfterApproval) === 0;
 
     return (
       <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-left">
-          <div className="flex items-center justify-between pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">⚡</span>
+        <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 text-left max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between pb-3 border-b border-[#F6F8F6] dark:border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/60 flex items-center justify-center text-lg">
+                ⚡
+              </div>
               <div>
                 <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100">Assign Member Quota & Approve</h3>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Assign individual monthly budget for {req.nickname}</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Allocate individual contribution for <strong>{req.nickname}</strong></p>
               </div>
             </div>
             <button 
               onClick={() => setAssigningQuotaReq(null)}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 block">
-              Individual Monthly Quota for {req.nickname} (₹) *
-            </label>
+          {/* Current Roommates Allocation Breakdown */}
+          <div className="bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">
+                Current Roommates Allocated ({members.length})
+              </span>
+              <span className="text-[10px] font-mono font-bold text-[#1A3827] dark:text-slate-200">
+                {formatINR(currentAllocatedSum)} / {formatINR(roomBudget)}
+              </span>
+            </div>
+
+            <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+              {members.map(m => {
+                const isHost = m.uid === roomCreatedBy;
+                const mQuota = Number(m.individualBudget || m.individual_budget) || 0;
+                return (
+                  <div key={m.uid} className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3]/60 dark:border-slate-800 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs">{isHost ? '👑' : '👤'}</span>
+                      <span className="font-bold text-[#1A3827] dark:text-slate-200">{m.nickname}</span>
+                      {isHost && <span className="text-[8px] font-black bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] px-1.5 py-0.2 rounded-md">Host</span>}
+                    </div>
+                    <span className="font-mono font-extrabold text-[#1A3827] dark:text-[#A3E635]">
+                      {formatINR(mQuota)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 border-t border-[#E3E8E3] dark:border-slate-800 flex justify-between items-center text-xs font-bold">
+              <span className="text-[#5C6E5C] dark:text-slate-400">Remaining Pool Available:</span>
+              <span className={`font-mono font-black ${remainingPool > 0 ? 'text-emerald-600 dark:text-[#A3E635]' : 'text-amber-500'}`}>
+                {formatINR(remainingPool)}
+              </span>
+            </div>
+          </div>
+
+          {/* Quota Input for Incoming Member */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-[#1A3827] dark:text-slate-200 block">
+                Assign Quota for {req.nickname} (₹) *
+              </label>
+              {remainingPool > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAssignQuotaVal(String(remainingPool))}
+                  className="text-[10px] font-bold text-emerald-700 dark:text-[#A3E635] hover:underline cursor-pointer"
+                >
+                  ⚡ Assign All Remaining ({formatINR(remainingPool)})
+                </button>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-[#5C6E5C]">₹</span>
               <input
                 type="number"
-                min="100"
+                min="1"
+                max={remainingPool}
                 value={assignQuotaVal}
                 onChange={e => setAssignQuotaVal(e.target.value)}
-                className="flex-1 px-3.5 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 focus:outline-none focus:ring-1 focus:ring-[#1A3827]"
+                placeholder={`Max available: ${remainingPool}`}
+                className={`flex-1 px-3.5 py-2.5 border rounded-xl text-xs font-bold focus:outline-none ${
+                  isExceeded
+                    ? 'border-rose-400 bg-rose-50/40 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 focus:ring-1 focus:ring-rose-500'
+                    : 'border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 focus:ring-1 focus:ring-[#1A3827]'
+                }`}
               />
             </div>
           </div>
 
-          <div className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
-            isMatched 
+          {/* Live Dynamic Tally Card */}
+          <div className={`p-4 rounded-2xl border text-xs space-y-2.5 ${
+            isExceeded
+              ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+              : isPerfectMatch
               ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-              : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+              : 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200'
           }`}>
             <div className="flex justify-between items-center font-extrabold text-[11px]">
-              <span>Room Monthly Budget:</span>
-              <span>{formatINR(roomBudget)}</span>
+              <span>Total Room Budget Cap:</span>
+              <span className="font-mono">{formatINR(roomBudget)}</span>
             </div>
             <div className="flex justify-between items-center font-extrabold text-[11px]">
               <span>Total Quotas (with {req.nickname}):</span>
-              <span>{formatINR(totalProposed)}</span>
+              <span className="font-mono">{formatINR(newTotalProposed)} / {formatINR(roomBudget)}</span>
             </div>
-            <div className="pt-1.5 border-t border-current/20 flex justify-between items-center font-black">
-              <span>{isMatched ? '✅ Budget Tally:' : '⚠️ Tally Difference:'}</span>
-              <span>{isMatched ? '100% Matched' : `${formatINR(Math.abs(diff))} ${diff > 0 ? 'unallocated' : 'exceeded'}`}</span>
+            
+            <div className="pt-2 border-t border-current/20 flex justify-between items-center font-black">
+              <span>{isExceeded ? '❌ Exceeds Pool:' : isPerfectMatch ? '✅ Budget Tally:' : '💡 Remaining Pool:'}</span>
+              <span className="font-mono">
+                {isExceeded 
+                  ? `Exceeds by ${formatINR(Math.abs(leftoverAfterApproval))}` 
+                  : isPerfectMatch 
+                  ? '100% Fully Allocated' 
+                  : `${formatINR(leftoverAfterApproval)} left for future roommates`}
+              </span>
             </div>
 
-            {!isMatched && (
-              <button
-                type="button"
-                onClick={() => {
-                  const equalShare = Math.round(roomBudget / (members.length + 1));
-                  setAssignQuotaVal(String(equalShare));
-                  members.forEach(async (m) => {
-                    try {
-                      await supabase.from('members').update({ individual_budget: equalShare }).eq('room_id', userRoomId).eq('uid', m.uid);
-                    } catch(e){}
-                  });
-                  setMembers(prev => prev.map(m => ({ ...m, individualBudget: equalShare })));
-                  triggerToast(`Auto-balanced all ${members.length + 1} member quotas to ${formatINR(equalShare)} each!`);
-                }}
-                className="w-full mt-2 py-1.5 bg-amber-600 text-white dark:bg-amber-500 dark:text-slate-950 rounded-xl font-extrabold text-[10px] uppercase tracking-wider hover:opacity-90 transition-all text-center cursor-pointer"
-              >
-                ⚡ 1-Tap Auto-Rebalance All Quotas ({formatINR(Math.round(roomBudget / (members.length + 1)))} each)
-              </button>
+            {isExceeded && (
+              <p className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mt-1">
+                ⚠️ You cannot allocate more than the remaining pool of {formatINR(remainingPool)}. Please decrease the quota.
+              </p>
             )}
           </div>
+
+          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 italic">
+            💡 <strong>Note:</strong> Quotas set the target proportions for fair month-end settlements. Roommates are free to spend above or below their assigned quota during the month.
+          </p>
 
           <div className="flex gap-2.5 pt-2">
             <button
               onClick={() => setAssigningQuotaReq(null)}
-              className="flex-1 py-2.5 border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 font-bold text-xs rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800"
+              className="flex-1 py-2.5 border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 font-bold text-xs rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800 cursor-pointer"
             >
               Cancel
             </button>
             <button
+              disabled={isExceeded || proposedVal <= 0}
               onClick={() => {
                 if (!assignQuotaVal || Number(assignQuotaVal) <= 0) {
                   triggerToast('Please enter a valid quota amount.');
                   return;
                 }
+                if (isExceeded) {
+                  triggerToast(`Cannot allocate ${formatINR(proposedVal)}. Only ${formatINR(remainingPool)} remaining in pool.`);
+                  return;
+                }
                 handleApproveJoinRequest(req, assignQuotaVal);
               }}
-              className="flex-1 py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs rounded-xl hover:opacity-90 shadow-md cursor-pointer"
+              className={`flex-1 py-2.5 text-white dark:text-slate-950 font-black text-xs rounded-xl shadow-md transition-all ${
+                isExceeded || proposedVal <= 0
+                  ? 'bg-slate-400 dark:bg-slate-700 cursor-not-allowed opacity-50'
+                  : 'bg-[#1A3827] dark:bg-[#A3E635] hover:opacity-90 cursor-pointer'
+              }`}
             >
               Confirm & Approve Join
             </button>
