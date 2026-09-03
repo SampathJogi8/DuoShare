@@ -16895,16 +16895,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // ==========================================
   // DISPUTE & USER INQUIRY MODAL
   // ==========================================
-  const handleOpenDisputeForTransaction = (tx) => {
+  function handleOpenDisputeForTransaction(tx) {
     setDisputeTargetTx(tx);
     setDisputeCategory('Disputed Split / Expense');
     setDisputeTitle(`Dispute on ${tx.title || 'Expense'} (₹${tx.amount || 0})`);
     setDisputeDescription(`I am requesting an administrative review of this transaction.\n\nTransaction ID: ${formatTxId(tx.id)}\nRoom: ${roomName || userRoomId || 'Current Room'}\nAmount: ₹${tx.amount}\nPayer: ${tx.paidBy || tx.paid_by}\n\nReason for dispute: `);
     setDisputeModalTab('new');
     setIsDisputeModalOpen(true);
-  };
+  }
 
-  const handleSubmitUserDisputeOrQuery = async (e) => {
+  async function handleSubmitUserDisputeOrQuery(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (!disputeTitle.trim() || !disputeDescription.trim()) {
       triggerToast('Please provide both a title and description.');
