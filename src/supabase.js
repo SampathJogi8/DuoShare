@@ -107,6 +107,27 @@ class MockQueryBuilder {
 
   async then(onfulfilled, onrejected) {
     try {
+      // Hard Maintenance Guard: block writes for non-whitelisted users when maintenance is active
+      if (['insert', 'update', 'delete', 'upsert'].includes(this.action) && this.table !== 'system_settings') {
+        const isMaint = typeof window !== 'undefined' && localStorage.getItem('tallyin_system_maintenance_active') === 'true';
+        if (isMaint) {
+          const userEmail = typeof window !== 'undefined' ? (localStorage.getItem('tallyin_current_user_email') || '').trim().toLowerCase() : '';
+          const allowedRaw = typeof window !== 'undefined' ? localStorage.getItem('tallyin_maintenance_allowed_accounts') : null;
+          let allowed = ['tallyin.alerts@gmail.com'];
+          try { if (allowedRaw) allowed = JSON.parse(allowedRaw); } catch(e) {}
+          const coAdminsRaw = typeof window !== 'undefined' ? localStorage.getItem('tallyin_co_admins') : null;
+          let coAdmins = [];
+          try { if (coAdminsRaw) coAdmins = JSON.parse(coAdminsRaw); } catch(e) {}
+          const isCoAdmin = coAdmins.some(c => (typeof c === 'string' ? c : c?.email)?.trim().toLowerCase() === userEmail);
+          const isAllowed = userEmail && (allowed.some(a => String(a).trim().toLowerCase() === userEmail) || isCoAdmin || userEmail === 'tallyin.alerts@gmail.com');
+
+          if (!isAllowed) {
+            console.warn(`[Maintenance Guard] Denied ${this.action} on ${this.table} for user: ${userEmail || 'anonymous'}`);
+            throw new Error('System is currently undergoing scheduled maintenance. Data changes are temporarily restricted.');
+          }
+        }
+      }
+
       const response = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/query', {
         method: 'POST',
         headers: {
