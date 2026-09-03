@@ -7584,169 +7584,177 @@ NOTIFY pgrst, 'reload schema';`;
 
       {/* Security Clearance & Audit Certificate Modal */}
       {selectedAckRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="flex items-start justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setSelectedAckRecord(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-xl flex flex-col shadow-2xl"
+            style={{ maxHeight: '92dvh' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Sticky Header */}
+            <div className="flex items-start justify-between px-4 pt-4 pb-3 border-b border-[#E3E8E3] dark:border-slate-800 shrink-0">
+              {/* Mobile drag handle */}
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700 sm:hidden" />
               <div className="flex items-center gap-3">
-                <img src={securityShieldLogo} alt="Tallyin Security" className="w-12 h-12 object-contain rounded-2xl shadow-md border border-emerald-500/30 bg-emerald-950/20 p-1 shrink-0" />
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black text-[#1A3827] dark:text-white">
-                      Official Security Clearance Certificate
-                    </h3>
-                  </div>
-                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                    Tallyin Identity & Access Management Governance Audit
+                <img src={securityShieldLogo} alt="Tallyin Security" className="w-10 h-10 object-contain rounded-xl shadow-md border border-emerald-500/30 bg-emerald-950/20 p-1 shrink-0" />
+                <div>
+                  <h3 className="text-sm font-black text-[#1A3827] dark:text-white leading-tight">
+                    Official Security Clearance Certificate
+                  </h3>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-tight mt-0.5">
+                    Tallyin Identity &amp; Access Management Governance Audit
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedAckRecord(null)}
-                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer shrink-0"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Acknowledgement Reference Number Card */}
-            <div className={`p-4 rounded-2xl border space-y-2 ${
-              selectedAckRecord.action === 'REVOKE'
-                ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-900 dark:text-rose-200'
-                : 'bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-900/50 text-indigo-900 dark:text-indigo-200'
-            }`}>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider">
-                  Security Acknowledgement Reference No.
-                </span>
-                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                  selectedAckRecord.action === 'REVOKE'
-                    ? 'bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-100'
-                    : 'bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100'
-                }`}>
-                  {selectedAckRecord.action === 'REVOKE' ? 'Access Terminated' : 'Verified Clearance'}
-                </span>
+            {/* Scrollable Body */}
+            <div className="overflow-y-auto flex-1 px-4 py-4 space-y-4">
+
+              {/* ACK Reference Number Card */}
+              <div className={`p-3.5 rounded-2xl border space-y-2 ${
+                selectedAckRecord.action === 'REVOKE'
+                  ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-900 dark:text-rose-200'
+                  : 'bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-900/50 text-indigo-900 dark:text-indigo-200'
+              }`}>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-wider">
+                    Security Acknowledgement Reference No.
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase shrink-0 ${
+                    selectedAckRecord.action === 'REVOKE'
+                      ? 'bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-100'
+                      : 'bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100'
+                  }`}>
+                    {selectedAckRecord.action === 'REVOKE' ? 'Access Terminated' : 'Verified Clearance'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm sm:text-base font-mono font-black tracking-wide break-all">
+                    {selectedAckRecord.ackNumber}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedAckRecord.ackNumber);
+                      if (triggerToast) triggerToast(`Copied ${selectedAckRecord.ackNumber}!`);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-900/80 text-xs font-bold flex items-center gap-1 shadow-sm hover:scale-105 transition-all cursor-pointer shrink-0"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy</span>
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-base sm:text-lg font-mono font-black tracking-wide break-all">
-                  {selectedAckRecord.ackNumber}
+
+              {/* Security Metadata Grid — 2 cols always */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-0.5 min-w-0">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Target Co-Admin</span>
+                  <p className="font-extrabold text-[#1A3827] dark:text-white truncate text-[11px]">{selectedAckRecord.targetEmail}</p>
+                  {selectedAckRecord.targetName && <p className="text-[10px] text-slate-500 truncate">Name: {selectedAckRecord.targetName}</p>}
+                </div>
+                <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-0.5 min-w-0">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Authorized By</span>
+                  <p className="font-extrabold text-[#1A3827] dark:text-white truncate text-[11px]">{selectedAckRecord.authorizedBy}</p>
+                  <p className="text-[10px] text-slate-500">{selectedAckRecord.authorizedByRole || 'Super Administrator'}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-0.5 min-w-0">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                    <Network className="w-3 h-3 text-indigo-500 shrink-0" />
+                    Origin IP
+                  </span>
+                  <p className="font-mono font-bold text-[#1A3827] dark:text-white text-[11px]">{selectedAckRecord.ipAddress || '127.0.0.1'}</p>
+                  <p className="text-[10px] text-slate-500">Verified Network Origin</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-0.5 min-w-0">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-indigo-500 shrink-0" />
+                    Timestamp
+                  </span>
+                  <p className="font-bold text-[#1A3827] dark:text-white text-[11px]">{new Date(selectedAckRecord.timestamp).toLocaleTimeString()}</p>
+                  <p className="text-[10px] text-slate-500">{new Date(selectedAckRecord.timestamp).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              {/* Cryptographic Checksum */}
+              <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase">
+                  <span>Cryptographic Checksum</span>
+                  <span className="text-emerald-400">AUTHENTIC</span>
+                </div>
+                <p className="text-emerald-300 font-bold break-all text-[11px]">
+                  {selectedAckRecord.checksum || 'SEC-SIG-RECORDED'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(selectedAckRecord.ackNumber);
-                    if (triggerToast) triggerToast(`Copied ${selectedAckRecord.ackNumber}!`);
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-900/80 text-xs font-bold flex items-center gap-1 shadow-sm hover:scale-105 transition-all cursor-pointer shrink-0"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Security Metadata Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
-                <span className="text-[10px] font-bold uppercase text-slate-400">Target Co-Admin</span>
-                <p className="font-extrabold text-[#1A3827] dark:text-white truncate">{selectedAckRecord.targetEmail}</p>
-                {selectedAckRecord.targetName && <p className="text-[10px] text-slate-500">Name: {selectedAckRecord.targetName}</p>}
+                {selectedAckRecord.userAgent && (
+                  <p className="text-[10px] text-slate-400 truncate pt-1 border-t border-slate-800">
+                    Client: {selectedAckRecord.userAgent}
+                  </p>
+                )}
               </div>
 
-              <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
-                <span className="text-[10px] font-bold uppercase text-slate-400">Authorized / Revoked By</span>
-                <p className="font-extrabold text-[#1A3827] dark:text-white truncate">{selectedAckRecord.authorizedBy}</p>
-                <p className="text-[10px] text-slate-500">{selectedAckRecord.authorizedByRole || 'Super Administrator'}</p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
-                <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
-                  <Network className="w-3 h-3 text-indigo-500" />
-                  Origin IP Address
-                </span>
-                <p className="font-mono font-bold text-[#1A3827] dark:text-white">{selectedAckRecord.ipAddress || '127.0.0.1'}</p>
-                <p className="text-[10px] text-slate-500">Verified Network Origin</p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
-                <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-indigo-500" />
-                  Timestamp (UTC & Local)
-                </span>
-                <p className="font-bold text-[#1A3827] dark:text-white">{new Date(selectedAckRecord.timestamp).toLocaleTimeString()} • {new Date(selectedAckRecord.timestamp).toLocaleDateString()}</p>
-                <p className="text-[10px] font-mono text-slate-500 truncate">{new Date(selectedAckRecord.timestamp).toISOString()}</p>
-              </div>
-            </div>
-
-            {/* Cryptographic Verification Checksum */}
-            <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs space-y-1">
-              <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase">
-                <span>Cryptographic Checksum / Signature</span>
-                <span className="text-emerald-400">AUTHENTIC</span>
-              </div>
-              <p className="text-emerald-300 font-bold break-all">
-                {selectedAckRecord.checksum || 'SEC-SIG-RECORDED'}
-              </p>
-              {selectedAckRecord.userAgent && (
-                <p className="text-[10px] text-slate-400 truncate pt-1 border-t border-slate-800">
-                  Client: {selectedAckRecord.userAgent}
-                </p>
+              {/* Permissions Matrix */}
+              {selectedAckRecord.action !== 'REVOKE' && (
+                <div className="space-y-2">
+                  <h4 className="text-[10px] font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider">
+                    Operational Permissions Snapshot
+                  </h4>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                    {[
+                      { key: 'room_commander', label: 'Room Cmdr' },
+                      { key: 'dispute_resolver', label: 'Disputes' },
+                      { key: 'database_studio', label: 'DB Studio' },
+                      { key: 'system_triggers', label: 'Sys Triggers' },
+                      { key: 'broadcasts', label: 'Broadcasts' },
+                      { key: 'settlements', label: 'Settlements' },
+                      { key: 'user_management', label: 'Users' },
+                      { key: 'email_hub', label: 'Email Hub' },
+                      { key: 'room_explorer', label: 'Rooms' },
+                      { key: 'room_pinning', label: 'Pinning' },
+                      { key: 'latency_diagnostics', label: 'Latency' },
+                      { key: 'maintenance_control', label: 'Maintenance' },
+                      { key: 'database_migration', label: 'DB Migrate' },
+                    ].map(p => {
+                      const isGranted = Boolean(selectedAckRecord.permissions?.[p.key]);
+                      return (
+                        <div
+                          key={p.key}
+                          className={`p-2 rounded-xl border text-center ${
+                            isGranted
+                              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                              : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-400'
+                          }`}
+                        >
+                          <div className="text-[9px] font-bold leading-tight">{p.label}</div>
+                          <div className="text-[8px] font-black uppercase mt-0.5">
+                            {isGranted ? '✓ OK' : '✕'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
 
-            {/* Permissions Matrix (if not Revoked) */}
-            {selectedAckRecord.action !== 'REVOKE' && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider">
-                  Operational Permissions Snapshot
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { key: 'room_commander', label: 'Room Commander' },
-                    { key: 'dispute_resolver', label: 'Disputes & Expenses' },
-                    { key: 'database_studio', label: 'Database Studio' },
-                    { key: 'system_triggers', label: 'System Triggers' },
-                    { key: 'broadcasts', label: 'Broadcasts' },
-                    { key: 'settlements', label: 'Settlements' },
-                    { key: 'user_management', label: 'User Directory' },
-                    { key: 'email_hub', label: 'Email Hub' },
-                    { key: 'room_explorer', label: 'Room Explorer' },
-                    { key: 'room_pinning', label: 'Room Pinning' },
-                    { key: 'latency_diagnostics', label: 'Latency' },
-                    { key: 'maintenance_control', label: 'Maintenance' },
-                    { key: 'database_migration', label: 'DB Migration' },
-                  ].map(p => {
-                    const isGranted = Boolean(selectedAckRecord.permissions?.[p.key]);
-                    return (
-                      <div
-                        key={p.key}
-                        className={`p-2.5 rounded-xl border text-center ${
-                          isGranted
-                            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-                            : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-400'
-                        }`}
-                      >
-                        <div className="text-[10px] font-bold">{p.label}</div>
-                        <div className="text-[9px] font-black uppercase mt-0.5">
-                          {isGranted ? '✓ Granted' : '✕ Restricted'}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Footer */}
-            <div className="flex items-center justify-between pt-4 border-t border-[#E3E8E3] dark:border-slate-800">
-              <span className="text-[11px] text-slate-400">
-                Official Record ID: <code className="font-mono">{selectedAckRecord.ackNumber}</code>
+            {/* Sticky Footer */}
+            <div className="flex items-center justify-between px-4 py-3 border-t border-[#E3E8E3] dark:border-slate-800 shrink-0">
+              <span className="text-[10px] text-slate-400 truncate mr-2">
+                ID: <code className="font-mono">{selectedAckRecord.ackNumber}</code>
               </span>
               <button
                 type="button"
                 onClick={() => setSelectedAckRecord(null)}
-                className="px-5 py-2 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl font-bold text-xs hover:opacity-90 transition-all cursor-pointer"
+                className="px-5 py-2 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl font-bold text-xs hover:opacity-90 transition-all cursor-pointer shrink-0"
               >
                 Close Certificate
               </button>
