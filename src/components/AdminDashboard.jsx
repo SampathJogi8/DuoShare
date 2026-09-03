@@ -2140,7 +2140,6 @@ export default function AdminDashboard({
               <div><strong>Target Account:</strong> ${targetEmail}</div>
               <div><strong>Revoked By:</strong> ${ackRecord.authorizedBy} (${ackRecord.authorizedByRole})</div>
               <div><strong>Timestamp:</strong> ${new Date(ackRecord.timestamp).toUTCString()}</div>
-              <div><strong>Security Checksum:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.checksum}</code></div>
             </div>
           </div>
 
@@ -2180,7 +2179,6 @@ export default function AdminDashboard({
               <div><strong>Target Account:</strong> ${targetEmail}</div>
               <div><strong>Authorized By:</strong> ${ackRecord.authorizedBy} (${ackRecord.authorizedByRole})</div>
               <div><strong>Timestamp:</strong> ${new Date(ackRecord.timestamp).toUTCString()}</div>
-              <div><strong>Security Checksum:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.checksum}</code></div>
             </div>
           </div>
 
