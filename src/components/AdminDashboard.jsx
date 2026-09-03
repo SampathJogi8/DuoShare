@@ -60,7 +60,9 @@ import {
   Save,
   FileSpreadsheet,
   AlertOctagon,
-  UserMinus
+  UserMinus,
+  Trash,
+  Play
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
