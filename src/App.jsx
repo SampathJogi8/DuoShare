@@ -633,6 +633,8 @@ export default function App() {
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
   const [expandedTicketId, setExpandedTicketId] = useState(null);
   const [activeDisputeResolutionNotification, setActiveDisputeResolutionNotification] = useState(null);
+  const [isRoommateBudgetsOpen, setIsRoommateBudgetsOpen] = useState(false);
+  const [isExcessPoolOpen, setIsExcessPoolOpen] = useState(false);
 
   // Check for newly resolved tickets to notify user
   useEffect(() => {
@@ -11839,113 +11841,192 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             </div>
 
-            {/* ─── Roommate Budgets & Spending Limits Card (Default in Quota Mode, Hidden in Split Mode) ─── */}
-            {isQuotaMode && (
-              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                      <span>👥 Roommate Budgets & Spent Limits</span>
-                    </h3>
-                    <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Track individual monthly budget caps & spending capacity</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1A3827]/5 dark:bg-[#A3E635]/10 border border-[#1A3827]/10 dark:border-[#A3E635]/20 text-[10px] font-black text-[#1A3827] dark:text-[#A3E635]">
-                    <span>⚡ Quota Engine Active</span>
-                  </div>
-                </div>
+            {/* ── Quick Actions (Placed directly below Settlement Engine) ── */}
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400 mb-2.5">QUICK ACTIONS</p>
+              <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
+                {[
+                  { label: 'Add Bill', icon: <Plus className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => openAddExpenseModal() },
+                  { label: 'Scan Receipt', icon: <Upload className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => handleTriggerUpload() },
+                  { label: 'Insights', icon: <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => setCurrentView('insights') },
+                  { label: 'Invite', icon: <UserCheck className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => handleInviteTrigger() },
+                ].map(({ label, icon, action }) => (
+                  <button key={label} onClick={action}
+                    className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-col items-center gap-2 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 hover:border-[#1A3827]/20 active:scale-95 transition-all duration-150 cursor-pointer text-[#1A3827] dark:text-[#A3E635] group"
+                  >
+                    <div className="group-hover:scale-110 transition-transform duration-150">{icon}</div>
+                    <span className="text-[9px] sm:text-[10px] font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wide text-center leading-tight">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                {computedStats.suggestedNextBuyer && (
-                  <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
-                      💡 Suggested Next Buyer: <strong>{computedStats.suggestedNextBuyer.nickname}</strong> ({formatINR(computedStats.suggestedNextBuyer.remaining)} remaining capacity)
-                    </span>
+            {/* ─── Roommate Budgets & Spending Limits Accordion Bar (Quota Mode) ─── */}
+            {isQuotaMode && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-xs overflow-hidden transition-all duration-200">
+                <button
+                  type="button"
+                  onClick={() => setIsRoommateBudgetsOpen(!isRoommateBudgetsOpen)}
+                  className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-[#F6F8F6] dark:hover:bg-slate-800/40 transition-colors cursor-pointer select-none"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-[#1A3827]/10 dark:bg-[#A3E635]/10 flex items-center justify-center text-[#1A3827] dark:text-[#A3E635] shrink-0">
+                      <Users className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-xs sm:text-sm font-black text-[#1A3827] dark:text-slate-100">
+                          Roommate Budgets &amp; Spent Limits
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#1A3827]/5 dark:bg-[#A3E635]/10 text-[#1A3827] dark:text-[#A3E635] border border-[#1A3827]/10 dark:border-[#A3E635]/20">
+                          {computedStats.memberBudgetStats?.length || members.length} Roommates
+                        </span>
+                      </div>
+                      <p className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 truncate">
+                        Individual monthly caps &amp; remaining capacities
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                    <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400">
+                      {isRoommateBudgetsOpen ? (
+                        <ChevronUp className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-slate-400" />
+                      )}
+                    </div>
+                  </div>
+                </button>
+
+                {isRoommateBudgetsOpen && (
+                  <div className="px-4 sm:px-5 pb-5 pt-1 space-y-3.5 border-t border-[#E3E8E3] dark:border-slate-800 animate-fade-in">
+                    {computedStats.suggestedNextBuyer && (
+                      <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
+                          💡 Suggested Next Buyer: <strong>{computedStats.suggestedNextBuyer.nickname}</strong> ({formatINR(computedStats.suggestedNextBuyer.remaining)} remaining capacity)
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {computedStats.memberBudgetStats.map(m => {
+                        const isSelf = auth.currentUser && m.uid === auth.currentUser.uid;
+                        return (
+                          <div key={m.uid} className={`p-3 rounded-2xl border transition-all ${
+                            m.isExhausted 
+                              ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50' 
+                              : 'bg-[#F6F8F6] dark:bg-slate-800/40 border-[#E3E8E3] dark:border-slate-800'
+                          }`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {m.photoURL ? (
+                                  <img src={m.photoURL} alt={m.nickname} className="w-6 h-6 rounded-full object-cover shrink-0" />
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full bg-[#1A3827] text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                                    {m.nickname?.charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                                <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200 truncate">
+                                  {m.nickname}{isSelf ? ' (You)' : ''}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setEditingMemberBudget(m);
+                                  setNewMemberBudgetVal(m.budget);
+                                }}
+                                className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline cursor-pointer"
+                              >
+                                Set Cap
+                              </button>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between text-[10px]">
+                                <span className="text-[#5C6E5C] dark:text-slate-400">Spent: <strong className="text-[#1A3827] dark:text-white">{formatINR(m.spent)}</strong></span>
+                                <span className="text-[#5C6E5C] dark:text-slate-400">Budget: <strong className="text-[#1A3827] dark:text-white">{formatINR(m.budget)}</strong></span>
+                              </div>
+
+                              <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full rounded-full transition-all duration-300 ${
+                                    m.pct >= 100 
+                                      ? 'bg-rose-500' 
+                                      : m.pct >= 80 
+                                      ? 'bg-amber-500' 
+                                      : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${Math.min(100, m.pct)}%` }}
+                                />
+                              </div>
+
+                              <div className="flex justify-between items-center text-[9px]">
+                                {m.isExhausted ? (
+                                  <span className="font-extrabold text-rose-600 dark:text-rose-400">
+                                    ⚠️ Limit Reached (100%)
+                                  </span>
+                                ) : (
+                                  <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                                    {formatINR(m.remaining)} remaining
+                                  </span>
+                                )}
+                                <span className="font-bold text-slate-500">{m.pct}% used</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
+              </div>
+            )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {computedStats.memberBudgetStats.map(m => {
-                    const isSelf = auth.currentUser && m.uid === auth.currentUser.uid;
-                    return (
-                      <div key={m.uid} className={`p-3 rounded-2xl border transition-all ${
-                        m.isExhausted 
-                          ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50' 
-                          : 'bg-[#F6F8F6] dark:bg-slate-800/40 border-[#E3E8E3] dark:border-slate-800'
-                      }`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            {m.photoURL ? (
-                              <img src={m.photoURL} alt={m.nickname} className="w-6 h-6 rounded-full object-cover shrink-0" />
-                            ) : (
-                              <div className="w-6 h-6 rounded-full bg-[#1A3827] text-white font-bold text-[9px] flex items-center justify-center shrink-0">
-                                {m.nickname?.charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <span className="text-xs font-bold text-[#1A3827] dark:text-slate-200 truncate">
-                              {m.nickname}{isSelf ? ' (You)' : ''}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setEditingMemberBudget(m);
-                              setNewMemberBudgetVal(m.budget);
-                            }}
-                            className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline"
-                          >
-                            Set Cap
-                          </button>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between text-[10px]">
-                            <span className="text-[#5C6E5C] dark:text-slate-400">Spent: <strong className="text-[#1A3827] dark:text-white">{formatINR(m.spent)}</strong></span>
-                            <span className="text-[#5C6E5C] dark:text-slate-400">Budget: <strong className="text-[#1A3827] dark:text-white">{formatINR(m.budget)}</strong></span>
-                          </div>
-
-                          <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full transition-all duration-300 ${
-                                m.pct >= 100 
-                                  ? 'bg-rose-500' 
-                                  : m.pct >= 80 
-                                  ? 'bg-amber-500' 
-                                  : 'bg-emerald-500'
-                              }`}
-                              style={{ width: `${Math.min(100, m.pct)}%` }}
-                            />
-                          </div>
-
-                          <div className="flex justify-between items-center text-[9px]">
-                            {m.isExhausted ? (
-                              <span className="font-extrabold text-rose-600 dark:text-rose-400">
-                                ⚠️ Limit Reached (100%)
-                              </span>
-                            ) : (
-                              <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                                {formatINR(m.remaining)} remaining
-                              </span>
-                            )}
-                            <span className="font-bold text-slate-500">{m.pct}% used</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Excess Redistribution Matrix Card */}
-                {isQuotaMode && (
-                  <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 text-white border border-emerald-500/30 rounded-2xl p-4 shadow-xl space-y-3 mt-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-[9px] font-black uppercase tracking-widest text-[#A3E635]">⚡ END-OF-MONTH EXCESS MATRIX</span>
-                        <h4 className="text-sm font-black text-white">Excess Redistribution Pool</h4>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[9px] text-slate-400">Total Excess Pool</span>
-                        <p className="text-base font-black text-[#A3E635]">{formatINR(computedStats.totalExcessPool || 0)}</p>
-                      </div>
+            {/* ─── Excess Redistribution Pool Accordion Bar (Quota Mode) ─── */}
+            {isQuotaMode && (
+              <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 text-white border border-emerald-500/30 rounded-3xl shadow-xl overflow-hidden transition-all duration-200">
+                <button
+                  type="button"
+                  onClick={() => setIsExcessPoolOpen(!isExcessPoolOpen)}
+                  className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-white/5 transition-colors cursor-pointer select-none"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-[#A3E635]/20 flex items-center justify-center text-[#A3E635] shrink-0">
+                      <Sparkles className="w-4 h-4" />
                     </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-xs sm:text-sm font-black text-white">
+                          Excess Redistribution Pool
+                        </h4>
+                        <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-[#A3E635]/20 text-[#A3E635] border border-[#A3E635]/30">
+                          ⚡ End-of-Month Matrix
+                        </span>
+                      </div>
+                      <p className="text-[10px] sm:text-[11px] text-slate-300 truncate">
+                        Redistributes spending above preset quota equally
+                      </p>
+                    </div>
+                  </div>
 
+                  <div className="flex items-center gap-3 shrink-0 ml-3">
+                    <div className="text-right hidden xs:block">
+                      <span className="text-[9px] text-slate-400 block uppercase tracking-wider">Total Pool</span>
+                      <p className="text-xs sm:text-sm font-black text-[#A3E635]">{formatINR(computedStats.totalExcessPool || 0)}</p>
+                    </div>
+                    <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-slate-300">
+                      {isExcessPoolOpen ? (
+                        <ChevronUp className="w-4 h-4 text-[#A3E635]" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-slate-400" />
+                      )}
+                    </div>
+                  </div>
+                </button>
+
+                {isExcessPoolOpen && (
+                  <div className="px-4 sm:px-5 pb-5 pt-2 space-y-3 border-t border-emerald-500/20 animate-fade-in">
                     <p className="text-[11px] text-slate-300 leading-relaxed">
                       Total excess spent beyond quotas is <strong className="text-white">{formatINR(computedStats.totalExcessPool || 0)}</strong>. Divided equally among members ({members.length}), each member's equal excess share is <strong className="text-[#A3E635]">{formatINR(computedStats.excessSharePerMember || 0)}</strong>.
                     </p>
@@ -11979,26 +12060,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 )}
               </div>
             )}
-
-            {/* ── Quick Actions ── */}
-            <div>
-              <p className="text-[9px] font-bold uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400 mb-2.5">QUICK ACTIONS</p>
-              <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
-                {[
-                  { label: 'Add Bill', icon: <Plus className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => openAddExpenseModal() },
-                  { label: 'Scan Receipt', icon: <Upload className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => handleTriggerUpload() },
-                  { label: 'Insights', icon: <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => setCurrentView('insights') },
-                  { label: 'Invite', icon: <UserCheck className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => handleInviteTrigger() },
-                ].map(({ label, icon, action }) => (
-                  <button key={label} onClick={action}
-                    className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-col items-center gap-2 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 hover:border-[#1A3827]/20 active:scale-95 transition-all duration-150 cursor-pointer text-[#1A3827] dark:text-[#A3E635] group"
-                  >
-                    <div className="group-hover:scale-110 transition-transform duration-150">{icon}</div>
-                    <span className="text-[9px] sm:text-[10px] font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wide text-center leading-tight">{label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
 
             {/* ── Recent Transactions ── */}
             <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl overflow-hidden">
