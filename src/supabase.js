@@ -1,19 +1,41 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder-project-id.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://mphuwixprztbzrxndqsl.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1waHV3aXhwcnp0YnpyeG5kcXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNzA5NjEsImV4cCI6MjA5NzY0Njk2MX0.ZRkGOUewER5uCMeohVGAnOvmI9faSZazAy2p4NNcUow';
 
-if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-  console.warn("Supabase credentials missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.");
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn("Supabase credentials missing. Please check your .env configuration.");
 }
 
-const realSupabase = createClient(supabaseUrl, supabaseAnonKey);
-export { realSupabase };
+export const realSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true
+  }
+});
 
-class MockQueryBuilder {
+// Database Engine State ('supabase' | 'd1')
+export const getActiveDatabaseEngine = () => {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('tallyin_active_db_engine');
+    if (saved === 'd1' || saved === 'supabase') return saved;
+  }
+  return 'supabase'; // Default active engine is Supabase PostgreSQL
+};
+
+export const setActiveDatabaseEngine = (engine) => {
+  if (engine !== 'supabase' && engine !== 'd1') return;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('tallyin_active_db_engine', engine);
+    window.dispatchEvent(new CustomEvent('tallyin-db-engine-changed', { detail: { engine } }));
+  }
+};
+
+// D1 QueryBuilder Adapter for Cloudflare Worker
+class D1QueryBuilder {
   constructor(table) {
     this.table = table;
-    this.action = 'select'; // default action
+    this.action = 'select';
     this.filters = [];
     this.orderFields = [];
     this.limitVal = null;
@@ -23,9 +45,7 @@ class MockQueryBuilder {
   }
 
   select(columns = '*') {
-    if (this.action === 'select') {
-      this.action = 'select';
-    }
+    if (this.action === 'select') this.action = 'select';
     return this;
   }
 
@@ -34,9 +54,7 @@ class MockQueryBuilder {
     if (['transactions', 'receipts', 'members', 'rooms', 'users'].includes(this.table)) {
       const rows = Array.isArray(data) ? data : [data];
       rows.forEach(row => {
-        if (!row.id) {
-          row.id = crypto.randomUUID();
-        }
+        if (!row.id) row.id = crypto.randomUUID();
       });
     }
     this.payload = data;
@@ -107,35 +125,6 @@ class MockQueryBuilder {
 
   async then(onfulfilled, onrejected) {
     try {
-      // Hard Maintenance Guard: block writes for non-whitelisted users when maintenance is active
-      if (['insert', 'update', 'delete', 'upsert'].includes(this.action) && this.table !== 'system_settings') {
-        const isMaint = typeof window !== 'undefined' && localStorage.getItem('tallyin_system_maintenance_active') === 'true';
-        if (isMaint) {
-          const userEmail = typeof window !== 'undefined' ? (localStorage.getItem('tallyin_current_user_email') || '').trim().toLowerCase() : '';
-          const allowedRaw = typeof window !== 'undefined' ? localStorage.getItem('tallyin_maintenance_allowed_accounts') : null;
-          let allowed = ['tallyin.alerts@gmail.com'];
-          try { if (allowedRaw) allowed = JSON.parse(allowedRaw); } catch(e) {}
-          const coAdminsRaw = typeof window !== 'undefined' ? localStorage.getItem('tallyin_co_admins') : null;
-          let coAdmins = [];
-          try { if (coAdminsRaw) coAdmins = JSON.parse(coAdminsRaw); } catch(e) {}
-          const isCoAdmin = coAdmins.some(c => {
-            const email = (typeof c === 'string' ? c : c?.email)?.trim().toLowerCase();
-            if (email !== userEmail) return false;
-            if (c?.expiresAt) {
-              const expTime = new Date(c.expiresAt).getTime();
-              if (Number.isFinite(expTime) && expTime <= Date.now()) return false;
-            }
-            return true;
-          });
-          const isAllowed = userEmail && (allowed.some(a => String(a).trim().toLowerCase() === userEmail) || isCoAdmin || userEmail === 'tallyin.alerts@gmail.com');
-
-          if (!isAllowed) {
-            console.warn(`[Maintenance Guard] Denied ${this.action} on ${this.table} for user: ${userEmail || 'anonymous'}`);
-            throw new Error('System is currently undergoing scheduled maintenance. Data changes are temporarily restricted.');
-          }
-        }
-      }
-
       const response = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/query', {
         method: 'POST',
         headers: {
@@ -174,8 +163,8 @@ class MockQueryBuilder {
       const result = { data, error: null };
       return typeof onfulfilled === 'function' ? onfulfilled(result) : result;
     } catch (err) {
-      console.error(`MockQueryBuilder error for ${this.action} on ${this.table}:`, err);
-      const result = { data: null, error: { message: err.message, code: err.code || 'MOCK_ERROR' } };
+      console.error(`D1QueryBuilder error for ${this.action} on ${this.table}:`, err);
+      const result = { data: null, error: { message: err.message, code: err.code || 'D1_ERROR' } };
       return typeof onfulfilled === 'function' ? onfulfilled(result) : result;
     }
   }
@@ -192,10 +181,18 @@ class MockQueryBuilder {
   }
 }
 
+// Proxy that routes dynamically to Supabase or Cloudflare D1
 export const supabase = new Proxy(realSupabase, {
   get(target, prop, receiver) {
     if (prop === 'from') {
-      return (table) => new MockQueryBuilder(table);
+      return (table) => {
+        const engine = getActiveDatabaseEngine();
+        if (engine === 'd1') {
+          return new D1QueryBuilder(table);
+        }
+        // Direct Native Supabase client
+        return realSupabase.from(table);
+      };
     }
     const value = Reflect.get(target, prop, receiver);
     if (typeof value === 'function') {
@@ -204,3 +201,5 @@ export const supabase = new Proxy(realSupabase, {
     return value;
   }
 });
+
+export default supabase;

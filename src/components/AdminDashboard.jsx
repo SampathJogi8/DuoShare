@@ -73,7 +73,7 @@ import {
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
-import { supabase, realSupabase } from '../supabase';
+import { supabase, realSupabase, getActiveDatabaseEngine, setActiveDatabaseEngine } from '../supabase';
 
 const ADMIN_EMAILS = [
   'tallyin.alerts@gmail.com'
@@ -2680,6 +2680,15 @@ export default function AdminDashboard({
 
     logAuditAction('UPDATE_MAINTENANCE_WHITELIST', `Removed ${accountToRemove} from maintenance testing whitelist`);
     if (triggerToast) triggerToast(`Removed ${accountToRemove} from allowed list.`);
+  };
+
+  const [activeDbEngine, setActiveDbEngine] = useState(getActiveDatabaseEngine());
+
+  const handleSwitchDbEngine = (newEngine) => {
+    setActiveDatabaseEngine(newEngine);
+    setActiveDbEngine(newEngine);
+    if (triggerToast) triggerToast(`⚡ Active Database switched to ${newEngine === 'supabase' ? 'Supabase PostgreSQL' : 'Cloudflare D1'}!`);
+    logAuditAction('SWITCH_DB_ENGINE', `Switched active database engine to ${newEngine}`);
   };
 
   const [isMigratingD1ToSupabase, setIsMigratingD1ToSupabase] = useState(false);
@@ -5876,15 +5885,67 @@ export default function AdminDashboard({
               </div>
             </div>
 
-            {/* Database Migration: Cloudflare D1 → Supabase */}
+            {/* Database Migration & Engine Switcher */}
             <div className="border-t border-[#E3E8E3] dark:border-slate-800 pt-6 space-y-4">
+              
+              {/* Active Engine Switcher Hub */}
+              <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-cyan-950/40 border border-emerald-500/30 rounded-2xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <Database className="w-4 h-4 text-emerald-400" />
+                        Primary Database Engine
+                      </h4>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                        activeDbEngine === 'supabase' 
+                          ? 'bg-emerald-400 text-slate-950' 
+                          : 'bg-amber-400 text-slate-950'
+                      }`}>
+                        {activeDbEngine === 'supabase' ? '⚡ Supabase Active' : '☁️ Cloudflare D1 Active'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300">
+                      Switch the active operational database instantly with zero downtime or data loss.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchDbEngine('supabase')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                        activeDbEngine === 'supabase'
+                          ? 'bg-emerald-500 text-slate-950 shadow-md ring-2 ring-emerald-400'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>⚡ Supabase (Postgres)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchDbEngine('d1')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                        activeDbEngine === 'd1'
+                          ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <Server className="w-3.5 h-3.5" />
+                      <span>☁️ Cloudflare D1</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
                   <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  Database Migration: Cloudflare D1 → Supabase
+                  Database Replicator &amp; Sync Engine
                 </h4>
                 <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
-                  Zero-data-loss export from Cloudflare D1 to Supabase PostgreSQL. Safe to re-run (upserts, no duplicates). D1 stays as backup.
+                  Zero-data-loss replication between Cloudflare D1 and Supabase PostgreSQL. Safe to re-run (upserts, no duplicates).
                 </p>
               </div>
 

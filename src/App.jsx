@@ -5221,9 +5221,8 @@ export default function App() {
         : fallbackQuotaShare;
       const quotaUsed = Math.min(spent, budget);
       const excess = Math.max(0, spent - budget);
-      const remaining = Math.max(0, budget - spent);
-      const pct = budget > 0 ? Math.min(100, Math.round((spent / budget) * 100)) : 0;
-      const roomPct = activeRoomBudget > 0 ? Math.min(100, Math.round((spent / activeRoomBudget) * 100)) : 0;
+      const pct = budget > 0 ? Math.min(100, Math.round(((spent / budget) * 100) * 100) / 100) : 0;
+      const roomPct = activeRoomBudget > 0 ? Math.min(100, Math.round(((spent / activeRoomBudget) * 100) * 100) / 100) : 0;
       return {
         ...m,
         spent: Math.round(spent * 100) / 100,
@@ -14036,8 +14035,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <div className="space-y-1.5 max-h-36 overflow-y-auto">
                   {computedStats.memberBudgetStats.map(m => {
                     const quotaRatio = computedStats.totalRoomBudgetPool > 0 ? (m.budget / computedStats.totalRoomBudgetPool) : (1 / members.length);
-                    const quotaPct = Math.round(quotaRatio * 100);
-                    const obligation = Math.round(totalGroupSpend * quotaRatio);
+                    const quotaPct = (Math.round(quotaRatio * 10000) / 100).toFixed(2);
+                    const obligation = Math.round((totalGroupSpend * quotaRatio) * 100) / 100;
                     const bal = computedStats.balances[m.uid] || 0;
                     return (
                       <div key={m.uid} className="flex items-center justify-between text-xs p-2 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/30">
