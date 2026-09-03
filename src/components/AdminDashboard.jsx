@@ -152,6 +152,7 @@ export default function AdminDashboard({
         dispute_resolver: true,
         database_studio: true,
         system_triggers: true,
+        email_hub: true,
       };
     }
     return {
@@ -168,6 +169,7 @@ export default function AdminDashboard({
       dispute_resolver: Boolean(currentCoAdminObj?.permissions?.dispute_resolver ?? currentCoAdminObj?.permissions?.settlements),
       database_studio: Boolean(currentCoAdminObj?.permissions?.database_studio ?? currentCoAdminObj?.permissions?.database_migration),
       system_triggers: Boolean(currentCoAdminObj?.permissions?.system_triggers ?? currentCoAdminObj?.permissions?.maintenance_control),
+      email_hub: Boolean(currentCoAdminObj?.permissions?.email_hub ?? currentCoAdminObj?.permissions?.broadcasts),
     };
   }, [isSuperAdmin, currentCoAdminObj]);
 
@@ -2332,14 +2334,19 @@ export default function AdminDashboard({
       : `[CLEARANCE NOTICE] Tallyin Co-Admin Access ${actionTitle} — Ref: ${ackRecord.ackNumber}`;
 
     const modules = [
+      { key: 'room_commander', label: 'Room Commander & Live Intervention' },
+      { key: 'dispute_resolver', label: 'Financial Disputes & Universal Resolver' },
+      { key: 'database_studio', label: 'Supabase Database Studio & Row Inspector' },
+      { key: 'system_triggers', label: 'System Macro Triggers & Real-Time Directives' },
+      { key: 'user_management', label: 'User Directory, Warnings & Ban Governance' },
       { key: 'broadcasts', label: 'Global Broadcasts & Announcements' },
       { key: 'settlements', label: 'Financial Settlements & Audit' },
-      { key: 'user_management', label: 'User Accounts Directory & Bans' },
+      { key: 'email_hub', label: 'Administrative Email Hub & Relay' },
       { key: 'room_explorer', label: 'Room Infrastructure Explorer' },
       { key: 'room_pinning', label: 'Room Message Pinning Protocol' },
-      { key: 'latency_diagnostics', label: 'Network Latency & Diagnostics' },
-      { key: 'maintenance_control', label: 'System Maintenance Control' },
-      { key: 'database_migration', label: 'Supabase Database Migration' },
+      { key: 'latency_diagnostics', label: 'Network Latency & System Diagnostics' },
+      { key: 'maintenance_control', label: 'System Maintenance Downtime Control' },
+      { key: 'database_migration', label: 'Supabase Cloud Migration Engine' },
     ];
 
     const permissionsRowsHtml = modules.map(m => {
@@ -4181,9 +4188,14 @@ export default function AdminDashboard({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                     {[
+                      { key: 'room_commander', label: 'Room Commander', desc: 'Live room freeze, budget & purge controls', icon: SlidersHorizontal },
+                      { key: 'dispute_resolver', label: 'Disputes & Expenses', desc: 'Global transaction search, edits & voids', icon: FileSpreadsheet },
+                      { key: 'database_studio', label: 'Database Studio', desc: 'Supabase table explorer & raw JSON inspector', icon: Database },
+                      { key: 'system_triggers', label: 'System Triggers', desc: 'Force reload cache-buster & countdowns', icon: Zap },
+                      { key: 'user_management', label: 'User Directory & Bans', desc: 'Manage users, warnings, bans & appeals', icon: Users },
                       { key: 'broadcasts', label: 'Global Broadcasts', desc: 'Push banner announcements to all rooms', icon: Radio },
                       { key: 'settlements', label: 'Financial Settlements', desc: 'Execute admin settlements and audits', icon: HandCoins },
-                      { key: 'user_management', label: 'User Accounts & Bans', desc: 'Manage users, ban/unban, review appeals', icon: Users },
+                      { key: 'email_hub', label: 'Email Hub', desc: 'Dispatch broadcast emails to all users', icon: Mail },
                       { key: 'room_explorer', label: 'Room Explorer', desc: 'Inspect rooms and membership lists', icon: Building2 },
                       { key: 'room_pinning', label: 'Message Pinning', desc: 'Pin alerts to room headers', icon: Pin },
                       { key: 'latency_diagnostics', label: 'Diagnostics & Latency', desc: 'Simulate network latency & pings', icon: Sliders },
@@ -4382,6 +4394,26 @@ export default function AdminDashboard({
 
                       {/* Permissions Pills Display */}
                       <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#F6F8F6] dark:border-slate-800">
+                        {admin.permissions?.room_commander && (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold">
+                            🎛️ Room Commander
+                          </span>
+                        )}
+                        {admin.permissions?.dispute_resolver && (
+                          <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 text-[10px] font-bold">
+                            ⚖️ Disputes
+                          </span>
+                        )}
+                        {admin.permissions?.database_studio && (
+                          <span className="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 text-[10px] font-bold">
+                            🗄️ DB Studio
+                          </span>
+                        )}
+                        {admin.permissions?.system_triggers && (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 text-[10px] font-bold">
+                            ⚡ Triggers
+                          </span>
+                        )}
                         {admin.permissions?.broadcasts && (
                           <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/50 text-purple-800 dark:text-purple-300 text-[10px] font-bold">
                             📢 Broadcasts
@@ -4395,6 +4427,11 @@ export default function AdminDashboard({
                         {admin.permissions?.user_management && (
                           <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 text-[10px] font-bold">
                             👥 Users & Bans
+                          </span>
+                        )}
+                        {admin.permissions?.email_hub && (
+                          <span className="px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-950/50 text-pink-800 dark:text-pink-300 text-[10px] font-bold">
+                            📧 Email Hub
                           </span>
                         )}
                         {admin.permissions?.room_explorer && (
@@ -4470,9 +4507,14 @@ export default function AdminDashboard({
                           </p>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {[
+                              { key: 'room_commander', label: 'Room Commander' },
+                              { key: 'dispute_resolver', label: 'Disputes & Expenses' },
+                              { key: 'database_studio', label: 'DB Studio' },
+                              { key: 'system_triggers', label: 'System Triggers' },
                               { key: 'broadcasts', label: 'Broadcasts' },
                               { key: 'settlements', label: 'Settlements' },
                               { key: 'user_management', label: 'User Directory' },
+                              { key: 'email_hub', label: 'Email Hub' },
                               { key: 'room_explorer', label: 'Room Explorer' },
                               { key: 'room_pinning', label: 'Room Pinning' },
                               { key: 'latency_diagnostics', label: 'Latency' },
@@ -7610,9 +7652,14 @@ NOTIFY pgrst, 'reload schema';`;
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
+                    { key: 'room_commander', label: 'Room Commander' },
+                    { key: 'dispute_resolver', label: 'Disputes & Expenses' },
+                    { key: 'database_studio', label: 'Database Studio' },
+                    { key: 'system_triggers', label: 'System Triggers' },
                     { key: 'broadcasts', label: 'Broadcasts' },
                     { key: 'settlements', label: 'Settlements' },
                     { key: 'user_management', label: 'User Directory' },
+                    { key: 'email_hub', label: 'Email Hub' },
                     { key: 'room_explorer', label: 'Room Explorer' },
                     { key: 'room_pinning', label: 'Room Pinning' },
                     { key: 'latency_diagnostics', label: 'Latency' },
