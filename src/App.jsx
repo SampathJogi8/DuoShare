@@ -2858,16 +2858,14 @@ export default function App() {
       if (error) throw error;
       
       if (!data) {
-        console.warn(`Room ${roomId} not found in database rooms table. Auto-provisioning row...`);
-        try {
-          await supabase.from('rooms').upsert({
-            id: roomId,
-            name: localStorage.getItem('roomName') || 'Tallyin Room',
-            monthly_budget: Number(localStorage.getItem('monthlyBudget')) || 22000,
-            max_members: 6,
-            created_by: user?.id || null
-          }, { onConflict: 'id' });
-        } catch(e) {}
+        console.warn(`Room ${roomId} does not exist or has been permanently deleted.`);
+        setUserRoomId(null);
+        setHasConfirmedRoom(false);
+        localStorage.removeItem('userRoomId');
+        setUserRooms(prev => prev.filter(r => r.roomId !== roomId));
+        setPendingUserRequests(prev => prev.filter(p => p.roomId !== roomId));
+        setOnboardingStep('selection');
+        triggerToast('⚠️ This room no longer exists or was permanently deleted.');
         return;
       }
 
@@ -3504,26 +3502,29 @@ export default function App() {
         }
       }
 
-      // Auto-heal empty room by adding current user as host/member if user is active in this room
+      // Auto-heal empty room by adding current user as host/member if room exists in DB
       if (mappedMembers.length === 0 && user && roomId) {
-        const selfMember = {
-          uid: user.id,
-          nickname: userNickname && userNickname !== 'You' ? userNickname : (user.user_metadata?.full_name || 'Room Admin'),
-          photoURL: user.user_metadata?.avatar_url || '',
-          email: user.email || '',
-          individualBudget: Number(personalCap) || 1000,
-          joinedAt: new Date().toISOString()
-        };
-        mappedMembers.push(selfMember);
-        supabase.from('members').upsert({
-          room_id: roomId,
-          uid: user.id,
-          nickname: selfMember.nickname,
-          photo_url: selfMember.photoURL,
-          email: selfMember.email,
-          individual_budget: selfMember.individualBudget,
-          joined_at: selfMember.joinedAt
-        }, { onConflict: 'room_id,uid' }).then(null, () => {});
+        const { data: roomExists } = await supabase.from('rooms').select('id').eq('id', roomId).maybeSingle();
+        if (roomExists) {
+          const selfMember = {
+            uid: user.id,
+            nickname: userNickname && userNickname !== 'You' ? userNickname : (user.user_metadata?.full_name || 'Room Admin'),
+            photoURL: user.user_metadata?.avatar_url || '',
+            email: user.email || '',
+            individualBudget: Number(personalCap) || 1000,
+            joinedAt: new Date().toISOString()
+          };
+          mappedMembers.push(selfMember);
+          supabase.from('members').upsert({
+            room_id: roomId,
+            uid: user.id,
+            nickname: selfMember.nickname,
+            photo_url: selfMember.photoURL,
+            email: selfMember.email,
+            individual_budget: selfMember.individualBudget,
+            joined_at: selfMember.joinedAt
+          }, { onConflict: 'room_id,uid' }).then(null, () => {});
+        }
       }
 
       if (user && mappedMembers.length > 0 && !isMember) {
@@ -4122,14 +4123,13 @@ export default function App() {
       } catch (bcErr) {}
 
       // 3. Cascade delete all child table records
-      await Promise.all([
-        supabase.from('transactions').delete().eq('room_id', deletedRoomId),
-        supabase.from('receipts').delete().eq('room_id', deletedRoomId),
-        supabase.from('members').delete().eq('room_id', deletedRoomId),
-        supabase.from('activity_logs').delete().eq('room_id', deletedRoomId),
-        supabase.from('system_settings').delete().eq('key', `room_mode_${deletedRoomId}`),
-        supabase.from('system_settings').delete().eq('key', `join_requests_${deletedRoomId}`)
-      ]);
+      await supabase.from('transactions').delete().eq('room_id', deletedRoomId);
+      await supabase.from('receipts').delete().eq('room_id', deletedRoomId);
+      await supabase.from('members').delete().eq('room_id', deletedRoomId);
+      await supabase.from('activity_logs').delete().eq('room_id', deletedRoomId);
+      await supabase.from('system_settings').delete().eq('key', `room_mode_${deletedRoomId}`);
+      await supabase.from('system_settings').delete().eq('key', `join_requests_${deletedRoomId}`);
+      await supabase.from('system_settings').delete().eq('key', `co_host_${deletedRoomId}`);
 
       // 4. Delete room from rooms table
       await supabase.from('rooms').delete().eq('id', deletedRoomId);
@@ -4148,8 +4148,13 @@ export default function App() {
       setActivityLogs([]);
       setRoomCreatedBy(null);
       localStorage.removeItem('userRoomId');
+      localStorage.removeItem(`roomMode_${deletedRoomId}`);
+      
+      setUserRooms(prev => prev.filter(r => r.roomId !== deletedRoomId));
+      setPendingUserRequests(prev => prev.filter(p => p.roomId !== deletedRoomId));
       
       if (user) {
+        localStorage.removeItem(`userRooms_${user.id}`);
         try {
           await supabase.from('users').upsert({ uid: user.id, room_id: null, updated_at: new Date().toISOString() }, { onConflict: 'uid' });
         } catch(e) {}
