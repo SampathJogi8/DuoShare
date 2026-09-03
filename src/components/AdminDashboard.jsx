@@ -1407,11 +1407,17 @@ export default function AdminDashboard({
   const fetchCommanderRooms = useCallback(async () => {
     setLoadingCommanderRooms(true);
     try {
-      const [roomsRes, membersRes, txRes] = await Promise.all([
+      const [roomsRes, membersRes, txRes, frozenRes] = await Promise.all([
         supabase.from('rooms').select('*').order('created_at', { ascending: false }),
         supabase.from('members').select('room_id'),
-        supabase.from('transactions').select('room_id, amount')
+        supabase.from('transactions').select('room_id, amount'),
+        supabase.from('system_settings').select('value').eq('key', 'frozen_room_ids').maybeSingle()
       ]);
+
+      let frozenIds = [];
+      if (frozenRes?.data?.value) {
+        try { frozenIds = JSON.parse(frozenRes.data.value); } catch(e) {}
+      }
 
       const memberCounts = {};
       (membersRes.data || []).forEach(m => {
@@ -1427,7 +1433,7 @@ export default function AdminDashboard({
         ...r,
         memberCount: memberCounts[r.id] || 0,
         totalSpend: roomTotals[r.id] || 0,
-        isFrozen: Boolean(r.is_frozen)
+        isFrozen: frozenIds.includes(r.id)
       }));
 
       setCommanderRooms(formatted);
@@ -1499,10 +1505,33 @@ export default function AdminDashboard({
     const nextFrozen = !room.isFrozen;
     const actionLabel = nextFrozen ? 'FROZEN' : 'UNFROZEN';
     try {
+      // 1. Fetch current frozen_room_ids from system_settings
+      const { data: existing } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'frozen_room_ids')
+        .maybeSingle();
+
+      let currentFrozen = [];
+      if (existing?.value) {
+        try { currentFrozen = JSON.parse(existing.value); } catch(e) {}
+      }
+
+      let updatedFrozen = [];
+      if (nextFrozen) {
+        updatedFrozen = Array.from(new Set([...currentFrozen, room.id]));
+      } else {
+        updatedFrozen = currentFrozen.filter(id => id !== room.id);
+      }
+
+      // 2. Persist updated frozen list to system_settings
       const { error } = await supabase
-        .from('rooms')
-        .update({ is_frozen: nextFrozen })
-        .eq('id', room.id);
+        .from('system_settings')
+        .upsert({
+          key: 'frozen_room_ids',
+          value: JSON.stringify(updatedFrozen),
+          created_at: new Date().toISOString()
+        }, { onConflict: 'key' });
 
       if (error) throw error;
 
@@ -1513,10 +1542,10 @@ export default function AdminDashboard({
       await sysChan.send({
         type: 'broadcast',
         event: 'ROOM_STATUS_UPDATE',
-        payload: { roomId: room.id, isFrozen: nextFrozen }
+        payload: { roomId: room.id, isFrozen: nextFrozen, frozenRoomIds: updatedFrozen }
       });
 
-      if (triggerToast) triggerToast(`Room ${room.name} is now ${actionLabel}`);
+      if (triggerToast) triggerToast(`Room "${room.name}" is now ${actionLabel}!`);
     } catch (err) {
       if (triggerToast) triggerToast(`Failed to update room status: ${err.message}`);
     }
@@ -1554,16 +1583,42 @@ export default function AdminDashboard({
     }
 
     try {
+      // Clean up all related tables first to avoid foreign key errors
       await Promise.all([
         supabase.from('transactions').delete().eq('room_id', room.id),
         supabase.from('members').delete().eq('room_id', room.id),
         supabase.from('receipts').delete().eq('room_id', room.id),
+        supabase.from('activity_logs').delete().eq('room_id', room.id),
+        supabase.from('system_settings').delete().eq('key', `room_mode_${room.id}`),
+        supabase.from('system_settings').delete().eq('key', `join_requests_${room.id}`)
       ]);
-      await supabase.from('rooms').delete().eq('id', room.id);
+
+      // Remove from frozen_room_ids if present
+      try {
+        const { data: existing } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'frozen_room_ids')
+          .maybeSingle();
+
+        if (existing?.value) {
+          const currentFrozen = JSON.parse(existing.value);
+          const filtered = currentFrozen.filter(id => id !== room.id);
+          await supabase.from('system_settings').upsert({
+            key: 'frozen_room_ids',
+            value: JSON.stringify(filtered),
+            created_at: new Date().toISOString()
+          }, { onConflict: 'key' });
+        }
+      } catch (e) {}
+
+      // Delete the room itself
+      const { error: roomErr } = await supabase.from('rooms').delete().eq('id', room.id);
+      if (roomErr) throw roomErr;
 
       setCommanderRooms(prev => prev.filter(r => r.id !== room.id));
       logAuditAction('ROOM_PURGE', `Permanently purged room "${room.name}" (${room.id}) by ${user?.email || 'Admin'}`);
-      if (triggerToast) triggerToast(`Room ${room.name} has been purged.`);
+      if (triggerToast) triggerToast(`Room "${room.name}" has been permanently purged.`);
     } catch (err) {
       if (triggerToast) triggerToast(`Purge failed: ${err.message}`);
     }
