@@ -1729,7 +1729,7 @@ export default function AdminDashboard({
     }
     setIsBroadcastingForceReload(true);
     try {
-      const sysChan = supabase.channel('system_admin_channel');
+      const sysChan = adminChannelRef.current || supabase.channel('system_admin_channel');
       await sysChan.send({
         type: 'broadcast',
         event: 'SYSTEM_FORCE_RELOAD',
@@ -1760,7 +1760,21 @@ export default function AdminDashboard({
       if (setGlobalBroadcast) setGlobalBroadcast(reminderBroadcast);
       localStorage.setItem('tallyin_global_broadcast', JSON.stringify(reminderBroadcast));
 
-      const sysChan = supabase.channel('system_admin_channel');
+      // Persist to Supabase rooms table so reloading/offline clients also see it
+      try {
+        await supabase
+          .from('rooms')
+          .upsert({
+            id: '__SYSTEM_GLOBAL_BROADCAST__',
+            name: JSON.stringify(reminderBroadcast),
+            created_by: 'system',
+            created_at: new Date().toISOString()
+          }, { onConflict: 'id' });
+      } catch (err) {
+        console.warn("DB broadcast persistence notice:", err);
+      }
+
+      const sysChan = adminChannelRef.current || supabase.channel('system_admin_channel');
       await sysChan.send({
         type: 'broadcast',
         event: 'GLOBAL_BROADCAST',
@@ -1789,8 +1803,22 @@ export default function AdminDashboard({
       };
 
       setActiveSystemCountdown(payload);
+      localStorage.setItem('tallyin_maint_countdown', JSON.stringify(payload));
 
-      const sysChan = supabase.channel('system_admin_channel');
+      // Persist to Supabase system_settings so any user loading the app sees the countdown
+      try {
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: 'system_maintenance_countdown',
+            value: JSON.stringify(payload),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'key' });
+      } catch (err) {
+        console.warn("Countdown DB save error:", err);
+      }
+
+      const sysChan = adminChannelRef.current || supabase.channel('system_admin_channel');
       await sysChan.send({
         type: 'broadcast',
         event: 'MAINTENANCE_COUNTDOWN',
@@ -1808,8 +1836,13 @@ export default function AdminDashboard({
 
   const handleCancelMaintenanceCountdown = async () => {
     setActiveSystemCountdown(null);
+    localStorage.removeItem('tallyin_maint_countdown');
     try {
-      const sysChan = supabase.channel('system_admin_channel');
+      await supabase.from('system_settings').delete().eq('key', 'system_maintenance_countdown');
+    } catch (e) {}
+
+    try {
+      const sysChan = adminChannelRef.current || supabase.channel('system_admin_channel');
       await sysChan.send({
         type: 'broadcast',
         event: 'MAINTENANCE_COUNTDOWN',
@@ -7190,6 +7223,15 @@ NOTIFY pgrst, 'reload schema';`;
                 </p>
 
                 <div className="space-y-2 pt-1">
+                  <div>
+                    <input
+                      type="text"
+                      value={countdownNoticeInput}
+                      onChange={e => setCountdownNoticeInput(e.target.value)}
+                      placeholder="e.g. Server maintenance scheduled. Normal service will resume shortly."
+                      className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs"
+                    />
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-500">Duration:</span>
                     <select

@@ -738,7 +738,7 @@ export default function App() {
         const { data } = await supabase
           .from('system_settings')
           .select('key, value')
-          .in('key', ['system_maintenance_active', 'system_maintenance_message', 'maintenance_allowed_accounts', 'maintenance_features', 'co_admins', 'frozen_room_ids']);
+          .in('key', ['system_maintenance_active', 'system_maintenance_message', 'maintenance_allowed_accounts', 'maintenance_features', 'co_admins', 'frozen_room_ids', 'system_maintenance_countdown']);
 
         if (data && Array.isArray(data)) {
           data.forEach(item => {
@@ -787,6 +787,18 @@ export default function App() {
                 if (Array.isArray(parsed)) {
                   setFrozenRoomIds(parsed);
                   localStorage.setItem('tallyin_frozen_room_ids', JSON.stringify(parsed));
+                }
+              } catch (e) {}
+            }
+            if (item.key === 'system_maintenance_countdown') {
+              try {
+                const parsed = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
+                if (parsed && parsed.active && parsed.targetTime > Date.now()) {
+                  setSystemMaintenanceCountdown(parsed);
+                  localStorage.setItem('tallyin_maint_countdown', JSON.stringify(parsed));
+                } else {
+                  setSystemMaintenanceCountdown(null);
+                  localStorage.removeItem('tallyin_maint_countdown');
                 }
               } catch (e) {}
             }
