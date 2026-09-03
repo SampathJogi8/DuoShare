@@ -171,6 +171,17 @@ class MockQueryBuilder {
       return typeof onfulfilled === 'function' ? onfulfilled(result) : result;
     }
   }
+
+  catch(onrejected) {
+    return this.then(null, onrejected);
+  }
+
+  finally(onfinally) {
+    return this.then(
+      val => Promise.resolve(typeof onfinally === 'function' ? onfinally() : null).then(() => val),
+      err => Promise.resolve(typeof onfinally === 'function' ? onfinally() : null).then(() => { throw err; })
+    );
+  }
 }
 
 export const supabase = new Proxy(realSupabase, {

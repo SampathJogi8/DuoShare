@@ -2340,16 +2340,22 @@ export default function AdminDashboard({
 
   // Save acknowledgement record to state, localStorage, and system_settings
   const saveAckRecord = async (newAck) => {
+    let nextList = [];
     setCoAdminAckRegistry(prev => {
-      const next = [newAck, ...prev.filter(r => r.ackNumber !== newAck.ackNumber)].slice(0, 100);
-      localStorage.setItem('tallyin_co_admin_ack_registry', JSON.stringify(next));
-      supabase.from('system_settings').upsert({
-        key: 'co_admin_ack_registry',
-        value: JSON.stringify(next),
-        created_at: new Date().toISOString()
-      }, { onConflict: 'key' }).catch(err => console.warn("Supabase ack_registry upsert notice:", err));
-      return next;
+      nextList = [newAck, ...prev.filter(r => r.ackNumber !== newAck.ackNumber)].slice(0, 100);
+      localStorage.setItem('tallyin_co_admin_ack_registry', JSON.stringify(nextList));
+      return nextList;
     });
+
+    try {
+      await supabase.from('system_settings').upsert({
+        key: 'co_admin_ack_registry',
+        value: JSON.stringify(nextList),
+        created_at: new Date().toISOString()
+      }, { onConflict: 'key' });
+    } catch (err) {
+      console.warn("Supabase ack_registry upsert notice:", err);
+    }
   };
 
   // Automated Security Clearance Email Dispatcher
