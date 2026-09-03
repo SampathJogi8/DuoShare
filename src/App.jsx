@@ -2438,6 +2438,7 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
       if (localStorage.getItem('tallyin_code_user')) return;
 
+      setAuthError(null); // Clear any connection warning as soon as auth state resolves
       const currentUser = mapFirebaseUser(fbUser);
       setUser(currentUser);
       if (currentUser) {
@@ -2448,6 +2449,9 @@ export default function App() {
         setHasConfirmedRoom(false);
         setAuthLoading(false);
       }
+    }, (err) => {
+      console.warn("Auth initialization state notice:", err);
+      setAuthLoading(false);
     });
 
     return () => {
@@ -2467,15 +2471,14 @@ export default function App() {
     }
   }, []);
 
-  // Auth Initialization Timeout Fallback
+  // Auth Initialization Timeout Fallback (15s graceful threshold for mobile networks)
   useEffect(() => {
     const timer = setTimeout(() => {
       if (authLoading) {
-        console.warn("Auth initialization timed out.");
-        setAuthError("Tallyin is taking longer than usual to connect. Please check your Google Cloud Console API Key restrictions and allow your Vercel domain.");
+        console.warn("Auth initialization finished waiting.");
         setAuthLoading(false);
       }
-    }, 6000);
+    }, 15000);
     return () => clearTimeout(timer);
   }, [authLoading]);
 
