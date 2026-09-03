@@ -2349,23 +2349,26 @@ export default function AdminDashboard({
       { key: 'database_migration', label: 'Supabase Cloud Migration Engine' },
     ];
 
-    const permissionsRowsHtml = modules.map(m => {
-      const isGranted = Boolean(permissions?.[m.key]);
-      return `
+    const grantedModules = modules.filter(m => Boolean(permissions?.[m.key]));
+
+    const permissionsRowsHtml = grantedModules.length > 0
+      ? grantedModules.map(m => `
         <tr style="border-bottom: 1px solid #f1f5f9;">
-          <td style="padding: 10px 14px; font-weight: 700; color: #1e293b; font-size: 12px;">${m.label}</td>
-          <td style="padding: 10px 14px; text-align: right;">
-            <span style="display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 800; text-transform: uppercase; ${
-              isGranted
-                ? 'background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;'
-                : 'background-color: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0;'
-            }">
-              ${isGranted ? '✓ GRANTED' : '✕ RESTRICTED'}
+          <td style="padding: 12px 16px; font-weight: 700; color: #1e293b; font-size: 13px;">${m.label}</td>
+          <td style="padding: 12px 16px; text-align: right;">
+            <span style="display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 10px; font-weight: 800; text-transform: uppercase; background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;">
+              ✓ GRANTED
             </span>
           </td>
         </tr>
+      `).join('')
+      : `
+        <tr>
+          <td colspan="2" style="padding: 16px; text-align: center; color: #64748b; font-size: 13px; font-style: italic;">
+            No operational modules currently granted.
+          </td>
+        </tr>
       `;
-    }).join('');
 
     const htmlBody = isRevoke
       ? `
@@ -2437,15 +2440,15 @@ export default function AdminDashboard({
           <div style="color: #334155; font-size: 14px; line-height: 1.65; margin-bottom: 20px;">
             <p>Hello <strong>${targetName || targetEmail}</strong>,</p>
             <p>You have been formally authorized as a <strong>Tier-2 Co-Administrator</strong> for Tallyin by System Administration.</p>
-            <p>Your access permissions have been configured according to the operational matrix below:</p>
+            <p>You have been granted active administrative access to the following operational modules:</p>
           </div>
 
           <div style="margin-bottom: 24px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
             <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
               <thead>
                 <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
-                  <th style="padding: 10px 14px; text-align: left; color: #475569; font-weight: 800; font-size: 11px; text-transform: uppercase;">Operational Module</th>
-                  <th style="padding: 10px 14px; text-align: right; color: #475569; font-weight: 800; font-size: 11px; text-transform: uppercase;">Status</th>
+                  <th style="padding: 10px 16px; text-align: left; color: #475569; font-weight: 800; font-size: 11px; text-transform: uppercase;">Granted Operational Capability (${grantedModules.length})</th>
+                  <th style="padding: 10px 16px; text-align: right; color: #475569; font-weight: 800; font-size: 11px; text-transform: uppercase;">Access Status</th>
                 </tr>
               </thead>
               <tbody>
