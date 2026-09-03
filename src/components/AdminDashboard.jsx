@@ -1233,6 +1233,20 @@ export default function AdminDashboard({
       if (targetTicket?.user_email && targetTicket.user_email.includes('@')) {
         try {
           const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+          const isResolved = newStatus === 'RESOLVED';
+          const isRejected = newStatus === 'REJECTED';
+          const statusTheme = isResolved 
+            ? { title: 'DISPUTE RESOLVED', bg: '#064e3b', border: '#10b981', badgeBg: '#d1fae5', badgeText: '#065f46', icon: '✅' }
+            : isRejected
+            ? { title: 'REQUEST REJECTED / CLOSED', bg: '#7f1d1d', border: '#ef4444', badgeBg: '#fee2e2', badgeText: '#991b1b', icon: '❌' }
+            : { title: 'TICKET UNDER ACTIVE REVIEW', bg: '#312e81', border: '#6366f1', badgeBg: '#e0e7ff', badgeText: '#3730a3', icon: '🔍' };
+
+          const emailSubject = isResolved
+            ? `✅ Resolved: Your Tallyin Request [${targetTicket.refNumber || targetTicket.id}] has been resolved`
+            : isRejected
+            ? `❌ Decision Update on your Tallyin Request [${targetTicket.refNumber || targetTicket.id}]`
+            : `🔍 Update on your Tallyin Request [${targetTicket.refNumber || targetTicket.id}]`;
+
           fetch(mailRelayUrl, {
             method: 'POST',
             mode: 'no-cors',
@@ -1240,27 +1254,114 @@ export default function AdminDashboard({
             body: JSON.stringify({
               action: 'send_email',
               to: targetTicket.user_email,
-              subject: `Update on your Tallyin Request / Dispute [${targetTicket.refNumber || targetTicket.id}]`,
-              body: `Hello ${targetTicket.user_name || 'User'},\n\nYour request "${targetTicket.title}" has been updated by Tallyin Administration to: ${newStatus}.\n\nAdmin Remarks:\n${responseText || targetTicket.adminResponse || 'No additional remarks provided.'}\n\nThank you for using Tallyin.`,
+              subject: emailSubject,
+              body: `Hello ${targetTicket.user_name || 'User'},\n\nYour request "${targetTicket.title}" [Ref: ${targetTicket.refNumber || targetTicket.id}] has been updated by Tallyin System Administration.\n\nStatus: ${newStatus}\n\nOfficial Admin Remarks:\n${responseText || targetTicket.adminResponse || 'Your ticket has been reviewed and resolved by administration.'}\n\nView details in Tallyin: https://tallyin.vercel.app`,
               htmlBody: `
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-                  <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid ${newStatus === 'RESOLVED' ? '#10b981' : newStatus === 'REJECTED' ? '#ef4444' : '#6366f1'};">
-                    <span style="background-color: ${newStatus === 'RESOLVED' ? '#d1fae5' : newStatus === 'REJECTED' ? '#fee2e2' : '#e0e7ff'}; color: ${newStatus === 'RESOLVED' ? '#065f46' : newStatus === 'REJECTED' ? '#991b1b' : '#3730a3'}; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase;">Ticket Status Update</span>
-                    <h2 style="color: #1a3827; margin: 8px 0 0 0;">Status: ${newStatus}</h2>
-                    <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Ref: ${targetTicket.refNumber || targetTicket.id}</p>
-                  </div>
-                  <div style="padding: 20px 0; color: #334155; font-size: 14px; line-height: 1.6;">
-                    <p>Hello <strong>${targetTicket.user_name || 'User'}</strong>,</p>
-                    <p>Your ticket <strong>"${targetTicket.title}"</strong> has been reviewed by Tallyin System Administration.</p>
-                    <div style="background-color: #f8fafc; border-left: 4px solid ${newStatus === 'RESOLVED' ? '#10b981' : newStatus === 'REJECTED' ? '#ef4444' : '#6366f1'}; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px;">
-                      <strong>Administrative Notes:</strong><br/>
-                      ${responseText || targetTicket.adminResponse || 'Your dispute/query has been reviewed and recorded.'}
-                    </div>
-                  </div>
-                  <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
-                    Tallyin Operations Support • tallyin.alerts@gmail.com
-                  </div>
-                </div>
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="utf-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>${emailSubject}</title>
+                </head>
+                <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; padding: 30px 15px;">
+                    <tr>
+                      <td align="center">
+                        <table width="100%" max-width="580" style="max-width: 580px; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
+                          
+                          <!-- Top Brand Header -->
+                          <tr>
+                            <td style="background: linear-gradient(135deg, #1A3827 0%, #0F291E 100%); padding: 32px 24px; text-align: center;">
+                              <div style="display: inline-block; padding: 6px 14px; background-color: rgba(163, 230, 53, 0.15); border: 1px solid rgba(163, 230, 53, 0.4); border-radius: 9999px; font-size: 11px; font-weight: 800; color: #A3E635; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">
+                                Tallyin Resolution Desk
+                              </div>
+                              <h1 style="color: #ffffff; font-size: 22px; font-weight: 900; margin: 0 0 6px 0; letter-spacing: -0.5px;">
+                                ${statusTheme.icon} ${statusTheme.title}
+                              </h1>
+                              <p style="color: #94a3b8; font-size: 12px; margin: 0; font-family: ui-monospace, monospace;">
+                                Tracking Ref: <strong style="color: #ffffff;">${targetTicket.refNumber || targetTicket.id}</strong>
+                              </p>
+                            </td>
+                          </tr>
+
+                          <!-- Main Content Body -->
+                          <tr>
+                            <td style="padding: 30px 28px;">
+                              <p style="font-size: 15px; color: #1e293b; margin: 0 0 16px 0; line-height: 1.5;">
+                                Hello <strong>${targetTicket.user_name || 'User'}</strong>,
+                              </p>
+                              <p style="font-size: 14px; color: #475569; margin: 0 0 20px 0; line-height: 1.6;">
+                                An administrator has reviewed and updated your submitted ticket:
+                              </p>
+
+                              <!-- Ticket Details Box -->
+                              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; margin-bottom: 24px;">
+                                <tr>
+                                  <td style="padding: 16px 18px;">
+                                    <div style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Subject / Issue</div>
+                                    <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 12px;">${targetTicket.title}</div>
+                                    
+                                    <table width="100%" style="border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 12px; color: #475569;">
+                                      <tr>
+                                        <td style="padding: 4px 0;"><strong>Category:</strong> ${targetTicket.category || 'General'}</td>
+                                        <td style="padding: 4px 0; text-align: right;"><strong>Status:</strong> <span style="background-color: ${statusTheme.badgeBg}; color: ${statusTheme.badgeText}; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 10px;">${newStatus}</span></td>
+                                      </tr>
+                                      ${targetTicket.transaction_title ? `
+                                        <tr>
+                                          <td colspan="2" style="padding: 4px 0; color: #047857;"><strong>Disputed Expense:</strong> ${targetTicket.transaction_title} (₹${targetTicket.transaction_amount || 0})</td>
+                                        </tr>
+                                      ` : ''}
+                                      ${targetTicket.room_name ? `
+                                        <tr>
+                                          <td colspan="2" style="padding: 4px 0; color: #64748b;"><strong>Room:</strong> ${targetTicket.room_name}</td>
+                                        </tr>
+                                      ` : ''}
+                                    </table>
+                                  </td>
+                                </tr>
+                              </table>
+
+                              <!-- Official Administration Remarks -->
+                              <div style="background-color: ${isResolved ? '#f0fdf4' : isRejected ? '#fef2f2' : '#f5f3ff'}; border: 1.5px solid ${statusTheme.border}; border-radius: 14px; padding: 20px; margin-bottom: 28px;">
+                                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 900; color: ${statusTheme.badgeText}; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                                  Official Administration Resolution Remarks
+                                </div>
+                                <div style="font-size: 13.5px; color: #0f172a; line-height: 1.6; font-style: italic; white-space: pre-wrap;">
+                                  "${responseText || targetTicket.adminResponse || 'Your ticket has been reviewed and recorded by System Administration.'}"
+                                </div>
+                                <div style="font-size: 10px; color: #64748b; margin-top: 12px; font-family: ui-monospace, monospace;">
+                                  Reviewed by: <strong>${user?.email || 'System Admin'}</strong> on ${new Date().toLocaleString()}
+                                </div>
+                              </div>
+
+                              <!-- Call to action button -->
+                              <div style="text-align: center; margin: 24px 0 10px 0;">
+                                <a href="https://tallyin.vercel.app" style="display: inline-block; background-color: #1A3827; color: #ffffff; font-size: 13px; font-weight: 800; text-decoration: none; padding: 14px 32px; border-radius: 12px; box-shadow: 0 4px 12px rgba(26, 56, 39, 0.2);">
+                                  Open Tallyin &amp; View All Inquiries
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+
+                          <!-- Footer -->
+                          <tr>
+                            <td style="background-color: #f8fafc; padding: 20px 24px; text-align: center; border-top: 1px solid #e2e8f0;">
+                              <p style="font-size: 11px; color: #94a3b8; margin: 0 0 4px 0;">
+                                This is an automated resolution dispatch from the Tallyin Security &amp; Financial Dispute System.
+                              </p>
+                              <p style="font-size: 10px; color: #cbd5e1; margin: 0;">
+                                &copy; 2026 Tallyin • All Rights Reserved
+                              </p>
+                            </td>
+                          </tr>
+
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </body>
+                </html>
               `
             })
           }).catch(e => console.warn("Email relay notice:", e));

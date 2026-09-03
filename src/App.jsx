@@ -632,6 +632,33 @@ export default function App() {
   });
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
   const [expandedTicketId, setExpandedTicketId] = useState(null);
+  const [activeDisputeResolutionNotification, setActiveDisputeResolutionNotification] = useState(null);
+
+  // Check for newly resolved tickets to notify user
+  useEffect(() => {
+    try {
+      const dismissed = JSON.parse(localStorage.getItem('tallyin_dismissed_dispute_notifs') || '[]');
+      const unread = myDisputesAndQueries.find(t => 
+        (t.status === 'RESOLVED' || t.status === 'REJECTED') && 
+        !dismissed.includes(t.id) &&
+        t.resolvedAt
+      );
+      if (unread) {
+        setActiveDisputeResolutionNotification(unread);
+      }
+    } catch (e) {}
+  }, [myDisputesAndQueries]);
+
+  const handleDismissDisputeNotification = (ticketId) => {
+    setActiveDisputeResolutionNotification(null);
+    try {
+      const dismissed = JSON.parse(localStorage.getItem('tallyin_dismissed_dispute_notifs') || '[]');
+      if (!dismissed.includes(ticketId)) {
+        dismissed.push(ticketId);
+        localStorage.setItem('tallyin_dismissed_dispute_notifs', JSON.stringify(dismissed));
+      }
+    } catch (e) {}
+  };
 
   // Navigation & Admin Portal States
   const [currentView, setCurrentView] = useState(() => {
@@ -1019,6 +1046,9 @@ export default function App() {
           const currentUserEmail = (auth?.currentUser?.email || '').trim().toLowerCase();
           if (updatedTicket.user_email && updatedTicket.user_email.toLowerCase() === currentUserEmail) {
             triggerToast(`🔔 Status updated on your request [${updatedTicket.refNumber || updatedTicket.id}]: ${updatedTicket.status}`);
+            if (updatedTicket.status === 'RESOLVED' || updatedTicket.status === 'REJECTED') {
+              setActiveDisputeResolutionNotification(updatedTicket);
+            }
           }
         }
       })
@@ -11190,6 +11220,71 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         </header>
 
         <main className="flex-grow pt-16 sm:pt-20 px-3 sm:px-8 pb-24 overflow-y-auto">
+          {/* Dispute & Support Request Resolution In-App Banner */}
+          {activeDisputeResolutionNotification && (
+            <div className={`w-full mb-4 p-4 rounded-3xl border shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 animate-fade-in ${
+              activeDisputeResolutionNotification.status === 'RESOLVED'
+                ? 'bg-gradient-to-r from-emerald-950 via-[#0F291E] to-[#163E2D] border-emerald-500/40 text-white'
+                : 'bg-gradient-to-r from-rose-950 via-[#290F14] to-[#3E161C] border-rose-500/40 text-white'
+            }`}>
+              <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-md ${
+                  activeDisputeResolutionNotification.status === 'RESOLVED'
+                    ? 'bg-emerald-500/20 text-[#A3E635] border border-emerald-400/30'
+                    : 'bg-rose-500/20 text-rose-400 border border-rose-400/30'
+                }`}>
+                  {activeDisputeResolutionNotification.status === 'RESOLVED' ? (
+                    <CheckCircle2 className="w-5 h-5 text-[#A3E635]" />
+                  ) : (
+                    <ShieldAlert className="w-5 h-5 text-rose-400" />
+                  )}
+                </div>
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                      activeDisputeResolutionNotification.status === 'RESOLVED'
+                        ? 'bg-[#A3E635] text-slate-950'
+                        : 'bg-rose-500 text-white'
+                    }`}>
+                      {activeDisputeResolutionNotification.status === 'RESOLVED' ? 'Dispute Resolved' : 'Ticket Closed'}
+                    </span>
+                    <span className="font-mono text-[10px] font-bold text-slate-300">
+                      {activeDisputeResolutionNotification.refNumber || activeDisputeResolutionNotification.id}
+                    </span>
+                  </div>
+                  <h4 className="font-extrabold text-sm text-white truncate">
+                    {activeDisputeResolutionNotification.title}
+                  </h4>
+                  {activeDisputeResolutionNotification.adminResponse && (
+                    <p className="text-xs text-slate-200/90 italic line-clamp-1">
+                      "{activeDisputeResolutionNotification.adminResponse}"
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                <button
+                  onClick={() => {
+                    setExpandedTicketId(activeDisputeResolutionNotification.id);
+                    setDisputeModalTab('history');
+                    setIsDisputeModalOpen(true);
+                  }}
+                  className="px-3.5 py-1.5 bg-white text-slate-900 dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs rounded-xl hover:opacity-90 transition-all shadow-sm cursor-pointer"
+                >
+                  View Remarks &amp; Details
+                </button>
+                <button
+                  onClick={() => handleDismissDisputeNotification(activeDisputeResolutionNotification.id)}
+                  className="p-1.5 text-slate-300 hover:text-white rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Dismiss notification"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Scheduled Maintenance Countdown Banner */}
           {systemMaintenanceCountdown?.active && (
             <div className="w-full mb-4 rounded-2xl p-3.5 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-900 dark:text-amber-200 shadow-lg flex items-center justify-between gap-3 animate-pulse">
