@@ -637,29 +637,56 @@ export default function App() {
   const [isRoommateBudgetsOpen, setIsRoommateBudgetsOpen] = useState(false);
   const [isExcessPoolOpen, setIsExcessPoolOpen] = useState(false);
 
-  // Check for newly resolved tickets to notify user
+  // Check for newly resolved tickets to notify user (ignoring dismissed tickets)
   useEffect(() => {
     try {
       const dismissed = JSON.parse(localStorage.getItem('tallyin_dismissed_dispute_notifs') || '[]');
       const unread = myDisputesAndQueries.find(t => 
         (t.status === 'RESOLVED' || t.status === 'REJECTED') && 
+        !t.isDismissed &&
+        !t.isAcknowledged &&
         !dismissed.includes(t.id) &&
+        !dismissed.includes(t.refNumber) &&
         t.resolvedAt
       );
       if (unread) {
         setActiveDisputeResolutionNotification(unread);
+      } else {
+        setActiveDisputeResolutionNotification(null);
       }
     } catch (e) {}
   }, [myDisputesAndQueries]);
 
-  const handleDismissDisputeNotification = (ticketId) => {
+  const handleDismissDisputeNotification = (ticketIdOrRef) => {
     setActiveDisputeResolutionNotification(null);
     try {
       const dismissed = JSON.parse(localStorage.getItem('tallyin_dismissed_dispute_notifs') || '[]');
-      if (!dismissed.includes(ticketId)) {
-        dismissed.push(ticketId);
-        localStorage.setItem('tallyin_dismissed_dispute_notifs', JSON.stringify(dismissed));
+      if (ticketIdOrRef && !dismissed.includes(ticketIdOrRef)) {
+        dismissed.push(ticketIdOrRef);
       }
+      if (activeDisputeResolutionNotification?.id && !dismissed.includes(activeDisputeResolutionNotification.id)) {
+        dismissed.push(activeDisputeResolutionNotification.id);
+      }
+      if (activeDisputeResolutionNotification?.refNumber && !dismissed.includes(activeDisputeResolutionNotification.refNumber)) {
+        dismissed.push(activeDisputeResolutionNotification.refNumber);
+      }
+      localStorage.setItem('tallyin_dismissed_dispute_notifs', JSON.stringify(dismissed));
+
+      setMyDisputesAndQueries(prev => {
+        const next = prev.map(t => {
+          if (
+            t.id === ticketIdOrRef || 
+            t.refNumber === ticketIdOrRef || 
+            t.id === activeDisputeResolutionNotification?.id ||
+            t.refNumber === activeDisputeResolutionNotification?.refNumber
+          ) {
+            return { ...t, isDismissed: true, isAcknowledged: true };
+          }
+          return t;
+        });
+        localStorage.setItem('tallyin_my_disputes_and_queries', JSON.stringify(next));
+        return next;
+      });
     } catch (e) {}
   };
 
@@ -11272,7 +11299,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                 <button
                   onClick={() => {
-                    setExpandedTicketId(activeDisputeResolutionNotification.id);
+                    const targetId = activeDisputeResolutionNotification.id;
+                    handleDismissDisputeNotification(targetId);
+                    setExpandedTicketId(targetId);
                     setDisputeModalTab('history');
                     setIsDisputeModalOpen(true);
                   }}
@@ -11281,7 +11310,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   View Remarks &amp; Details
                 </button>
                 <button
-                  onClick={() => handleDismissDisputeNotification(activeDisputeResolutionNotification.id)}
+                  onClick={() => handleDismissDisputeNotification(activeDisputeResolutionNotification.id || activeDisputeResolutionNotification.refNumber)}
                   className="p-1.5 text-slate-300 hover:text-white rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
                   title="Dismiss notification"
                 >
