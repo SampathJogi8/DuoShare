@@ -2232,13 +2232,39 @@ export default function App() {
     }
 
     const cachedNickname = localStorage.getItem('userNickname');
-    const displayName = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name;
-    const finalNickname = cachedNickname && cachedNickname !== 'You' ? cachedNickname : (displayName || 'You');
-    setUserNickname(finalNickname);
-    setNicknameInput(finalNickname);
-    localStorage.setItem('userNickname', finalNickname);
-    if (cachedNickname && cachedNickname !== 'You' && cachedNickname.trim() !== '') {
+    const displayName = currentUser.displayName || 
+                        currentUser.user_metadata?.full_name || 
+                        currentUser.user_metadata?.name || 
+                        currentUser.name ||
+                        (currentUser.email ? currentUser.email.split('@')[0] : null);
+
+    const candidateName = (cachedNickname && cachedNickname !== 'You' && cachedNickname.trim()) 
+      ? cachedNickname 
+      : (displayName && displayName !== 'You' && displayName.trim() ? displayName : null);
+
+    if (candidateName) {
+      setUserNickname(candidateName);
+      setNicknameInput(candidateName);
+      localStorage.setItem('userNickname', candidateName);
       setIsNicknameFixed(true);
+    } else {
+      // Check if user has an existing nickname in Supabase members table
+      supabase
+        .from('members')
+        .select('nickname')
+        .eq('uid', currentUser.id)
+        .order('joined_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.nickname && data.nickname !== 'You' && data.nickname.trim()) {
+            setUserNickname(data.nickname);
+            setNicknameInput(data.nickname);
+            localStorage.setItem('userNickname', data.nickname);
+            setIsNicknameFixed(true);
+          }
+        })
+        .catch(() => {});
     }
 
     const localRoomId = localStorage.getItem('userRoomId');
@@ -2329,10 +2355,6 @@ export default function App() {
       } else {
         setUserRoomId(null);
         localStorage.removeItem('userRoomId');
-        localStorage.removeItem('userNickname');
-        setUserNickname('You');
-        setNicknameInput('You');
-        setIsNicknameFixed(false);
         setHasConfirmedRoom(false);
         setAuthLoading(false);
       }
@@ -4117,10 +4139,6 @@ export default function App() {
       setActivityLogs([]);
       setUserRoomId(null);
       localStorage.removeItem('userRoomId');
-      localStorage.removeItem('userNickname');
-      setUserNickname('You');
-      setNicknameInput('You');
-      setIsNicknameFixed(false);
       setHasConfirmedRoom(false);
       setOnboardingStep('selection');
       triggerToast('Signed out successfully.');
