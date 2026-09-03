@@ -3011,392 +3011,414 @@ export default function AdminDashboard({
   );
 
   return (
-    <div className="space-y-6 animate-fade-in text-left">
-      
-      {/* Top Header Banner */}
-      <div className="hud-card rounded-3xl p-6 sm:p-8 space-y-4 border border-emerald-500/30 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          
-          <div className="flex items-center gap-4">
-            <img 
-              src={faviconLogo} 
-              alt="Tallyin Logo" 
-              className="w-12 h-12 object-cover rounded-2xl shadow-md border border-emerald-500/30"
-            />
-            <div>
+    <div className="space-y-4 animate-fade-in text-left">
+
+
+      {/* ── Top Header ── */}
+      <div className="hud-card rounded-2xl px-4 py-3 border border-emerald-500/20 relative overflow-hidden">
+        <div className="flex items-center justify-between gap-3">
+
+          {/* Left: Logo + Title + Badge */}
+          <div className="flex items-center gap-3 min-w-0">
+            <img src={faviconLogo} alt="Tallyin" className="w-9 h-9 object-cover rounded-xl shadow-sm border border-emerald-500/30 shrink-0" />
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
-                  Admin Command Console
+                <h1 className="text-base font-black text-[#1A3827] dark:text-slate-100 tracking-tight leading-none">
+                  Admin Console
                 </h1>
                 {isSuperAdmin ? (
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 dark:bg-emerald-400/20 border border-emerald-500/30 text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-1">
-                    <Crown className="w-3 h-3 text-amber-500" />
-                    Live Master (Super Admin)
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 shrink-0">
+                    <Crown className="w-2.5 h-2.5" />
+                    Super Admin
                   </span>
                 ) : (
-                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 dark:bg-indigo-400/20 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-indigo-500" />
-                    Co-Admin ({currentCoAdminObj?.name || 'Operations'})
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 shrink-0">
+                    <ShieldCheck className="w-2.5 h-2.5" />
+                    Co-Admin
                   </span>
                 )}
               </div>
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-medium mt-0.5">
-                {isSuperAdmin 
-                  ? 'Master authority • Centralized maintenance control, system broadcasts, room pinning, and administrator delegation.'
-                  : `Delegated operator (${user?.email || 'Co-Admin'}) • Authorized operational access across enabled consoles.`}
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-0.5 truncate">
+                {user?.email || 'Administrator'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Right: Stats pills + actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Compact stats */}
+            <div className="hidden sm:flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSystemMaintenanceActive ? 'bg-rose-500 animate-ping' : 'bg-emerald-500 shadow-[0_0_6px_#10B981]'}`} />
+                <span className={`text-[10px] font-black uppercase ${isSystemMaintenanceActive ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-[#A3E635]'}`}>
+                  {isSystemMaintenanceActive ? 'Maintenance' : 'Live'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800">
+                <Zap className="w-3 h-3 text-emerald-500" />
+                <span className="text-[10px] font-black text-[#1A3827] dark:text-white font-mono">
+                  {pingMs !== null ? `${pingMs}ms` : '—'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800">
+                <Home className="w-3 h-3 text-purple-500" />
+                <span className="text-[10px] font-black text-[#1A3827] dark:text-white">{stats.totalRooms}</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800">
+                <Users className="w-3 h-3 text-blue-500" />
+                <span className="text-[10px] font-black text-[#1A3827] dark:text-white">{stats.totalUsers}</span>
+              </div>
+            </div>
+
             <button
               onClick={measurePing}
-              className="p-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-300 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 rounded-xl transition-all shadow-sm"
-              title="Refresh Ping & System Health"
+              className="p-2 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-300 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 rounded-xl transition-all shadow-sm"
+              title="Refresh ping"
             >
-              <RefreshCw className={`w-4 h-4 ${isPinging ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
             </button>
 
             <button
               onClick={onExitAdmin}
-              className="px-4 py-2.5 bg-[#1A3827] text-white dark:bg-slate-800 dark:text-slate-200 hover:bg-[#255038] dark:hover:bg-slate-700 font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+              className="px-3 py-2 bg-[#1A3827] text-white dark:bg-slate-800 dark:text-slate-200 hover:bg-[#255038] dark:hover:bg-slate-700 font-extrabold text-[10px] rounded-xl shadow-sm transition-all flex items-center gap-1.5"
             >
-              <Home className="w-3.5 h-3.5" />
-              <span>Exit Admin</span>
+              <Home className="w-3 h-3" />
+              <span>Exit</span>
             </button>
           </div>
 
         </div>
 
-        {/* System Health Metric Counters */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-[#E3E8E3] dark:border-slate-800/80">
-          
-          <div className="bg-white/80 dark:bg-slate-900/80 p-3.5 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 space-y-1">
-            <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider block">API Latency</span>
-            <div className="flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
-              <span className="text-base font-black text-[#1A3827] dark:text-white font-mono">
-                {pingMs !== null ? `${pingMs} ms` : 'Measuring...'}
-              </span>
-            </div>
+        {/* Mobile stats row */}
+        <div className="flex sm:hidden items-center gap-2 mt-2.5 pt-2.5 border-t border-[#E3E8E3] dark:border-slate-800">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800">
+            <span className={`w-1.5 h-1.5 rounded-full ${isSystemMaintenanceActive ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+            <span className={`text-[9px] font-black ${isSystemMaintenanceActive ? 'text-rose-600' : 'text-emerald-700 dark:text-[#A3E635]'}`}>
+              {isSystemMaintenanceActive ? 'Maint.' : 'Live'}
+            </span>
           </div>
-
-          <div className="bg-white/80 dark:bg-slate-900/80 p-3.5 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 space-y-1">
-            <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider block">Site Status</span>
-            <div className="flex items-center gap-1.5">
-              <span className={`w-2.5 h-2.5 rounded-full ${isSystemMaintenanceActive ? 'bg-rose-500 animate-ping' : 'bg-emerald-500 shadow-[0_0_8px_#10B981]'}`}></span>
-              <span className={`text-xs font-black uppercase ${isSystemMaintenanceActive ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-[#A3E635]'}`}>
-                {isSystemMaintenanceActive ? 'Maintenance ON' : 'Operational'}
-              </span>
-            </div>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800">
+            <Zap className="w-2.5 h-2.5 text-emerald-500" />
+            <span className="text-[9px] font-black text-[#1A3827] dark:text-white font-mono">{pingMs !== null ? `${pingMs}ms` : '—'}</span>
           </div>
-
-          <div className="bg-white/80 dark:bg-slate-900/80 p-3.5 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 space-y-1">
-            <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider block">Active Rooms</span>
-            <div className="flex items-center gap-1.5">
-              <Home className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <span className="text-base font-black text-[#1A3827] dark:text-white">
-                {stats.totalRooms}
-              </span>
-            </div>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800">
+            <Home className="w-2.5 h-2.5 text-purple-500" />
+            <span className="text-[9px] font-black text-[#1A3827] dark:text-white">{stats.totalRooms} rooms</span>
           </div>
-
-          <div className="bg-white/80 dark:bg-slate-900/80 p-3.5 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 space-y-1">
-            <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider block">Total Members</span>
-            <div className="flex items-center gap-1.5">
-              <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <span className="text-base font-black text-[#1A3827] dark:text-white">
-                {stats.totalUsers}
-              </span>
-            </div>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800">
+            <Users className="w-2.5 h-2.5 text-blue-500" />
+            <span className="text-[9px] font-black text-[#1A3827] dark:text-white">{stats.totalUsers} users</span>
           </div>
-
         </div>
       </div>
 
-      {/* Universal Quick Search Bar */}
+      {/* ── Search Bar ── */}
       <div className="relative">
-        <Search className="w-4 h-4 text-[#5C6E5C] dark:text-slate-400 absolute left-4 top-3.5" />
+        <Search className="w-3.5 h-3.5 text-[#5C6E5C] dark:text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         <input
           type="text"
-          placeholder="🔍 Universal Admin Search (Type user email, room code, or transaction name)..."
+          placeholder="Search users, rooms, transactions…"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          className="w-full pl-11 pr-4 py-3 bg-white/90 dark:bg-slate-900/90 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
+          className="w-full pl-10 pr-10 py-2.5 bg-white/90 dark:bg-slate-900/90 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
         />
         {searchQuery && (
           <button
             onClick={() => setSearchQuery('')}
-            className="absolute right-4 top-3 text-xs text-[#5C6E5C] hover:text-[#1A3827] font-bold"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#5C6E5C] hover:text-[#1A3827] font-bold"
           >
-            Clear
+            ✕
           </button>
         )}
       </div>
 
-      {/* Navigation Tabs (Strictly Enforced by Role-Based Access Control) */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'overview'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Activity className="w-3.5 h-3.5" />
-          <span>{isSuperAdmin ? 'Master Overview' : 'Operations Hub'}</span>
-        </button>
+      {/* ── Navigation: Grouped Tab Bar ── */}
+      <div className="hud-card rounded-2xl p-2 border border-[#E3E8E3]/60 dark:border-slate-800/60">
 
-        {isSuperAdmin && (
-          <button
-            onClick={() => setActiveTab('co_admins')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'co_admins'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300'
-            }`}
-          >
-            <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
-            <span>Co-Admins ({normalizedCoAdmins.length})</span>
-          </button>
-        )}
+        {/* Group 1: Core / Always-visible */}
+        <div className="flex items-center gap-1 flex-wrap">
+          {/* Always-visible core tabs */}
+          {[
+            { id: 'overview', label: isSuperAdmin ? 'Overview' : 'Ops Hub', icon: <Activity className="w-3 h-3" />, color: '' },
+            { id: 'activity_feed', label: 'Activity', icon: <Flame className="w-3 h-3 text-amber-500" />, color: '' },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === tab.id
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                  : 'text-[#5C6E5C] dark:text-slate-400 hover:bg-[#EAF0EC] dark:hover:bg-slate-800'
+              }`}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          ))}
 
-        <button
-          onClick={() => setActiveTab('activity_feed')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'activity_feed'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Flame className="w-3.5 h-3.5 text-amber-500" />
-          <span>Live Activity Feed</span>
-        </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setActiveTab('co_admins')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'co_admins'
+                  ? 'bg-indigo-700 text-white shadow-sm'
+                  : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30'
+              }`}
+            >
+              <UserCheck className="w-3 h-3" />
+              <span>Co-Admins</span>
+              <span className="ml-0.5 text-[9px] bg-indigo-500/20 px-1.5 py-0.5 rounded-full font-black">{normalizedCoAdmins.length}</span>
+            </button>
+          )}
 
-        {userPermissions.user_management && (
-          <button
-            onClick={() => setActiveTab('user_directory')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'user_directory'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5 text-blue-400" />
-            <span>User Accounts ({allRegisteredUsers.length})</span>
-          </button>
-        )}
+          {/* Divider */}
+          <div className="w-px h-5 bg-[#E3E8E3] dark:bg-slate-700 mx-1 shrink-0" />
 
-        {userPermissions.user_management && (
-          <button
-            onClick={() => setActiveTab('banned_accounts')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'banned_accounts'
-                ? 'bg-rose-600 text-white shadow-md'
-                : 'hud-card text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-            }`}
-          >
-            <Ban className="w-3.5 h-3.5" />
-            <span>Banned Accounts ({bannedUsers.length})</span>
-          </button>
-        )}
+          {/* Group 2: People & Rooms */}
+          {userPermissions.user_management && (
+            <button
+              onClick={() => setActiveTab('user_directory')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'user_directory'
+                  ? 'bg-blue-700 text-white shadow-sm'
+                  : 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30'
+              }`}
+            >
+              <Users className="w-3 h-3" />
+              <span>Users</span>
+              <span className="ml-0.5 text-[9px] bg-blue-500/20 px-1.5 py-0.5 rounded-full font-black">{allRegisteredUsers.length}</span>
+            </button>
+          )}
 
-        {userPermissions.settlements && (
-          <button
-            onClick={() => setActiveTab('finance_audit')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'finance_audit'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <PieChart className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Financial Audit</span>
-          </button>
-        )}
+          {userPermissions.user_management && (
+            <button
+              onClick={() => setActiveTab('banned_accounts')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'banned_accounts'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+              }`}
+            >
+              <Ban className="w-3 h-3" />
+              <span>Banned</span>
+              {bannedUsers.length > 0 && <span className="ml-0.5 text-[9px] bg-rose-500/20 px-1.5 py-0.5 rounded-full font-black">{bannedUsers.length}</span>}
+            </button>
+          )}
 
-        {userPermissions.settlements && (
-          <button
-            onClick={() => setActiveTab('settlements')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'settlements'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <HandCoins className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-            <span>Settle Payments</span>
-          </button>
-        )}
+          {userPermissions.room_explorer && (
+            <button
+              onClick={() => setActiveTab('room_explorer')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'room_explorer'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                  : 'text-[#5C6E5C] dark:text-slate-300 hover:bg-[#EAF0EC] dark:hover:bg-slate-800'
+              }`}
+            >
+              <Building2 className="w-3 h-3 text-blue-400" />
+              <span>Rooms</span>
+              <span className="ml-0.5 text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded-full font-black">{allSystemRooms.length}</span>
+            </button>
+          )}
 
-        {userPermissions.room_explorer && (
-          <button
-            onClick={() => setActiveTab('room_explorer')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'room_explorer'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <Building2 className="w-3.5 h-3.5 text-blue-500" />
-            <span>Rooms Directory ({allSystemRooms.length})</span>
-          </button>
-        )}
+          {userPermissions.room_commander && (
+            <button
+              onClick={() => setActiveTab('room_commander')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'room_commander'
+                  ? 'bg-emerald-700 text-white shadow-sm'
+                  : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+              }`}
+            >
+              <SlidersHorizontal className="w-3 h-3" />
+              <span>Commander</span>
+            </button>
+          )}
 
-        {userPermissions.room_commander && (
-          <button
-            onClick={() => setActiveTab('room_commander')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'room_commander'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-emerald-600 dark:text-emerald-400 hover:text-emerald-800'
-            }`}
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Room Commander ({commanderRooms.length})</span>
-          </button>
-        )}
+          {/* Divider */}
+          <div className="w-px h-5 bg-[#E3E8E3] dark:bg-slate-700 mx-1 shrink-0" />
 
-        {userPermissions.dispute_resolver && (
-          <button
-            onClick={() => setActiveTab('dispute_resolver')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'dispute_resolver'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-amber-600 dark:text-amber-400 hover:text-amber-800'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-amber-500" />
-            <span>Disputes & Expenses ({allGlobalTx.length})</span>
-          </button>
-        )}
+          {/* Group 3: Finance */}
+          {userPermissions.settlements && (
+            <button
+              onClick={() => setActiveTab('finance_audit')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'finance_audit'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                  : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+              }`}
+            >
+              <PieChart className="w-3 h-3" />
+              <span>Finance</span>
+            </button>
+          )}
 
-        {userPermissions.database_studio && (
-          <button
-            onClick={() => setActiveTab('database_studio')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'database_studio'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-cyan-600 dark:text-cyan-400 hover:text-cyan-800'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5 text-cyan-500" />
-            <span>Database Studio</span>
-          </button>
-        )}
+          {userPermissions.settlements && (
+            <button
+              onClick={() => setActiveTab('settlements')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'settlements'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                  : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+              }`}
+            >
+              <HandCoins className="w-3 h-3" />
+              <span>Settlements</span>
+            </button>
+          )}
 
-        {userPermissions.system_triggers && (
-          <button
-            onClick={() => setActiveTab('system_triggers')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'system_triggers'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-rose-600 dark:text-rose-400 hover:text-rose-800'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-            <span>System Macro Triggers</span>
-          </button>
-        )}
+          {userPermissions.dispute_resolver && (
+            <button
+              onClick={() => setActiveTab('dispute_resolver')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'dispute_resolver'
+                  ? 'bg-amber-700 text-white shadow-sm'
+                  : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+              }`}
+            >
+              <FileSpreadsheet className="w-3 h-3" />
+              <span>Disputes</span>
+              <span className="ml-0.5 text-[9px] bg-amber-500/20 px-1.5 py-0.5 rounded-full font-black">{allGlobalTx.length}</span>
+            </button>
+          )}
 
-        {(isSuperAdmin || userPermissions.maintenance_control) && (
-          <button
-            onClick={() => setActiveTab('security_audit')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'security_audit'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Security Audit Logs</span>
-          </button>
-        )}
+          {/* Divider */}
+          <div className="w-px h-5 bg-[#E3E8E3] dark:bg-slate-700 mx-1 shrink-0" />
 
-        {userPermissions.maintenance_control && (
-          <button
-            onClick={() => setActiveTab('maintenance')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'maintenance'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <Power className="w-3.5 h-3.5 text-rose-500" />
-            <span>Site Maintenance</span>
-          </button>
-        )}
+          {/* Group 4: System & Tools */}
+          {userPermissions.database_studio && (
+            <button
+              onClick={() => setActiveTab('database_studio')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'database_studio'
+                  ? 'bg-cyan-700 text-white shadow-sm'
+                  : 'text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-950/30'
+              }`}
+            >
+              <Database className="w-3 h-3" />
+              <span>DB Studio</span>
+            </button>
+          )}
 
-        {userPermissions.broadcasts && (
-          <button
-            onClick={() => setActiveTab('broadcast')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'broadcast'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5 text-purple-500" />
-            <span>Broadcasts</span>
-          </button>
-        )}
+          {userPermissions.system_triggers && (
+            <button
+              onClick={() => setActiveTab('system_triggers')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'system_triggers'
+                  ? 'bg-rose-700 text-white shadow-sm'
+                  : 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+              }`}
+            >
+              <Zap className="w-3 h-3" />
+              <span>Triggers</span>
+            </button>
+          )}
 
-        {userPermissions.broadcasts && (
-          <button
-            onClick={() => setActiveTab('email')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'email'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <Mail className="w-3.5 h-3.5 text-blue-400" />
-            <span>Email Hub</span>
-          </button>
-        )}
+          {(isSuperAdmin || userPermissions.maintenance_control) && (
+            <button
+              onClick={() => setActiveTab('security_audit')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'security_audit'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                  : 'text-[#5C6E5C] dark:text-slate-300 hover:bg-[#EAF0EC] dark:hover:bg-slate-800'
+              }`}
+            >
+              <ShieldCheck className="w-3 h-3 text-emerald-400" />
+              <span>Audit</span>
+            </button>
+          )}
 
-        {userPermissions.room_pinning && (
-          <button
-            onClick={() => setActiveTab('pinning')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'pinning'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <Pin className="w-3.5 h-3.5 text-amber-400" />
-            <span>Room Pinning</span>
-          </button>
-        )}
+          {userPermissions.maintenance_control && (
+            <button
+              onClick={() => setActiveTab('maintenance')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'maintenance'
+                  ? 'bg-rose-700 text-white shadow-sm'
+                  : 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+              }`}
+            >
+              <Power className="w-3 h-3" />
+              <span>Maintenance</span>
+            </button>
+          )}
 
-        {userPermissions.latency_diagnostics && (
-          <button
-            onClick={() => setActiveTab('latency')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'latency'
-                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Latency</span>
-          </button>
-        )}
+          {userPermissions.broadcasts && (
+            <button
+              onClick={() => setActiveTab('broadcast')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'broadcast'
+                  ? 'bg-purple-700 text-white shadow-sm'
+                  : 'text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30'
+              }`}
+            >
+              <Radio className="w-3 h-3" />
+              <span>Broadcast</span>
+            </button>
+          )}
 
-        {isSuperAdmin && (
-          <button
-            onClick={() => setActiveTab('chaos_tester')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'chaos_tester'
-                ? 'bg-rose-600 text-white shadow-md'
-                : 'hud-card text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-            }`}
-          >
-            <Terminal className="w-3.5 h-3.5" />
-            <span>Chaos & Flags</span>
-          </button>
-        )}
+          {userPermissions.broadcasts && (
+            <button
+              onClick={() => setActiveTab('email')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'email'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                  : 'text-[#5C6E5C] dark:text-slate-300 hover:bg-[#EAF0EC] dark:hover:bg-slate-800'
+              }`}
+            >
+              <Mail className="w-3 h-3 text-blue-400" />
+              <span>Email</span>
+            </button>
+          )}
+
+          {userPermissions.room_pinning && (
+            <button
+              onClick={() => setActiveTab('pinning')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'pinning'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                  : 'text-[#5C6E5C] dark:text-slate-300 hover:bg-[#EAF0EC] dark:hover:bg-slate-800'
+              }`}
+            >
+              <Pin className="w-3 h-3 text-amber-400" />
+              <span>Pinning</span>
+            </button>
+          )}
+
+          {userPermissions.latency_diagnostics && (
+            <button
+              onClick={() => setActiveTab('latency')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'latency'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                  : 'text-[#5C6E5C] dark:text-slate-300 hover:bg-[#EAF0EC] dark:hover:bg-slate-800'
+              }`}
+            >
+              <Sliders className="w-3 h-3 text-emerald-400" />
+              <span>Latency</span>
+            </button>
+          )}
+
+          {isSuperAdmin && (
+            <button
+              onClick={() => setActiveTab('chaos_tester')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'chaos_tester'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+              }`}
+            >
+              <Terminal className="w-3 h-3" />
+              <span>Chaos</span>
+            </button>
+          )}
+        </div>
+
+        {/* Active tab breadcrumb */}
+        <div className="mt-2 pt-2 border-t border-[#E3E8E3]/60 dark:border-slate-800/60 flex items-center gap-1.5">
+          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Now viewing:</span>
+          <span className="text-[10px] font-black text-[#1A3827] dark:text-[#A3E635] capitalize">
+            {activeTab.replace(/_/g, ' ')}
+          </span>
+        </div>
       </div>
 
       {/* Tab 1: Overview Controls (Super Admin Root vs MNC Co-Admin Operations Console) */}
