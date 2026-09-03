@@ -11665,40 +11665,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           )}
         </div>
 
-        {/* ─── Futuristic Quota Mode Header Banner ─── */}
-        <div className="mb-5 bg-gradient-to-r from-[#0F291E] via-[#163E2D] to-[#0A1F16] text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-emerald-500/20 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-500/10 blur-3xl rounded-full pointer-events-none -mr-20 -mt-20" />
-          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1 ${
-                  isQuotaMode ? 'bg-[#A3E635] text-slate-950' : 'bg-slate-700 text-slate-300'
-                }`}>
-                  <span>{isQuotaMode ? '⚡ QUOTA & EXCESS POOL MODE' : 'CLASSIC EQUAL SPLIT MODE'}</span>
-                </span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                {isQuotaMode ? 'Personal Quotas & Excess Pool' : 'Standard Expense Splitter'}
-              </h2>
-              <p className="text-xs text-slate-300/80 max-w-xl leading-relaxed">
-                {isQuotaMode 
-                  ? 'Members spend towards their preset quotas. Extra spending beyond quota forms an Excess Pool, split equally at month-end.'
-                  : 'Classic Splitwise mode where shared expenses are divided on each transaction.'}
-              </p>
-            </div>
-
-            {/* Permanent Room Mode Indicator Badge */}
-            <div className="flex items-center gap-2.5 bg-white/10 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 shrink-0">
-              <div className="text-right">
-                <p className="text-[9px] font-extrabold uppercase tracking-widest text-[#A3E635]">Permanent Mode</p>
-                <p className="text-[11px] font-black text-white flex items-center justify-end gap-1">
-                  <span>{isQuotaMode ? '⚡ Quota Mode' : '⚖️ Split Mode'}</span>
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* ─── Greeting + CTA Button ─── */}
         <div className="flex items-center justify-between mb-5">
           <div>
