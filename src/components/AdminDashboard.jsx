@@ -56,6 +56,7 @@ import {
   X
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
+import securityShieldLogo from '../assets/tallyin_security_shield.png';
 import { supabase, realSupabase } from '../supabase';
 
 const ADMIN_EMAILS = [
@@ -1611,6 +1612,9 @@ export default function AdminDashboard({
       ? `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 28px; background-color: #ffffff; border-radius: 20px; border: 1px solid #fca5a5; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
           <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #ef4444;">
+            <div style="margin: 0 auto 14px auto; text-align: center;">
+              <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/public/tallyin_security_shield.png" alt="Tallyin Security" width="88" height="88" style="width: 88px; height: 88px; display: inline-block; object-fit: contain;" />
+            </div>
             <div style="display: inline-block; padding: 5px 14px; background-color: #fee2e2; border: 1px solid #fecaca; border-radius: 9999px; color: #991b1b; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
               Security De-Authorization Notice
             </div>
@@ -1649,6 +1653,9 @@ export default function AdminDashboard({
       : `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 28px; background-color: #ffffff; border-radius: 20px; border: 1px solid #cbd5e1; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
           <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #10b981;">
+            <div style="margin: 0 auto 14px auto; text-align: center;">
+              <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/public/tallyin_security_shield.png" alt="Tallyin Security" width="88" height="88" style="width: 88px; height: 88px; display: inline-block; object-fit: contain;" />
+            </div>
             <div style="display: inline-block; padding: 5px 14px; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; color: #047857; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
               Security Clearance Authorization
             </div>
@@ -5787,16 +5794,18 @@ NOTIFY pgrst, 'reload schema';`;
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-start justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                  <h3 className="text-base font-black text-[#1A3827] dark:text-white">
-                    Official Security Clearance Certificate
-                  </h3>
+              <div className="flex items-center gap-3">
+                <img src={securityShieldLogo} alt="Tallyin Security" className="w-12 h-12 object-contain rounded-2xl shadow-md border border-emerald-500/30 bg-emerald-950/20 p-1 shrink-0" />
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-[#1A3827] dark:text-white">
+                      Official Security Clearance Certificate
+                    </h3>
+                  </div>
+                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                    Tallyin Identity & Access Management Governance Audit
+                  </p>
                 </div>
-                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                  Tallyin Identity & Access Management Governance Audit
-                </p>
               </div>
               <button
                 type="button"
