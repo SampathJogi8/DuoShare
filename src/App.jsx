@@ -5221,6 +5221,7 @@ export default function App() {
         : fallbackQuotaShare;
       const quotaUsed = Math.min(spent, budget);
       const excess = Math.max(0, spent - budget);
+      const remaining = Math.max(0, budget - spent);
       const pct = budget > 0 ? Math.min(100, Math.round(((spent / budget) * 100) * 100) / 100) : 0;
       const roomPct = activeRoomBudget > 0 ? Math.min(100, Math.round(((spent / activeRoomBudget) * 100) * 100) / 100) : 0;
       return {
