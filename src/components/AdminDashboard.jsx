@@ -1143,6 +1143,40 @@ export default function AdminDashboard({
     if (triggerToast) triggerToast('Maintenance notice text updated!');
   };
 
+  // Save & Broadcast Maintenance Features
+  const [isSavingFeatures, setIsSavingFeatures] = useState(false);
+  const handleSaveMaintenanceFeatures = async (listToSave) => {
+    const list = listToSave !== undefined ? listToSave : (maintenanceFeatures || []);
+    setIsSavingFeatures(true);
+    if (setMaintenanceFeatures) {
+      setMaintenanceFeatures(list);
+    }
+    localStorage.setItem('tallyin_maintenance_features', JSON.stringify(list));
+
+    try {
+      await supabase.from('system_settings').upsert({
+        key: 'maintenance_features',
+        value: JSON.stringify(list),
+        created_at: new Date().toISOString()
+      }, { onConflict: 'key' });
+    } catch (e) {
+      console.warn("Save maintenance_features DB notice:", e);
+    }
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'MAINTENANCE_FEATURES',
+        payload: { features: list }
+      });
+    } catch (e) {}
+
+    setIsSavingFeatures(false);
+    logAuditAction('UPDATE_MAINTENANCE_FEATURES', `Updated ${list.length} maintenance feature highlights`);
+    if (triggerToast) triggerToast('✅ Maintenance features saved & published live!');
+  };
+
   // Toggle Maintenance Mode
   const handleToggleMaintenance = async () => {
     if (!userPermissions.maintenance_control) {
@@ -2647,34 +2681,80 @@ export default function AdminDashboard({
 
             {/* Maintenance Page Feature List Editor */}
             <div className="border-t border-[#E3E8E3] dark:border-slate-800 pt-6 space-y-4">
-              <div className="space-y-1">
-                <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                  Maintenance Page Feature Highlights
-                </h4>
-                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
-                  Edit the feature rows shown on the maintenance screen. Each row shows an icon, label, and muted description.
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    Maintenance Page Feature Highlights ({ (maintenanceFeatures || []).length })
+                  </h4>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                    Edit the feature rows shown on the public maintenance screen. Changes save to database & sync live.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const defaultSet = [
+                        { icon: 'bolt',         label: 'Ultra Fast Engine',    sub: 'Cloudflare D1 edge compute' },
+                        { icon: 'palette',      label: 'Refined UI & Dark Mode', sub: 'Minimal, intuitive design' },
+                        { icon: 'shield-check', label: 'Bank-Grade Security',   sub: 'Encrypted multi-device sync' }
+                      ];
+                      handleSaveMaintenanceFeatures(defaultSet);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-700 text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-white"
+                  >
+                    Reset Defaults
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingFeatures}
+                    onClick={() => handleSaveMaintenanceFeatures(maintenanceFeatures)}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-sm flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    {isSavingFeatures ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Save & Publish Live</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
+
               <div className="space-y-2">
                 {(maintenanceFeatures || []).map((feat, idx) => (
-                  <div key={idx} className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2.5">
-                    <select
-                      value={feat.icon}
-                      onChange={e => {
-                        const next = [...maintenanceFeatures];
-                        next[idx] = { ...next[idx], icon: e.target.value };
-                        if (setMaintenanceFeatures) setMaintenanceFeatures(next);
-                        localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
-                      }}
-                      className="text-[11px] bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-lg px-2 py-1 text-[#1A3827] dark:text-slate-200 focus:outline-none shrink-0 w-[115px]"
-                    >
-                      <option value="bolt">⚡ Bolt</option>
-                      <option value="zap">⚡ Zap</option>
-                      <option value="palette">🎨 Palette</option>
-                      <option value="sparkles">✨ Sparkles</option>
-                      <option value="shield-check">🛡️ Shield</option>
-                    </select>
+                  <div key={idx} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-2.5 shadow-sm">
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] font-bold text-slate-400 w-4 text-center">{idx + 1}.</span>
+                      <select
+                        value={feat.icon}
+                        onChange={e => {
+                          const next = [...maintenanceFeatures];
+                          next[idx] = { ...next[idx], icon: e.target.value };
+                          if (setMaintenanceFeatures) setMaintenanceFeatures(next);
+                          localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
+                        }}
+                        className="text-xs font-semibold bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-xl px-2.5 py-2 text-[#1A3827] dark:text-slate-200 focus:outline-none w-[130px]"
+                      >
+                        <option value="bolt">⚡ Bolt (Speed)</option>
+                        <option value="zap">⚡ Zap (Core)</option>
+                        <option value="palette">🎨 Palette (Design)</option>
+                        <option value="shield-check">🛡️ Shield (Security)</option>
+                        <option value="database">🗄️ Database</option>
+                        <option value="sparkles">✨ Sparkles (Smart)</option>
+                        <option value="cloud">☁️ Cloud (Sync)</option>
+                        <option value="lock">🔒 Lock (Private)</option>
+                        <option value="cpu">🚀 CPU (Engine)</option>
+                      </select>
+                    </div>
+
                     <input
                       type="text"
                       value={feat.label}
@@ -2684,9 +2764,10 @@ export default function AdminDashboard({
                         if (setMaintenanceFeatures) setMaintenanceFeatures(next);
                         localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
                       }}
-                      placeholder="Label"
-                      className="flex-1 text-[11px] bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-lg px-2 py-1 text-[#1A3827] dark:text-slate-200 focus:outline-none"
+                      placeholder="Headline / Label"
+                      className="flex-1 text-xs font-bold bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-xl px-3 py-2 text-[#1A3827] dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
+
                     <input
                       type="text"
                       value={feat.sub}
@@ -2696,32 +2777,46 @@ export default function AdminDashboard({
                         if (setMaintenanceFeatures) setMaintenanceFeatures(next);
                         localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
                       }}
-                      placeholder="Muted description"
-                      className="flex-1 text-[11px] bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-lg px-2 py-1 text-[#5C6E5C] dark:text-slate-400 focus:outline-none"
+                      placeholder="Muted subtitle description"
+                      className="flex-1 text-xs bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-xl px-3 py-2 text-[#5C6E5C] dark:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
+
                     <button
                       type="button"
                       onClick={() => {
                         const next = maintenanceFeatures.filter((_, i) => i !== idx);
-                        if (setMaintenanceFeatures) setMaintenanceFeatures(next);
-                        localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
+                        handleSaveMaintenanceFeatures(next);
                       }}
-                      className="shrink-0 text-rose-500 hover:text-rose-700 text-base font-bold p-1 rounded transition-colors"
-                      title="Remove row"
-                    >×</button>
+                      className="self-center text-rose-500 hover:text-rose-700 p-2 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                      title="Delete this feature highlight"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = [...(maintenanceFeatures || []), { icon: 'bolt', label: 'New feature', sub: 'Short description' }];
-                    if (setMaintenanceFeatures) setMaintenanceFeatures(next);
-                    localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
-                  }}
-                  className="w-full py-2 border border-dashed border-[#E3E8E3] dark:border-slate-700 rounded-xl text-[11px] text-[#5C6E5C] dark:text-slate-400 hover:border-emerald-500 hover:text-emerald-600 transition-colors"
-                >
-                  + Add row
-                </button>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = [...(maintenanceFeatures || []), { icon: 'bolt', label: 'High Performance', sub: 'Optimized for mobile & web' }];
+                      handleSaveMaintenanceFeatures(next);
+                    }}
+                    className="flex-1 py-2.5 border border-dashed border-[#E3E8E3] dark:border-slate-700 rounded-2xl text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:border-emerald-500 hover:text-emerald-600 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add New Feature Highlight</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingFeatures}
+                    onClick={() => handleSaveMaintenanceFeatures(maintenanceFeatures)}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-2xl shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save All Changes</span>
+                  </button>
+                </div>
               </div>
             </div>
 

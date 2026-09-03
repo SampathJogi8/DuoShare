@@ -904,6 +904,12 @@ export default function App() {
           localStorage.setItem('tallyin_co_admins', JSON.stringify(payload.payload.coAdmins));
         }
       })
+      .on('broadcast', { event: 'MAINTENANCE_FEATURES' }, (payload) => {
+        if (payload?.payload?.features && Array.isArray(payload.payload.features)) {
+          setMaintenanceFeatures(payload.payload.features);
+          localStorage.setItem('tallyin_maintenance_features', JSON.stringify(payload.payload.features));
+        }
+      })
       .subscribe();
 
     // Expiration helper for broadcast messages (Default 2 Calendar Days validity)
