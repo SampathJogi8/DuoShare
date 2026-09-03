@@ -5077,6 +5077,10 @@ export default function App() {
       return `${payerName} paid • Direct Settlement Payment`;
     }
 
+    if (isQuotaMode && t.category !== 'Payment') {
+      return `${payerName} paid`;
+    }
+
     let splitText;
     if (!t.isShared) {
       // Find who the personal expense is for
@@ -6152,7 +6156,11 @@ export default function App() {
     // Determine split label text and classification
     let splitLabel;
     let isSharedExpense = true;
-    if (splitsArray.length === 1) {
+    const finalSplitType = isQuotaMode ? 'quota' : splitType;
+    if (isQuotaMode) {
+      splitLabel = 'Quota Entry';
+      isSharedExpense = true;
+    } else if (splitsArray.length === 1) {
       isSharedExpense = false;
       if (splitsArray[0].uid === formPaidBy) {
         splitLabel = 'Personal';
@@ -6237,7 +6245,7 @@ export default function App() {
       paidBy: payerMember.nickname,
       paidByUid: formPaidBy || auth.currentUser?.uid || 'anonymous',
       isShared: isSharedExpense,
-      splitType,
+      splitType: finalSplitType,
       split: splitLabel,
       splits: splitsArray
     };
@@ -13038,102 +13046,99 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </select>
             </div>
 
-            {/* Split Type Tabs */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Split type</label>
-              <div className="bg-[#F6F8F6] dark:bg-slate-950 p-1 rounded-xl flex gap-1 border border-[#E3E8E3]/50 dark:border-slate-800">
-                {(isQuotaMode ? ['equal', 'percentage', 'amount', 'budget_weighted'] : ['equal', 'percentage', 'amount']).map(type => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setSplitType(type)}
-                    className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all duration-150 capitalize ${
-                      splitType === type
-                        ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 shadow-sm'
-                        : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827]'
-                    }`}
-                  >
-                    {type === 'equal' ? 'Equally' : type === 'percentage' ? 'By %' : type === 'amount' ? 'By ₹' : 'Budget Ratio'}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Split Type Tabs & Breakdown (Classic Split Mode Only) */}
+            {!isQuotaMode && (
+              <>
+                {/* Split Type Tabs */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Split type</label>
+                  <div className="bg-[#F6F8F6] dark:bg-slate-950 p-1 rounded-xl flex gap-1 border border-[#E3E8E3]/50 dark:border-slate-800">
+                    {['equal', 'percentage', 'amount'].map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setSplitType(type)}
+                        className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all duration-150 capitalize ${
+                          splitType === type
+                            ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 shadow-sm'
+                            : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827]'
+                        }`}
+                      >
+                        {type === 'equal' ? 'Equally' : type === 'percentage' ? 'By %' : 'By ₹'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Split Members & Values */}
-            {members.length > 0 && (
-              <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/30 dark:bg-slate-900/20 space-y-2">
-                <p className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">Split breakdown</p>
-                {members.map(m => {
-                  const isChecked = selectedSplitMembers[m.uid] !== false;
-                  const amountNum = parseFloat(formAmount) || 0;
-                  const checkedMembers = members.filter(mm => selectedSplitMembers[mm.uid] !== false);
-                  const checkedCount = checkedMembers.length || 1;
-                  const equalShare = amountNum / checkedCount;
-                  const totalCheckedBudget = checkedMembers.reduce((sum, mm) => sum + (Number(mm.individualBudget) || 2000), 0);
-                  const mBudget = Number(m.individualBudget) || 2000;
-                  const budgetWeightedShare = totalCheckedBudget > 0 ? (amountNum * (mBudget / totalCheckedBudget)) : equalShare;
-                  return (
-                    <div key={m.uid} className="flex items-center gap-2 py-1">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => setSelectedSplitMembers(prev => ({ ...prev, [m.uid]: e.target.checked }))}
-                        className="w-3.5 h-3.5 accent-[#1A3827] shrink-0"
-                      />
-                      {m.photoURL ? (
-                        <img 
-                          src={m.photoURL} 
-                          alt={m.nickname} 
-                          className="w-6 h-6 rounded-full object-cover shrink-0 border border-[#E3E8E3] dark:border-slate-800"
-                        />
-                      ) : (
-                        <div className="w-6 h-6 rounded-full bg-[#1A3827] text-white flex items-center justify-center font-bold text-[9px] shrink-0">
-                          {m.nickname?.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="text-[11px] font-semibold text-[#1A3827] dark:text-slate-200 flex-1 truncate">
-                        {m.uid === auth.currentUser?.uid ? `${m.nickname} (You)` : m.nickname}
-                      </span>
-                      {splitType === 'equal' && isChecked && (
-                        <span className="text-[11px] font-bold text-[#1A3827] dark:text-[#A3E635]">{formatINR(equalShare)}</span>
-                      )}
-                      {splitType === 'budget_weighted' && isChecked && (
-                        <span className="text-[11px] font-bold text-[#1A3827] dark:text-[#A3E635]">
-                          {formatINR(budgetWeightedShare)} <span className="text-[9px] font-normal text-slate-400">({totalCheckedBudget > 0 ? Math.round((mBudget / totalCheckedBudget) * 100) : 0}%)</span>
-                        </span>
-                      )}
-                      {splitType === 'percentage' && isChecked && (
-                        <div className="flex items-center gap-1">
+                {/* Split Members & Values */}
+                {members.length > 0 && (
+                  <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/30 dark:bg-slate-900/20 space-y-2">
+                    <p className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">Split breakdown</p>
+                    {members.map(m => {
+                      const isChecked = selectedSplitMembers[m.uid] !== false;
+                      const amountNum = parseFloat(formAmount) || 0;
+                      const checkedMembers = members.filter(mm => selectedSplitMembers[mm.uid] !== false);
+                      const checkedCount = checkedMembers.length || 1;
+                      const equalShare = amountNum / checkedCount;
+                      return (
+                        <div key={m.uid} className="flex items-center gap-2 py-1">
                           <input
-                            type="number"
-                            min="0" max="100"
-                            step="any"
-                            value={customSplitValues[m.uid] || ''}
-                            onChange={e => setCustomSplitValues(prev => ({...prev, [m.uid]: e.target.value}))}
-                            placeholder="%"
-                            className="w-14 px-2 py-1 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[10px] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 focus:outline-none"
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => setSelectedSplitMembers(prev => ({ ...prev, [m.uid]: e.target.checked }))}
+                            className="w-3.5 h-3.5 accent-[#1A3827] shrink-0"
                           />
-                          <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400">%</span>
+                          {m.photoURL ? (
+                            <img 
+                              src={m.photoURL} 
+                              alt={m.nickname} 
+                              className="w-6 h-6 rounded-full object-cover shrink-0 border border-[#E3E8E3] dark:border-slate-800"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-[#1A3827] text-white flex items-center justify-center font-bold text-[9px] shrink-0">
+                              {m.nickname?.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="text-[11px] font-semibold text-[#1A3827] dark:text-slate-200 flex-1 truncate">
+                            {m.uid === auth.currentUser?.uid ? `${m.nickname} (You)` : m.nickname}
+                          </span>
+                          {splitType === 'equal' && isChecked && (
+                            <span className="text-[11px] font-bold text-[#1A3827] dark:text-[#A3E635]">{formatINR(equalShare)}</span>
+                          )}
+                          {splitType === 'percentage' && isChecked && (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="0" max="100"
+                                step="any"
+                                value={customSplitValues[m.uid] || ''}
+                                onChange={e => setCustomSplitValues(prev => ({...prev, [m.uid]: e.target.value}))}
+                                placeholder="%"
+                                className="w-14 px-2 py-1 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[10px] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 focus:outline-none"
+                              />
+                              <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400">%</span>
+                            </div>
+                          )}
+                          {splitType === 'amount' && isChecked && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-[#5C6E5C]">₹</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={customSplitValues[m.uid] || ''}
+                                onChange={e => setCustomSplitValues(prev => ({...prev, [m.uid]: e.target.value}))}
+                                placeholder="0"
+                                className="w-16 px-2 py-1 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[10px] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 focus:outline-none"
+                              />
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {splitType === 'amount' && isChecked && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-[#5C6E5C]">₹</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={customSplitValues[m.uid] || ''}
-                            onChange={e => setCustomSplitValues(prev => ({...prev, [m.uid]: e.target.value}))}
-                            placeholder="0"
-                            className="w-16 px-2 py-1 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[10px] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 focus:outline-none"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
 
             <label className="flex items-center gap-2.5 cursor-pointer py-1">

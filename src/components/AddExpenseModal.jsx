@@ -7,7 +7,8 @@ export default function AddExpenseModal({
   members,
   userNickname,
   handleAddExpense,
-  triggerToast
+  triggerToast,
+  isQuotaMode = false
 }) {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -142,26 +143,28 @@ export default function AddExpenseModal({
             </div>
           </div>
 
-          {/* Split Mode Selector */}
-          <div className="space-y-1.5 pt-2">
-            <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Split Mode</label>
-            <div className="grid grid-cols-3 gap-2">
-              {['equal', 'custom', 'percentage'].map(type => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setSplitType(type)}
-                  className={`py-2 px-3 rounded-xl text-xs font-extrabold capitalize transition-all border ${
-                    splitType === type
-                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 border-[#1A3827] dark:border-[#A3E635] shadow-sm'
-                      : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border-[#E3E8E3] dark:border-slate-800 hover:text-[#1A3827]'
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
+          {/* Split Mode Selector (Classic Split Mode Only) */}
+          {!isQuotaMode && (
+            <div className="space-y-1.5 pt-2">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Split Mode</label>
+              <div className="grid grid-cols-3 gap-2">
+                {['equal', 'custom', 'percentage'].map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setSplitType(type)}
+                    className={`py-2 px-3 rounded-xl text-xs font-extrabold capitalize transition-all border ${
+                      splitType === type
+                        ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 border-[#1A3827] dark:border-[#A3E635] shadow-sm'
+                        : 'bg-white dark:bg-slate-900 text-[#5C6E5C] dark:text-slate-400 border-[#E3E8E3] dark:border-slate-800 hover:text-[#1A3827]'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Receipt Attachment Upload */}
           <div className="space-y-1.5 pt-2">
