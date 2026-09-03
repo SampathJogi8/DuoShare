@@ -5160,21 +5160,21 @@ export default function App() {
 
     if (isQuotaMode && members.length > 0) {
       const quotaBalances = {};
-      const memberExcessMap = {};
-      
+      const activeRoomBudget = Number(monthlyBudget) || 3000;
+      const fallbackShare = Math.round(activeRoomBudget / members.length);
+      const totalAllocatedQuotas = members.reduce((sum, m) => sum + (Number(m.individualBudget) || fallbackShare), 0) || activeRoomBudget;
+
+      // In Quota Mode, total spend obligation for each member is proportional to their quota share:
+      // Obligation_i = totalSpend * (Quota_i / totalAllocatedQuotas)
+      // Net Balance_i = OutOfPocketSpend_i - Obligation_i
       members.forEach(m => {
         const spent = memberOutofPocket[m.uid] || 0;
-        const budget = Number(m.individualBudget) || 2000;
-        const excess = Math.max(0, spent - budget);
-        memberExcessMap[m.uid] = excess;
-        totalExcessPool += excess;
-      });
-
-      excessSharePerMember = totalExcessPool / members.length;
-
-      members.forEach(m => {
-        const excess = memberExcessMap[m.uid] || 0;
-        let netBal = excess - excessSharePerMember;
+        const myQuota = (m.individualBudget !== null && m.individualBudget !== undefined && Number(m.individualBudget) > 0)
+          ? Number(m.individualBudget)
+          : fallbackShare;
+        const myRatio = myQuota / totalAllocatedQuotas;
+        const myObligation = totalSpend * myRatio;
+        const netBal = spent - myObligation;
         quotaBalances[m.uid] = Math.round(netBal * 100) / 100;
       });
 
@@ -12440,15 +12440,17 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                                   {m.nickname}{isSelf ? ' (You)' : ''}
                                 </span>
                               </div>
-                              <button
-                                onClick={() => {
-                                  setEditingMemberBudget(m);
-                                  setNewMemberBudgetVal(m.budget);
-                                }}
-                                className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline cursor-pointer"
-                              >
-                                Set Cap
-                              </button>
+                                {isHostOrCoHost && (
+                                  <button
+                                    onClick={() => {
+                                      setEditingMemberBudget(m);
+                                      setNewMemberBudgetVal(m.budget);
+                                    }}
+                                    className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline cursor-pointer"
+                                  >
+                                    Set Cap
+                                  </button>
+                                )}
                             </div>
 
                             <div className="space-y-1.5">
@@ -14023,6 +14025,44 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <p className="text-xs sm:text-sm font-black text-emerald-700 dark:text-[#A3E635] font-mono mt-0.5">{formatINR(fairSharePerMember)}/ea</p>
               </div>
             </div>
+
+            {/* Quota Mode Proportions Breakdown */}
+            {isQuotaMode && members.length > 0 && (
+              <div className="p-3.5 rounded-2xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/50 space-y-2">
+                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-purple-900 dark:text-purple-300">
+                  <span>Quota Proportions &amp; Obligations</span>
+                  <span>Total Cap: {formatINR(computedStats.totalRoomBudgetPool)}</span>
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {computedStats.memberBudgetStats.map(m => {
+                    const quotaRatio = computedStats.totalRoomBudgetPool > 0 ? (m.budget / computedStats.totalRoomBudgetPool) : (1 / members.length);
+                    const quotaPct = Math.round(quotaRatio * 100);
+                    const obligation = Math.round(totalGroupSpend * quotaRatio);
+                    const bal = computedStats.balances[m.uid] || 0;
+                    return (
+                      <div key={m.uid} className="flex items-center justify-between text-xs p-2 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/30">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-[#1A3827] dark:text-slate-100">{m.nickname}</span>
+                            <span className="text-[9px] text-purple-700 dark:text-purple-400 font-extrabold bg-purple-100 dark:bg-purple-950/60 px-1.5 py-0.2 rounded-md">
+                              {quotaPct}% • {formatINR(m.budget)}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                            Paid: <strong className="text-[#1A3827] dark:text-white">{formatINR(m.spent)}</strong> | Obligation: <strong>{formatINR(obligation)}</strong>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-xs font-black font-mono ${bal > 0 ? 'text-emerald-600 dark:text-[#A3E635]' : bal < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>
+                            {bal > 0 ? `+${formatINR(bal)}` : bal < 0 ? `-${formatINR(Math.abs(bal))}` : 'Settled'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Suggested Transfers / Debt Plan */}
             <div className="space-y-3">
