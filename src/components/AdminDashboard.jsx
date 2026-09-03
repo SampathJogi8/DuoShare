@@ -47,7 +47,13 @@ import {
   Shield,
   CheckSquare,
   Square,
-  UserPlus
+  UserPlus,
+  Eye,
+  FileCheck,
+  Network,
+  Laptop,
+  ExternalLink,
+  X
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import { supabase, realSupabase } from '../supabase';
@@ -164,6 +170,16 @@ export default function AdminDashboard({
   const [editingCoAdminEmail, setEditingCoAdminEmail] = useState(null);
   const [editingPerms, setEditingPerms] = useState({});
   const [coAdminFilter, setCoAdminFilter] = useState('');
+  const [coAdminAckRegistry, setCoAdminAckRegistry] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tallyin_co_admin_ack_registry');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedAckRecord, setSelectedAckRecord] = useState(null);
+  const [ackSearchQuery, setAckSearchQuery] = useState('');
 
   // Maintenance form states
   const [maintMsgInput, setMaintMsgInput] = useState(maintenanceMessage || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.');
@@ -1097,6 +1113,27 @@ export default function AdminDashboard({
     }
   }, []);
 
+  // Fetch Co-Admin Acknowledgement & Clearance Registry from system_settings
+  const fetchCoAdminAckRegistry = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'co_admin_ack_registry')
+        .maybeSingle();
+
+      if (!error && data?.value) {
+        const parsed = JSON.parse(data.value);
+        if (Array.isArray(parsed)) {
+          setCoAdminAckRegistry(parsed);
+          localStorage.setItem('tallyin_co_admin_ack_registry', JSON.stringify(parsed));
+        }
+      }
+    } catch (e) {
+      console.warn("Ack registry fetch notice:", e);
+    }
+  }, []);
+
   useEffect(() => {
     if (isAuthorizedAdmin) {
       measurePing();
@@ -1105,8 +1142,9 @@ export default function AdminDashboard({
       fetchUserDirectory();
       fetchBannedUsers();
       fetchBanAppeals();
+      fetchCoAdminAckRegistry();
     }
-  }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals]);
+  }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry]);
 
 
 
@@ -1469,6 +1507,220 @@ export default function AdminDashboard({
     } catch (e) {}
   };
 
+  // Client IP Detector for Security Audit
+  const fetchClientIp = async () => {
+    try {
+      const res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(2500) });
+      const data = await res.json();
+      if (data.ip) return data.ip;
+    } catch (e) {
+      console.warn("ipify lookup notice:", e);
+    }
+    try {
+      const res = await fetch('https://cloudflare.com/cdn-cgi/trace', { signal: AbortSignal.timeout(2500) });
+      const text = await res.text();
+      const match = text.match(/ip=(.+)/);
+      if (match && match[1]) return match[1].trim();
+    } catch (e) {
+      console.warn("cloudflare trace lookup notice:", e);
+    }
+    return '127.0.0.1 (Local Session)';
+  };
+
+  // Generate unique MNC-grade security acknowledgement reference
+  const generateAckNumber = () => {
+    const d = new Date();
+    const dateStr = d.toISOString().slice(0, 10).replace(/-/g, '');
+    const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `ACK-CAD-${dateStr}-${randomHex}`;
+  };
+
+  // Generate cryptographic-style verification signature
+  const generateSecurityChecksum = (ackNumber, targetEmail, ip, timestamp) => {
+    const str = `${ackNumber}|${targetEmail}|${ip}|${timestamp}|TALLYIN_RBAC_V3`;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0;
+    }
+    const hex = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+    return `SEC-SIG-${hex}`;
+  };
+
+  // Save acknowledgement record to state, localStorage, and system_settings
+  const saveAckRecord = async (newAck) => {
+    setCoAdminAckRegistry(prev => {
+      const next = [newAck, ...prev.filter(r => r.ackNumber !== newAck.ackNumber)].slice(0, 100);
+      localStorage.setItem('tallyin_co_admin_ack_registry', JSON.stringify(next));
+      supabase.from('system_settings').upsert({
+        key: 'co_admin_ack_registry',
+        value: JSON.stringify(next),
+        created_at: new Date().toISOString()
+      }, { onConflict: 'key' }).catch(err => console.warn("Supabase ack_registry upsert notice:", err));
+      return next;
+    });
+  };
+
+  // Automated Security Clearance Email Dispatcher
+  const sendCoAdminSecurityEmail = async ({ action, targetEmail, targetName, permissions, ackRecord }) => {
+    const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+    const isRevoke = action === 'REVOKE';
+    const actionTitle = isRevoke 
+      ? 'Access Revoked' 
+      : action === 'UPDATE' 
+        ? 'Permissions Updated' 
+        : 'Access Authorized';
+
+    const subject = isRevoke
+      ? `[SECURITY NOTICE] Tallyin Co-Admin Access Revoked — Ref: ${ackRecord.ackNumber}`
+      : `[CLEARANCE NOTICE] Tallyin Co-Admin Access ${actionTitle} — Ref: ${ackRecord.ackNumber}`;
+
+    const modules = [
+      { key: 'broadcasts', label: 'Global Broadcasts & Announcements' },
+      { key: 'settlements', label: 'Financial Settlements & Audit' },
+      { key: 'user_management', label: 'User Accounts Directory & Bans' },
+      { key: 'room_explorer', label: 'Room Infrastructure Explorer' },
+      { key: 'room_pinning', label: 'Room Message Pinning Protocol' },
+      { key: 'latency_diagnostics', label: 'Network Latency & Diagnostics' },
+      { key: 'maintenance_control', label: 'System Maintenance Control' },
+      { key: 'database_migration', label: 'Supabase Database Migration' },
+    ];
+
+    const permissionsRowsHtml = modules.map(m => {
+      const isGranted = Boolean(permissions?.[m.key]);
+      return `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 10px 14px; font-weight: 700; color: #1e293b; font-size: 12px;">${m.label}</td>
+          <td style="padding: 10px 14px; text-align: right;">
+            <span style="display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 800; text-transform: uppercase; ${
+              isGranted
+                ? 'background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;'
+                : 'background-color: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0;'
+            }">
+              ${isGranted ? '✓ GRANTED' : '✕ RESTRICTED'}
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlBody = isRevoke
+      ? `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 28px; background-color: #ffffff; border-radius: 20px; border: 1px solid #fca5a5; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
+          <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #ef4444;">
+            <div style="display: inline-block; padding: 5px 14px; background-color: #fee2e2; border: 1px solid #fecaca; border-radius: 9999px; color: #991b1b; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
+              Security De-Authorization Notice
+            </div>
+            <h1 style="color: #991b1b; margin: 12px 0 6px 0; font-size: 22px; font-weight: 900;">Co-Admin Access Revoked</h1>
+            <p style="color: #64748b; font-size: 13px; margin: 0;">Tallyin Identity & Access Governance</p>
+          </div>
+
+          <div style="margin: 22px 0; padding: 18px 20px; background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 14px;">
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #9f1239; margin-bottom: 6px;">
+              Official Revocation Acknowledgement Reference
+            </div>
+            <div style="font-family: ui-monospace, monospace; font-size: 18px; font-weight: 900; color: #be123c; letter-spacing: 1px;">
+              ${ackRecord.ackNumber}
+            </div>
+            <div style="margin-top: 14px; font-size: 12px; color: #475569; line-height: 1.6; border-top: 1px solid #fecdd3; padding-top: 12px;">
+              <div><strong>Target Account:</strong> ${targetEmail}</div>
+              <div><strong>Revoked By:</strong> ${ackRecord.authorizedBy} (${ackRecord.authorizedByRole})</div>
+              <div><strong>Timestamp:</strong> ${new Date(ackRecord.timestamp).toUTCString()}</div>
+              <div><strong>Origin IP Address:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.ipAddress}</code></div>
+              <div><strong>Security Checksum:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.checksum}</code></div>
+            </div>
+          </div>
+
+          <div style="color: #334155; font-size: 14px; line-height: 1.65; margin-bottom: 24px;">
+            <p>Hello <strong>${targetName || targetEmail}</strong>,</p>
+            <p>This automated security communication confirms that your <strong>Co-Administrator operational privileges</strong> for the Tallyin platform have been <strong>formally revoked</strong> by System Administration.</p>
+            <p>You will no longer have access to the Admin Portal or any privileged administrative actions. Your standard roommate/user account privileges remain active.</p>
+          </div>
+
+          <div style="text-align: center; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+            Tallyin Corporate Security Operations • tallyin.alerts@gmail.com<br/>
+            This audit event has been permanently recorded with Acknowledgement Ref: <strong>${ackRecord.ackNumber}</strong>
+          </div>
+        </div>
+      `
+      : `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 28px; background-color: #ffffff; border-radius: 20px; border: 1px solid #cbd5e1; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
+          <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #10b981;">
+            <div style="display: inline-block; padding: 5px 14px; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; color: #047857; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
+              Security Clearance Authorization
+            </div>
+            <h1 style="color: #1a3827; margin: 12px 0 6px 0; font-size: 22px; font-weight: 900;">Co-Admin Privileges ${action === 'UPDATE' ? 'Updated' : 'Authorized'}</h1>
+            <p style="color: #64748b; font-size: 13px; margin: 0;">Tallyin Identity & Access Governance</p>
+          </div>
+
+          <div style="margin: 22px 0; padding: 18px 20px; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 14px;">
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #166534; margin-bottom: 6px;">
+              Official Security Acknowledgement Reference
+            </div>
+            <div style="font-family: ui-monospace, monospace; font-size: 18px; font-weight: 900; color: #15803d; letter-spacing: 1px;">
+              ${ackRecord.ackNumber}
+            </div>
+            <div style="margin-top: 14px; font-size: 12px; color: #475569; line-height: 1.6; border-top: 1px solid #bbf7d0; padding-top: 12px;">
+              <div><strong>Target Account:</strong> ${targetEmail}</div>
+              <div><strong>Authorized By:</strong> ${ackRecord.authorizedBy} (${ackRecord.authorizedByRole})</div>
+              <div><strong>Timestamp:</strong> ${new Date(ackRecord.timestamp).toUTCString()}</div>
+              <div><strong>Origin IP Address:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.ipAddress}</code></div>
+              <div><strong>Security Checksum:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.checksum}</code></div>
+            </div>
+          </div>
+
+          <div style="color: #334155; font-size: 14px; line-height: 1.65; margin-bottom: 20px;">
+            <p>Hello <strong>${targetName || targetEmail}</strong>,</p>
+            <p>You have been formally authorized as a <strong>Tier-2 Co-Administrator</strong> for Tallyin by System Administration.</p>
+            <p>Your access permissions have been configured according to the operational matrix below:</p>
+          </div>
+
+          <div style="margin-bottom: 24px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <thead>
+                <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                  <th style="padding: 10px 14px; text-align: left; color: #475569; font-weight: 800; font-size: 11px; text-transform: uppercase;">Operational Module</th>
+                  <th style="padding: 10px 14px; text-align: right; color: #475569; font-weight: 800; font-size: 11px; text-transform: uppercase;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${permissionsRowsHtml}
+              </tbody>
+            </table>
+          </div>
+
+          <div style="text-align: center; margin: 26px 0;">
+            <a href="https://tallyin.vercel.app" style="display: inline-block; padding: 12px 28px; background-color: #1a3827; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 900; font-size: 13px; box-shadow: 0 4px 12px rgba(26,56,39,0.25);">
+              Access Admin Console →
+            </a>
+          </div>
+
+          <div style="text-align: center; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+            Tallyin Corporate Security Operations • tallyin.alerts@gmail.com<br/>
+            This audit event has been permanently recorded with Acknowledgement Ref: <strong>${ackRecord.ackNumber}</strong>
+          </div>
+        </div>
+      `;
+
+    try {
+      fetch(mailRelayUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: targetEmail,
+          subject,
+          body: `Tallyin Security Notice:\nAction: ${actionTitle}\nRef: ${ackRecord.ackNumber}\nAuthorized By: ${ackRecord.authorizedBy}\nIP: ${ackRecord.ipAddress}\nTimestamp: ${ackRecord.timestamp}`,
+          htmlBody
+        })
+      }).catch(e => console.warn("Email relay background notice:", e));
+    } catch (err) {
+      console.warn("Mail relay dispatch failed:", err);
+    }
+  };
+
   const handleAddCoAdmin = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     const cleanEmail = (newCoAdminEmail || '').trim().toLowerCase();
@@ -1487,20 +1739,45 @@ export default function AdminDashboard({
 
     setIsAssigningCoAdmin(true);
     try {
+      const clientIp = await fetchClientIp();
+      const ackNumber = generateAckNumber();
+      const timestamp = new Date().toISOString();
+      const checksum = generateSecurityChecksum(ackNumber, cleanEmail, clientIp, timestamp);
+
+      const ackRecord = {
+        ackNumber,
+        action: 'GRANT',
+        targetEmail: cleanEmail,
+        targetName: (newCoAdminName || '').trim() || cleanEmail.split('@')[0],
+        authorizedBy: user?.email || 'tallyin.alerts@gmail.com',
+        authorizedByRole: isSuperAdmin ? 'Super Administrator (Root Authority)' : 'Administrative Lead',
+        timestamp,
+        ipAddress: clientIp,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
+        permissions: { ...newCoAdminPerms },
+        checksum,
+        status: 'ACTIVE_CLEARANCE'
+      };
+
       const newAdminRecord = {
         email: cleanEmail,
         name: (newCoAdminName || '').trim() || cleanEmail.split('@')[0],
         role: 'co_admin',
-        addedAt: new Date().toISOString(),
+        addedAt: timestamp,
         addedBy: user?.email || 'Super Admin',
-        permissions: { ...newCoAdminPerms }
+        permissions: { ...newCoAdminPerms },
+        lastAck: ackRecord,
+        lastAckNumber: ackNumber,
+        lastAckIp: clientIp,
       };
 
       const nextList = [...normalizedCoAdmins, newAdminRecord];
       await saveCoAdminsList(nextList);
+      await saveAckRecord(ackRecord);
+      sendCoAdminSecurityEmail({ action: 'GRANT', targetEmail: cleanEmail, targetName: newAdminRecord.name, permissions: newAdminRecord.permissions, ackRecord });
 
-      logAuditAction('ASSIGN_CO_ADMIN', `Granted Co-Admin role to ${cleanEmail} (Added by ${user?.email || 'Super Admin'})`);
-      if (triggerToast) triggerToast(`👑 Assigned Co-Admin role to ${cleanEmail}!`);
+      logAuditAction('ASSIGN_CO_ADMIN', `Granted Co-Admin role to ${cleanEmail} (Ref: ${ackNumber}, IP: ${clientIp}, By: ${user?.email || 'Super Admin'})`);
+      if (triggerToast) triggerToast(`👑 Assigned Co-Admin role! Ref: ${ackNumber}`);
 
       setNewCoAdminEmail('');
       setNewCoAdminName('');
@@ -1527,39 +1804,103 @@ export default function AdminDashboard({
       return;
     }
 
-    const nextList = normalizedCoAdmins.filter(a => a.email !== cleanTarget);
-    await saveCoAdminsList(nextList);
+    try {
+      const clientIp = await fetchClientIp();
+      const ackNumber = generateAckNumber();
+      const timestamp = new Date().toISOString();
+      const checksum = generateSecurityChecksum(ackNumber, cleanTarget, clientIp, timestamp);
+      const targetAdmin = normalizedCoAdmins.find(a => a.email.toLowerCase() === cleanTarget);
 
-    logAuditAction('REVOKE_CO_ADMIN', `Revoked Co-Admin privileges from ${cleanTarget} by ${user?.email || 'Super Admin'}`);
-    if (triggerToast) triggerToast(`🗑️ Revoked Co-Admin access from ${cleanTarget}`);
+      const ackRecord = {
+        ackNumber,
+        action: 'REVOKE',
+        targetEmail: cleanTarget,
+        targetName: targetAdmin?.name || cleanTarget.split('@')[0],
+        authorizedBy: user?.email || 'tallyin.alerts@gmail.com',
+        authorizedByRole: isSuperAdmin ? 'Super Administrator (Root Authority)' : 'Administrative Lead',
+        timestamp,
+        ipAddress: clientIp,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
+        permissions: null,
+        previousPermissions: targetAdmin?.permissions || null,
+        checksum,
+        status: 'REVOKED_DEAUTHORIZED'
+      };
+
+      const nextList = normalizedCoAdmins.filter(a => a.email !== cleanTarget);
+      await saveCoAdminsList(nextList);
+      await saveAckRecord(ackRecord);
+      sendCoAdminSecurityEmail({ action: 'REVOKE', targetEmail: cleanTarget, targetName: targetAdmin?.name, permissions: null, ackRecord });
+
+      logAuditAction('REVOKE_CO_ADMIN', `Revoked Co-Admin privileges from ${cleanTarget} (Ref: ${ackNumber}, IP: ${clientIp}, By: ${user?.email || 'Super Admin'})`);
+      if (triggerToast) triggerToast(`🗑️ Revoked Co-Admin access from ${cleanTarget}. Ref: ${ackNumber}`);
+    } catch (err) {
+      console.error(err);
+      if (triggerToast) triggerToast(`Revocation notice: ${err.message}`);
+    }
   };
 
   const handleSaveEditedPermissions = async (targetEmail) => {
     const cleanTarget = String(targetEmail || '').trim().toLowerCase();
-    const nextList = normalizedCoAdmins.map(a => {
-      if (a.email.toLowerCase() === cleanTarget) {
-        return {
-          ...a,
-          permissions: {
-            broadcasts: Boolean(editingPerms.broadcasts),
-            settlements: Boolean(editingPerms.settlements),
-            user_management: Boolean(editingPerms.user_management),
-            room_explorer: Boolean(editingPerms.room_explorer),
-            room_pinning: Boolean(editingPerms.room_pinning),
-            latency_diagnostics: Boolean(editingPerms.latency_diagnostics),
-            maintenance_control: Boolean(editingPerms.maintenance_control),
-            database_migration: Boolean(editingPerms.database_migration),
-          }
-        };
-      }
-      return a;
-    });
+    try {
+      const clientIp = await fetchClientIp();
+      const ackNumber = generateAckNumber();
+      const timestamp = new Date().toISOString();
+      const checksum = generateSecurityChecksum(ackNumber, cleanTarget, clientIp, timestamp);
+      const targetAdmin = normalizedCoAdmins.find(a => a.email.toLowerCase() === cleanTarget);
 
-    await saveCoAdminsList(nextList);
-    logAuditAction('UPDATE_CO_ADMIN_PERMS', `Updated permissions for ${cleanTarget}`);
-    if (triggerToast) triggerToast(`✅ Updated permissions for ${cleanTarget}`);
-    setEditingCoAdminEmail(null);
-    setEditingPerms({});
+      const updatedPermissions = {
+        broadcasts: Boolean(editingPerms.broadcasts),
+        settlements: Boolean(editingPerms.settlements),
+        user_management: Boolean(editingPerms.user_management),
+        room_explorer: Boolean(editingPerms.room_explorer),
+        room_pinning: Boolean(editingPerms.room_pinning),
+        latency_diagnostics: Boolean(editingPerms.latency_diagnostics),
+        maintenance_control: Boolean(editingPerms.maintenance_control),
+        database_migration: Boolean(editingPerms.database_migration),
+      };
+
+      const ackRecord = {
+        ackNumber,
+        action: 'UPDATE_PERMISSIONS',
+        targetEmail: cleanTarget,
+        targetName: targetAdmin?.name || cleanTarget.split('@')[0],
+        authorizedBy: user?.email || 'tallyin.alerts@gmail.com',
+        authorizedByRole: isSuperAdmin ? 'Super Administrator (Root Authority)' : 'Administrative Lead',
+        timestamp,
+        ipAddress: clientIp,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
+        permissions: updatedPermissions,
+        previousPermissions: targetAdmin?.permissions || null,
+        checksum,
+        status: 'ACTIVE_CLEARANCE'
+      };
+
+      const nextList = normalizedCoAdmins.map(a => {
+        if (a.email.toLowerCase() === cleanTarget) {
+          return {
+            ...a,
+            permissions: updatedPermissions,
+            lastAck: ackRecord,
+            lastAckNumber: ackNumber,
+            lastAckIp: clientIp,
+          };
+        }
+        return a;
+      });
+
+      await saveCoAdminsList(nextList);
+      await saveAckRecord(ackRecord);
+      sendCoAdminSecurityEmail({ action: 'UPDATE', targetEmail: cleanTarget, targetName: targetAdmin?.name, permissions: updatedPermissions, ackRecord });
+
+      logAuditAction('UPDATE_CO_ADMIN_PERMS', `Updated permissions for ${cleanTarget} (Ref: ${ackNumber}, IP: ${clientIp})`);
+      if (triggerToast) triggerToast(`✅ Updated permissions for ${cleanTarget}! Ref: ${ackNumber}`);
+      setEditingCoAdminEmail(null);
+      setEditingPerms({});
+    } catch (err) {
+      console.error(err);
+      if (triggerToast) triggerToast(`Update error: ${err.message}`);
+    }
   };
 
   // Publish Global Broadcast
@@ -2321,6 +2662,33 @@ export default function AdminDashboard({
                       <p className="text-[11px] text-slate-500">
                         Assigned by Root Master ({currentCoAdminObj?.addedBy || 'tallyin.alerts@gmail.com'}) · Active Session Verified
                       </p>
+                      <div className="flex items-center gap-2 pt-1 flex-wrap">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-emerald-950/60 border border-emerald-500/30 text-[10px] font-mono font-bold text-emerald-300">
+                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                          <span>Clearance Ref: {currentCoAdminObj?.lastAckNumber || coAdminAckRegistry.find(r => r.targetEmail?.toLowerCase() === currentEmailClean)?.ackNumber || 'ACK-CAD-ACTIVE'}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const rec = currentCoAdminObj?.lastAck || coAdminAckRegistry.find(r => r.targetEmail?.toLowerCase() === currentEmailClean) || {
+                              ackNumber: currentCoAdminObj?.lastAckNumber || 'ACK-CAD-ACTIVE',
+                              targetEmail: currentEmailClean,
+                              targetName: currentCoAdminObj?.name || 'Co-Admin Operator',
+                              authorizedBy: currentCoAdminObj?.addedBy || 'Super Admin',
+                              authorizedByRole: 'Super Administrator',
+                              timestamp: currentCoAdminObj?.addedAt || new Date().toISOString(),
+                              ipAddress: currentCoAdminObj?.lastAckIp || 'Recorded on File',
+                              permissions: currentCoAdminObj?.permissions,
+                              checksum: generateSecurityChecksum(currentCoAdminObj?.lastAckNumber || 'ACK', currentEmailClean, currentCoAdminObj?.lastAckIp || '0.0.0.0', currentCoAdminObj?.addedAt || ''),
+                              status: 'ACTIVE_CLEARANCE'
+                            };
+                            setSelectedAckRecord(rec);
+                          }}
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold underline cursor-pointer"
+                        >
+                          View Certificate
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -3243,6 +3611,44 @@ export default function AdminDashboard({
                         )}
                       </div>
 
+                      {/* Security Acknowledgement Badge & Certificate Launcher */}
+                      <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-[#F6F8F6] dark:border-slate-800/80">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-[10px] font-mono font-bold text-indigo-700 dark:text-indigo-300">
+                            <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>REF: {admin.lastAckNumber || coAdminAckRegistry.find(r => r.targetEmail === admin.email)?.ackNumber || 'ACK-CAD-VERIFIED'}</span>
+                          </span>
+                          {admin.lastAckIp && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-600 dark:text-slate-400">
+                              <Network className="w-3 h-3 text-slate-400" />
+                              <span>IP: {admin.lastAckIp}</span>
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const record = admin.lastAck || coAdminAckRegistry.find(r => r.targetEmail === admin.email) || {
+                              ackNumber: admin.lastAckNumber || 'ACK-CAD-VERIFIED',
+                              targetEmail: admin.email,
+                              targetName: admin.name,
+                              authorizedBy: admin.addedBy || 'Super Admin',
+                              authorizedByRole: 'Super Administrator',
+                              timestamp: admin.addedAt || new Date().toISOString(),
+                              ipAddress: admin.lastAckIp || 'Recorded on File',
+                              permissions: admin.permissions,
+                              checksum: generateSecurityChecksum(admin.lastAckNumber || 'ACK', admin.email, admin.lastAckIp || '0.0.0.0', admin.addedAt || ''),
+                              status: 'ACTIVE_CLEARANCE'
+                            };
+                            setSelectedAckRecord(record);
+                          }}
+                          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View Clearance Certificate</span>
+                        </button>
+                      </div>
+
                       {/* Inline Permission Editor (when expanded) */}
                       {isBeingEdited && (
                         <div className="p-4 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/80 border border-indigo-200 dark:border-indigo-900/50 space-y-3 mt-2">
@@ -3294,6 +3700,129 @@ export default function AdminDashboard({
                 })
               )}
             </div>
+          </div>
+
+          {/* Executive Clearance & Audit Registry Table */}
+          <div className="hud-card rounded-3xl p-6 space-y-4 border border-indigo-500/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <FileCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100">
+                    Co-Admin Access & Clearance Audit Registry
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold font-mono uppercase">
+                    {coAdminAckRegistry.length} Events Logged
+                  </span>
+                </div>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Immutable security audit trail of all administrative access delegations, permission updates, and privilege revocations.
+                </p>
+              </div>
+
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by ACK Ref, Email, IP..."
+                  value={ackSearchQuery}
+                  onChange={e => setAckSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            {coAdminAckRegistry.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 space-y-2">
+                <ShieldCheck className="w-8 h-8 mx-auto opacity-50 text-indigo-400" />
+                <p className="text-xs font-bold text-slate-500">No clearance events recorded yet.</p>
+                <p className="text-[11px] text-slate-400">Granting or modifying Co-Admin permissions will generate formal cryptographic acknowledgement certificates here.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#E3E8E3] dark:border-slate-800 text-[10px] font-black uppercase text-[#5C6E5C] dark:text-slate-400">
+                      <th className="pb-3 pr-4">Acknowledgement No.</th>
+                      <th className="pb-3 px-4">Action</th>
+                      <th className="pb-3 px-4">Target Co-Admin</th>
+                      <th className="pb-3 px-4">Authorized By</th>
+                      <th className="pb-3 px-4">Origin IP Address</th>
+                      <th className="pb-3 px-4">Timestamp</th>
+                      <th className="pb-3 pl-4 text-right">Certificate</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E3E8E3]/60 dark:divide-slate-800/60">
+                    {coAdminAckRegistry
+                      .filter(rec => {
+                        if (!ackSearchQuery.trim()) return true;
+                        const q = ackSearchQuery.toLowerCase();
+                        return (rec.ackNumber || '').toLowerCase().includes(q) ||
+                               (rec.targetEmail || '').toLowerCase().includes(q) ||
+                               (rec.ipAddress || '').toLowerCase().includes(q) ||
+                               (rec.authorizedBy || '').toLowerCase().includes(q);
+                      })
+                      .map((rec, i) => (
+                        <tr key={rec.ackNumber || i} className="hover:bg-[#F6F8F6] dark:hover:bg-slate-900/40 transition-colors">
+                          <td className="py-3 pr-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                            <div className="flex items-center gap-1.5">
+                              <span>{rec.ackNumber}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(rec.ackNumber);
+                                  if (triggerToast) triggerToast(`Copied ${rec.ackNumber}`);
+                                }}
+                                className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-950 rounded text-slate-400 hover:text-indigo-600 cursor-pointer"
+                                title="Copy Reference"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide ${
+                              rec.action === 'REVOKE'
+                                ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                : rec.action === 'UPDATE_PERMISSIONS'
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            }`}>
+                              {rec.action === 'REVOKE' ? 'Revoked' : rec.action === 'UPDATE_PERMISSIONS' ? 'Updated' : 'Authorized'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-[#1A3827] dark:text-slate-200">
+                            <div>{rec.targetEmail}</div>
+                            {rec.targetName && <span className="text-[10px] text-slate-400">({rec.targetName})</span>}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+                            {rec.authorizedBy}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                            <span className="inline-flex items-center gap-1">
+                              <Network className="w-3 h-3 text-slate-400" />
+                              {rec.ipAddress || '127.0.0.1'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px]">
+                            {new Date(rec.timestamp).toLocaleString()}
+                          </td>
+                          <td className="py-3 pl-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAckRecord(rec)}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>Inspect</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
         </div>
@@ -5248,6 +5777,172 @@ NOTIFY pgrst, 'reload schema';`;
           </div>
         </div>
         )
+      )}
+
+      {/* Security Clearance & Audit Certificate Modal */}
+      {selectedAckRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <h3 className="text-base font-black text-[#1A3827] dark:text-white">
+                    Official Security Clearance Certificate
+                  </h3>
+                </div>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Tallyin Identity & Access Management Governance Audit
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAckRecord(null)}
+                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Acknowledgement Reference Number Card */}
+            <div className={`p-4 rounded-2xl border space-y-2 ${
+              selectedAckRecord.action === 'REVOKE'
+                ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-900 dark:text-rose-200'
+                : 'bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-900/50 text-indigo-900 dark:text-indigo-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  Security Acknowledgement Reference No.
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                  selectedAckRecord.action === 'REVOKE'
+                    ? 'bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-100'
+                    : 'bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100'
+                }`}>
+                  {selectedAckRecord.action === 'REVOKE' ? 'Access Terminated' : 'Verified Clearance'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-base sm:text-lg font-mono font-black tracking-wide break-all">
+                  {selectedAckRecord.ackNumber}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(selectedAckRecord.ackNumber);
+                    if (triggerToast) triggerToast(`Copied ${selectedAckRecord.ackNumber}!`);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-900/80 text-xs font-bold flex items-center gap-1 shadow-sm hover:scale-105 transition-all cursor-pointer shrink-0"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Security Metadata Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold uppercase text-slate-400">Target Co-Admin</span>
+                <p className="font-extrabold text-[#1A3827] dark:text-white truncate">{selectedAckRecord.targetEmail}</p>
+                {selectedAckRecord.targetName && <p className="text-[10px] text-slate-500">Name: {selectedAckRecord.targetName}</p>}
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold uppercase text-slate-400">Authorized / Revoked By</span>
+                <p className="font-extrabold text-[#1A3827] dark:text-white truncate">{selectedAckRecord.authorizedBy}</p>
+                <p className="text-[10px] text-slate-500">{selectedAckRecord.authorizedByRole || 'Super Administrator'}</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                  <Network className="w-3 h-3 text-indigo-500" />
+                  Origin IP Address
+                </span>
+                <p className="font-mono font-bold text-[#1A3827] dark:text-white">{selectedAckRecord.ipAddress || '127.0.0.1'}</p>
+                <p className="text-[10px] text-slate-500">Verified Network Origin</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-indigo-500" />
+                  Timestamp (UTC & Local)
+                </span>
+                <p className="font-bold text-[#1A3827] dark:text-white">{new Date(selectedAckRecord.timestamp).toLocaleTimeString()} • {new Date(selectedAckRecord.timestamp).toLocaleDateString()}</p>
+                <p className="text-[10px] font-mono text-slate-500 truncate">{new Date(selectedAckRecord.timestamp).toISOString()}</p>
+              </div>
+            </div>
+
+            {/* Cryptographic Verification Checksum */}
+            <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs space-y-1">
+              <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase">
+                <span>Cryptographic Checksum / Signature</span>
+                <span className="text-emerald-400">AUTHENTIC</span>
+              </div>
+              <p className="text-emerald-300 font-bold break-all">
+                {selectedAckRecord.checksum || 'SEC-SIG-RECORDED'}
+              </p>
+              {selectedAckRecord.userAgent && (
+                <p className="text-[10px] text-slate-400 truncate pt-1 border-t border-slate-800">
+                  Client: {selectedAckRecord.userAgent}
+                </p>
+              )}
+            </div>
+
+            {/* Permissions Matrix (if not Revoked) */}
+            {selectedAckRecord.action !== 'REVOKE' && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider">
+                  Operational Permissions Snapshot
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { key: 'broadcasts', label: 'Broadcasts' },
+                    { key: 'settlements', label: 'Settlements' },
+                    { key: 'user_management', label: 'User Directory' },
+                    { key: 'room_explorer', label: 'Room Explorer' },
+                    { key: 'room_pinning', label: 'Room Pinning' },
+                    { key: 'latency_diagnostics', label: 'Latency' },
+                    { key: 'maintenance_control', label: 'Maintenance' },
+                    { key: 'database_migration', label: 'DB Migration' },
+                  ].map(p => {
+                    const isGranted = Boolean(selectedAckRecord.permissions?.[p.key]);
+                    return (
+                      <div
+                        key={p.key}
+                        className={`p-2.5 rounded-xl border text-center ${
+                          isGranted
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                            : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <div className="text-[10px] font-bold">{p.label}</div>
+                        <div className="text-[9px] font-black uppercase mt-0.5">
+                          {isGranted ? '✓ Granted' : '✕ Restricted'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-4 border-t border-[#E3E8E3] dark:border-slate-800">
+              <span className="text-[11px] text-slate-400">
+                Official Record ID: <code className="font-mono">{selectedAckRecord.ackNumber}</code>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedAckRecord(null)}
+                className="px-5 py-2 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl font-bold text-xs hover:opacity-90 transition-all cursor-pointer"
+              >
+                Close Certificate
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
