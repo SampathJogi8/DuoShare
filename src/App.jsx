@@ -11589,6 +11589,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {joinRequestModalInfo && renderJoinRequestModal()}
         {editingMemberBudget && renderMemberBudgetModal()}
         {nicknamePromptAction && renderNicknamePromptModal()}
+        {assigningQuotaReq && renderAssignQuotaModal()}
 
         {/* Tallyin Diamond VIP Analytics Modal */}
         {isDiamondModalOpen && renderDiamondModal()}
