@@ -1633,7 +1633,6 @@ export default function AdminDashboard({
               <div><strong>Target Account:</strong> ${targetEmail}</div>
               <div><strong>Revoked By:</strong> ${ackRecord.authorizedBy} (${ackRecord.authorizedByRole})</div>
               <div><strong>Timestamp:</strong> ${new Date(ackRecord.timestamp).toUTCString()}</div>
-              <div><strong>Origin IP Address:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.ipAddress}</code></div>
               <div><strong>Security Checksum:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.checksum}</code></div>
             </div>
           </div>
@@ -1674,7 +1673,6 @@ export default function AdminDashboard({
               <div><strong>Target Account:</strong> ${targetEmail}</div>
               <div><strong>Authorized By:</strong> ${ackRecord.authorizedBy} (${ackRecord.authorizedByRole})</div>
               <div><strong>Timestamp:</strong> ${new Date(ackRecord.timestamp).toUTCString()}</div>
-              <div><strong>Origin IP Address:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.ipAddress}</code></div>
               <div><strong>Security Checksum:</strong> <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${ackRecord.checksum}</code></div>
             </div>
           </div>
@@ -1721,7 +1719,7 @@ export default function AdminDashboard({
           action: 'send_email',
           to: targetEmail,
           subject,
-          body: `Tallyin Security Notice:\nAction: ${actionTitle}\nRef: ${ackRecord.ackNumber}\nAuthorized By: ${ackRecord.authorizedBy}\nIP: ${ackRecord.ipAddress}\nTimestamp: ${ackRecord.timestamp}`,
+          body: `Tallyin Security Notice:\nAction: ${actionTitle}\nRef: ${ackRecord.ackNumber}\nAuthorized By: ${ackRecord.authorizedBy}\nTimestamp: ${ackRecord.timestamp}`,
           htmlBody
         })
       }).catch(e => console.warn("Email relay background notice:", e));
