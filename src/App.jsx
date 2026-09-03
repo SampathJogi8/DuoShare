@@ -11053,6 +11053,18 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             </button>
 
+            {/* Quick Access: Help & Disputes Hub */}
+            <button 
+              onClick={() => {
+                setIsDisputeModalOpen(true);
+                setDisputeModalTab('new');
+              }}
+              className="p-2 text-[#5C6E5C] dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
+              title="Help, Inquiries & Expense Disputes"
+            >
+              <Scale className="w-4 h-4" />
+            </button>
+
             {/* Direct Admin Portal Button for Super Admin & Co-Admins */}
             {(() => {
               const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
@@ -11961,11 +11973,23 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             )}
                           </p>
                         </div>
-                        <div className="text-right shrink-0">
-                          <p className={`text-xs sm:text-sm font-bold ${isPayer ? 'text-[#1A3827] dark:text-[#A3E635]' : 'text-slate-400 dark:text-slate-500'}`}>
-                            {isPayer ? '−' : '+'}{formatINR(t.amount)}
-                          </p>
-                          <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-0.5">{t.date}</p>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right">
+                            <p className={`text-xs sm:text-sm font-bold ${isPayer ? 'text-[#1A3827] dark:text-[#A3E635]' : 'text-slate-400 dark:text-slate-500'}`}>
+                              {isPayer ? '−' : '+'}{formatINR(t.amount)}
+                            </p>
+                            <p className="text-[9px] sm:text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-0.5">{t.date}</p>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenDisputeForTransaction(t);
+                            }}
+                            className="p-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded-lg transition-all cursor-pointer"
+                            title="Raise dispute or inquiry on this expense"
+                          >
+                            <Scale className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     );
@@ -12393,24 +12417,36 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         </div>
                       </div>
 
-                      {isCreator && (
-                        <div className="flex items-center gap-1 border-l border-slate-150 dark:border-slate-800 pl-3">
-                          <button 
-                            onClick={() => handleEditTransaction(t)}
-                            className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-                            title="Edit transaction"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteTransaction(t)}
-                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
-                            title="Delete transaction"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1 border-l border-slate-150 dark:border-slate-800 pl-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenDisputeForTransaction(t);
+                          }}
+                          className="p-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded-lg transition-all cursor-pointer"
+                          title="Raise dispute or inquiry on this expense"
+                        >
+                          <Scale className="w-3.5 h-3.5" />
+                        </button>
+                        {isCreator && (
+                          <>
+                            <button 
+                              onClick={() => handleEditTransaction(t)}
+                              className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                              title="Edit transaction"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteTransaction(t)}
+                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
+                              title="Delete transaction"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
