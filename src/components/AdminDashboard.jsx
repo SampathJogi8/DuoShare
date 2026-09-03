@@ -1155,6 +1155,31 @@ export default function AdminDashboard({
     setMigrationLog([]);
     const addLog = (msg) => setMigrationLog(prev => [...prev, msg]);
 
+    // Per-table conflict key (primary key column name)
+    const CONFLICT_KEY = {
+      users:          'id',
+      rooms:          'id',
+      members:        'id',
+      transactions:   'id',
+      receipts:       'id',
+      activity_logs:  'id',
+      system_settings:'key',
+    };
+
+    // Batch upsert helper — splits rows into chunks of 100
+    const batchUpsert = async (tbl, rows) => {
+      const key = CONFLICT_KEY[tbl] || 'id';
+      const chunkSize = 100;
+      let inserted = 0;
+      for (let i = 0; i < rows.length; i += chunkSize) {
+        const chunk = rows.slice(i, i + chunkSize);
+        const { error } = await realSupabase.from(tbl).upsert(chunk, { onConflict: key, ignoreDuplicates: false });
+        if (error) return { error };
+        inserted += chunk.length;
+      }
+      return { error: null, inserted };
+    };
+
     try {
       addLog('📡 Connecting to Cloudflare D1...');
       if (triggerToast) triggerToast('📡 Fetching all data from Cloudflare D1...');
@@ -1168,48 +1193,58 @@ export default function AdminDashboard({
         if (triggerToast) triggerToast(`❌ D1 not available: ${errMsg}`);
         return;
       }
-
-      if (!json || !json.data) {
+      if (!json?.data) {
         addLog('❌ Invalid snapshot from D1');
-        if (triggerToast) triggerToast('❌ Invalid data snapshot from Cloudflare D1');
         return;
       }
 
-      const tables = ["users", "rooms", "members", "transactions", "receipts", "activity_logs", "system_settings"];
+      const tables = ['users', 'rooms', 'members', 'transactions', 'receipts', 'activity_logs', 'system_settings'];
       let totalMigrated = 0;
       let totalRows = 0;
       tables.forEach(t => { totalRows += (json.data[t] || []).length; });
 
-      addLog(`✅ D1 Export success. Found ${totalRows} total rows across ${tables.length} tables.`);
-      if (triggerToast) triggerToast(`✅ D1 Export: ${totalRows} rows found. Writing to Supabase...`);
+      addLog(`✅ D1 Export: ${totalRows} rows across ${tables.length} tables.`);
+      if (triggerToast) triggerToast(`✅ ${totalRows} rows found. Writing to Supabase...`);
 
       if (totalRows === 0) {
-        addLog('⚠️ D1 returned 0 rows — nothing to migrate. D1 may still be rate-limited.');
-        if (triggerToast) triggerToast('⚠️ D1 returned 0 rows. It may still be rate-limited. Try again after midnight UTC (5:30 AM IST).');
+        addLog('⚠️ 0 rows returned — D1 may still be rate-limited. Retry after 5:30 AM IST.');
+        if (triggerToast) triggerToast('⚠️ No data to migrate. Retry after 5:30 AM IST.');
         return;
       }
+
+      const tableErrors = [];
 
       for (const tbl of tables) {
         const rows = json.data[tbl];
         if (!Array.isArray(rows) || rows.length === 0) {
-          addLog(`⏭️ ${tbl}: 0 rows — skipped`);
+          addLog(`⏭️ ${tbl}: empty — skipped`);
           continue;
         }
-        addLog(`🔄 ${tbl}: upserting ${rows.length} rows into Supabase...`);
-        // Use realSupabase to write DIRECTLY to Supabase PostgreSQL, bypassing Cloudflare
-        const { error } = await realSupabase.from(tbl).upsert(rows, { onConflict: 'id' });
+
+        addLog(`🔄 ${tbl}: writing ${rows.length} rows…`);
+        const { error, inserted } = await batchUpsert(tbl, rows);
+
         if (error) {
-          addLog(`⚠️ ${tbl}: ${error.message}`);
-          console.warn(`Migration warning for table ${tbl}:`, error);
+          addLog(`❌ ${tbl}: ${error.message}`);
+          addLog(`   → Run the Supabase schema SQL first, then retry.`);
+          tableErrors.push(tbl);
+          console.error(`Migration error [${tbl}]:`, error);
         } else {
-          addLog(`✅ ${tbl}: ${rows.length} rows migrated`);
+          addLog(`✅ ${tbl}: ${rows.length} rows done`);
           totalMigrated += rows.length;
         }
       }
 
-      logAuditAction('DATABASE_MIGRATION', `Migrated ${totalMigrated}/${totalRows} records from Cloudflare D1 to Supabase`);
-      if (triggerToast) triggerToast(`🎉 Migration Complete! ${totalMigrated}/${totalRows} records synced to Supabase.`);
-      addLog(`🎉 Done! ${totalMigrated}/${totalRows} records migrated to Supabase PostgreSQL.`);
+      if (tableErrors.length > 0) {
+        addLog(`⚠️ ${tableErrors.length} table(s) failed: ${tableErrors.join(', ')}`);
+        addLog('   → Open Admin Dashboard → Migration SQL → copy and run in Supabase SQL Editor, then retry.');
+        if (triggerToast) triggerToast(`⚠️ ${totalMigrated}/${totalRows} migrated. ${tableErrors.length} tables need schema setup.`);
+      } else {
+        addLog(`🎉 Done! ${totalMigrated}/${totalRows} records migrated to Supabase.`);
+        if (triggerToast) triggerToast(`🎉 Migration complete! ${totalMigrated} records in Supabase.`);
+      }
+
+      logAuditAction('DATABASE_MIGRATION', `Migrated ${totalMigrated}/${totalRows} from D1 → Supabase. Failed tables: ${tableErrors.join(',') || 'none'}`);
     } catch (err) {
       console.error('Migration error:', err);
       addLog(`❌ Error: ${err.message}`);
@@ -2047,24 +2082,54 @@ export default function AdminDashboard({
                   Database Migration: Cloudflare D1 → Supabase
                 </h4>
                 <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
-                  Exports a full snapshot of all data from Cloudflare D1 SQLite and upserts it into Supabase PostgreSQL. Safe, zero-data-loss, and idempotent — can be run multiple times without duplicating data.
+                  Zero-data-loss export from Cloudflare D1 to Supabase PostgreSQL. Safe to re-run (upserts, no duplicates). D1 stays as backup.
                 </p>
               </div>
-              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/60 flex items-center justify-center shrink-0">
-                    <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div className="text-[11px] text-blue-800 dark:text-blue-300 space-y-1">
-                    <p className="font-bold">What this does:</p>
-                    <ul className="list-disc ml-4 space-y-0.5 text-blue-700 dark:text-blue-400">
-                      <li>Calls <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">/api/export-all-data</code> on Cloudflare Worker</li>
-                      <li>Reads all rows from users, rooms, members, transactions, receipts, activity_logs, system_settings</li>
-                      <li>Upserts each row into Supabase PostgreSQL (no duplicates)</li>
-                      <li>Cloudflare D1 remains intact as backup</li>
-                    </ul>
-                  </div>
-                </div>
+
+              {/* Step 1: Schema Setup */}
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl p-3.5 space-y-2">
+                <p className="text-[11px] font-bold text-amber-800 dark:text-amber-400 flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-black flex items-center justify-center shrink-0">1</span>
+                  Run this SQL in Supabase first (one time only)
+                </p>
+                <p className="text-[10px] text-amber-700 dark:text-amber-500">
+                  Go to <strong>Supabase Dashboard → SQL Editor → New Query</strong>, paste and run:
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sql = `-- Tallyin: Supabase Schema (matches Cloudflare D1)
+CREATE TABLE IF NOT EXISTS public.users (id TEXT PRIMARY KEY, uid TEXT, email TEXT, name TEXT, avatar_url TEXT, role TEXT DEFAULT 'member', room_id TEXT, login_code TEXT, updated_at TIMESTAMPTZ DEFAULT NOW(), created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS public.rooms (id TEXT PRIMARY KEY, name TEXT, pin TEXT, created_by TEXT, monthly_budget REAL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW(), max_members INTEGER DEFAULT 6);
+CREATE TABLE IF NOT EXISTS public.members (id TEXT PRIMARY KEY, room_id TEXT, uid TEXT, nickname TEXT, photo_url TEXT, email TEXT, role TEXT DEFAULT 'member', joined_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS public.transactions (id TEXT PRIMARY KEY, room_id TEXT, payer_id TEXT, amount REAL DEFAULT 0, title TEXT, category TEXT, date TEXT, time TEXT, paid_by TEXT, paid_by_uid TEXT, is_shared BOOLEAN DEFAULT TRUE, is_edited BOOLEAN DEFAULT FALSE, split_type TEXT DEFAULT 'equal', split TEXT, splits TEXT, created_by TEXT, image_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS public.receipts (id TEXT PRIMARY KEY, transaction_id TEXT, file_url TEXT, bg_class TEXT, rotation REAL DEFAULT 0, image_url TEXT, title TEXT, amount REAL DEFAULT 0, category TEXT, date TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), room_id TEXT);
+CREATE TABLE IF NOT EXISTS public.activity_logs (id BIGINT PRIMARY KEY, room_id TEXT, user_id TEXT, user_name TEXT, action TEXT, details TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS public.system_settings (key TEXT PRIMARY KEY, value TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
+ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rooms DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.members DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.receipts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.system_settings DISABLE ROW LEVEL SECURITY;`;
+                    navigator.clipboard.writeText(sql).then(() => {
+                      if (triggerToast) triggerToast('✅ Schema SQL copied! Paste in Supabase SQL Editor.');
+                    });
+                  }}
+                  className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[11px] rounded-lg flex items-center justify-center gap-2 transition-all"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy Supabase Schema SQL
+                </button>
+              </div>
+
+              {/* Step 2: Run Migration */}
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-xl p-3.5 space-y-3">
+                <p className="text-[11px] font-bold text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-blue-500 text-white text-[9px] font-black flex items-center justify-center shrink-0">2</span>
+                  Then run migration (after schema is set up)
+                </p>
                 <button
                   type="button"
                   onClick={handleMigrateD1ToSupabase}
