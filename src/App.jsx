@@ -61,7 +61,8 @@ import {
   Lock,
   Scale,
   HelpCircle,
-  XCircle
+  XCircle,
+  Users
 } from 'lucide-react';
 
 import { supabase } from './supabase';
