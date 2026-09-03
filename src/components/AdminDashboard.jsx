@@ -41,7 +41,13 @@ import {
   Key,
   Ban,
   UserX,
-  Database
+  Database,
+  Crown,
+  Plus,
+  Shield,
+  CheckSquare,
+  Square,
+  UserPlus
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import { supabase, realSupabase } from '../supabase';
@@ -72,11 +78,109 @@ export default function AdminDashboard({
   simulatedLatency,
   setSimulatedLatency,
   allowedMaintenanceAccounts = ['tallyin.alerts@gmail.com'],
-  setAllowedMaintenanceAccounts
+  setAllowedMaintenanceAccounts,
+  coAdmins = [],
+  setCoAdmins
 }) {
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
   const currentEmailClean = (user?.email || '').trim().toLowerCase();
-  const isAuthorizedAdmin = currentEmailClean === 'tallyin.alerts@gmail.com';
+  const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
+  const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL;
+
+  // Normalized Co-Admins list
+  const normalizedCoAdmins = useMemo(() => {
+    return (coAdmins || []).map(item => {
+      if (typeof item === 'string') {
+        return {
+          email: item.trim().toLowerCase(),
+          name: item.split('@')[0],
+          role: 'co_admin',
+          addedAt: new Date().toISOString(),
+          addedBy: 'tallyin.alerts@gmail.com',
+          permissions: {
+            broadcasts: true,
+            settlements: true,
+            user_management: true,
+            room_explorer: true,
+            room_pinning: true,
+            latency_diagnostics: true,
+            maintenance_control: false,
+            database_migration: false,
+          }
+        };
+      }
+      return {
+        email: (item?.email || '').trim().toLowerCase(),
+        name: item?.name || (item?.email ? item.email.split('@')[0] : 'Co-Admin'),
+        role: item?.role || 'co_admin',
+        addedAt: item?.addedAt || new Date().toISOString(),
+        addedBy: item?.addedBy || 'tallyin.alerts@gmail.com',
+        permissions: {
+          broadcasts: true,
+          settlements: true,
+          user_management: true,
+          room_explorer: true,
+          room_pinning: true,
+          latency_diagnostics: true,
+          maintenance_control: false,
+          database_migration: false,
+          ...(item?.permissions || {})
+        }
+      };
+    }).filter(a => !!a.email);
+  }, [coAdmins]);
+
+  const currentCoAdminObj = useMemo(() => {
+    return normalizedCoAdmins.find(a => a.email === currentEmailClean);
+  }, [normalizedCoAdmins, currentEmailClean]);
+
+  const isCoAdmin = !!currentCoAdminObj;
+  const isAuthorizedAdmin = isSuperAdmin || isCoAdmin;
+
+  const userPermissions = useMemo(() => {
+    if (isSuperAdmin) {
+      return {
+        broadcasts: true,
+        settlements: true,
+        user_management: true,
+        room_explorer: true,
+        room_pinning: true,
+        latency_diagnostics: true,
+        maintenance_control: true,
+        database_migration: true,
+        manage_co_admins: true,
+      };
+    }
+    return {
+      broadcasts: !!currentCoAdminObj?.permissions?.broadcasts,
+      settlements: !!currentCoAdminObj?.permissions?.settlements,
+      user_management: !!currentCoAdminObj?.permissions?.user_management,
+      room_explorer: !!currentCoAdminObj?.permissions?.room_explorer,
+      room_pinning: !!currentCoAdminObj?.permissions?.room_pinning,
+      latency_diagnostics: !!currentCoAdminObj?.permissions?.latency_diagnostics,
+      maintenance_control: !!currentCoAdminObj?.permissions?.maintenance_control,
+      database_migration: !!currentCoAdminObj?.permissions?.database_migration,
+      manage_co_admins: false,
+    };
+  }, [isSuperAdmin, currentCoAdminObj]);
+
+  // Co-Admin Management states
+  const [newCoAdminEmail, setNewCoAdminEmail] = useState('');
+  const [newCoAdminName, setNewCoAdminName] = useState('');
+  const [newCoAdminPerms, setNewCoAdminPerms] = useState({
+    broadcasts: true,
+    settlements: true,
+    user_management: true,
+    room_explorer: true,
+    room_pinning: true,
+    latency_diagnostics: true,
+    maintenance_control: false,
+    database_migration: false,
+  });
+  const [isAssigningCoAdmin, setIsAssigningCoAdmin] = useState(false);
+  const [editingCoAdminEmail, setEditingCoAdminEmail] = useState(null);
+  const [editingPerms, setEditingPerms] = useState({});
+  const [coAdminFilter, setCoAdminFilter] = useState('');
 
   // Maintenance form states
   const [maintMsgInput, setMaintMsgInput] = useState(maintenanceMessage || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.');
@@ -1041,6 +1145,10 @@ export default function AdminDashboard({
 
   // Toggle Maintenance Mode
   const handleToggleMaintenance = async () => {
+    if (!userPermissions.maintenance_control) {
+      if (triggerToast) triggerToast('⚠️ Co-Admin does not have Site Maintenance downtime permission.');
+      return;
+    }
     const nextState = !isSystemMaintenanceActive;
     const textToSave = maintMsgInput.trim() || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.';
     setIsSystemMaintenanceActive(nextState);
@@ -1151,6 +1259,10 @@ export default function AdminDashboard({
   const [migrationLog, setMigrationLog] = useState([]);
 
   const handleMigrateD1ToSupabase = async () => {
+    if (!userPermissions.database_migration) {
+      if (triggerToast) triggerToast('⚠️ Database migration is restricted to Super Admin or authorized operators.');
+      return;
+    }
     setIsMigratingD1ToSupabase(true);
     setMigrationLog([]);
     const addLog = (msg) => setMigrationLog(prev => [...prev, msg]);
@@ -1252,6 +1364,116 @@ export default function AdminDashboard({
     } finally {
       setIsMigratingD1ToSupabase(false);
     }
+  };
+
+  // Co-Admin Management Handlers
+  const saveCoAdminsList = async (updatedList) => {
+    if (setCoAdmins) {
+      setCoAdmins(updatedList);
+    }
+    localStorage.setItem('tallyin_co_admins', JSON.stringify(updatedList));
+
+    try {
+      await supabase.from('system_settings').upsert({
+        key: 'co_admins',
+        value: JSON.stringify(updatedList),
+        created_at: new Date().toISOString()
+      }, { onConflict: 'key' });
+    } catch (e) {
+      console.warn("Save co_admins to DB notice:", e);
+    }
+
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'CO_ADMINS',
+        payload: { coAdmins: updatedList }
+      });
+    } catch (e) {}
+  };
+
+  const handleAddCoAdmin = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const cleanEmail = (newCoAdminEmail || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      if (triggerToast) triggerToast('Please provide a valid email address.');
+      return;
+    }
+    if (cleanEmail === SUPER_ADMIN_EMAIL) {
+      if (triggerToast) triggerToast('tallyin.alerts@gmail.com is already the permanent Super Admin.');
+      return;
+    }
+    if (normalizedCoAdmins.some(a => a.email === cleanEmail)) {
+      if (triggerToast) triggerToast(`${cleanEmail} is already a Co-Admin.`);
+      return;
+    }
+
+    setIsAssigningCoAdmin(true);
+    try {
+      const newAdminRecord = {
+        email: cleanEmail,
+        name: (newCoAdminName || '').trim() || cleanEmail.split('@')[0],
+        role: 'co_admin',
+        addedAt: new Date().toISOString(),
+        addedBy: user?.email || 'Super Admin',
+        permissions: { ...newCoAdminPerms }
+      };
+
+      const nextList = [...normalizedCoAdmins, newAdminRecord];
+      await saveCoAdminsList(nextList);
+
+      logAuditAction('ASSIGN_CO_ADMIN', `Granted Co-Admin role to ${cleanEmail} (Added by ${user?.email || 'Super Admin'})`);
+      if (triggerToast) triggerToast(`👑 Assigned Co-Admin role to ${cleanEmail}!`);
+
+      setNewCoAdminEmail('');
+      setNewCoAdminName('');
+      setNewCoAdminPerms({
+        broadcasts: true,
+        settlements: true,
+        user_management: true,
+        room_explorer: true,
+        room_pinning: true,
+        latency_diagnostics: true,
+        maintenance_control: false,
+        database_migration: false,
+      });
+    } catch (err) {
+      if (triggerToast) triggerToast(`Failed to add Co-Admin: ${err.message}`);
+    } finally {
+      setIsAssigningCoAdmin(false);
+    }
+  };
+
+  const handleRemoveCoAdmin = async (targetEmail) => {
+    const cleanTarget = (targetEmail || '').trim().toLowerCase();
+    if (!window.confirm(`Are you sure you want to revoke Co-Admin access for ${cleanTarget}?`)) {
+      return;
+    }
+
+    const nextList = normalizedCoAdmins.filter(a => a.email !== cleanTarget);
+    await saveCoAdminsList(nextList);
+
+    logAuditAction('REVOKE_CO_ADMIN', `Revoked Co-Admin privileges from ${cleanTarget} by ${user?.email || 'Super Admin'}`);
+    if (triggerToast) triggerToast(`🗑️ Revoked Co-Admin access from ${cleanTarget}`);
+  };
+
+  const handleSaveEditedPermissions = async (targetEmail) => {
+    const nextList = normalizedCoAdmins.map(a => {
+      if (a.email === targetEmail) {
+        return {
+          ...a,
+          permissions: { ...(a.permissions || {}), ...(editingPerms || {}) }
+        };
+      }
+      return a;
+    });
+
+    await saveCoAdminsList(nextList);
+    logAuditAction('UPDATE_CO_ADMIN_PERMS', `Updated permissions for ${targetEmail}`);
+    if (triggerToast) triggerToast(`✅ Updated permissions for ${targetEmail}`);
+    setEditingCoAdminEmail(null);
+    setEditingPerms({});
   };
 
   // Publish Global Broadcast
@@ -1504,7 +1726,7 @@ export default function AdminDashboard({
               Access Restricted
             </h2>
             <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-              The Admin Control Portal is restricted exclusively to authorized Google administrator account <span className="font-bold text-rose-600 dark:text-rose-400">tallyin.alerts@gmail.com</span>.
+              The Admin Command Portal is restricted exclusively to authorized administrators (<span className="font-bold text-rose-600 dark:text-rose-400">tallyin.alerts@gmail.com</span>) and assigned Co-Admins.
             </p>
           </div>
           <button
@@ -1533,16 +1755,26 @@ export default function AdminDashboard({
               className="w-12 h-12 object-cover rounded-2xl shadow-md border border-emerald-500/30"
             />
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
                   Admin Command Console
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 dark:bg-emerald-400/20 border border-emerald-500/30 text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest">
-                  Live Master
-                </span>
+                {isSuperAdmin ? (
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 dark:bg-emerald-400/20 border border-emerald-500/30 text-emerald-800 dark:text-[#A3E635] text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-1">
+                    <Crown className="w-3 h-3 text-amber-500" />
+                    Live Master (Super Admin)
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 dark:bg-indigo-400/20 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-indigo-500" />
+                    Co-Admin ({currentCoAdminObj?.name || 'Operations'})
+                  </span>
+                )}
               </div>
               <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-medium mt-0.5">
-                Centralized maintenance control, system broadcasts, room pinning, and latency diagnostics.
+                {isSuperAdmin 
+                  ? 'Master authority • Centralized maintenance control, system broadcasts, room pinning, and administrator delegation.'
+                  : `Delegated operator (${user?.email || 'Co-Admin'}) • Authorized operational access across enabled consoles.`}
               </p>
             </div>
           </div>
@@ -1645,6 +1877,18 @@ export default function AdminDashboard({
         >
           <Activity className="w-3.5 h-3.5" />
           <span>Overview</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('co_admins')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'co_admins'
+              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+              : 'hud-card text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300'
+          }`}
+        >
+          <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
+          <span>Co-Admins ({normalizedCoAdmins.length})</span>
         </button>
 
         <button
@@ -1875,6 +2119,469 @@ export default function AdminDashboard({
                 No active global broadcast broadcasted. Switch to Live Broadcasts tab to push a notification banner.
               </p>
             )}
+          </div>
+
+        </div>
+      )}
+
+      {/* Tab: Co-Admins & Permissions Management */}
+      {activeTab === 'co_admins' && (
+        <div className="space-y-6 animate-fade-in">
+          
+          {/* Header Banner */}
+          <div className="hud-card rounded-3xl p-6 space-y-4 border border-indigo-500/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100">
+                    Administrator Delegation & Co-Admins
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-[10px] font-extrabold uppercase">
+                    RBAC Active
+                  </span>
+                </div>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Delegate administrative responsibilities to team members. Configure fine-grained operational permissions per co-admin.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-[11px] font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                  <Crown className="w-3.5 h-3.5 text-amber-500" />
+                  <span>1 Super Admin</span>
+                </div>
+                <div className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 text-[11px] font-bold text-indigo-800 dark:text-indigo-300 flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>{normalizedCoAdmins.length} Co-Admin{normalizedCoAdmins.length === 1 ? '' : 's'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Role Explanation Strip */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/60 border border-[#E3E8E3] dark:border-slate-800 space-y-1">
+                <div className="flex items-center gap-1.5 font-black text-[#1A3827] dark:text-white">
+                  <Crown className="w-4 h-4 text-amber-500" />
+                  <span>Super Admin Authority (Root)</span>
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                  Permanent owner (<code className="text-emerald-700 dark:text-emerald-400 font-bold">tallyin.alerts@gmail.com</code>). Retains full authority to assign or revoke co-admins, toggle site maintenance, trigger database migrations, and configure system settings.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/40 space-y-1">
+                <div className="flex items-center gap-1.5 font-black text-indigo-900 dark:text-indigo-200">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Co-Admin Capabilities (Delegated)</span>
+                </div>
+                <p className="text-[11px] text-indigo-950/70 dark:text-indigo-300/80 leading-relaxed">
+                  Designated team members with operational permissions (Broadcasts, Settlements, Room Explorer, User Directory, Diagnostics). Co-Admins cannot remove other admins or modify root system credentials.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Add Co-Admin Form (Only Super Admin can add) */}
+          {userPermissions.manage_co_admins ? (
+            <div className="hud-card rounded-3xl p-6 space-y-5 border border-emerald-500/20">
+              <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+                <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                  Grant New Co-Admin Privileges
+                </h4>
+                <span className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
+                  Super Admin Exclusive
+                </span>
+              </div>
+
+              <form onSubmit={handleAddCoAdmin} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                      Account Email <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        required
+                        placeholder="e.g. colleague@gmail.com"
+                        value={newCoAdminEmail}
+                        onChange={e => setNewCoAdminEmail(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    {allRegisteredUsers.length > 0 && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-1">
+                        <span>Quick pick:</span>
+                        <select
+                          onChange={e => {
+                            if (e.target.value) {
+                              setNewCoAdminEmail(e.target.value);
+                              const found = allRegisteredUsers.find(u => (u.email || '').toLowerCase() === e.target.value.toLowerCase());
+                              if (found && found.name) setNewCoAdminName(found.name);
+                            }
+                          }}
+                          className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-lg px-2 py-0.5 text-[10px] text-[#1A3827] dark:text-slate-200"
+                        >
+                          <option value="">Select registered user...</option>
+                          {allRegisteredUsers
+                            .filter(u => u.email && u.email.toLowerCase() !== SUPER_ADMIN_EMAIL && !normalizedCoAdmins.some(c => c.email === u.email.toLowerCase()))
+                            .map(u => (
+                              <option key={u.uid || u.email} value={u.email}>
+                                {u.email} {u.name ? `(${u.name})` : ''}
+                              </option>
+                            ))
+                          }
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                      Display / Team Name (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Operations Lead"
+                      value={newCoAdminName}
+                      onChange={e => setNewCoAdminName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Granular Permission Toggles */}
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider block">
+                      Operational Permissions
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setNewCoAdminPerms({
+                          broadcasts: true,
+                          settlements: true,
+                          user_management: true,
+                          room_explorer: true,
+                          room_pinning: true,
+                          latency_diagnostics: true,
+                          maintenance_control: false,
+                          database_migration: false,
+                        })}
+                        className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
+                      >
+                        Standard
+                      </button>
+                      <span className="text-slate-400">•</span>
+                      <button
+                        type="button"
+                        onClick={() => setNewCoAdminPerms({
+                          broadcasts: true,
+                          settlements: true,
+                          user_management: true,
+                          room_explorer: true,
+                          room_pinning: true,
+                          latency_diagnostics: true,
+                          maintenance_control: true,
+                          database_migration: true,
+                        })}
+                        className="text-[10px] text-indigo-700 dark:text-indigo-400 font-bold hover:underline"
+                      >
+                        All Permissions
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    {[
+                      { key: 'broadcasts', label: 'Global Broadcasts', desc: 'Push banner announcements to all rooms', icon: Radio },
+                      { key: 'settlements', label: 'Financial Settlements', desc: 'Execute admin settlements and audits', icon: HandCoins },
+                      { key: 'user_management', label: 'User Accounts & Bans', desc: 'Manage users, ban/unban, review appeals', icon: Users },
+                      { key: 'room_explorer', label: 'Room Explorer', desc: 'Inspect rooms and membership lists', icon: Building2 },
+                      { key: 'room_pinning', label: 'Message Pinning', desc: 'Pin alerts to room headers', icon: Pin },
+                      { key: 'latency_diagnostics', label: 'Diagnostics & Latency', desc: 'Simulate network latency & pings', icon: Sliders },
+                      { key: 'maintenance_control', label: 'Site Maintenance', desc: 'Activate system downtime (Restricted)', icon: Power, dangerous: true },
+                      { key: 'database_migration', label: 'Database Migration', desc: 'Trigger D1 to Supabase sync', icon: Database, dangerous: true },
+                    ].map(item => {
+                      const Icon = item.icon;
+                      const isChecked = !!newCoAdminPerms[item.key];
+                      return (
+                        <div
+                          key={item.key}
+                          onClick={() => setNewCoAdminPerms(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
+                          className={`p-3 rounded-2xl border cursor-pointer select-none transition-all flex items-start gap-2.5 ${
+                            isChecked
+                              ? item.dangerous
+                                ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800'
+                                : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800'
+                              : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 opacity-60 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="mt-0.5">
+                            {isChecked ? (
+                              <CheckCircle2 className={`w-4 h-4 ${item.dangerous ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`} />
+                            ) : (
+                              <div className="w-4 h-4 rounded border border-slate-300 dark:border-slate-600" />
+                            )}
+                          </div>
+                          <div className="space-y-0.5 min-w-0">
+                            <p className="text-xs font-black text-[#1A3827] dark:text-white flex items-center gap-1">
+                              <Icon className="w-3 h-3 text-slate-500" />
+                              <span className="truncate">{item.label}</span>
+                            </p>
+                            <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-tight">
+                              {item.desc}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isAssigningCoAdmin}
+                  className="px-6 py-3 bg-[#1A3827] hover:bg-[#255038] text-white dark:bg-[#A3E635] dark:hover:bg-[#b7f34c] dark:text-slate-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {isAssigningCoAdmin ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Assigning Co-Admin Role…</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4" />
+                      <span>Assign Co-Admin Role & Broadcast Privileges</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 text-xs text-indigo-950 dark:text-indigo-200 flex items-center gap-3">
+              <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <span>
+                You are currently signed in as an authorized Co-Admin (<strong className="font-bold">{user?.email}</strong>). Role assignments are managed exclusively by the Super Admin (<code className="bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded font-mono">tallyin.alerts@gmail.com</code>).
+              </span>
+            </div>
+          )}
+
+          {/* Active Administrators Directory */}
+          <div className="hud-card rounded-3xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+              <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                <Users className="w-4 h-4 text-blue-500" />
+                Active Administrative Team ({1 + normalizedCoAdmins.length})
+              </h4>
+              <span className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
+                Live Status Verified
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {/* Primary Super Admin Card */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-emerald-500/5 to-transparent border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shadow-md shrink-0">
+                    <Crown className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h5 className="text-sm font-black text-[#1A3827] dark:text-white">
+                        {SUPER_ADMIN_EMAIL}
+                      </h5>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] font-extrabold uppercase tracking-wider">
+                        Root Owner / Super Admin
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                      Permanent master credentials • Unrestricted authority across all system tables and infrastructure
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635] text-[10px] font-black rounded-lg uppercase">
+                    All Access Active
+                  </span>
+                </div>
+              </div>
+
+              {/* Co-Admins List */}
+              {normalizedCoAdmins.length === 0 ? (
+                <div className="p-8 text-center border border-dashed border-[#E3E8E3] dark:border-slate-800 rounded-2xl space-y-2">
+                  <UserCheck className="w-8 h-8 text-slate-400 mx-auto" />
+                  <p className="text-xs font-bold text-[#1A3827] dark:text-slate-300">
+                    No Co-Admins currently assigned.
+                  </p>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 max-w-sm mx-auto">
+                    Use the form above to delegate administration rights to another team member or developer.
+                  </p>
+                </div>
+              ) : (
+                normalizedCoAdmins.map((admin, idx) => {
+                  const isBeingEdited = editingCoAdminEmail === admin.email;
+                  return (
+                    <div
+                      key={admin.email || idx}
+                      className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-3 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-600 transition-all"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/70 border border-indigo-300 dark:border-indigo-800 flex items-center justify-center text-sm font-black text-indigo-700 dark:text-indigo-300 shrink-0">
+                            {(admin.name || admin.email || 'A').charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-black text-[#1A3827] dark:text-white">
+                                {admin.email}
+                              </span>
+                              {admin.name && (
+                                <span className="text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold">
+                                  ({admin.name})
+                                </span>
+                              )}
+                              <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 text-[10px] font-extrabold uppercase tracking-wide">
+                                Co-Admin
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                              Added {new Date(admin.addedAt).toLocaleDateString()} by {admin.addedBy || 'Super Admin'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {userPermissions.manage_co_admins && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isBeingEdited) {
+                                  setEditingCoAdminEmail(null);
+                                  setEditingPerms({});
+                                } else {
+                                  setEditingCoAdminEmail(admin.email);
+                                  setEditingPerms({ ...(admin.permissions || {}) });
+                                }
+                              }}
+                              className="px-3 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-700 text-[11px] font-bold text-[#1A3827] dark:text-slate-200 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all flex items-center gap-1.5"
+                            >
+                              <Sliders className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>{isBeingEdited ? 'Cancel Edit' : 'Edit Permissions'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCoAdmin(admin.email)}
+                              className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-[11px] font-bold transition-all flex items-center gap-1.5"
+                              title="Revoke Co-Admin Privileges"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                              <span>Revoke</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Permissions Pills Display */}
+                      <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#F6F8F6] dark:border-slate-800">
+                        {admin.permissions?.broadcasts && (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/50 text-purple-800 dark:text-purple-300 text-[10px] font-bold">
+                            📢 Broadcasts
+                          </span>
+                        )}
+                        {admin.permissions?.settlements && (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold">
+                            💰 Settlements
+                          </span>
+                        )}
+                        {admin.permissions?.user_management && (
+                          <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 text-[10px] font-bold">
+                            👥 Users & Bans
+                          </span>
+                        )}
+                        {admin.permissions?.room_explorer && (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 text-[10px] font-bold">
+                            🔍 Room Explorer
+                          </span>
+                        )}
+                        {admin.permissions?.room_pinning && (
+                          <span className="px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-950/50 text-teal-800 dark:text-teal-300 text-[10px] font-bold">
+                            📌 Pinning
+                          </span>
+                        )}
+                        {admin.permissions?.latency_diagnostics && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
+                            ⚡ Latency
+                          </span>
+                        )}
+                        {admin.permissions?.maintenance_control && (
+                          <span className="px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 text-[10px] font-bold">
+                            🔧 Site Maintenance
+                          </span>
+                        )}
+                        {admin.permissions?.database_migration && (
+                          <span className="px-2 py-0.5 rounded-md bg-cyan-100 dark:bg-cyan-950/50 text-cyan-800 dark:text-cyan-300 text-[10px] font-bold">
+                            🗄️ Migration
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Inline Permission Editor (when expanded) */}
+                      {isBeingEdited && (
+                        <div className="p-4 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/80 border border-indigo-200 dark:border-indigo-900/50 space-y-3 mt-2">
+                          <p className="text-[11px] font-bold text-indigo-900 dark:text-indigo-300">
+                            Configure permissions for {admin.email}:
+                          </p>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {[
+                              { key: 'broadcasts', label: 'Broadcasts' },
+                              { key: 'settlements', label: 'Settlements' },
+                              { key: 'user_management', label: 'User Directory' },
+                              { key: 'room_explorer', label: 'Room Explorer' },
+                              { key: 'room_pinning', label: 'Room Pinning' },
+                              { key: 'latency_diagnostics', label: 'Latency' },
+                              { key: 'maintenance_control', label: 'Maintenance' },
+                              { key: 'database_migration', label: 'DB Migration' },
+                            ].map(p => (
+                              <label key={p.key} className="flex items-center gap-2 text-[11px] font-semibold text-[#1A3827] dark:text-slate-200 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={!!editingPerms[p.key]}
+                                  onChange={e => setEditingPerms(prev => ({ ...prev, [p.key]: e.target.checked }))}
+                                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span>{p.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E3E8E3] dark:border-slate-800">
+                            <button
+                              type="button"
+                              onClick={() => { setEditingCoAdminEmail(null); setEditingPerms({}); }}
+                              className="px-3 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-700 text-xs font-bold text-slate-500"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditedPermissions(admin.email)}
+                              className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm"
+                            >
+                              Save Permissions
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
         </div>
