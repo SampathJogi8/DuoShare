@@ -667,6 +667,19 @@ export default function App() {
     ];
   });
 
+  const [systemMaintenanceCountdown, setSystemMaintenanceCountdown] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_maint_countdown');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.active && parsed.targetTime > Date.now()) return parsed;
+        }
+      } catch (e) {}
+    }
+    return null;
+  });
+
   const [allowedMaintenanceAccounts, setAllowedMaintenanceAccounts] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -937,6 +950,23 @@ export default function App() {
         if (payload?.payload?.features && Array.isArray(payload.payload.features)) {
           setMaintenanceFeatures(payload.payload.features);
           localStorage.setItem('tallyin_maintenance_features', JSON.stringify(payload.payload.features));
+        }
+      })
+      .on('broadcast', { event: 'SYSTEM_FORCE_RELOAD' }, () => {
+        try {
+          console.warn('[ADMIN DIRECTIVE] SYSTEM_FORCE_RELOAD broadcast received. Reloading application...');
+          window.location.reload();
+        } catch (e) {}
+      })
+      .on('broadcast', { event: 'MAINTENANCE_COUNTDOWN' }, (payload) => {
+        if (payload?.payload) {
+          if (payload.payload.active) {
+            setSystemMaintenanceCountdown(payload.payload);
+            localStorage.setItem('tallyin_maint_countdown', JSON.stringify(payload.payload));
+          } else {
+            setSystemMaintenanceCountdown(null);
+            localStorage.removeItem('tallyin_maint_countdown');
+          }
         }
       })
       .subscribe();
@@ -11007,6 +11037,34 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         </header>
 
         <main className="flex-grow pt-16 sm:pt-20 px-3 sm:px-8 pb-24 overflow-y-auto">
+          {/* Scheduled Maintenance Countdown Banner */}
+          {systemMaintenanceCountdown?.active && (
+            <div className="w-full mb-4 rounded-2xl p-3.5 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-900 dark:text-amber-200 shadow-lg flex items-center justify-between gap-3 animate-pulse">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/30 flex items-center justify-center shrink-0">
+                  <Clock className="w-4 h-4 text-amber-600 dark:text-amber-300" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-xs uppercase tracking-wider">Scheduled Maintenance Warning</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/30 text-amber-800 dark:text-amber-200">
+                      In ~{Math.max(1, Math.round(((systemMaintenanceCountdown.targetTime || 0) - Date.now()) / 60000))} mins
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-800 dark:text-amber-300 truncate">
+                    {systemMaintenanceCountdown.message || 'System maintenance will begin shortly. Please finish any ongoing tasks.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSystemMaintenanceCountdown(null)}
+                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Live Broadcast Banner Overlay (Completely Closeable) */}
           {(() => {
             const activeBroadcastKey = globalBroadcast?.active

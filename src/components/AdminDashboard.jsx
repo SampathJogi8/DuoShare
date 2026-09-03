@@ -53,7 +53,14 @@ import {
   Network,
   Laptop,
   ExternalLink,
-  X
+  X,
+  SlidersHorizontal,
+  AlertCircle,
+  Edit3,
+  Save,
+  FileSpreadsheet,
+  AlertOctagon,
+  UserMinus
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
@@ -139,6 +146,10 @@ export default function AdminDashboard({
         maintenance_control: true,
         database_migration: true,
         manage_co_admins: true,
+        room_commander: true,
+        dispute_resolver: true,
+        database_studio: true,
+        system_triggers: true,
       };
     }
     return {
@@ -151,6 +162,10 @@ export default function AdminDashboard({
       maintenance_control: Boolean(currentCoAdminObj?.permissions?.maintenance_control),
       database_migration: Boolean(currentCoAdminObj?.permissions?.database_migration),
       manage_co_admins: false,
+      room_commander: Boolean(currentCoAdminObj?.permissions?.room_commander ?? currentCoAdminObj?.permissions?.room_explorer),
+      dispute_resolver: Boolean(currentCoAdminObj?.permissions?.dispute_resolver ?? currentCoAdminObj?.permissions?.settlements),
+      database_studio: Boolean(currentCoAdminObj?.permissions?.database_studio ?? currentCoAdminObj?.permissions?.database_migration),
+      system_triggers: Boolean(currentCoAdminObj?.permissions?.system_triggers ?? currentCoAdminObj?.permissions?.maintenance_control),
     };
   }, [isSuperAdmin, currentCoAdminObj]);
 
@@ -181,6 +196,55 @@ export default function AdminDashboard({
   });
   const [selectedAckRecord, setSelectedAckRecord] = useState(null);
   const [ackSearchQuery, setAckSearchQuery] = useState('');
+
+  // 1. Room Commander states
+  const [commanderRooms, setCommanderRooms] = useState([]);
+  const [loadingCommanderRooms, setLoadingCommanderRooms] = useState(false);
+  const [commanderSearch, setCommanderSearch] = useState('');
+  const [editingRoomCommander, setEditingRoomCommander] = useState(null);
+  const [commanderBudgetInput, setCommanderBudgetInput] = useState('');
+  const [commanderMaxMembersInput, setCommanderMaxMembersInput] = useState('');
+  const [commanderRoomNameInput, setCommanderRoomNameInput] = useState('');
+  const [isSavingCommanderRoom, setIsSavingCommanderRoom] = useState(false);
+  const [commanderSelectedMembers, setCommanderSelectedMembers] = useState([]);
+  const [loadingCommanderMembers, setLoadingCommanderMembers] = useState(false);
+
+  // 2. Dispute & Transaction Resolver states
+  const [allGlobalTx, setAllGlobalTx] = useState([]);
+  const [loadingGlobalTx, setLoadingGlobalTx] = useState(false);
+  const [globalTxSearch, setGlobalTxSearch] = useState('');
+  const [editingTx, setEditingTx] = useState(null);
+  const [editTxTitle, setEditTxTitle] = useState('');
+  const [editTxAmount, setEditTxAmount] = useState('');
+  const [editTxCategory, setEditTxCategory] = useState('');
+  const [isSavingTx, setIsSavingTx] = useState(false);
+  const [selectedTxDetails, setSelectedTxDetails] = useState(null);
+
+  // 3. Database Studio states
+  const [studioTable, setStudioTable] = useState('rooms');
+  const [studioRows, setStudioRows] = useState([]);
+  const [studioSearch, setStudioSearch] = useState('');
+  const [loadingStudio, setLoadingStudio] = useState(false);
+  const [inspectedStudioRow, setInspectedStudioRow] = useState(null);
+
+  // 4. System Macro Triggers states
+  const [isBroadcastingForceReload, setIsBroadcastingForceReload] = useState(false);
+  const [isBroadcastingSettlementReminders, setIsBroadcastingSettlementReminders] = useState(false);
+  const [countdownMinsInput, setCountdownMinsInput] = useState('10');
+  const [countdownNoticeInput, setCountdownNoticeInput] = useState('System maintenance scheduled. Normal service will resume shortly.');
+  const [isSendingCountdown, setIsSendingCountdown] = useState(false);
+  const [activeSystemCountdown, setActiveSystemCountdown] = useState(null);
+
+  // 5. User Account Editor & Warning System states
+  const [editingUser, setEditingUser] = useState(null);
+  const [editUserNickname, setEditUserNickname] = useState('');
+  const [editUserPhotoUrl, setEditUserPhotoUrl] = useState('');
+  const [editUserRoomId, setEditUserRoomId] = useState('');
+  const [isSavingUser, setIsSavingUser] = useState(false);
+  const [warningTargetUser, setWarningTargetUser] = useState(null);
+  const [warningReason, setWarningReason] = useState('Conduct & Room Etiquette Violation');
+  const [warningNotes, setWarningNotes] = useState('');
+  const [isSendingWarning, setIsSendingWarning] = useState(false);
 
   // Maintenance form states
   const [maintMsgInput, setMaintMsgInput] = useState(maintenanceMessage || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.');
@@ -1148,6 +1212,449 @@ export default function AdminDashboard({
       fetchCoAdminAckRegistry();
     }
   }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry]);
+
+  // Fetch Rooms for Room Commander with members count
+  const fetchCommanderRooms = useCallback(async () => {
+    setLoadingCommanderRooms(true);
+    try {
+      const [roomsRes, membersRes, txRes] = await Promise.all([
+        supabase.from('rooms').select('*').order('created_at', { ascending: false }),
+        supabase.from('members').select('room_id'),
+        supabase.from('transactions').select('room_id, amount')
+      ]);
+
+      const memberCounts = {};
+      (membersRes.data || []).forEach(m => {
+        if (m.room_id) memberCounts[m.room_id] = (memberCounts[m.room_id] || 0) + 1;
+      });
+
+      const roomTotals = {};
+      (txRes.data || []).forEach(t => {
+        if (t.room_id) roomTotals[t.room_id] = (roomTotals[t.room_id] || 0) + (Number(t.amount) || 0);
+      });
+
+      const formatted = (roomsRes.data || []).map(r => ({
+        ...r,
+        memberCount: memberCounts[r.id] || 0,
+        totalSpend: roomTotals[r.id] || 0,
+        isFrozen: Boolean(r.is_frozen)
+      }));
+
+      setCommanderRooms(formatted);
+    } catch (e) {
+      console.warn("Commander rooms fetch notice:", e);
+    } finally {
+      setLoadingCommanderRooms(false);
+    }
+  }, []);
+
+  // Fetch Global Transactions for Dispute Resolver
+  const fetchGlobalTransactions = useCallback(async () => {
+    setLoadingGlobalTx(true);
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1000);
+
+      if (!error && data) {
+        setAllGlobalTx(data);
+      }
+    } catch (e) {
+      console.warn("Global transactions fetch notice:", e);
+    } finally {
+      setLoadingGlobalTx(false);
+    }
+  }, []);
+
+  // Fetch Supabase Table Data for Database Studio
+  const fetchStudioTable = useCallback(async (tableName) => {
+    if (!tableName) return;
+    setLoadingStudio(true);
+    try {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .limit(500);
+
+      if (!error && data) {
+        setStudioRows(data);
+      } else {
+        setStudioRows([]);
+      }
+    } catch (e) {
+      console.warn(`Studio fetch error for ${tableName}:`, e);
+      setStudioRows([]);
+    } finally {
+      setLoadingStudio(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthorizedAdmin) {
+      fetchCommanderRooms();
+      fetchGlobalTransactions();
+    }
+  }, [isAuthorizedAdmin, fetchCommanderRooms, fetchGlobalTransactions]);
+
+  useEffect(() => {
+    if (isAuthorizedAdmin && activeTab === 'database_studio') {
+      fetchStudioTable(studioTable);
+    }
+  }, [isAuthorizedAdmin, activeTab, studioTable, fetchStudioTable]);
+
+  // Room Commander Handlers
+  const handleToggleFreezeRoom = async (room) => {
+    const nextFrozen = !room.isFrozen;
+    const actionLabel = nextFrozen ? 'FROZEN' : 'UNFROZEN';
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .update({ is_frozen: nextFrozen })
+        .eq('id', room.id);
+
+      if (error) throw error;
+
+      setCommanderRooms(prev => prev.map(r => r.id === room.id ? { ...r, isFrozen: nextFrozen } : r));
+      logAuditAction('ROOM_FREEZE_TOGGLE', `Room "${room.name}" (${room.id}) was ${actionLabel} by ${user?.email || 'Admin'}`);
+
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'ROOM_STATUS_UPDATE',
+        payload: { roomId: room.id, isFrozen: nextFrozen }
+      });
+
+      if (triggerToast) triggerToast(`Room ${room.name} is now ${actionLabel}`);
+    } catch (err) {
+      if (triggerToast) triggerToast(`Failed to update room status: ${err.message}`);
+    }
+  };
+
+  const handleSaveCommanderRoom = async (roomId) => {
+    setIsSavingCommanderRoom(true);
+    try {
+      const updates = {};
+      if (commanderRoomNameInput.trim()) updates.name = commanderRoomNameInput.trim();
+      if (commanderBudgetInput !== '') updates.monthly_budget = Number(commanderBudgetInput) || 0;
+      if (commanderMaxMembersInput !== '') updates.max_members = Number(commanderMaxMembersInput) || 10;
+
+      const { error } = await supabase
+        .from('rooms')
+        .update(updates)
+        .eq('id', roomId);
+
+      if (error) throw error;
+
+      setCommanderRooms(prev => prev.map(r => r.id === roomId ? { ...r, ...updates } : r));
+      logAuditAction('ROOM_UPDATE', `Updated settings for room ${roomId} by ${user?.email || 'Admin'}`);
+      if (triggerToast) triggerToast('Room configuration saved successfully!');
+      setEditingRoomCommander(null);
+    } catch (err) {
+      if (triggerToast) triggerToast(`Error updating room: ${err.message}`);
+    } finally {
+      setIsSavingCommanderRoom(false);
+    }
+  };
+
+  const handlePurgeRoom = async (room) => {
+    if (!window.confirm(`⚠️ DANGER: Are you sure you want to completely PURGE room "${room.name}" (${room.id})? This will permanently delete the room and all associated records.`)) {
+      return;
+    }
+
+    try {
+      await Promise.all([
+        supabase.from('transactions').delete().eq('room_id', room.id),
+        supabase.from('members').delete().eq('room_id', room.id),
+        supabase.from('receipts').delete().eq('room_id', room.id),
+      ]);
+      await supabase.from('rooms').delete().eq('id', room.id);
+
+      setCommanderRooms(prev => prev.filter(r => r.id !== room.id));
+      logAuditAction('ROOM_PURGE', `Permanently purged room "${room.name}" (${room.id}) by ${user?.email || 'Admin'}`);
+      if (triggerToast) triggerToast(`Room ${room.name} has been purged.`);
+    } catch (err) {
+      if (triggerToast) triggerToast(`Purge failed: ${err.message}`);
+    }
+  };
+
+  // Transaction Dispute Handlers
+  const handleSaveEditedTransaction = async (txId) => {
+    setIsSavingTx(true);
+    try {
+      const updates = {
+        title: editTxTitle.trim(),
+        amount: Number(editTxAmount) || 0,
+        category: editTxCategory || 'General'
+      };
+
+      const { error } = await supabase
+        .from('transactions')
+        .update(updates)
+        .eq('id', txId);
+
+      if (error) throw error;
+
+      setAllGlobalTx(prev => prev.map(t => t.id === txId ? { ...t, ...updates } : t));
+      logAuditAction('TRANSACTION_EDIT', `Edited transaction ${txId} (${updates.title}, ₹${updates.amount}) by ${user?.email || 'Admin'}`);
+      if (triggerToast) triggerToast('Transaction updated successfully!');
+      setEditingTx(null);
+    } catch (err) {
+      if (triggerToast) triggerToast(`Transaction edit failed: ${err.message}`);
+    } finally {
+      setIsSavingTx(false);
+    }
+  };
+
+  const handleVoidTransaction = async (tx) => {
+    if (!window.confirm(`Are you sure you want to VOID/DELETE transaction "${tx.title || 'Expense'}" (₹${tx.amount}) in Room ${tx.room_id}?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('transactions').delete().eq('id', tx.id);
+      if (error) throw error;
+
+      setAllGlobalTx(prev => prev.filter(t => t.id !== tx.id));
+      logAuditAction('TRANSACTION_VOID', `Voided transaction ${tx.id} ("${tx.title}", ₹${tx.amount}) in Room ${tx.room_id}`);
+      if (triggerToast) triggerToast(`Transaction "${tx.title}" voided!`);
+    } catch (err) {
+      if (triggerToast) triggerToast(`Void failed: ${err.message}`);
+    }
+  };
+
+  // Database Studio Handlers
+  const handleDeleteStudioRow = async (tableName, row) => {
+    const keyField = row.id !== undefined ? 'id' : row.key !== undefined ? 'key' : null;
+    if (!keyField) {
+      if (triggerToast) triggerToast('Cannot determine primary key for row.');
+      return;
+    }
+    const val = row[keyField];
+    if (!window.confirm(`Are you sure you want to delete row ${keyField}=${val} from table "${tableName}"?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from(tableName).delete().eq(keyField, val);
+      if (error) throw error;
+
+      setStudioRows(prev => prev.filter(r => r[keyField] !== val));
+      logAuditAction('STUDIO_ROW_DELETE', `Deleted row ${keyField}=${val} from table ${tableName}`);
+      if (triggerToast) triggerToast(`Deleted row from ${tableName}`);
+    } catch (err) {
+      if (triggerToast) triggerToast(`Delete error: ${err.message}`);
+    }
+  };
+
+  const handleExportStudioCSV = (tableName) => {
+    if (!studioRows || studioRows.length === 0) {
+      if (triggerToast) triggerToast('No rows to export.');
+      return;
+    }
+    const cols = Object.keys(studioRows[0]);
+    const csvLines = [
+      cols.join(','),
+      ...studioRows.map(row =>
+        cols.map(c => {
+          const val = row[c];
+          if (val === null || val === undefined) return '';
+          if (typeof val === 'object') return `"${JSON.stringify(val).replace(/"/g, '""')}"`;
+          return `"${String(val).replace(/"/g, '""')}"`;
+        }).join(',')
+      )
+    ];
+    const blob = new Blob([csvLines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tallyin_${tableName}_export_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    if (triggerToast) triggerToast(`Exported ${tableName} to CSV!`);
+  };
+
+  // System Macro Triggers Handlers
+  const handleTriggerForceReload = async () => {
+    if (!window.confirm('Broadcast SYSTEM_FORCE_RELOAD to all active client devices? This will instruct all connected browsers to refresh their application caches.')) {
+      return;
+    }
+    setIsBroadcastingForceReload(true);
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'SYSTEM_FORCE_RELOAD',
+        payload: { triggeredBy: user?.email || 'Admin', timestamp: Date.now() }
+      });
+      logAuditAction('SYSTEM_FORCE_RELOAD', `Broadcasted client force reload by ${user?.email || 'Admin'}`);
+      if (triggerToast) triggerToast('⚡ Broadcasted SYSTEM_FORCE_RELOAD event to all clients!');
+    } catch (e) {
+      if (triggerToast) triggerToast(`Broadcast error: ${e.message}`);
+    } finally {
+      setIsBroadcastingForceReload(false);
+    }
+  };
+
+  const handleTriggerSettlementReminders = async () => {
+    setIsBroadcastingSettlementReminders(true);
+    try {
+      const reminderBroadcast = {
+        id: 'SETTLE-REMIND-' + Date.now(),
+        message: '📢 Roommate Month-End Settlement Reminder: Please review pending expenses and settle room balances with your roommates.',
+        type: 'announcement',
+        targetRoom: 'ALL',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+        author: userNickname || 'System Finance'
+      };
+
+      if (setGlobalBroadcast) setGlobalBroadcast(reminderBroadcast);
+      localStorage.setItem('tallyin_global_broadcast', JSON.stringify(reminderBroadcast));
+
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'GLOBAL_BROADCAST',
+        payload: { broadcast: reminderBroadcast }
+      });
+
+      logAuditAction('TRIGGER_SETTLEMENT_REMINDER', `Dispatched platform-wide month-end settlement reminder broadcast`);
+      if (triggerToast) triggerToast('💰 Dispatched settlement reminder broadcast to all rooms!');
+    } catch (e) {
+      if (triggerToast) triggerToast(`Reminder failed: ${e.message}`);
+    } finally {
+      setIsBroadcastingSettlementReminders(false);
+    }
+  };
+
+  const handleStartMaintenanceCountdown = async () => {
+    const mins = Number(countdownMinsInput) || 10;
+    setIsSendingCountdown(true);
+    try {
+      const payload = {
+        active: true,
+        minutes: mins,
+        message: countdownNoticeInput.trim() || 'System Maintenance scheduled.',
+        targetTime: Date.now() + mins * 60 * 1000,
+        initiatedBy: user?.email || 'Admin'
+      };
+
+      setActiveSystemCountdown(payload);
+
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'MAINTENANCE_COUNTDOWN',
+        payload
+      });
+
+      logAuditAction('MAINTENANCE_COUNTDOWN_START', `Scheduled ${mins}-minute maintenance countdown: "${payload.message}"`);
+      if (triggerToast) triggerToast(`⏱️ Active ${mins}-minute maintenance countdown broadcasted!`);
+    } catch (e) {
+      if (triggerToast) triggerToast(`Countdown dispatch error: ${e.message}`);
+    } finally {
+      setIsSendingCountdown(false);
+    }
+  };
+
+  const handleCancelMaintenanceCountdown = async () => {
+    setActiveSystemCountdown(null);
+    try {
+      const sysChan = supabase.channel('system_admin_channel');
+      await sysChan.send({
+        type: 'broadcast',
+        event: 'MAINTENANCE_COUNTDOWN',
+        payload: { active: false }
+      });
+      logAuditAction('MAINTENANCE_COUNTDOWN_CANCEL', `Canceled active maintenance countdown`);
+      if (triggerToast) triggerToast('Cancelled maintenance countdown alert.');
+    } catch (e) {}
+  };
+
+  // User Warning Email Handler
+  const handleSendOfficialWarning = async () => {
+    if (!warningTargetUser || !warningTargetUser.email || warningTargetUser.email === 'N/A') {
+      if (triggerToast) triggerToast('Target user does not have a registered email address.');
+      return;
+    }
+
+    setIsSendingWarning(true);
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const randHex = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const warningRef = `WRN-${dateStr}-${randHex}`;
+
+    const subject = `[OFFICIAL NOTICE] Administrative Warning from Tallyin — Ref: ${warningRef}`;
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 26px; background-color: #ffffff; border-radius: 18px; border: 1px solid #fed7aa; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+        <div style="text-align: center; padding-bottom: 18px; border-bottom: 2px solid #f97316;">
+          <div style="margin: 0 auto 12px auto;">
+            <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/public/tallyin_security_shield.png" alt="Tallyin Security" width="80" height="80" style="width: 80px; height: 80px; display: inline-block; object-fit: contain;" />
+          </div>
+          <div style="display: inline-block; padding: 5px 14px; background-color: #ffedd5; border: 1px solid #fed7aa; border-radius: 9999px; color: #c2410c; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
+            Official Administrative Warning
+          </div>
+          <h1 style="color: #9a3412; margin: 12px 0 6px 0; font-size: 20px; font-weight: 900;">Account Notice & Policy Compliance</h1>
+          <p style="color: #64748b; font-size: 12px; margin: 0;">Tallyin Governance & Security Enforcement</p>
+        </div>
+
+        <div style="margin: 20px 0; padding: 16px; background-color: #fff7ed; border: 1px solid #ffedd5; border-radius: 12px;">
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #ea580c; margin-bottom: 6px;">
+            Warning Reference ID
+          </div>
+          <div style="font-family: monospace; font-size: 17px; font-weight: 900; color: #c2410c; letter-spacing: 1px;">
+            ${warningRef}
+          </div>
+          <div style="margin-top: 10px; font-size: 12px; color: #475569; line-height: 1.5; border-top: 1px solid #ffedd5; padding-top: 10px;">
+            <div><strong>Recipient:</strong> ${warningTargetUser.name} (${warningTargetUser.email})</div>
+            <div><strong>Reason:</strong> ${warningReason}</div>
+            <div><strong>Issued By:</strong> System Administration (${user?.email || 'Super Admin'})</div>
+            <div><strong>Timestamp:</strong> ${new Date().toUTCString()}</div>
+          </div>
+        </div>
+
+        <div style="color: #334155; font-size: 13px; line-height: 1.6; margin-bottom: 20px;">
+          <p>Hello <strong>${warningTargetUser.name}</strong>,</p>
+          <p>You have received an official administrative notice regarding your activity on the Tallyin platform.</p>
+          <p><strong>Specific Notice Details:</strong></p>
+          <blockquote style="margin: 10px 0; padding: 10px 14px; background-color: #f8fafc; border-left: 3px solid #f97316; font-style: italic; color: #475569;">
+            ${warningNotes.trim() || 'Please adhere to room spending limits and mutual roommate settlement agreements.'}
+          </blockquote>
+          <p>Continued violations of room guidelines or disputed financial transactions may result in immediate account suspension or removal from shared rooms.</p>
+        </div>
+
+        <div style="text-align: center; padding-top: 18px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+          Tallyin Corporate Governance • Ref: <strong>${warningRef}</strong>
+        </div>
+      </div>
+    `;
+
+    try {
+      const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+      fetch(mailRelayUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: warningTargetUser.email,
+          subject,
+          body: `Tallyin Official Warning:\nRef: ${warningRef}\nReason: ${warningReason}\nDetails: ${warningNotes}`,
+          htmlBody
+        })
+      }).catch(console.warn);
+
+      logAuditAction('ISSUE_USER_WARNING', `Issued official warning ${warningRef} to ${warningTargetUser.email} (Reason: ${warningReason})`);
+      if (triggerToast) triggerToast(`⚠️ Dispatched official warning to ${warningTargetUser.email}! Ref: ${warningRef}`);
+      setWarningTargetUser(null);
+      setWarningNotes('');
+    } catch (e) {
+      if (triggerToast) triggerToast(`Warning dispatch failed: ${e.message}`);
+    } finally {
+      setIsSendingWarning(false);
+    }
+  };
 
 
 
@@ -2442,6 +2949,62 @@ export default function AdminDashboard({
           >
             <Building2 className="w-3.5 h-3.5 text-blue-500" />
             <span>Rooms Directory ({allSystemRooms.length})</span>
+          </button>
+        )}
+
+        {userPermissions.room_commander && (
+          <button
+            onClick={() => setActiveTab('room_commander')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'room_commander'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-emerald-600 dark:text-emerald-400 hover:text-emerald-800'
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Room Commander ({commanderRooms.length})</span>
+          </button>
+        )}
+
+        {userPermissions.dispute_resolver && (
+          <button
+            onClick={() => setActiveTab('dispute_resolver')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'dispute_resolver'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-amber-600 dark:text-amber-400 hover:text-amber-800'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-amber-500" />
+            <span>Disputes & Expenses ({allGlobalTx.length})</span>
+          </button>
+        )}
+
+        {userPermissions.database_studio && (
+          <button
+            onClick={() => setActiveTab('database_studio')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'database_studio'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-cyan-600 dark:text-cyan-400 hover:text-cyan-800'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5 text-cyan-500" />
+            <span>Database Studio</span>
+          </button>
+        )}
+
+        {userPermissions.system_triggers && (
+          <button
+            onClick={() => setActiveTab('system_triggers')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'system_triggers'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-rose-600 dark:text-rose-400 hover:text-rose-800'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+            <span>System Macro Triggers</span>
           </button>
         )}
 
@@ -4740,6 +5303,17 @@ NOTIFY pgrst, 'reload schema';`;
                             <Mail className="w-3.5 h-3.5" />
                           </button>
 
+                          <button
+                            onClick={() => {
+                              setWarningTargetUser(u);
+                              setWarningNotes('');
+                            }}
+                            className="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors"
+                            title="Issue Official Administrative Warning"
+                          >
+                            <AlertOctagon className="w-3.5 h-3.5" />
+                          </button>
+
                           {isBanned ? (
                             <button
                               onClick={() => handleUnbanUser(userTarget)}
@@ -5784,6 +6358,892 @@ NOTIFY pgrst, 'reload schema';`;
           </div>
         </div>
         )
+      )}
+
+      {/* Tab: Room Commander & Intervention */}
+      {activeTab === 'room_commander' && (
+        !userPermissions.room_commander ? (
+          renderAccessRestrictedCard('Room Commander', 'Room Commander Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                  <SlidersHorizontal className="w-5 h-5 text-emerald-500" />
+                  Room Commander & Live Intervention Hub ({commanderRooms.length})
+                </h3>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Override room settings, freeze/unfreeze disputed rooms, adjust monthly budget caps, and manage member limits.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchCommanderRooms}
+                  disabled={loadingCommanderRooms}
+                  className="px-3 py-2 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-all flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingCommanderRooms ? 'animate-spin' : ''}`} />
+                  <span>Refresh Rooms</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Filter Search */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                value={commanderSearch}
+                onChange={e => setCommanderSearch(e.target.value)}
+                placeholder="Filter rooms by Name, ID, or Status..."
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            {/* Rooms Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-1">
+              {commanderRooms.length === 0 ? (
+                <div className="col-span-2 py-12 text-center text-slate-400">
+                  <Building2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-xs font-bold">No rooms found in Supabase.</p>
+                </div>
+              ) : (
+                commanderRooms
+                  .filter(r => {
+                    if (!commanderSearch.trim()) return true;
+                    const q = commanderSearch.toLowerCase();
+                    return (
+                      (r.name && r.name.toLowerCase().includes(q)) ||
+                      (r.id && r.id.toLowerCase().includes(q)) ||
+                      (r.isFrozen ? 'frozen' : 'active').includes(q)
+                    );
+                  })
+                  .map(room => (
+                    <div
+                      key={room.id}
+                      className={`p-4 rounded-2xl border transition-all ${
+                        room.isFrozen
+                          ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40'
+                          : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-sm text-[#1A3827] dark:text-slate-100 truncate">
+                              {room.name || 'Unnamed Room'}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                              room.isFrozen
+                                ? 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 animate-pulse'
+                                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                            }`}>
+                              {room.isFrozen ? '❄️ Frozen' : '● Active'}
+                            </span>
+                          </div>
+                          <p className="font-mono text-[11px] text-[#5C6E5C] dark:text-slate-400 font-bold">
+                            ID: {room.id}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => {
+                              setEditingRoomCommander(room);
+                              setCommanderRoomNameInput(room.name || '');
+                              setCommanderBudgetInput(room.monthly_budget !== undefined ? String(room.monthly_budget) : '');
+                              setCommanderMaxMembersInput(room.max_members !== undefined ? String(room.max_members) : '10');
+                            }}
+                            className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                            title="Edit Room Configuration"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleToggleFreezeRoom(room)}
+                            className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black transition-colors flex items-center gap-1 ${
+                              room.isFrozen
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 hover:bg-rose-200'
+                            }`}
+                            title={room.isFrozen ? 'Unfreeze Room' : 'Freeze Room to Halt Expenses'}
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            <span>{room.isFrozen ? 'Unfreeze' : 'Freeze'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Stats row */}
+                      <div className="grid grid-cols-3 gap-2 py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-100 dark:border-slate-800/80 text-center mb-3">
+                        <div>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase block">Members</span>
+                          <span className="text-xs font-black text-[#1A3827] dark:text-slate-200">
+                            {room.memberCount} / {room.max_members || '∞'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase block">Budget Cap</span>
+                          <span className="text-xs font-black text-[#1A3827] dark:text-slate-200">
+                            {room.monthly_budget ? `₹${room.monthly_budget}` : 'None'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase block">Total Spend</span>
+                          <span className="text-xs font-black text-emerald-700 dark:text-[#A3E635]">
+                            ₹{Math.round(room.totalSpend || 0).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Danger Actions */}
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[10px]">
+                        <button
+                          onClick={() => {
+                            setTargetPinRoomId(room.id);
+                            setIsCustomRoomInput(false);
+                            setActiveTab('pinning');
+                          }}
+                          className="text-amber-600 dark:text-amber-400 hover:underline font-bold flex items-center gap-1"
+                        >
+                          <Pin className="w-3 h-3" /> Pin Notice
+                        </button>
+                        <button
+                          onClick={() => handlePurgeRoom(room)}
+                          className="text-rose-600 dark:text-rose-400 hover:underline font-bold flex items-center gap-1"
+                        >
+                          <Trash className="w-3 h-3" /> Purge Room
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Tab: Universal Transaction & Financial Dispute Resolver */}
+      {activeTab === 'dispute_resolver' && (
+        !userPermissions.dispute_resolver ? (
+          renderAccessRestrictedCard('Dispute Resolver', 'Dispute Resolution Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-amber-500" />
+                  Universal Transaction & Financial Dispute Resolver ({allGlobalTx.length})
+                </h3>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Global search across all platform expenses, inspect member splits, resolve disputes, and void corrupt entries.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (!allGlobalTx || allGlobalTx.length === 0) {
+                      if (triggerToast) triggerToast('No transactions to export.');
+                      return;
+                    }
+                    const headers = ['ID', 'Room ID', 'Title', 'Amount', 'Category', 'Paid By', 'Created At'];
+                    const rows = allGlobalTx.map(t => [
+                      t.id,
+                      t.room_id,
+                      `"${(t.title || '').replace(/"/g, '""')}"`,
+                      t.amount,
+                      t.category || 'General',
+                      `"${(t.paid_by || '').replace(/"/g, '""')}"`,
+                      t.created_at
+                    ]);
+                    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                    const blob = new Blob([csvContent], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `tallyin_all_transactions_${new Date().toISOString().slice(0, 10)}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    if (triggerToast) triggerToast('Exported all transactions to CSV!');
+                  }}
+                  className="px-3.5 py-2 bg-slate-900 text-white dark:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export CSV</span>
+                </button>
+                <button
+                  onClick={fetchGlobalTransactions}
+                  disabled={loadingGlobalTx}
+                  className="px-3 py-2 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-all flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingGlobalTx ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Search */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                value={globalTxSearch}
+                onChange={e => setGlobalTxSearch(e.target.value)}
+                placeholder="Search by Title, Room ID, Category, or Payer..."
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+
+            {/* Transactions List */}
+            <div className="space-y-2 max-h-[550px] overflow-y-auto pr-1">
+              {allGlobalTx.length === 0 ? (
+                <div className="p-12 text-center text-slate-400">
+                  <FileText className="w-10 h-10 mx-auto text-slate-300 opacity-60 mb-2" />
+                  <p className="text-xs font-bold">No transactions found in Supabase.</p>
+                </div>
+              ) : (
+                allGlobalTx
+                  .filter(tx => {
+                    if (!globalTxSearch.trim()) return true;
+                    const q = globalTxSearch.toLowerCase();
+                    return (
+                      (tx.title && tx.title.toLowerCase().includes(q)) ||
+                      (tx.room_id && tx.room_id.toLowerCase().includes(q)) ||
+                      (tx.category && tx.category.toLowerCase().includes(q)) ||
+                      (tx.paid_by && tx.paid_by.toLowerCase().includes(q)) ||
+                      String(tx.amount).includes(q)
+                    );
+                  })
+                  .map(tx => (
+                    <div
+                      key={tx.id}
+                      className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between gap-3 text-xs shadow-sm hover:border-amber-400 transition-colors"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm truncate">
+                            {tx.title || 'Untitled Expense'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                            {tx.category || 'General'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-[#5C6E5C] dark:text-slate-400 font-mono">
+                          <span>Room: <strong>{tx.room_id}</strong></span>
+                          <span>Payer: <strong>{tx.paid_by || 'Unknown'}</strong></span>
+                          <span>{tx.created_at ? new Date(tx.created_at).toLocaleDateString() : ''}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-sm font-black text-emerald-700 dark:text-[#A3E635]">
+                          ₹{Number(tx.amount || 0).toLocaleString('en-IN')}
+                        </span>
+
+                        <button
+                          onClick={() => setSelectedTxDetails(tx)}
+                          className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200"
+                          title="Inspect Split Details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setEditingTx(tx);
+                            setEditTxTitle(tx.title || '');
+                            setEditTxAmount(String(tx.amount || ''));
+                            setEditTxCategory(tx.category || 'General');
+                          }}
+                          className="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-100"
+                          title="Edit Transaction"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={() => handleVoidTransaction(tx)}
+                          className="p-2 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 rounded-xl hover:bg-rose-100"
+                          title="Void / Delete Transaction"
+                        >
+                          <Trash className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Tab: Supabase Database Studio & Table Inspector */}
+      {activeTab === 'database_studio' && (
+        !userPermissions.database_studio ? (
+          renderAccessRestrictedCard('Database Studio', 'Database Studio Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                  <Database className="w-5 h-5 text-cyan-500" />
+                  Supabase Live Database Studio ({studioRows.length} rows)
+                </h3>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Inspect raw database records across all core tables, export backups, and execute administrative row interventions.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportStudioCSV(studioTable)}
+                  className="px-3 py-2 bg-slate-900 text-white dark:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>CSV</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const jsonStr = JSON.stringify(studioRows, null, 2);
+                    const blob = new Blob([jsonStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `tallyin_${studioTable}_${new Date().toISOString().slice(0, 10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    if (triggerToast) triggerToast(`Exported ${studioTable} to JSON!`);
+                  }}
+                  className="px-3 py-2 bg-cyan-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>JSON</span>
+                </button>
+                <button
+                  onClick={() => fetchStudioTable(studioTable)}
+                  disabled={loadingStudio}
+                  className="px-3 py-2 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-all flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingStudio ? 'animate-spin' : ''}`} />
+                  <span>Reload</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Table Selector Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {['rooms', 'users', 'members', 'transactions', 'receipts', 'activity_logs', 'system_settings'].map(tName => (
+                <button
+                  key={tName}
+                  onClick={() => {
+                    setStudioTable(tName);
+                    fetchStudioTable(tName);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all shrink-0 ${
+                    studioTable === tName
+                      ? 'bg-cyan-600 text-white shadow-md'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  {tName}
+                </button>
+              ))}
+            </div>
+
+            {/* Search within table */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                value={studioSearch}
+                onChange={e => setStudioSearch(e.target.value)}
+                placeholder={`Search within table "${studioTable}"...`}
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+            </div>
+
+            {/* Data Grid Table */}
+            <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden max-h-[500px] overflow-x-auto overflow-y-auto">
+              {studioRows.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  No records found in table <strong>{studioTable}</strong>.
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs border-collapse font-mono">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 uppercase text-[10px] font-black sticky top-0 z-10">
+                    <tr>
+                      <th className="p-3">Actions</th>
+                      {Object.keys(studioRows[0] || {}).slice(0, 7).map(col => (
+                        <th key={col} className="p-3">{col}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {studioRows
+                      .filter(row => {
+                        if (!studioSearch.trim()) return true;
+                        const rowStr = JSON.stringify(row).toLowerCase();
+                        return rowStr.includes(studioSearch.toLowerCase());
+                      })
+                      .slice(0, 100)
+                      .map((row, idx) => (
+                        <tr key={row.id || row.key || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="p-3 flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => setInspectedStudioRow(row)}
+                              className="px-2 py-1 bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-200 rounded-lg text-[10px] font-bold"
+                              title="Inspect JSON Payload"
+                            >
+                              JSON
+                            </button>
+                            <button
+                              onClick={() => handleDeleteStudioRow(studioTable, row)}
+                              className="p-1 text-rose-500 hover:text-rose-700"
+                              title="Delete Row"
+                            >
+                              <Trash className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                          {Object.keys(studioRows[0] || {}).slice(0, 7).map(col => {
+                            const val = row[col];
+                            return (
+                              <td key={col} className="p-3 max-w-[200px] truncate text-slate-700 dark:text-slate-300">
+                                {val === null || val === undefined ? (
+                                  <span className="text-slate-400 italic">null</span>
+                                ) : typeof val === 'object' ? (
+                                  <span className="text-purple-600 dark:text-purple-400">{JSON.stringify(val)}</span>
+                                ) : (
+                                  String(val)
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Tab: System Macro Triggers & Real-Time Orchestration */}
+      {activeTab === 'system_triggers' && (
+        !userPermissions.system_triggers ? (
+          renderAccessRestrictedCard('System Macro Triggers', 'System Triggers Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-black text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-amber-500 animate-pulse" />
+                  System Macro Triggers & Real-Time Orchestration
+                </h3>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Execute instant platform-wide emergency directives, cache-busting broadcasts, and automated settlement alerts.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Trigger 1: Force Client Cache Reload */}
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-3 shadow-sm">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <RefreshCw className="w-5 h-5" />
+                </div>
+                <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100">
+                  Force Client Cache-Buster
+                </h4>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                  Broadcasts a real-time <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono">SYSTEM_FORCE_RELOAD</code> packet. Connected browsers and PWAs refresh immediately to load latest software releases.
+                </p>
+                <button
+                  onClick={handleTriggerForceReload}
+                  disabled={isBroadcastingForceReload}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center justify-center gap-2"
+                >
+                  <Zap className="w-4 h-4" />
+                  <span>{isBroadcastingForceReload ? 'Broadcasting...' : 'Broadcast Force Reload'}</span>
+                </button>
+              </div>
+
+              {/* Trigger 2: Month-End Settlement Reminder */}
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-3 shadow-sm">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <HandCoins className="w-5 h-5" />
+                </div>
+                <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100">
+                  Month-End Settlement Alert
+                </h4>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                  Dispatches a high-priority platform announcement to all room members reminding them to review pending expenses and settle room balances.
+                </p>
+                <button
+                  onClick={handleTriggerSettlementReminders}
+                  disabled={isBroadcastingSettlementReminders}
+                  className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center justify-center gap-2"
+                >
+                  <Radio className="w-4 h-4" />
+                  <span>{isBroadcastingSettlementReminders ? 'Dispatching...' : 'Dispatch Settlement Alert'}</span>
+                </button>
+              </div>
+
+              {/* Trigger 3: Scheduled Maintenance Countdown */}
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-3 shadow-sm">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100">
+                  Scheduled Maintenance Countdown
+                </h4>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                  Broadcasts a countdown banner warning all users before planned server or database maintenance commences.
+                </p>
+
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">Duration:</span>
+                    <select
+                      value={countdownMinsInput}
+                      onChange={e => setCountdownMinsInput(e.target.value)}
+                      className="px-2.5 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs font-bold"
+                    >
+                      <option value="5">5 Minutes</option>
+                      <option value="10">10 Minutes</option>
+                      <option value="15">15 Minutes</option>
+                      <option value="30">30 Minutes</option>
+                    </select>
+                  </div>
+
+                  {activeSystemCountdown ? (
+                    <button
+                      onClick={handleCancelMaintenanceCountdown}
+                      className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center justify-center gap-2"
+                    >
+                      <X className="w-4 h-4" />
+                      <span>Cancel Active Countdown</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleStartMaintenanceCountdown}
+                      disabled={isSendingCountdown}
+                      className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center justify-center gap-2"
+                    >
+                      <Play className="w-4 h-4" />
+                      <span>Start Countdown Banner</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Modal: Edit Room Commander Configuration */}
+      {editingRoomCommander && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b pb-3 dark:border-slate-800">
+              <h3 className="font-black text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-emerald-500" />
+                Edit Room Configuration
+              </h3>
+              <button
+                onClick={() => setEditingRoomCommander(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-500 block mb-1">Room Name</label>
+                <input
+                  type="text"
+                  value={commanderRoomNameInput}
+                  onChange={e => setCommanderRoomNameInput(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 dark:border-slate-700 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-500 block mb-1">Monthly Budget Cap (₹)</label>
+                <input
+                  type="number"
+                  value={commanderBudgetInput}
+                  onChange={e => setCommanderBudgetInput(e.target.value)}
+                  placeholder="e.g. 50000"
+                  className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 dark:border-slate-700 font-bold font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-500 block mb-1">Max Capacity (Members)</label>
+                <input
+                  type="number"
+                  value={commanderMaxMembersInput}
+                  onChange={e => setCommanderMaxMembersInput(e.target.value)}
+                  placeholder="e.g. 10"
+                  className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 dark:border-slate-700 font-bold font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t dark:border-slate-800">
+              <button
+                onClick={() => setEditingRoomCommander(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSaveCommanderRoom(editingRoomCommander.id)}
+                disabled={isSavingCommanderRoom}
+                className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                {isSavingCommanderRoom ? 'Saving...' : 'Save Configuration'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Transaction Dispute */}
+      {editingTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b pb-3 dark:border-slate-800">
+              <h3 className="font-black text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-amber-500" />
+                Edit Transaction Details
+              </h3>
+              <button
+                onClick={() => setEditingTx(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-500 block mb-1">Title / Description</label>
+                <input
+                  type="text"
+                  value={editTxTitle}
+                  onChange={e => setEditTxTitle(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 dark:border-slate-700 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-500 block mb-1">Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editTxAmount}
+                  onChange={e => setEditTxAmount(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 dark:border-slate-700 font-bold font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-500 block mb-1">Category</label>
+                <select
+                  value={editTxCategory}
+                  onChange={e => setEditTxCategory(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 dark:border-slate-700 font-bold"
+                >
+                  <option value="Food">Food & Dining</option>
+                  <option value="Groceries">Groceries</option>
+                  <option value="Rent">Rent & Housing</option>
+                  <option value="Utilities">Utilities & Bills</option>
+                  <option value="Entertainment">Entertainment</option>
+                  <option value="General">General / Miscellaneous</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t dark:border-slate-800">
+              <button
+                onClick={() => setEditingTx(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSaveEditedTransaction(editingTx.id)}
+                disabled={isSavingTx}
+                className="px-4 py-2 rounded-xl text-xs font-black bg-amber-600 text-white hover:bg-amber-700"
+              >
+                {isSavingTx ? 'Saving...' : 'Update Transaction'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Transaction Details & Split Inspection */}
+      {selectedTxDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-3 dark:border-slate-800">
+              <h3 className="font-black text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-emerald-500" />
+                Transaction Audit & Split Inspection
+              </h3>
+              <button
+                onClick={() => setSelectedTxDetails(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl space-y-1">
+                <p className="text-base font-black text-[#1A3827] dark:text-white">{selectedTxDetails.title}</p>
+                <p className="text-emerald-700 dark:text-[#A3E635] font-black text-sm">₹{Number(selectedTxDetails.amount).toLocaleString('en-IN')}</p>
+                <div className="text-[11px] text-slate-500 flex items-center gap-2 font-mono">
+                  <span>Room: {selectedTxDetails.room_id}</span> •
+                  <span>Category: {selectedTxDetails.category}</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="font-bold text-slate-500 uppercase text-[10px] block mb-1">Raw Database Metadata</span>
+                <pre className="p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-[11px] overflow-x-auto">
+                  {JSON.stringify(selectedTxDetails, null, 2)}
+                </pre>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t dark:border-slate-800">
+              <button
+                onClick={() => setSelectedTxDetails(null)}
+                className="px-4 py-2 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl text-xs font-bold"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Database Studio Row JSON Viewer */}
+      {inspectedStudioRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-3 dark:border-slate-800">
+              <h3 className="font-black text-sm text-[#1A3827] dark:text-white flex items-center gap-2 font-mono">
+                <Database className="w-4 h-4 text-cyan-500" />
+                Raw Row Inspector: {studioTable}
+              </h3>
+              <button
+                onClick={() => setInspectedStudioRow(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <pre className="p-4 rounded-2xl bg-slate-950 text-emerald-400 font-mono text-xs overflow-x-auto max-h-[450px]">
+              {JSON.stringify(inspectedStudioRow, null, 2)}
+            </pre>
+
+            <div className="flex items-center justify-between pt-2 border-t dark:border-slate-800">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(inspectedStudioRow, null, 2));
+                  if (triggerToast) triggerToast('Copied JSON payload to clipboard!');
+                }}
+                className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy JSON</span>
+              </button>
+              <button
+                onClick={() => setInspectedStudioRow(null)}
+                className="px-4 py-2 bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 rounded-xl text-xs font-bold"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Official User Warning Dispatcher */}
+      {warningTargetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b pb-3 dark:border-slate-800">
+              <h3 className="font-black text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                <AlertOctagon className="w-4 h-4 text-amber-500" />
+                Issue Official Administrative Warning
+              </h3>
+              <button
+                onClick={() => setWarningTargetUser(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-2xl text-xs text-amber-900 dark:text-amber-200 space-y-1">
+              <p><strong>Target User:</strong> {warningTargetUser.name} ({warningTargetUser.email})</p>
+              <p className="text-[11px] text-slate-500">This will dispatch an official warning notice with a unique Warning Reference ID.</p>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-500 block mb-1">Violation Category</label>
+                <select
+                  value={warningReason}
+                  onChange={e => setWarningReason(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 dark:border-slate-700 font-bold"
+                >
+                  <option value="Conduct & Room Etiquette Violation">Conduct & Room Etiquette Violation</option>
+                  <option value="Disputed Unpaid Settlements">Disputed Unpaid Settlements / Debts</option>
+                  <option value="Suspected Fraudulent Expenses">Suspected Fraudulent Expenses or Receipts</option>
+                  <option value="Terms of Service Non-Compliance">Terms of Service Non-Compliance</option>
+                  <option value="Spam / Excessive Actions">Spam / Excessive Account Actions</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-500 block mb-1">Specific Guidance / Actionable Notes</label>
+                <textarea
+                  rows="3"
+                  value={warningNotes}
+                  onChange={e => setWarningNotes(e.target.value)}
+                  placeholder="e.g. Please settle the pending ₹1,500 electricity bill share before the upcoming weekend."
+                  className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 dark:border-slate-700 font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t dark:border-slate-800">
+              <button
+                onClick={() => setWarningTargetUser(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendOfficialWarning}
+                disabled={isSendingWarning}
+                className="px-4 py-2 rounded-xl text-xs font-black bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5"
+              >
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>{isSendingWarning ? 'Dispatching Notice...' : 'Dispatch Official Warning'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Security Clearance & Audit Certificate Modal */}
