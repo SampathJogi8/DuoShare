@@ -16911,7 +16911,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       return;
     }
 
-    setIsSubmittingDispute(true);
     try {
       const userEmail = (auth?.currentUser?.email || localStorage.getItem('tallyin_user_email') || '').trim().toLowerCase();
       const userName = userNickname || auth?.currentUser?.displayName || userEmail.split('@')[0] || 'User';
@@ -16944,103 +16943,110 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         resolvedAt: null
       };
 
-      // 1. Fetch current global list from DB and prepend
-      let currentList = [];
-      try {
-        const { data } = await supabase
-          .from('rooms')
-          .select('name')
-          .eq('id', '__SYSTEM_USER_DISPUTES_QUERIES__')
-          .maybeSingle();
-
-        if (data?.name && data.name.startsWith('[')) {
-          currentList = JSON.parse(data.name);
-        }
-      } catch (err) {}
-
-      const updatedGlobal = [newTicket, ...currentList.filter(t => t.id !== newTicket.id)];
-
-      // 2. Save to rooms & system_settings
-      try {
-        await supabase
-          .from('rooms')
-          .upsert({
-            id: '__SYSTEM_USER_DISPUTES_QUERIES__',
-            name: JSON.stringify(updatedGlobal),
-            created_by: 'system',
-            created_at: nowIso
-          }, { onConflict: 'id' });
-
-        await supabase
-          .from('system_settings')
-          .upsert({
-            key: 'user_disputes_and_queries',
-            value: JSON.stringify(updatedGlobal),
-            created_at: nowIso
-          }, { onConflict: 'key' });
-      } catch (err) {}
-
-      // 3. Save locally to user's ticket list
+      // ── 1. Optimistic Local Save (Instant UI Response) ──
       const updatedMyList = [newTicket, ...myDisputesAndQueries.filter(t => t.id !== newTicket.id)];
       setMyDisputesAndQueries(updatedMyList);
       localStorage.setItem('tallyin_my_disputes_and_queries', JSON.stringify(updatedMyList));
 
-      // 4. Realtime Broadcast to Admins
-      try {
-        const channel = supabase.channel('system_admin_channel');
-        await channel.send({
-          type: 'broadcast',
-          event: 'DISPUTE_SUBMITTED',
-          payload: { dispute: newTicket }
-        });
-      } catch (err) {}
-
-      // 5. Send notification email to Super Admin
-      try {
-        const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
-        fetch(mailRelayUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({
-            action: 'send_email',
-            to: 'tallyin.alerts@gmail.com',
-            subject: `🚨 New ${newTicket.type === 'dispute' ? 'Dispute' : 'Support Query'} Raised [${refNumber}] by ${userEmail}`,
-            body: `Tallyin Security Notice:\nNew ticket submitted by ${userEmail} (${userName})\nRef: ${refNumber}\nCategory: ${disputeCategory}\nTitle: ${newTicket.title}\nRoom: ${userRoomId || 'N/A'}\nDescription:\n${newTicket.description}\n\nReview in Admin Console: https://tallyin.vercel.app`,
-            htmlBody: `
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-                <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #f59e0b;">
-                  <span style="background-color: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase;">New User Submission</span>
-                  <h2 style="color: #1a3827; margin: 8px 0 0 0;">${disputeCategory}</h2>
-                  <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tracking Ref: <strong>${refNumber}</strong></p>
-                </div>
-                <div style="padding: 20px 0; color: #334155; font-size: 13px; line-height: 1.6;">
-                  <p><strong>From:</strong> ${userName} (<a href="mailto:${userEmail}">${userEmail}</a>)</p>
-                  <p><strong>Title:</strong> ${newTicket.title}</p>
-                  ${userRoomId ? `<p><strong>Room:</strong> ${roomName || userRoomId}</p>` : ''}
-                  ${disputeTargetTx ? `<p><strong>Transaction:</strong> ${disputeTargetTx.title} (₹${disputeTargetTx.amount})</p>` : ''}
-                  <div style="background-color: #f8fafc; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin: 16px 0; white-space: pre-wrap;">
-                    ${newTicket.description}
-                  </div>
-                </div>
-                <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
-                  Tallyin Help & Dispute Operations Center
-                </div>
-              </div>
-            `
-          })
-        }).catch(e => console.warn(e));
-      } catch (err) {}
-
+      // Reset form & immediately switch tab
       triggerToast(`✅ Submitted! Tracking Ref: ${refNumber}`);
       setDisputeTitle('');
       setDisputeDescription('');
       setDisputeTargetTx(null);
       setDisputeModalTab('history');
+      setIsSubmittingDispute(false);
+
+      // ── 2. Background Asynchronous Cloud Sync & Email Relay ──
+      (async () => {
+        try {
+          let currentList = [];
+          try {
+            const { data } = await supabase
+              .from('rooms')
+              .select('name')
+              .eq('id', '__SYSTEM_USER_DISPUTES_QUERIES__')
+              .maybeSingle();
+
+            if (data?.name && data.name.startsWith('[')) {
+              currentList = JSON.parse(data.name);
+            }
+          } catch (err) {}
+
+          const updatedGlobal = [newTicket, ...currentList.filter(t => t.id !== newTicket.id)];
+
+          const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+
+          await Promise.allSettled([
+            // Save to rooms table
+            supabase
+              .from('rooms')
+              .upsert({
+                id: '__SYSTEM_USER_DISPUTES_QUERIES__',
+                name: JSON.stringify(updatedGlobal),
+                created_by: 'system',
+                created_at: nowIso
+              }, { onConflict: 'id' }),
+
+            // Save to system_settings table
+            supabase
+              .from('system_settings')
+              .upsert({
+                key: 'user_disputes_and_queries',
+                value: JSON.stringify(updatedGlobal),
+                created_at: nowIso
+              }, { onConflict: 'key' }),
+
+            // Realtime Broadcast to Admin Console
+            (async () => {
+              const channel = supabase.channel('system_admin_channel');
+              await channel.send({
+                type: 'broadcast',
+                event: 'DISPUTE_SUBMITTED',
+                payload: { dispute: newTicket }
+              });
+            })(),
+
+            // Email Notification to Super Admin
+            fetch(mailRelayUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain' },
+              body: JSON.stringify({
+                action: 'send_email',
+                to: 'tallyin.alerts@gmail.com',
+                subject: `🚨 New ${newTicket.type === 'dispute' ? 'Dispute' : 'Support Query'} Raised [${refNumber}] by ${userEmail}`,
+                body: `Tallyin Security Notice:\nNew ticket submitted by ${userEmail} (${userName})\nRef: ${refNumber}\nCategory: ${disputeCategory}\nTitle: ${newTicket.title}\nRoom: ${userRoomId || 'N/A'}\nDescription:\n${newTicket.description}\n\nReview in Admin Console: https://tallyin.vercel.app`,
+                htmlBody: `
+                  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                    <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #f59e0b;">
+                      <span style="background-color: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase;">New User Submission</span>
+                      <h2 style="color: #1a3827; margin: 8px 0 0 0;">${disputeCategory}</h2>
+                      <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tracking Ref: <strong>${refNumber}</strong></p>
+                    </div>
+                    <div style="padding: 20px 0; color: #334155; font-size: 13px; line-height: 1.6;">
+                      <p><strong>From:</strong> ${userName} (<a href="mailto:${userEmail}">${userEmail}</a>)</p>
+                      <p><strong>Title:</strong> ${newTicket.title}</p>
+                      ${userRoomId ? `<p><strong>Room:</strong> ${roomName || userRoomId}</p>` : ''}
+                      ${newTicket.transaction_title ? `<p><strong>Transaction:</strong> ${newTicket.transaction_title} (₹${newTicket.transaction_amount})</p>` : ''}
+                      <div style="background-color: #f8fafc; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin: 16px 0; white-space: pre-wrap;">
+                        ${newTicket.description}
+                      </div>
+                    </div>
+                    <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+                      Tallyin Help & Dispute Operations Center
+                    </div>
+                  </div>
+                `
+              })
+            })
+          ]);
+        } catch (backgroundErr) {
+          console.warn('[Dispute Sync] Background sync warning:', backgroundErr);
+        }
+      })();
     } catch (err) {
       console.error(err);
       triggerToast(`Failed to submit request: ${err.message}`);
-    } finally {
       setIsSubmittingDispute(false);
     }
   };
