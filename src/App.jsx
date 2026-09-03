@@ -11796,47 +11796,49 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               })()}
             </div>
 
-            {/* Personal Spending Card */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Personal Spending</p>
-                  <div className="flex items-baseline gap-1 mt-0.5">
-                    <span className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyPersonalTotal)}</span>
-                    <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(personalCap)}</span>
+            {/* Personal Spending Card (Hidden in Quota Mode) */}
+            {!isQuotaMode && (
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Personal Spending</p>
+                    <div className="flex items-baseline gap-1 mt-0.5">
+                      <span className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyPersonalTotal)}</span>
+                      <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(personalCap)}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    <span className={`text-[9px] font-black px-2 py-1 rounded-full ${personalPercentage >= 90 ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>{personalPercentage.toFixed(0)}%</span>
+                    <button onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }} className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all cursor-pointer" title="Edit limit">
+                      <Pencil className="w-3 h-3 text-[#5C6E5C] dark:text-slate-400" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                  <span className={`text-[9px] font-black px-2 py-1 rounded-full ${personalPercentage >= 90 ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>{personalPercentage.toFixed(0)}%</span>
-                  <button onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }} className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all cursor-pointer" title="Edit limit">
-                    <Pencil className="w-3 h-3 text-[#5C6E5C] dark:text-slate-400" />
-                  </button>
+                {isEditingPersonalCap && (
+                  <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
+                    <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">₹</span>
+                    <input type="number" min="0" value={personalCapInput}
+                      onChange={e => setPersonalCapInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }
+                        if (e.key === 'Escape') setIsEditingPersonalCap(false);
+                      }}
+                      className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0" autoFocus />
+                    <button onClick={() => { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#1A3827] text-white px-2.5 py-1 rounded-lg cursor-pointer">Save</button>
+                    <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] text-[#5C6E5C] px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 cursor-pointer">✕</button>
+                  </div>
+                )}
+                <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-500 ${personalPercentage >= 90 ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${Math.min(100, personalPercentage)}%` }} />
                 </div>
+                <p className="text-[10px] font-medium text-[#5C6E5C] dark:text-slate-400">
+                  {personalPercentage >= 100 ? `⚠️ Exceeded by ${formatINR(monthlyPersonalTotal - personalCap)}` : `${formatINR(personalCap - monthlyPersonalTotal)} remaining`}
+                </p>
               </div>
-              {isEditingPersonalCap && (
-                <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
-                  <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">₹</span>
-                  <input type="number" min="0" value={personalCapInput}
-                    onChange={e => setPersonalCapInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }
-                      if (e.key === 'Escape') setIsEditingPersonalCap(false);
-                    }}
-                    className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0" autoFocus />
-                  <button onClick={() => { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#1A3827] text-white px-2.5 py-1 rounded-lg cursor-pointer">Save</button>
-                  <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] text-[#5C6E5C] px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 cursor-pointer">✕</button>
-                </div>
-              )}
-              <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-500 ${personalPercentage >= 90 ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${Math.min(100, personalPercentage)}%` }} />
-              </div>
-              <p className="text-[10px] font-medium text-[#5C6E5C] dark:text-slate-400">
-                {personalPercentage >= 100 ? `⚠️ Exceeded by ${formatINR(monthlyPersonalTotal - personalCap)}` : `${formatINR(personalCap - monthlyPersonalTotal)} remaining`}
-              </p>
-            </div>
+            )}
 
-            {/* Room Activity Feed */}
-            {activityLogs.length > 0 && (
+            {/* Room Activity Feed (Hidden in Quota Mode) */}
+            {!isQuotaMode && activityLogs.length > 0 && (
               <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
                 <h3 className="text-[9px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">Room Activity</h3>
                 <div className="space-y-2.5">
