@@ -340,6 +340,16 @@ export default function AdminDashboard({
   const [isSavingTx, setIsSavingTx] = useState(false);
   const [selectedTxDetails, setSelectedTxDetails] = useState(null);
 
+  // User Inquiries & Disputes States
+  const [userDisputesAndQueries, setUserDisputesAndQueries] = useState([]);
+  const [loadingDisputes, setLoadingDisputes] = useState(false);
+  const [disputeFilterTab, setDisputeFilterTab] = useState('all'); // 'all' | 'pending' | 'disputes' | 'queries' | 'resolved'
+  const [disputeSearchQuery, setDisputeSearchQuery] = useState('');
+  const [disputeViewMode, setDisputeViewMode] = useState('tickets'); // 'tickets' | 'transactions'
+  const [selectedDisputeTicket, setSelectedDisputeTicket] = useState(null);
+  const [adminResponseText, setAdminResponseText] = useState('');
+  const [isUpdatingTicket, setIsUpdatingTicket] = useState(false);
+
   // 3. Database Studio states
   const [studioTable, setStudioTable] = useState('rooms');
   const [studioRows, setStudioRows] = useState([]);
@@ -977,7 +987,7 @@ export default function AdminDashboard({
     }
   }, []);
 
-  // Keep persistent subscribed Realtime channel for Admin broadcasts & Appeals
+  // Keep persistent subscribed Realtime channel for Admin broadcasts, Appeals & User Disputes
   useEffect(() => {
     const channel = supabase.channel('system_admin_channel');
     channel
@@ -986,6 +996,13 @@ export default function AdminDashboard({
           setBanAppeals(prev => [payload.payload.appeal, ...prev.filter(a => a.email !== payload.payload.appeal.email)]);
           playAppealAlertSound();
           if (triggerToast) triggerToast(`🚨 New suspension appeal received from ${payload.payload.appeal.email}!`);
+        }
+      })
+      .on('broadcast', { event: 'DISPUTE_SUBMITTED' }, (payload) => {
+        if (payload?.payload?.dispute) {
+          setUserDisputesAndQueries(prev => [payload.payload.dispute, ...prev.filter(d => d.id !== payload.payload.dispute.id)]);
+          playAppealAlertSound();
+          if (triggerToast) triggerToast(`🚨 New ${payload.payload.dispute.type === 'dispute' ? 'Dispute' : 'Support Query'} from ${payload.payload.dispute.user_email || 'a user'}!`);
         }
       })
       .subscribe();
@@ -1008,6 +1025,36 @@ export default function AdminDashboard({
       }
     } catch (err) {
       console.warn("Fetch ban appeals error:", err);
+    }
+  }, []);
+
+  const fetchDisputesAndQueries = useCallback(async () => {
+    setLoadingDisputes(true);
+    try {
+      const { data } = await supabase
+        .from('rooms')
+        .select('name')
+        .eq('id', '__SYSTEM_USER_DISPUTES_QUERIES__')
+        .maybeSingle();
+
+      if (data?.name && data.name.startsWith('[')) {
+        const list = JSON.parse(data.name);
+        setUserDisputesAndQueries(Array.isArray(list) ? list : []);
+      } else {
+        const { data: setRow } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'user_disputes_and_queries')
+          .maybeSingle();
+        if (setRow?.value) {
+          const parsed = JSON.parse(setRow.value);
+          setUserDisputesAndQueries(Array.isArray(parsed) ? parsed : []);
+        }
+      }
+    } catch (e) {
+      console.warn("Fetch user disputes error:", e);
+    } finally {
+      setLoadingDisputes(false);
     }
   }, []);
 
@@ -1090,6 +1137,144 @@ export default function AdminDashboard({
     }
 
     if (triggerToast) triggerToast(`Appeal for ${cleanTarget} REJECTED & user notified!`);
+  };
+
+  const handleResetAppeal = async (targetEmail) => {
+    const cleanTarget = String(targetEmail || '').trim().toLowerCase();
+    const updatedAppeals = banAppeals.filter(a => {
+      const aEmail = String(a.email || a.identifier || '').trim().toLowerCase();
+      return aEmail !== cleanTarget;
+    });
+    setBanAppeals(updatedAppeals);
+
+    try {
+      await supabase
+        .from('rooms')
+        .upsert({
+          id: '__SYSTEM_BAN_APPEALS__',
+          name: JSON.stringify(updatedAppeals),
+          created_by: 'system',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch (err) { console.error(err); }
+
+    try {
+      if (adminChannelRef.current) {
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'BAN_APPEAL_RESET',
+          payload: { email: cleanTarget, status: 'reset' }
+        });
+      }
+    } catch (err) { console.warn(err); }
+
+    logAuditAction('RESET_BAN_APPEAL', `Re-opened appeal window for ${cleanTarget}`);
+    if (triggerToast) triggerToast(`Re-opened in-app appeal window for ${cleanTarget}!`);
+  };
+
+  const handleUpdateDisputeStatus = async (ticketId, newStatus, responseText = '') => {
+    setIsUpdatingTicket(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const updatedList = userDisputesAndQueries.map(t => {
+        if (t.id === ticketId) {
+          return {
+            ...t,
+            status: newStatus,
+            adminResponse: responseText ? responseText.trim() : (t.adminResponse || null),
+            resolvedBy: user?.email || 'Super Admin',
+            resolvedAt: (newStatus === 'RESOLVED' || newStatus === 'REJECTED') ? nowIso : t.resolvedAt,
+            updatedAt: nowIso
+          };
+        }
+        return t;
+      });
+
+      setUserDisputesAndQueries(updatedList);
+
+      // Save to Supabase
+      try {
+        await supabase
+          .from('rooms')
+          .upsert({
+            id: '__SYSTEM_USER_DISPUTES_QUERIES__',
+            name: JSON.stringify(updatedList),
+            created_by: 'system',
+            created_at: nowIso
+          }, { onConflict: 'id' });
+
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: 'user_disputes_and_queries',
+            value: JSON.stringify(updatedList),
+            created_at: nowIso
+          }, { onConflict: 'key' });
+      } catch (err) {
+        console.warn("DB save dispute notice:", err);
+      }
+
+      const targetTicket = updatedList.find(t => t.id === ticketId);
+
+      // Broadcast update to user
+      try {
+        if (adminChannelRef.current) {
+          await adminChannelRef.current.send({
+            type: 'broadcast',
+            event: 'DISPUTE_STATUS_UPDATE',
+            payload: { ticket: targetTicket }
+          });
+        }
+      } catch (err) {}
+
+      // Send resolution email to user if email is valid
+      if (targetTicket?.user_email && targetTicket.user_email.includes('@')) {
+        try {
+          const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+          fetch(mailRelayUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              action: 'send_email',
+              to: targetTicket.user_email,
+              subject: `Update on your Tallyin Request / Dispute [${targetTicket.refNumber || targetTicket.id}]`,
+              body: `Hello ${targetTicket.user_name || 'User'},\n\nYour request "${targetTicket.title}" has been updated by Tallyin Administration to: ${newStatus}.\n\nAdmin Remarks:\n${responseText || targetTicket.adminResponse || 'No additional remarks provided.'}\n\nThank you for using Tallyin.`,
+              htmlBody: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                  <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid ${newStatus === 'RESOLVED' ? '#10b981' : newStatus === 'REJECTED' ? '#ef4444' : '#6366f1'};">
+                    <span style="background-color: ${newStatus === 'RESOLVED' ? '#d1fae5' : newStatus === 'REJECTED' ? '#fee2e2' : '#e0e7ff'}; color: ${newStatus === 'RESOLVED' ? '#065f46' : newStatus === 'REJECTED' ? '#991b1b' : '#3730a3'}; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase;">Ticket Status Update</span>
+                    <h2 style="color: #1a3827; margin: 8px 0 0 0;">Status: ${newStatus}</h2>
+                    <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Ref: ${targetTicket.refNumber || targetTicket.id}</p>
+                  </div>
+                  <div style="padding: 20px 0; color: #334155; font-size: 14px; line-height: 1.6;">
+                    <p>Hello <strong>${targetTicket.user_name || 'User'}</strong>,</p>
+                    <p>Your ticket <strong>"${targetTicket.title}"</strong> has been reviewed by Tallyin System Administration.</p>
+                    <div style="background-color: #f8fafc; border-left: 4px solid ${newStatus === 'RESOLVED' ? '#10b981' : newStatus === 'REJECTED' ? '#ef4444' : '#6366f1'}; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px;">
+                      <strong>Administrative Notes:</strong><br/>
+                      ${responseText || targetTicket.adminResponse || 'Your dispute/query has been reviewed and recorded.'}
+                    </div>
+                  </div>
+                  <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+                    Tallyin Operations Support • tallyin.alerts@gmail.com
+                  </div>
+                </div>
+              `
+            })
+          }).catch(e => console.warn("Email relay notice:", e));
+        } catch (e) {}
+      }
+
+      logAuditAction('RESOLVE_DISPUTE', `Updated ticket ${targetTicket?.refNumber || ticketId} to ${newStatus} for ${targetTicket?.user_email}`);
+      if (triggerToast) triggerToast(`Ticket ${targetTicket?.refNumber || ticketId} marked as ${newStatus}!`);
+      setSelectedDisputeTicket(null);
+      setAdminResponseText('');
+    } catch (err) {
+      console.error(err);
+      if (triggerToast) triggerToast(`Failed to update ticket: ${err.message}`);
+    } finally {
+      setIsUpdatingTicket(false);
+    }
   };
 
   // Sync Banned Users with Supabase DB (rooms table + system_settings) + Realtime Channel
@@ -1371,6 +1556,33 @@ export default function AdminDashboard({
     const updatedBanned = [...bannedUsers.filter(b => (b.identifier || b.email)?.toLowerCase() !== cleanTarget), newBanObj];
     await syncBannedUsersToDatabase(updatedBanned);
 
+    // Reset previous rejected appeals for this user so the new ban session has a clean appeal window
+    const cleanAppeals = banAppeals.filter(a => {
+      const aEmail = String(a.email || a.identifier || '').trim().toLowerCase();
+      return aEmail !== cleanTarget;
+    });
+    setBanAppeals(cleanAppeals);
+    try {
+      await supabase
+        .from('rooms')
+        .upsert({
+          id: '__SYSTEM_BAN_APPEALS__',
+          name: JSON.stringify(cleanAppeals),
+          created_by: 'system',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch (e) {}
+
+    try {
+      if (adminChannelRef.current) {
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'BAN_APPEAL_RESET',
+          payload: { email: cleanTarget, status: 'reset' }
+        });
+      }
+    } catch (e) {}
+
     // Send Ban Email Notification if valid email found
     if (targetEmail && targetEmail.includes('@')) {
       sendUserBanStatusEmail({
@@ -1416,6 +1628,38 @@ export default function AdminDashboard({
 
     const updatedBanned = bannedUsers.filter(b => (b.identifier || b.email)?.toLowerCase() !== cleanTarget);
     await syncBannedUsersToDatabase(updatedBanned);
+
+    // Clear appeal history for this user on unban
+    const cleanAppeals = banAppeals.filter(a => {
+      const aEmail = String(a.email || a.identifier || '').trim().toLowerCase();
+      return aEmail !== cleanTarget;
+    });
+    setBanAppeals(cleanAppeals);
+    try {
+      await supabase
+        .from('rooms')
+        .upsert({
+          id: '__SYSTEM_BAN_APPEALS__',
+          name: JSON.stringify(cleanAppeals),
+          created_by: 'system',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch (e) {}
+
+    try {
+      if (adminChannelRef.current) {
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'USER_UNBANNED',
+          payload: { email: cleanTarget, bannedUsers: updatedBanned }
+        });
+        await adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'BAN_APPEAL_RESET',
+          payload: { email: cleanTarget, status: 'reset' }
+        });
+      }
+    } catch (e) {}
 
     // Send Unban / Reinstatement Email Notification if valid email found
     if (targetEmail && targetEmail.includes('@')) {
@@ -1609,8 +1853,10 @@ export default function AdminDashboard({
     if (isAuthorizedAdmin) {
       fetchCommanderRooms();
       fetchGlobalTransactions();
+      fetchDisputesAndQueries();
+      fetchBanAppeals();
     }
-  }, [isAuthorizedAdmin, fetchCommanderRooms, fetchGlobalTransactions]);
+  }, [isAuthorizedAdmin, fetchCommanderRooms, fetchGlobalTransactions, fetchDisputesAndQueries, fetchBanAppeals]);
 
   useEffect(() => {
     if (isAuthorizedAdmin && activeTab === 'database_studio') {
@@ -6158,9 +6404,19 @@ NOTIFY pgrst, 'reload schema';`;
 
                     <div className="flex items-center justify-end gap-2 pt-1">
                       {appeal.status === 'rejected' ? (
-                        <span className="px-2.5 py-1 bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 rounded-lg text-[10px] font-black uppercase">
-                          Appeal Rejected & User Notified
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2.5 py-1 bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 rounded-lg text-[10px] font-black uppercase">
+                            Appeal Rejected
+                          </span>
+                          <button
+                            onClick={() => handleResetAppeal(appeal.email)}
+                            className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 rounded-lg text-[10px] font-black transition-colors flex items-center gap-1 cursor-pointer"
+                            title="Re-open appeal window for this user"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Re-Open Appeal Window</span>
+                          </button>
+                        </div>
                       ) : (
                         <button
                           onClick={() => handleRejectAppeal(appeal)}
@@ -7294,150 +7550,390 @@ NOTIFY pgrst, 'reload schema';`;
           renderAccessRestrictedCard('Dispute Resolver', 'Dispute Resolution Clearance Required')
         ) : (
           <div className="hud-card rounded-3xl p-6 space-y-6">
+            {/* Header & Sub-tab Switcher */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
               <div className="space-y-0.5">
                 <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
                   <FileSpreadsheet className="w-5 h-5 text-amber-500" />
-                  Universal Transaction & Financial Dispute Resolver ({allGlobalTx.length})
+                  Dispute Resolver &amp; User Inquiries Center
                 </h3>
                 <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                  Global search across all platform expenses, inspect member splits, resolve disputes, and void corrupt entries.
+                  Manage user-submitted financial disputes, support inquiries, and platform expense voids.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* View Switcher Pills */}
+              <div className="flex items-center gap-1.5 bg-[#EAF0EC] dark:bg-slate-900 p-1 rounded-2xl border border-[#E3E8E3] dark:border-slate-800">
                 <button
-                  onClick={() => {
-                    if (!allGlobalTx || allGlobalTx.length === 0) {
-                      if (triggerToast) triggerToast('No transactions to export.');
-                      return;
-                    }
-                    const headers = ['ID', 'Room ID', 'Title', 'Amount', 'Category', 'Paid By', 'Created At'];
-                    const rows = allGlobalTx.map(t => [
-                      t.id,
-                      t.room_id,
-                      `"${(t.title || '').replace(/"/g, '""')}"`,
-                      t.amount,
-                      t.category || 'General',
-                      `"${(t.paid_by || '').replace(/"/g, '""')}"`,
-                      t.created_at
-                    ]);
-                    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-                    const blob = new Blob([csvContent], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `tallyin_all_transactions_${new Date().toISOString().slice(0, 10)}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    if (triggerToast) triggerToast('Exported all transactions to CSV!');
-                  }}
-                  className="px-3.5 py-2 bg-slate-900 text-white dark:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                  onClick={() => setDisputeViewMode('tickets')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                    disputeViewMode === 'tickets'
+                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Export CSV</span>
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>User Requests &amp; Disputes</span>
+                  {userDisputesAndQueries.filter(d => d.status === 'OPEN').length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-rose-500 text-white animate-pulse">
+                      {userDisputesAndQueries.filter(d => d.status === 'OPEN').length}
+                    </span>
+                  )}
                 </button>
                 <button
-                  onClick={fetchGlobalTransactions}
-                  disabled={loadingGlobalTx}
-                  className="px-3 py-2 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-all flex items-center gap-1.5"
+                  onClick={() => setDisputeViewMode('transactions')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                    disputeViewMode === 'transactions'
+                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingGlobalTx ? 'animate-spin' : ''}`} />
-                  <span>Refresh</span>
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Platform Transactions ({allGlobalTx.length})</span>
                 </button>
               </div>
             </div>
 
-            {/* Quick Search */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="text"
-                value={globalTxSearch}
-                onChange={e => setGlobalTxSearch(e.target.value)}
-                placeholder="Search by Title, Room ID, Category, or Payer..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-            </div>
+            {/* ── SUBVIEW 1: User Inquiries & Disputes ── */}
+            {disputeViewMode === 'tickets' && (
+              <div className="space-y-4">
+                {/* Filter and Search Bar */}
+                <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+                  <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+                    {[
+                      { id: 'all', label: 'All', count: userDisputesAndQueries.length },
+                      { id: 'pending', label: 'Pending / Open', count: userDisputesAndQueries.filter(d => d.status === 'OPEN').length, color: 'text-amber-600' },
+                      { id: 'review', label: 'Under Review', count: userDisputesAndQueries.filter(d => d.status === 'UNDER_REVIEW').length, color: 'text-indigo-600' },
+                      { id: 'disputes', label: 'Disputes Only', count: userDisputesAndQueries.filter(d => d.type === 'dispute').length },
+                      { id: 'queries', label: 'Queries / Help', count: userDisputesAndQueries.filter(d => d.type === 'query').length },
+                      { id: 'resolved', label: 'Resolved', count: userDisputesAndQueries.filter(d => d.status === 'RESOLVED').length, color: 'text-emerald-600' },
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setDisputeFilterTab(tab.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+                          disputeFilterTab === tab.id
+                            ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-[#E3E8E3] dark:border-slate-800 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>{tab.label}</span>
+                        <span className="ml-1.5 opacity-75 font-mono text-[10px]">({tab.count})</span>
+                      </button>
+                    ))}
+                  </div>
 
-            {/* Transactions List */}
-            <div className="space-y-2 max-h-[550px] overflow-y-auto pr-1">
-              {allGlobalTx.length === 0 ? (
-                <div className="p-12 text-center text-slate-400">
-                  <FileText className="w-10 h-10 mx-auto text-slate-300 opacity-60 mb-2" />
-                  <p className="text-xs font-bold">No transactions found in Supabase.</p>
-                </div>
-              ) : (
-                allGlobalTx
-                  .filter(tx => {
-                    if (!globalTxSearch.trim()) return true;
-                    const q = globalTxSearch.toLowerCase();
-                    return (
-                      (tx.title && tx.title.toLowerCase().includes(q)) ||
-                      (tx.room_id && tx.room_id.toLowerCase().includes(q)) ||
-                      (tx.category && tx.category.toLowerCase().includes(q)) ||
-                      (tx.paid_by && tx.paid_by.toLowerCase().includes(q)) ||
-                      String(tx.amount).includes(q)
-                    );
-                  })
-                  .map(tx => (
-                    <div
-                      key={tx.id}
-                      className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between gap-3 text-xs shadow-sm hover:border-amber-400 transition-colors"
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm truncate">
-                            {tx.title || 'Untitled Expense'}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                            {tx.category || 'General'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-[11px] text-[#5C6E5C] dark:text-slate-400 font-mono">
-                          <span>Room: <strong>{tx.room_id}</strong></span>
-                          <span>Payer: <strong>{tx.paid_by || 'Unknown'}</strong></span>
-                          <span>{tx.created_at ? new Date(tx.created_at).toLocaleDateString() : ''}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-sm font-black text-emerald-700 dark:text-[#A3E635]">
-                          ₹{Number(tx.amount || 0).toLocaleString('en-IN')}
-                        </span>
-
-                        <button
-                          onClick={() => setSelectedTxDetails(tx)}
-                          className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200"
-                          title="Inspect Split Details"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setEditingTx(tx);
-                            setEditTxTitle(tx.title || '');
-                            setEditTxAmount(String(tx.amount || ''));
-                            setEditTxCategory(tx.category || 'General');
-                          }}
-                          className="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-100"
-                          title="Edit Transaction"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          onClick={() => handleVoidTransaction(tx)}
-                          className="p-2 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 rounded-xl hover:bg-rose-100"
-                          title="Void / Delete Transaction"
-                        >
-                          <Trash className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                    <div className="relative flex-1 sm:w-64">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={disputeSearchQuery}
+                        onChange={e => setDisputeSearchQuery(e.target.value)}
+                        placeholder="Search ref ID, user, title..."
+                        className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
                     </div>
-                  ))
-              )}
-            </div>
+                    <button
+                      onClick={fetchDisputesAndQueries}
+                      disabled={loadingDisputes}
+                      className="p-2 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl hover:bg-[#d8e4db] transition-colors cursor-pointer"
+                      title="Refresh Tickets"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${loadingDisputes ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Ticket Cards List */}
+                <div className="space-y-3 max-h-[580px] overflow-y-auto pr-1">
+                  {userDisputesAndQueries.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400 bg-white dark:bg-slate-900/60 rounded-2xl border border-dashed border-[#E3E8E3] dark:border-slate-800">
+                      <MessageSquare className="w-10 h-10 mx-auto text-slate-300 opacity-60 mb-2" />
+                      <p className="text-xs font-bold">No user disputes or queries logged yet.</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">When users submit disputes or support requests, they will appear here in real-time.</p>
+                    </div>
+                  ) : (
+                    userDisputesAndQueries
+                      .filter(ticket => {
+                        // Category tab filter
+                        if (disputeFilterTab === 'pending' && ticket.status !== 'OPEN') return false;
+                        if (disputeFilterTab === 'review' && ticket.status !== 'UNDER_REVIEW') return false;
+                        if (disputeFilterTab === 'resolved' && ticket.status !== 'RESOLVED') return false;
+                        if (disputeFilterTab === 'disputes' && ticket.type !== 'dispute') return false;
+                        if (disputeFilterTab === 'queries' && ticket.type !== 'query') return false;
+
+                        // Search filter
+                        if (!disputeSearchQuery.trim()) return true;
+                        const q = disputeSearchQuery.toLowerCase();
+                        return (
+                          (ticket.refNumber && ticket.refNumber.toLowerCase().includes(q)) ||
+                          (ticket.title && ticket.title.toLowerCase().includes(q)) ||
+                          (ticket.description && ticket.description.toLowerCase().includes(q)) ||
+                          (ticket.user_email && ticket.user_email.toLowerCase().includes(q)) ||
+                          (ticket.user_name && ticket.user_name.toLowerCase().includes(q)) ||
+                          (ticket.category && ticket.category.toLowerCase().includes(q)) ||
+                          (ticket.room_name && ticket.room_name.toLowerCase().includes(q)) ||
+                          (ticket.transaction_title && ticket.transaction_title.toLowerCase().includes(q))
+                        );
+                      })
+                      .map(ticket => {
+                        const isDispute = ticket.type === 'dispute' || ticket.category?.toLowerCase().includes('dispute');
+                        const statusColors = {
+                          OPEN: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800',
+                          UNDER_REVIEW: 'bg-indigo-100 text-indigo-900 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800',
+                          RESOLVED: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800',
+                          REJECTED: 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800',
+                        };
+
+                        return (
+                          <div
+                            key={ticket.id}
+                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-3 shadow-xs hover:border-amber-400 transition-all text-left"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#F6F8F6] dark:border-slate-800 pb-2.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColors[ticket.status] || statusColors.OPEN}`}>
+                                  {ticket.status || 'OPEN'}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                  {ticket.category || 'General Help'}
+                                </span>
+                                <span className="font-mono text-[10px] font-bold text-slate-400">
+                                  {ticket.refNumber || ticket.id}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-mono text-slate-400">
+                                {ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : 'Recent'}
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              <h4 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                                {isDispute ? <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" /> : <MessageSquare className="w-4 h-4 text-blue-500 shrink-0" />}
+                                <span>{ticket.title}</span>
+                              </h4>
+                              <p className="text-xs text-[#5C6E5C] dark:text-slate-300 whitespace-pre-wrap leading-relaxed bg-[#F6F8F6] dark:bg-slate-950 p-3 rounded-xl border border-[#E3E8E3]/60 dark:border-slate-800/80">
+                                {ticket.description}
+                              </p>
+                            </div>
+
+                            {/* Requester & Context Metadata */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] pt-1 text-slate-600 dark:text-slate-400">
+                              <div>
+                                <span className="text-[9px] uppercase font-bold text-slate-400 block">Submitted By</span>
+                                <span className="font-bold text-[#1A3827] dark:text-slate-200">{ticket.user_name || 'User'}</span>
+                                {ticket.user_email && (
+                                  <a href={`mailto:${ticket.user_email}`} className="text-blue-600 dark:text-blue-400 hover:underline block truncate">
+                                    {ticket.user_email}
+                                  </a>
+                                )}
+                              </div>
+                              {ticket.room_id && (
+                                <div>
+                                  <span className="text-[9px] uppercase font-bold text-slate-400 block">Room Context</span>
+                                  <span className="font-bold text-[#1A3827] dark:text-slate-200">{ticket.room_name || ticket.room_id}</span>
+                                </div>
+                              )}
+                              {ticket.transaction_title && (
+                                <div>
+                                  <span className="text-[9px] uppercase font-bold text-slate-400 block">Disputed Expense</span>
+                                  <span className="font-bold text-emerald-700 dark:text-[#A3E635]">
+                                    {ticket.transaction_title} {ticket.transaction_amount ? `(₹${ticket.transaction_amount})` : ''}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Admin Response Note */}
+                            {ticket.adminResponse && (
+                              <div className="p-3 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl space-y-1 text-xs">
+                                <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Official Admin Response ({ticket.resolvedBy || 'Admin'}):</span>
+                                </span>
+                                <p className="text-emerald-950 dark:text-emerald-100 text-xs italic">
+                                  "{ticket.adminResponse}"
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F6F8F6] dark:border-slate-800 flex-wrap">
+                              <button
+                                onClick={() => {
+                                  setSelectedDisputeTicket(ticket);
+                                  setAdminResponseText(ticket.adminResponse || '');
+                                }}
+                                className="px-3.5 py-1.5 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl text-xs font-black hover:opacity-90 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>Review &amp; Reply</span>
+                              </button>
+                              {ticket.status !== 'RESOLVED' && (
+                                <button
+                                  onClick={() => handleUpdateDisputeStatus(ticket.id, 'RESOLVED', 'Dispute reviewed and resolved by System Administration.')}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Quick Resolve</span>
+                                </button>
+                              )}
+                              {ticket.status !== 'UNDER_REVIEW' && ticket.status !== 'RESOLVED' && (
+                                <button
+                                  onClick={() => handleUpdateDisputeStatus(ticket.id, 'UNDER_REVIEW')}
+                                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Clock className="w-3.5 h-3.5" />
+                                  <span>Investigate</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── SUBVIEW 2: Platform Transactions & Global Voids ── */}
+            {disputeViewMode === 'transactions' && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+                  <div className="relative flex-1 w-full">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      value={globalTxSearch}
+                      onChange={e => setGlobalTxSearch(e.target.value)}
+                      placeholder="Search by Title, Room ID, Category, or Payer..."
+                      className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        if (!allGlobalTx || allGlobalTx.length === 0) {
+                          if (triggerToast) triggerToast('No transactions to export.');
+                          return;
+                        }
+                        const headers = ['ID', 'Room ID', 'Title', 'Amount', 'Category', 'Paid By', 'Created At'];
+                        const rows = allGlobalTx.map(t => [
+                          t.id,
+                          t.room_id,
+                          `"${(t.title || '').replace(/"/g, '""')}"`,
+                          t.amount,
+                          t.category || 'General',
+                          `"${(t.paid_by || '').replace(/"/g, '""')}"`,
+                          t.created_at
+                        ]);
+                        const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                        const blob = new Blob([csvContent], { type: 'text/csv' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `tallyin_all_transactions_${new Date().toISOString().slice(0, 10)}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        if (triggerToast) triggerToast('Exported all transactions to CSV!');
+                      }}
+                      className="px-3.5 py-2 bg-slate-900 text-white dark:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Export CSV</span>
+                    </button>
+                    <button
+                      onClick={fetchGlobalTransactions}
+                      disabled={loadingGlobalTx}
+                      className="px-3 py-2 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-all flex items-center gap-1.5"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${loadingGlobalTx ? 'animate-spin' : ''}`} />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-[550px] overflow-y-auto pr-1">
+                  {allGlobalTx.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <FileText className="w-10 h-10 mx-auto text-slate-300 opacity-60 mb-2" />
+                      <p className="text-xs font-bold">No transactions found in Supabase.</p>
+                    </div>
+                  ) : (
+                    allGlobalTx
+                      .filter(tx => {
+                        if (!globalTxSearch.trim()) return true;
+                        const q = globalTxSearch.toLowerCase();
+                        return (
+                          (tx.title && tx.title.toLowerCase().includes(q)) ||
+                          (tx.room_id && tx.room_id.toLowerCase().includes(q)) ||
+                          (tx.category && tx.category.toLowerCase().includes(q)) ||
+                          (tx.paid_by && tx.paid_by.toLowerCase().includes(q)) ||
+                          String(tx.amount).includes(q)
+                        );
+                      })
+                      .map(tx => (
+                        <div
+                          key={tx.id}
+                          className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between gap-3 text-xs shadow-sm hover:border-amber-400 transition-colors"
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm truncate">
+                                {tx.title || 'Untitled Expense'}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                                {tx.category || 'General'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[11px] text-[#5C6E5C] dark:text-slate-400 font-mono">
+                              <span>Room: <strong>{tx.room_id}</strong></span>
+                              <span>Payer: <strong>{tx.paid_by || 'Unknown'}</strong></span>
+                              <span>{tx.created_at ? new Date(tx.created_at).toLocaleDateString() : ''}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="text-sm font-black text-emerald-700 dark:text-[#A3E635]">
+                              ₹{Number(tx.amount || 0).toLocaleString('en-IN')}
+                            </span>
+
+                            <button
+                              onClick={() => setSelectedTxDetails(tx)}
+                              className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200"
+                              title="Inspect Split Details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setEditingTx(tx);
+                                setEditTxTitle(tx.title || '');
+                                setEditTxAmount(String(tx.amount || ''));
+                                setEditTxCategory(tx.category || 'General');
+                              }}
+                              className="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-100"
+                              title="Edit Transaction"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => handleVoidTransaction(tx)}
+                              className="p-2 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 rounded-xl hover:bg-rose-100"
+                              title="Void / Delete Transaction"
+                            >
+                              <Trash className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )
       )}
@@ -8225,6 +8721,99 @@ NOTIFY pgrst, 'reload schema';`;
               >
                 Close Certificate
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Dispute & Inquiry Review / Response Modal */}
+      {selectedDisputeTicket && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => setSelectedDisputeTicket(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto text-left"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b pb-3 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <h3 className="font-black text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-amber-500" />
+                  Review Ticket: {selectedDisputeTicket.refNumber || selectedDisputeTicket.id}
+                </h3>
+                <p className="text-[10px] text-slate-500">
+                  Category: {selectedDisputeTicket.category} • Submitted by {selectedDisputeTicket.user_name || 'User'} ({selectedDisputeTicket.user_email})
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedDisputeTicket(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Ticket Subject & Description */}
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+              <span className="font-extrabold text-[#1A3827] dark:text-white block text-sm">{selectedDisputeTicket.title}</span>
+              <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedDisputeTicket.description}</p>
+              
+              {/* Optional Room & Expense metadata */}
+              {(selectedDisputeTicket.room_id || selectedDisputeTicket.transaction_title) && (
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-500">
+                  {selectedDisputeTicket.room_id && <div>Room: <strong>{selectedDisputeTicket.room_name || selectedDisputeTicket.room_id}</strong></div>}
+                  {selectedDisputeTicket.transaction_title && <div>Expense: <strong>{selectedDisputeTicket.transaction_title} (₹{selectedDisputeTicket.transaction_amount})</strong></div>}
+                </div>
+              )}
+            </div>
+
+            {/* Admin Response Textarea */}
+            <div className="space-y-1.5 text-xs">
+              <label className="font-bold text-[#1A3827] dark:text-slate-200 block">
+                Administrative Response &amp; Resolution Remarks
+              </label>
+              <textarea
+                rows={3}
+                value={adminResponseText}
+                onChange={e => setAdminResponseText(e.target.value)}
+                placeholder="Type your official remarks or action taken (will be visible to the user and sent via email)..."
+                className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-[#F6F8F6] dark:bg-slate-950 text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none font-sans"
+              />
+            </div>
+
+            {/* Resolution Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => handleUpdateDisputeStatus(selectedDisputeTicket.id, 'REJECTED', adminResponseText)}
+                disabled={isUpdatingTicket}
+                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Reject Ticket</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleUpdateDisputeStatus(selectedDisputeTicket.id, 'UNDER_REVIEW', adminResponseText)}
+                  disabled={isUpdatingTicket}
+                  className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Mark Under Review</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateDisputeStatus(selectedDisputeTicket.id, 'RESOLVED', adminResponseText)}
+                  disabled={isUpdatingTicket}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isUpdatingTicket ? 'Updating...' : 'Resolve & Notify User'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -58,7 +58,10 @@ import {
   Pin,
   Radio,
   Activity,
-  Lock
+  Lock,
+  Scale,
+  HelpCircle,
+  XCircle
 } from 'lucide-react';
 
 import { supabase } from './supabase';
@@ -612,6 +615,24 @@ export default function App() {
   const [activeReceiptImageIndex, setActiveReceiptImageIndex] = useState(0);
   const [activeEditHistoryTx, setActiveEditHistoryTx] = useState(null);
 
+  // Help, Inquiries & Financial Disputes States
+  const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
+  const [disputeModalTab, setDisputeModalTab] = useState('new'); // 'new' | 'history'
+  const [disputeCategory, setDisputeCategory] = useState('Disputed Split / Expense');
+  const [disputeTitle, setDisputeTitle] = useState('');
+  const [disputeDescription, setDisputeDescription] = useState('');
+  const [disputeTargetTx, setDisputeTargetTx] = useState(null);
+  const [myDisputesAndQueries, setMyDisputesAndQueries] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tallyin_my_disputes_and_queries');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
+  const [expandedTicketId, setExpandedTicketId] = useState(null);
+
   // Navigation & Admin Portal States
   const [currentView, setCurrentView] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -985,6 +1006,20 @@ export default function App() {
         if (payload?.payload?.features && Array.isArray(payload.payload.features)) {
           setMaintenanceFeatures(payload.payload.features);
           localStorage.setItem('tallyin_maintenance_features', JSON.stringify(payload.payload.features));
+        }
+      })
+      .on('broadcast', { event: 'DISPUTE_STATUS_UPDATE' }, (payload) => {
+        if (payload?.payload?.ticket) {
+          const updatedTicket = payload.payload.ticket;
+          setMyDisputesAndQueries(prev => {
+            const next = [updatedTicket, ...prev.filter(t => t.id !== updatedTicket.id)];
+            localStorage.setItem('tallyin_my_disputes_and_queries', JSON.stringify(next));
+            return next;
+          });
+          const currentUserEmail = (auth?.currentUser?.email || '').trim().toLowerCase();
+          if (updatedTicket.user_email && updatedTicket.user_email.toLowerCase() === currentUserEmail) {
+            triggerToast(`🔔 Status updated on your request [${updatedTicket.refNumber || updatedTicket.id}]: ${updatedTicket.status}`);
+          }
         }
       })
       .on('broadcast', { event: 'SYSTEM_FORCE_RELOAD' }, () => {
@@ -11101,6 +11136,17 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <SettingsIcon className="w-3.5 h-3.5" />
                   <span>Settings</span>
                 </button>
+                <button 
+                  onClick={() => { 
+                    setIsDisputeModalOpen(true); 
+                    setDisputeModalTab('new');
+                    setIsProfileDropdownOpen(false); 
+                  }}
+                  className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 text-amber-700 dark:text-amber-400"
+                >
+                  <Scale className="w-3.5 h-3.5" />
+                  <span>Disputes &amp; Help Hub</span>
+                </button>
                 {(() => {
                   const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
                   const isSuperAdmin = currentEmailClean === 'tallyin.alerts@gmail.com';
@@ -11423,6 +11469,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Feature D: Comment Modal */}
         {commentTxId && renderCommentModal()}
+
+        {/* Feature: User Inquiries, Disputes & Requests Modal */}
+        {isDisputeModalOpen && renderDisputeModal()}
 
 
         
@@ -12756,24 +12805,33 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         </div>
                       </div>
 
-                      {isCreator && (
-                        <div className="flex items-center gap-1 border-l border-slate-150 dark:border-slate-800 pl-3">
-                          <button 
-                            onClick={() => handleEditTransaction(t)}
-                            className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-                            title="Edit transaction"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteTransaction(t)}
-                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
-                            title="Delete transaction"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1 border-l border-slate-150 dark:border-slate-800 pl-2">
+                        <button
+                          onClick={() => handleOpenDisputeForTransaction(t)}
+                          className="p-1 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded-lg transition-all"
+                          title="Raise dispute or inquiry on this expense"
+                        >
+                          <Scale className="w-3.5 h-3.5" />
+                        </button>
+                        {isCreator && (
+                          <>
+                            <button 
+                              onClick={() => handleEditTransaction(t)}
+                              className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                              title="Edit transaction"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteTransaction(t)}
+                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
+                              title="Delete transaction"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -16833,6 +16891,425 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   }
 
   // ==========================================
+  // DISPUTE & USER INQUIRY MODAL
+  // ==========================================
+  const handleOpenDisputeForTransaction = (tx) => {
+    setDisputeTargetTx(tx);
+    setDisputeCategory('Disputed Split / Expense');
+    setDisputeTitle(`Dispute on ${tx.title || 'Expense'} (₹${tx.amount || 0})`);
+    setDisputeDescription(`I am requesting an administrative review of this transaction.\n\nTransaction ID: ${formatTxId(tx.id)}\nRoom: ${roomName || userRoomId || 'Current Room'}\nAmount: ₹${tx.amount}\nPayer: ${tx.paidBy || tx.paid_by}\n\nReason for dispute: `);
+    setDisputeModalTab('new');
+    setIsDisputeModalOpen(true);
+  };
+
+  const handleSubmitUserDisputeOrQuery = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!disputeTitle.trim() || !disputeDescription.trim()) {
+      triggerToast('Please provide both a title and description.');
+      return;
+    }
+
+    setIsSubmittingDispute(true);
+    try {
+      const userEmail = (auth?.currentUser?.email || localStorage.getItem('tallyin_user_email') || '').trim().toLowerCase();
+      const userName = userNickname || auth?.currentUser?.displayName || userEmail.split('@')[0] || 'User';
+      const nowIso = new Date().toISOString();
+      const dateStr = nowIso.slice(0, 10).replace(/-/g, '');
+      const randCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const refNumber = `REQ-${dateStr}-${randCode}`;
+
+      const newTicket = {
+        id: `ticket-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        refNumber,
+        type: disputeCategory.includes('Dispute') ? 'dispute' : 'query',
+        category: disputeCategory,
+        title: disputeTitle.trim(),
+        description: disputeDescription.trim(),
+        room_id: userRoomId || null,
+        room_name: roomName || null,
+        transaction_id: disputeTargetTx?.id || null,
+        transaction_title: disputeTargetTx?.title || null,
+        transaction_amount: disputeTargetTx?.amount || null,
+        user_email: userEmail || 'user@tallyin.app',
+        user_name: userName,
+        user_id: auth?.currentUser?.uid || null,
+        status: 'OPEN',
+        priority: disputeCategory.includes('Dispute') ? 'HIGH' : 'MEDIUM',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        adminResponse: null,
+        resolvedBy: null,
+        resolvedAt: null
+      };
+
+      // 1. Fetch current global list from DB and prepend
+      let currentList = [];
+      try {
+        const { data } = await supabase
+          .from('rooms')
+          .select('name')
+          .eq('id', '__SYSTEM_USER_DISPUTES_QUERIES__')
+          .maybeSingle();
+
+        if (data?.name && data.name.startsWith('[')) {
+          currentList = JSON.parse(data.name);
+        }
+      } catch (err) {}
+
+      const updatedGlobal = [newTicket, ...currentList.filter(t => t.id !== newTicket.id)];
+
+      // 2. Save to rooms & system_settings
+      try {
+        await supabase
+          .from('rooms')
+          .upsert({
+            id: '__SYSTEM_USER_DISPUTES_QUERIES__',
+            name: JSON.stringify(updatedGlobal),
+            created_by: 'system',
+            created_at: nowIso
+          }, { onConflict: 'id' });
+
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: 'user_disputes_and_queries',
+            value: JSON.stringify(updatedGlobal),
+            created_at: nowIso
+          }, { onConflict: 'key' });
+      } catch (err) {}
+
+      // 3. Save locally to user's ticket list
+      const updatedMyList = [newTicket, ...myDisputesAndQueries.filter(t => t.id !== newTicket.id)];
+      setMyDisputesAndQueries(updatedMyList);
+      localStorage.setItem('tallyin_my_disputes_and_queries', JSON.stringify(updatedMyList));
+
+      // 4. Realtime Broadcast to Admins
+      try {
+        const channel = supabase.channel('system_admin_channel');
+        await channel.send({
+          type: 'broadcast',
+          event: 'DISPUTE_SUBMITTED',
+          payload: { dispute: newTicket }
+        });
+      } catch (err) {}
+
+      // 5. Send notification email to Super Admin
+      try {
+        const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+        fetch(mailRelayUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'send_email',
+            to: 'tallyin.alerts@gmail.com',
+            subject: `🚨 New ${newTicket.type === 'dispute' ? 'Dispute' : 'Support Query'} Raised [${refNumber}] by ${userEmail}`,
+            body: `Tallyin Security Notice:\nNew ticket submitted by ${userEmail} (${userName})\nRef: ${refNumber}\nCategory: ${disputeCategory}\nTitle: ${newTicket.title}\nRoom: ${userRoomId || 'N/A'}\nDescription:\n${newTicket.description}\n\nReview in Admin Console: https://tallyin.vercel.app`,
+            htmlBody: `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #f59e0b;">
+                  <span style="background-color: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase;">New User Submission</span>
+                  <h2 style="color: #1a3827; margin: 8px 0 0 0;">${disputeCategory}</h2>
+                  <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tracking Ref: <strong>${refNumber}</strong></p>
+                </div>
+                <div style="padding: 20px 0; color: #334155; font-size: 13px; line-height: 1.6;">
+                  <p><strong>From:</strong> ${userName} (<a href="mailto:${userEmail}">${userEmail}</a>)</p>
+                  <p><strong>Title:</strong> ${newTicket.title}</p>
+                  ${userRoomId ? `<p><strong>Room:</strong> ${roomName || userRoomId}</p>` : ''}
+                  ${disputeTargetTx ? `<p><strong>Transaction:</strong> ${disputeTargetTx.title} (₹${disputeTargetTx.amount})</p>` : ''}
+                  <div style="background-color: #f8fafc; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin: 16px 0; white-space: pre-wrap;">
+                    ${newTicket.description}
+                  </div>
+                </div>
+                <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+                  Tallyin Help & Dispute Operations Center
+                </div>
+              </div>
+            `
+          })
+        }).catch(e => console.warn(e));
+      } catch (err) {}
+
+      triggerToast(`✅ Submitted! Tracking Ref: ${refNumber}`);
+      setDisputeTitle('');
+      setDisputeDescription('');
+      setDisputeTargetTx(null);
+      setDisputeModalTab('history');
+    } catch (err) {
+      console.error(err);
+      triggerToast(`Failed to submit request: ${err.message}`);
+    } finally {
+      setIsSubmittingDispute(false);
+    }
+  };
+
+  function renderDisputeModal() {
+    if (!isDisputeModalOpen) return null;
+
+    return (
+      <div 
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 animate-fade-in"
+        onClick={() => {
+          setIsDisputeModalOpen(false);
+          setDisputeTargetTx(null);
+        }}
+      >
+        <div 
+          className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 w-full max-w-lg rounded-3xl p-5 sm:p-6 shadow-2xl relative flex flex-col gap-4 text-slate-800 dark:text-slate-200 transition-all max-h-[90vh] overflow-y-auto text-left"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex justify-between items-start pb-3 border-b border-[#E3E8E3] dark:border-slate-800">
+            <div className="space-y-0.5">
+              <h3 className="font-extrabold text-base sm:text-lg text-[#1A3827] dark:text-white flex items-center gap-2">
+                <Scale className="w-5 h-5 text-amber-500" />
+                <span>Help, Requests &amp; Disputes Hub</span>
+              </h3>
+              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                Submit expense disputes, balance inquiries, feature requests, or support tickets.
+              </p>
+            </div>
+            <button 
+              onClick={() => {
+                setIsDisputeModalOpen(false);
+                setDisputeTargetTx(null);
+              }}
+              className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="flex items-center gap-1.5 bg-[#F6F8F6] dark:bg-slate-950 p-1 rounded-2xl border border-[#E3E8E3] dark:border-slate-800">
+            <button
+              onClick={() => setDisputeModalTab('new')}
+              className={`flex-1 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                disputeModalTab === 'new'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Submit New Request</span>
+            </button>
+            <button
+              onClick={() => setDisputeModalTab('history')}
+              className={`flex-1 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                disputeModalTab === 'history'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>My Tickets ({myDisputesAndQueries.length})</span>
+            </button>
+          </div>
+
+          {/* TAB 1: New Dispute / Request */}
+          {disputeModalTab === 'new' && (
+            <form onSubmit={handleSubmitUserDisputeOrQuery} className="space-y-3.5 text-xs">
+              {/* Category Picker */}
+              <div>
+                <label className="font-bold text-[#1A3827] dark:text-slate-200 block mb-1">
+                  Request / Inquiry Category
+                </label>
+                <select
+                  value={disputeCategory}
+                  onChange={e => setDisputeCategory(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6] dark:bg-slate-950 text-xs font-bold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1A3827]"
+                >
+                  <option value="Disputed Split / Expense">⚖️ Disputed Split / Expense</option>
+                  <option value="Settlement / Balance Calculation">🤝 Settlement / Balance Calculation</option>
+                  <option value="General Inquiry / App Help">❓ General Inquiry / App Help</option>
+                  <option value="Feature Suggestion / Request">💡 Feature Suggestion / Request</option>
+                  <option value="Technical Bug / Glitch">🛠️ Technical Bug / Glitch</option>
+                  <option value="Account / Security Assistance">🔒 Account / Security Assistance</option>
+                  <option value="Room Management Request">🏢 Room Management Request</option>
+                </select>
+              </div>
+
+              {/* Transaction Context Pill if present */}
+              {disputeTargetTx && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl flex items-center justify-between gap-2 text-xs">
+                  <div className="min-w-0 space-y-0.5">
+                    <span className="text-[9px] font-black uppercase text-amber-800 dark:text-amber-300 block">
+                      Referenced Expense
+                    </span>
+                    <p className="font-extrabold text-amber-950 dark:text-amber-100 truncate">
+                      {disputeTargetTx.title} (₹{disputeTargetTx.amount})
+                    </p>
+                    <p className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
+                      ID: {formatTxId(disputeTargetTx.id)} • Paid by: {disputeTargetTx.paidBy || disputeTargetTx.paid_by}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDisputeTargetTx(null);
+                      setDisputeTitle('');
+                      setDisputeDescription('');
+                    }}
+                    className="p-1 text-amber-700 hover:text-amber-900 dark:text-amber-300 cursor-pointer"
+                    title="Remove expense reference"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Title Input */}
+              <div>
+                <label className="font-bold text-[#1A3827] dark:text-slate-200 block mb-1">
+                  Subject / Summary Title
+                </label>
+                <input
+                  type="text"
+                  value={disputeTitle}
+                  onChange={e => setDisputeTitle(e.target.value)}
+                  placeholder="e.g. Incorrect grocery split, Bug with UPI settle, Feature suggestion..."
+                  required
+                  className="w-full p-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6] dark:bg-slate-950 text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1A3827]"
+                />
+              </div>
+
+              {/* Detailed Description Textarea */}
+              <div>
+                <label className="font-bold text-[#1A3827] dark:text-slate-200 block mb-1">
+                  Detailed Explanation &amp; Notes
+                </label>
+                <textarea
+                  rows={4}
+                  value={disputeDescription}
+                  onChange={e => setDisputeDescription(e.target.value)}
+                  placeholder="Provide full context, reason for dispute, or query details..."
+                  required
+                  className="w-full p-3 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6] dark:bg-slate-950 text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1A3827] resize-none font-sans"
+                />
+              </div>
+
+              {/* Notice */}
+              <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                Your ticket will generate an official Tracking Reference ID and be dispatched to System Administration (<span className="font-mono font-bold">tallyin.alerts@gmail.com</span>) in real-time.
+              </p>
+
+              {/* Submit Button */}
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDisputeModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDispute}
+                  className="px-5 py-2.5 bg-[#1A3827] hover:bg-[#12281b] dark:bg-[#A3E635] dark:hover:bg-[#92d42b] text-white dark:text-slate-950 font-black rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isSubmittingDispute ? 'Transmitting Ticket...' : 'Submit Request to Admin'}</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* TAB 2: My Tickets & History */}
+          {disputeModalTab === 'history' && (
+            <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+              {myDisputesAndQueries.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-dashed border-[#E3E8E3] dark:border-slate-800 space-y-2">
+                  <HelpCircle className="w-8 h-8 mx-auto text-slate-300" />
+                  <p className="text-xs font-bold">No tickets submitted yet.</p>
+                  <button
+                    type="button"
+                    onClick={() => setDisputeModalTab('new')}
+                    className="px-3.5 py-1.5 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl text-xs font-bold cursor-pointer"
+                  >
+                    Submit a Request
+                  </button>
+                </div>
+              ) : (
+                myDisputesAndQueries.map(ticket => {
+                  const isExpanded = expandedTicketId === ticket.id;
+                  const statusColors = {
+                    OPEN: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800',
+                    UNDER_REVIEW: 'bg-indigo-100 text-indigo-900 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800',
+                    RESOLVED: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800',
+                    REJECTED: 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800',
+                  };
+
+                  return (
+                    <div
+                      key={ticket.id}
+                      className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 space-y-2 text-xs transition-all cursor-pointer hover:border-[#1A3827]/40 dark:hover:border-slate-700"
+                      onClick={() => setExpandedTicketId(isExpanded ? null : ticket.id)}
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColors[ticket.status] || statusColors.OPEN}`}>
+                            {ticket.status || 'OPEN'}
+                          </span>
+                          <span className="font-mono text-[10px] font-bold text-slate-400">
+                            {ticket.refNumber || ticket.id}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : 'Recent'}
+                        </span>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <h4 className="font-extrabold text-[#1A3827] dark:text-white text-xs">{ticket.title}</h4>
+                        <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 line-clamp-2">{ticket.description}</p>
+                      </div>
+
+                      {/* Expandable Body with Admin Response */}
+                      {isExpanded && (
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2 animate-fade-in text-[11px]">
+                          <div className="space-y-1">
+                            <span className="text-[9px] uppercase font-bold text-slate-400 block">Full Message</span>
+                            <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                              {ticket.description}
+                            </p>
+                          </div>
+
+                          {/* Admin Response */}
+                          {ticket.adminResponse ? (
+                            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl space-y-1">
+                              <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Official Admin Response:</span>
+                              </span>
+                              <p className="text-emerald-950 dark:text-emerald-100 italic">
+                                "{ticket.adminResponse}"
+                              </p>
+                              {ticket.resolvedAt && (
+                                <p className="text-[9px] font-mono text-emerald-700 dark:text-emerald-400 pt-1">
+                                  Resolved on {new Date(ticket.resolvedAt).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-xl text-amber-800 dark:text-amber-300 text-[10px] flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 shrink-0" />
+                              <span>This request is currently queued for System Administration review.</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
   // PAGE 7: SHARED SHOPPING LIST
   // ==========================================
   function renderShoppingBoard() {
@@ -17986,6 +18463,58 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-[#A3E635]"></div>
               </label>
             </div>
+          </div>
+
+          {/* Help, Support & Financial Disputes */}
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
+            <div className="flex justify-between items-center pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
+              <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight flex items-center gap-2">
+                <Scale className="w-4 h-4 text-amber-500" />
+                <span>Help, Queries &amp; Financial Disputes</span>
+              </h3>
+              {myDisputesAndQueries.length > 0 && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  {myDisputesAndQueries.length} {myDisputesAndQueries.length === 1 ? 'ticket' : 'tickets'}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-1">
+              <div>
+                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Dispute an Expense or Submit a Query</p>
+                <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                  Have an issue with a split, payment balance, bug, or feature request? Submit a ticket directly to administration.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsDisputeModalOpen(true);
+                  setDisputeModalTab('new');
+                }}
+                className="px-4 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Submit Ticket</span>
+              </button>
+            </div>
+
+            {myDisputesAndQueries.length > 0 && (
+              <div className="pt-2 border-t border-[#F6F8F6] dark:border-slate-800 flex justify-between items-center text-xs">
+                <span className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  Track your previous submissions and admin responses
+                </span>
+                <button
+                  onClick={() => {
+                    setIsDisputeModalOpen(true);
+                    setDisputeModalTab('history');
+                  }}
+                  className="text-amber-700 dark:text-amber-400 font-bold text-xs hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>View My Tickets</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Account & Danger zone */}

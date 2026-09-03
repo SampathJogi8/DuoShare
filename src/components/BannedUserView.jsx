@@ -32,13 +32,32 @@ export default function BannedUserView({
       .filter(Boolean)
       .map(id => String(id).trim().toLowerCase());
 
-    // Check local storage cache first
-    const isCachedRejected = possibleIdentifiers.some(id => 
-      typeof window !== 'undefined' && localStorage.getItem(`tallyin_appeal_rejected_${id}`) === 'true'
-    );
+    const currentBanTime = banInfo?.bannedAt ? new Date(banInfo.bannedAt).getTime() : (banInfo?.timestamp ? new Date(banInfo.timestamp).getTime() : 0);
+
+    // Check local storage cache: Only consider rejected if rejection occurred AFTER the current ban
+    const isCachedRejected = possibleIdentifiers.some(id => {
+      if (typeof window === 'undefined') return false;
+      const cachedVal = localStorage.getItem(`tallyin_appeal_rejected_${id}`);
+      if (!cachedVal) return false;
+      if (cachedVal === 'true') {
+        // Legacy boolean: if current ban is new, clear it
+        if (currentBanTime > 0 && Date.now() - currentBanTime < 86400000 * 30) {
+          // If legacy format and ban has a timestamp, allow server re-check to confirm
+          return false;
+        }
+        return true;
+      }
+      const rejTime = Number(cachedVal);
+      if (Number.isFinite(rejTime) && currentBanTime > 0) {
+        return rejTime >= currentBanTime;
+      }
+      return false;
+    });
 
     if (isCachedRejected) {
       setIsAppealRejected(true);
+    } else {
+      setIsAppealRejected(false);
     }
 
     const checkAppealStatus = async () => {
@@ -57,10 +76,26 @@ export default function BannedUserView({
             const aEmail = String(a.email || a.identifier || '').trim().toLowerCase();
             return possibleIdentifiers.includes(aEmail) && a.status === 'rejected';
           });
+
           if (myAppeal) {
-            setIsAppealRejected(true);
+            const appealCreatedTime = myAppeal.timestampIso ? new Date(myAppeal.timestampIso).getTime() : (myAppeal.createdAt ? new Date(myAppeal.createdAt).getTime() : 0);
+            // If the appeal was made BEFORE the current ban timestamp, it belongs to an old ban cycle!
+            if (currentBanTime > 0 && appealCreatedTime > 0 && appealCreatedTime < currentBanTime) {
+              setIsAppealRejected(false);
+              possibleIdentifiers.forEach(id => {
+                if (typeof window !== 'undefined') localStorage.removeItem(`tallyin_appeal_rejected_${id}`);
+              });
+            } else {
+              setIsAppealRejected(true);
+              possibleIdentifiers.forEach(id => {
+                if (typeof window !== 'undefined') localStorage.setItem(`tallyin_appeal_rejected_${id}`, String(Date.now()));
+              });
+            }
+          } else {
+            // No rejected appeal in database for this user
+            setIsAppealRejected(false);
             possibleIdentifiers.forEach(id => {
-              if (typeof window !== 'undefined') localStorage.setItem(`tallyin_appeal_rejected_${id}`, 'true');
+              if (typeof window !== 'undefined') localStorage.removeItem(`tallyin_appeal_rejected_${id}`);
             });
           }
         }
@@ -69,15 +104,33 @@ export default function BannedUserView({
 
     checkAppealStatus();
 
-    // Listen for Realtime rejection & unban broadcasts
+    // Listen for Realtime rejection, reset & unban broadcasts
     const channel = supabase.channel('system_admin_channel');
     channel
       .on('broadcast', { event: 'BAN_APPEAL_DECISION' }, (payload) => {
         const targetEmail = String(payload?.payload?.email || '').trim().toLowerCase();
-        if (targetEmail && possibleIdentifiers.includes(targetEmail) && payload?.payload?.status === 'rejected') {
-          setIsAppealRejected(true);
+        if (targetEmail && possibleIdentifiers.includes(targetEmail)) {
+          if (payload?.payload?.status === 'rejected') {
+            setIsAppealRejected(true);
+            possibleIdentifiers.forEach(id => {
+              if (typeof window !== 'undefined') localStorage.setItem(`tallyin_appeal_rejected_${id}`, String(Date.now()));
+            });
+          } else if (payload?.payload?.status === 'reset' || payload?.payload?.status === 'approved') {
+            setIsAppealRejected(false);
+            setAppealStatus('idle');
+            possibleIdentifiers.forEach(id => {
+              if (typeof window !== 'undefined') localStorage.removeItem(`tallyin_appeal_rejected_${id}`);
+            });
+          }
+        }
+      })
+      .on('broadcast', { event: 'BAN_APPEAL_RESET' }, (payload) => {
+        const targetEmail = String(payload?.payload?.email || '').trim().toLowerCase();
+        if (targetEmail && (possibleIdentifiers.includes(targetEmail) || targetEmail === 'all')) {
+          setIsAppealRejected(false);
+          setAppealStatus('idle');
           possibleIdentifiers.forEach(id => {
-            if (typeof window !== 'undefined') localStorage.setItem(`tallyin_appeal_rejected_${id}`, 'true');
+            if (typeof window !== 'undefined') localStorage.removeItem(`tallyin_appeal_rejected_${id}`);
           });
         }
       })
@@ -91,11 +144,22 @@ export default function BannedUserView({
           });
           if (!isStillBanned) {
             localStorage.setItem('tallyin_banned_users', JSON.stringify(latestBanned));
+            possibleIdentifiers.forEach(id => {
+              if (typeof window !== 'undefined') localStorage.removeItem(`tallyin_appeal_rejected_${id}`);
+            });
             window.dispatchEvent(new Event('storage'));
           }
         }
       })
       .on('broadcast', { event: 'USER_UNBANNED' }, (payload) => {
+        const unbannedEmail = String(payload?.payload?.email || '').trim().toLowerCase();
+        if (!unbannedEmail || possibleIdentifiers.includes(unbannedEmail)) {
+          setIsAppealRejected(false);
+          setAppealStatus('idle');
+          possibleIdentifiers.forEach(id => {
+            if (typeof window !== 'undefined') localStorage.removeItem(`tallyin_appeal_rejected_${id}`);
+          });
+        }
         if (payload?.payload?.bannedUsers && Array.isArray(payload.payload.bannedUsers)) {
           const latestBanned = payload.payload.bannedUsers;
           localStorage.setItem('tallyin_banned_users', JSON.stringify(latestBanned));
@@ -118,14 +182,19 @@ export default function BannedUserView({
     setErrorMsg(null);
 
     const userEmail = banInfo?.email || user?.email || localStorage.getItem('tallyin_user_email') || 'User';
+    const nowIso = new Date().toISOString();
 
     const appealObj = {
       id: `appeal-${Date.now()}`,
       email: userEmail,
       message: appealText.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+      timestampIso: nowIso,
+      createdAt: nowIso,
+      banTimestamp: banInfo?.bannedAt || banInfo?.timestamp || nowIso,
       date: new Date().toLocaleDateString(),
-      bannedReason: banInfo?.reason || 'Policy violation'
+      bannedReason: banInfo?.reason || 'Policy violation',
+      status: 'pending'
     };
 
     try {
