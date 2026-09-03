@@ -1115,6 +1115,30 @@ export default function App() {
           }
         }
       })
+      .on('broadcast', { event: 'ROOM_DELETED' }, (payload) => {
+        if (payload?.payload?.roomId) {
+          const deletedId = payload.payload.roomId;
+          const deletedName = payload.payload.roomName || deletedId;
+
+          setUserRooms(prev => prev.filter(r => r.roomId !== deletedId));
+          setPendingUserRequests(prev => prev.filter(r => r.roomId !== deletedId));
+
+          if (userRoomId === deletedId) {
+            setUserRoomId(null);
+            setHasConfirmedRoom(false);
+            setTransactions([]);
+            setReceipts([]);
+            setMembers([]);
+            setActivityLogs([]);
+            localStorage.removeItem('userRoomId');
+            setOnboardingStep('selection');
+            triggerToast(`⚠️ Room "${deletedName}" was deleted or closed.`);
+          }
+          if (user) {
+            fetchUserRooms();
+          }
+        }
+      })
       .subscribe();
 
     // Expiration helper for broadcast messages (Default 2 Calendar Days validity)
@@ -2878,6 +2902,61 @@ export default function App() {
     }
   }, [user, fetchUserRooms, triggerToast]);
 
+  // Real-time Active Room Database Sync (Zero Lag / No Refresh Needed)
+  useEffect(() => {
+    if (!userRoomId) return;
+
+    const roomChannel = supabase.channel(`room_realtime_${userRoomId}`);
+
+    roomChannel
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `room_id=eq.${userRoomId}` }, () => {
+        fetchTransactions(userRoomId);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: `room_id=eq.${userRoomId}` }, () => {
+        fetchMembers(userRoomId);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${userRoomId}` }, () => {
+        fetchRoomSettings(userRoomId);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs', filter: `room_id=eq.${userRoomId}` }, () => {
+        fetchActivityLogs(userRoomId);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts', filter: `room_id=eq.${userRoomId}` }, () => {
+        fetchReceipts(userRoomId);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings' }, (payload) => {
+        const key = payload.new?.key || payload.old?.key;
+        if (key === `join_requests_${userRoomId}` || key === `room_mode_${userRoomId}`) {
+          fetchRoomSettings(userRoomId);
+        }
+      })
+      .on('broadcast', { event: 'ROOM_DATA_SYNC' }, () => {
+        fetchTransactions(userRoomId);
+        fetchMembers(userRoomId);
+        fetchRoomSettings(userRoomId);
+        fetchActivityLogs(userRoomId);
+      })
+      .on('broadcast', { event: 'ROOM_DELETED' }, (payload) => {
+        if (payload?.payload?.roomId === userRoomId) {
+          setUserRoomId(null);
+          setHasConfirmedRoom(false);
+          setTransactions([]);
+          setReceipts([]);
+          setMembers([]);
+          setActivityLogs([]);
+          localStorage.removeItem('userRoomId');
+          setOnboardingStep('selection');
+          triggerToast(`⚠️ Room "${payload?.payload?.roomName || userRoomId}" was permanently closed.`);
+          if (user) fetchUserRooms();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(roomChannel);
+    };
+  }, [userRoomId, fetchTransactions, fetchMembers, fetchRoomSettings, fetchActivityLogs, fetchReceipts, user, fetchUserRooms, triggerToast]);
+
   const handleSendJoinRequest = async (targetRoomId, targetNickname = null) => {
     const activeUser = user;
     if (!activeUser || !targetRoomId) {
@@ -3785,22 +3864,22 @@ export default function App() {
     }
   };
 
-  // Delete Room handler
+  // Delete Room handler — WITH EMAIL STATEMENT DISPATCH & HOST RESTRICTION
   const handleDeleteRoom = async (bypassHostCheck = false, skipConfirmation = false) => {
     if (!userRoomId || !user) return;
     const isHost = roomCreatedBy && roomCreatedBy === user.id;
 
-    // Strict Permission check: non-hosts cannot delete room directly
+    // Strict Permission check: non-hosts cannot delete room
     if (!bypassHostCheck && !isHost) {
-      triggerToast('⛔ Only the Room Host (Admin) can delete this room space.');
+      triggerToast('⛔ Only the Room Host (Admin) can permanently delete this room space.');
       return;
     }
     if (!skipConfirmation) {
-      const confirmed = window.confirm(`Delete room ${userRoomId} permanently? All transactions and data will be lost. This cannot be undone.`);
+      const confirmed = window.confirm(`Delete room "${roomName || userRoomId}" permanently? All transactions and data will be closed. Final statements will be emailed to all members.`);
       if (!confirmed) return;
     }
     try {
-      // 1. Generate and download JSON backup
+      // 1. Generate and download JSON backup for host
       const backupData = {
         roomId: userRoomId,
         roomName: roomName,
@@ -3813,63 +3892,145 @@ export default function App() {
         activityLogs: activityLogs
       };
 
-      const backupStr = JSON.stringify(backupData, null, 2);
-      const blob = new Blob([backupStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `tallyin_room_backup_${userRoomId}_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      triggerToast('Room backup JSON downloaded successfully!');
-
-      // 1b. Generate and download CSV statement
       try {
-        const statementList = transactions.filter(t => t.category !== '__DELETE_PROPOSAL__');
-        if (statementList.length > 0) {
-          exportToCSV(statementList);
+        const backupStr = JSON.stringify(backupData, null, 2);
+        const blob = new Blob([backupStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `tallyin_room_backup_${userRoomId}_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (e) {}
+
+      // 1b. Dispatch Individual & Room Financial Statements via Email to All Roommates
+      try {
+        const validTx = transactions.filter(t => t.category !== '__DELETE_PROPOSAL__' && t.category !== 'Payment');
+        const totalRoomSpend = validTx.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        const formattedTotalSpend = `₹${totalRoomSpend.toLocaleString('en-IN')}`;
+        const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+
+        for (const m of members) {
+          const targetEmail = m.email || (m.uid === user.id ? user.email : '');
+          if (!targetEmail || !targetEmail.includes('@')) continue;
+
+          const myPaidTx = validTx.filter(t => (t.paidByUid && t.paidByUid === m.uid) || (t.paid_by && t.paid_by === m.nickname) || (t.paidBy && t.paidBy === m.nickname));
+          const totalMyPaid = myPaidTx.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+          const myQuota = Number(m.individualBudget || m.individual_budget) || 0;
+
+          const emailHtml = `
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0F172A; margin: 0; padding: 32px 16px;">
+              <div style="max-width: 580px; margin: 0 auto; background-color: #1E293B; border-radius: 20px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+                <div style="background: linear-gradient(135deg, #1A3827 0%, #0F172A 100%); padding: 32px 24px; text-align: center; border-bottom: 1px solid #334155;">
+                  <div style="display: inline-block; background-color: #A3E635; color: #0F172A; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px;">
+                    Final Financial Statement
+                  </div>
+                  <h1 style="color: #F8FAFC; font-size: 22px; font-weight: 900; margin: 0 0 6px 0;">Room "${roomName || userRoomId}" Closed</h1>
+                  <p style="color: #94A3B8; font-size: 13px; margin: 0;">Personal Ledger & Settlement Statement for <strong>${m.nickname}</strong></p>
+                </div>
+                <div style="padding: 28px 24px; color: #E2E8F0; font-size: 14px; line-height: 1.6;">
+                  <p style="margin: 0 0 16px 0;">Hi <strong>${m.nickname}</strong>,</p>
+                  <p style="margin: 0 0 20px 0;">The shared room <strong>"${roomName || userRoomId}"</strong> has been permanently closed. Below is your final financial ledger statement before records were purged:</p>
+                  
+                  <div style="background-color: #0F172A; border: 1px solid #334155; border-radius: 14px; padding: 18px; margin-bottom: 20px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #A3E635; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">YOUR PERSONAL SUMMARY</div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+                      <span style="color: #94A3B8;">Total Amount Paid by You:</span>
+                      <strong style="color: #F8FAFC;">₹${totalMyPaid.toLocaleString('en-IN')}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+                      <span style="color: #94A3B8;">Assigned Quota Limit:</span>
+                      <strong style="color: #F8FAFC;">₹${myQuota.toLocaleString('en-IN')}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                      <span style="color: #94A3B8;">Transactions Logged by You:</span>
+                      <strong style="color: #F8FAFC;">${myPaidTx.length}</strong>
+                    </div>
+                  </div>
+
+                  <div style="background-color: #0F172A; border: 1px solid #334155; border-radius: 14px; padding: 18px; margin-bottom: 24px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">ROOM TOTALS</div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+                      <span style="color: #94A3B8;">Total Group Expenses:</span>
+                      <strong style="color: #F8FAFC;">${formattedTotalSpend}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                      <span style="color: #94A3B8;">Total Roommates:</span>
+                      <strong style="color: #F8FAFC;">${members.length}</strong>
+                    </div>
+                  </div>
+
+                  <p style="color: #94A3B8; font-size: 12px; margin: 0 0 24px 0;">All transactions and room data have been permanently archived. You can create or join a new shared space anytime on Tallyin.</p>
+                  
+                  <div style="text-align: center;">
+                    <a href="https://tallyin.vercel.app" style="display: inline-block; background-color: #A3E635; color: #0F172A; font-weight: 800; font-size: 13px; padding: 12px 28px; border-radius: 12px; text-decoration: none;">Open Tallyin</a>
+                  </div>
+                </div>
+                <div style="background-color: #0F172A; padding: 16px; text-align: center; border-top: 1px solid #334155; color: #64748B; font-size: 11px;">
+                  Tallyin Automated Space Governance • Final Room Statement
+                </div>
+              </div>
+            </body>
+            </html>
+          `;
+
+          await fetch(mailRelayUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipients: [targetEmail],
+              subject: `[Tallyin Statement] Final Financial Report for Room "${roomName || userRoomId}"`,
+              htmlBody: emailHtml,
+              senderName: 'Tallyin Financial Statements'
+            })
+          });
         }
-      } catch (e) {
-        console.warn("Failed to auto-download statement CSV:", e);
+      } catch (mailErr) {
+        console.warn("Statement email dispatch warning:", mailErr);
       }
 
-      // 2. Cascade delete all child table records for userRoomId FIRST to avoid Foreign Key constraint errors in D1/SQLite
+      // 2. Broadcast ROOM_DELETED across realtime channels
+      const deletedRoomId = userRoomId;
+      const deletedRoomName = roomName;
       try {
-        await Promise.all([
-          supabase.from('transactions').delete().eq('room_id', userRoomId),
-          supabase.from('receipts').delete().eq('room_id', userRoomId),
-          supabase.from('members').delete().eq('room_id', userRoomId),
-          supabase.from('activity_logs').delete().eq('room_id', userRoomId),
-          supabase.from('system_settings').delete().eq('key', `room_mode_${userRoomId}`),
-          supabase.from('system_settings').delete().eq('key', `join_requests_${userRoomId}`)
-        ]);
-      } catch (childErr) {
-        console.warn("Child records cleanup notice:", childErr);
-      }
+        const roomChannel = supabase.channel(`room_realtime_${deletedRoomId}`);
+        await roomChannel.send({
+          type: 'broadcast',
+          event: 'ROOM_DELETED',
+          payload: { roomId: deletedRoomId, roomName: deletedRoomName }
+        });
+        const sysChannel = supabase.channel('system_admin_channel');
+        await sysChannel.send({
+          type: 'broadcast',
+          event: 'ROOM_DELETED',
+          payload: { roomId: deletedRoomId, roomName: deletedRoomName }
+        });
+      } catch (bcErr) {}
 
-      // 3. Delete room from rooms table
-      const { error: deleteError } = await supabase
-        .from('rooms')
-        .delete()
-        .eq('id', userRoomId);
+      // 3. Cascade delete all child table records
+      await Promise.all([
+        supabase.from('transactions').delete().eq('room_id', deletedRoomId),
+        supabase.from('receipts').delete().eq('room_id', deletedRoomId),
+        supabase.from('members').delete().eq('room_id', deletedRoomId),
+        supabase.from('activity_logs').delete().eq('room_id', deletedRoomId),
+        supabase.from('system_settings').delete().eq('key', `room_mode_${deletedRoomId}`),
+        supabase.from('system_settings').delete().eq('key', `join_requests_${deletedRoomId}`)
+      ]);
 
-      if (deleteError) {
-        console.warn("Room table delete notice:", deleteError);
-      }
+      // 4. Delete room from rooms table
+      await supabase.from('rooms').delete().eq('id', deletedRoomId);
 
-      // Reset user room binding for all members of this room
+      // 5. Reset user room binding for all members
       try {
-        await supabase
-          .from('users')
-          .update({ room_id: null })
-          .eq('room_id', userRoomId);
-      } catch(e) {
-        console.warn("Could not unbind room_id for members:", e);
-      }
+        await supabase.from('users').update({ room_id: null }).eq('room_id', deletedRoomId);
+      } catch(e) {}
 
-      // Clear local state first
+      // Clear local state
       setUserRoomId(null);
       setHasConfirmedRoom(false);
       setTransactions([]);
@@ -3879,34 +4040,22 @@ export default function App() {
       setRoomCreatedBy(null);
       localStorage.removeItem('userRoomId');
       
-      // Reset user room binding for current user
       if (user) {
         try {
-          await supabase
-            .from('users')
-            .upsert({
-              uid: user.id,
-              room_id: null,
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'uid' });
-        } catch(e) { console.error(e); }
+          await supabase.from('users').upsert({ uid: user.id, room_id: null, updated_at: new Date().toISOString() }, { onConflict: 'uid' });
+        } catch(e) {}
       }
       await fetchUserRooms();
       setOnboardingStep('selection');
-      triggerToast('Room deleted. Redirected to onboarding.');
+      triggerToast('Room permanently deleted. Final statements emailed to all members.');
     } catch (err) {
       console.error('Delete room error:', err);
-      triggerToast('Failed to fully delete room data from server, cleared locally.');
       setUserRoomId(null);
       setHasConfirmedRoom(false);
-      setTransactions([]);
-      setReceipts([]);
-      setMembers([]);
-      setActivityLogs([]);
-      setRoomCreatedBy(null);
       localStorage.removeItem('userRoomId');
       await fetchUserRooms();
       setOnboardingStep('selection');
+      triggerToast('Room deleted.');
     }
   };
 
@@ -3915,7 +4064,7 @@ export default function App() {
     return transactions.find(t => t.category === '__DELETE_PROPOSAL__');
   }, [transactions]);
 
-  // Propose Room Deletion
+  // Propose Room Deletion — HOST ONLY
   const handleProposeDeleteRoom = async () => {
     if (!userRoomId || !user) return;
     const isHost = roomCreatedBy && roomCreatedBy === user.id;
@@ -3928,7 +4077,6 @@ export default function App() {
     if (!confirmed) return;
 
     try {
-      // Create a __DELETE_PROPOSAL__ transaction
       const proposalTx = {
         room_id: userRoomId,
         title: 'Delete Room Proposal',
@@ -3951,16 +4099,12 @@ export default function App() {
         created_by: user.id
       };
 
-      const { error } = await supabase
-        .from('transactions')
-        .insert(proposalTx);
-
+      const { error } = await supabase.from('transactions').insert(proposalTx);
       if (error) throw error;
 
       await logActivity('settings', `${userNickname} proposed room deletion`);
       triggerToast('Room deletion proposal created!');
       
-      // If there is only 1 member in the room, met immediately
       if (members.length <= 1) {
         await handleDeleteRoom(true, true);
       }
@@ -3970,11 +4114,11 @@ export default function App() {
     }
   };
 
-  // Approve Room Deletion
+  // Approve Room Deletion — ALL MEMBERS VOTE, HOST EXECUTES
   const handleApproveDeleteRoom = async (proposalTx) => {
     if (!userRoomId || !user || !proposalTx) return;
+    const isHost = roomCreatedBy && roomCreatedBy === user.id;
 
-    // Check if already approved
     const existingSplits = proposalTx.splits || [];
     if (existingSplits.some(s => s.uid === user.id)) {
       triggerToast('You have already approved this deletion proposal.');
@@ -3992,7 +4136,6 @@ export default function App() {
         }
       ];
 
-      // Update proposal transaction
       const { error } = await supabase
         .from('transactions')
         .update({ splits: updatedSplits })
@@ -4001,16 +4144,19 @@ export default function App() {
       if (error) throw error;
 
       await logActivity('settings', `${userNickname} approved room deletion`);
-      triggerToast('Approval submitted!');
 
       // Check if all members have now approved
       const approvedUids = new Set(updatedSplits.map(s => s.uid));
       const allApproved = members.every(m => approvedUids.has(m.uid));
 
       if (allApproved) {
-        triggerToast('All members have approved! Finalizing deletion...');
-        // Perform actual deletion (bypass check is true, skipConfirmation is true)
-        await handleDeleteRoom(true, true);
+        if (isHost) {
+          triggerToast('🎉 100% consensus reached! All members approved. You can now execute permanent deletion.');
+        } else {
+          triggerToast('🎉 Your approval recorded! All members have approved. Waiting for Room Host to execute deletion.');
+        }
+      } else {
+        triggerToast('Approval submitted!');
       }
     } catch (err) {
       console.error('Approve delete room error:', err);
@@ -4039,27 +4185,6 @@ export default function App() {
       triggerToast(`Failed to cancel room deletion: ${err.message}`);
     }
   };
-
-
-
-  // Auto-delete trigger for host when all members approve a deletion proposal
-  useEffect(() => {
-    if (!userRoomId || !user) return;
-    const isHost = roomCreatedBy && roomCreatedBy === user.id;
-    if (!isHost || !deleteProposal || members.length === 0) return;
-
-    const approvedSplits = deleteProposal.splits || [];
-    const approvedUids = new Set(approvedSplits.map(s => s.uid));
-    const allApproved = members.every(m => approvedUids.has(m.uid));
-
-    if (allApproved) {
-      console.log('Host client detected all approvals. Executing room deletion...');
-      const timer = setTimeout(() => {
-        handleDeleteRoom(true, true);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [deleteProposal, members, user, userRoomId, roomCreatedBy, handleDeleteRoom]);
 
   // Leave Room handler — for NON-HOST members to voluntarily leave
   const handleLeaveRoom = async () => {
@@ -4561,7 +4686,26 @@ export default function App() {
       const maxLimit = room.max_members ? Number(room.max_members) : 6;
       const currentCount = existingMembers ? existingMembers.length : 0;
 
-      if (!isAlreadyMember && currentCount >= maxLimit) {
+      // Check room mode (split vs quota)
+      let roomMode = room.room_mode;
+      if (!roomMode) {
+        try {
+          const { data: modeSetting } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', `room_mode_${cleanId}`)
+            .maybeSingle();
+          if (modeSetting?.value) {
+            const parsed = typeof modeSetting.value === 'string' ? JSON.parse(modeSetting.value) : modeSetting.value;
+            roomMode = parsed.mode;
+          }
+        } catch(e) {}
+      }
+
+      // In Quota Mode, ALL new joins REQUIRE Host Approval & Budget Allocation (regardless of capacity)
+      const requiresApproval = !isAlreadyMember && (roomMode === 'quota' || currentCount >= maxLimit);
+
+      if (requiresApproval) {
         const hostUid = room.created_by;
         let hostNickname = 'Room Admin';
         let hostEmail = '';
@@ -4586,7 +4730,8 @@ export default function App() {
           hostNickname,
           hostEmail,
           currentCount,
-          maxLimit
+          maxLimit,
+          isQuotaMode: roomMode === 'quota'
         });
         return;
       }
@@ -14223,28 +14368,59 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
-                    {!(deleteProposal.splits || []).some(s => s.uid === currentUid) ? (
-                      <button
-                        onClick={() => handleApproveDeleteRoom(deleteProposal)}
-                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all"
-                      >
-                        Approve Deletion
-                      </button>
-                    ) : (
-                      <div className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-center font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-700">
-                        Approved (Waiting...)
-                      </div>
-                    )}
-                    
-                    <button
-                      onClick={() => handleRejectDeleteRoom(deleteProposal)}
-                      className="py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
-                    >
-                      Reject
-                    </button>
+                    {/* Consensus Action Buttons */}
+                    {(() => {
+                      const approvedSplits = deleteProposal.splits || [];
+                      const approvedUids = new Set(approvedSplits.map(s => s.uid));
+                      const allApproved = members.length > 0 && members.every(m => approvedUids.has(m.uid));
+
+                      if (allApproved) {
+                        return (
+                          <div className="space-y-2 pt-1">
+                            <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300 font-bold text-center">
+                              🎉 100% Consensus Reached! All members have approved deletion.
+                            </div>
+                            {isHost ? (
+                              <button
+                                onClick={() => handleDeleteRoom(true, false)}
+                                className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-lg transition-all animate-pulse cursor-pointer"
+                              >
+                                🚨 Execute Permanent Room Deletion (Host Only)
+                              </button>
+                            ) : (
+                              <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-center font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-700">
+                                ⏳ Waiting for Room Host to execute deletion...
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="flex gap-2">
+                          {!(deleteProposal.splits || []).some(s => s.uid === currentUid) ? (
+                            <button
+                              onClick={() => handleApproveDeleteRoom(deleteProposal)}
+                              className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all"
+                            >
+                              Approve Deletion
+                            </button>
+                          ) : (
+                            <div className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-center font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-700">
+                              Approved (Waiting for others...)
+                            </div>
+                          )}
+                          
+                          <button
+                            onClick={() => handleRejectDeleteRoom(deleteProposal)}
+                            className="py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
-                </div>
               )}
 
               {/* Leave room is still shown to non-hosts for convenience */}

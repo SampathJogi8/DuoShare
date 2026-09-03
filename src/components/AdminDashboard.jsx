@@ -2050,7 +2050,101 @@ export default function AdminDashboard({
     }
 
     try {
-      // Clean up all related tables first to avoid foreign key errors
+      // 1. Fetch room members & transactions before purging so we can email statements
+      let membersToNotify = [];
+      let roomTransactions = [];
+      try {
+        const [{ data: mData }, { data: txData }] = await Promise.all([
+          supabase.from('members').select('uid, nickname, email, individual_budget').eq('room_id', room.id),
+          supabase.from('transactions').select('*').eq('room_id', room.id)
+        ]);
+        membersToNotify = mData || [];
+        roomTransactions = txData || [];
+      } catch (fetchErr) {
+        console.warn("Pre-purge data fetch warning:", fetchErr);
+      }
+
+      // 2. Dispatch official Decommission & Statement Email to all members
+      const emailList = membersToNotify.map(m => m.email).filter(e => e && e.includes('@'));
+      if (emailList.length > 0) {
+        try {
+          const totalSpent = roomTransactions
+            .filter(t => t.category !== '__DELETE_PROPOSAL__' && t.category !== 'Payment')
+            .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+          const formattedTotal = `₹${totalSpent.toLocaleString('en-IN')}`;
+          const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+
+          const emailHtml = `
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0F172A; margin: 0; padding: 32px 16px;">
+              <div style="max-width: 560px; margin: 0 auto; background-color: #1E293B; border-radius: 20px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+                <div style="background: linear-gradient(135deg, #1A3827 0%, #0F172A 100%); padding: 32px 24px; text-align: center; border-bottom: 1px solid #334155;">
+                  <div style="display: inline-block; background-color: #EF4444; color: #FFFFFF; font-size: 11px; font-weight: 800; padding: 4px 12px; rounded: 9999px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 12px; margin-bottom: 12px;">
+                    Room Closed & Decommissioned
+                  </div>
+                  <h1 style="color: #F8FAFC; font-size: 22px; font-weight: 900; margin: 0 0 6px 0;">Room "${room.name}" Purged</h1>
+                  <p style="color: #94A3B8; font-size: 13px; margin: 0;">Notice from Tallyin System Administration</p>
+                </div>
+                <div style="padding: 28px 24px; color: #E2E8F0; font-size: 14px; line-height: 1.6;">
+                  <p style="margin: 0 0 16px 0;">Hello,</p>
+                  <p style="margin: 0 0 20px 0;">This email is to notify you that the shared space <strong>"${room.name}"</strong> (ID: <code style="background-color: #0F172A; padding: 2px 6px; border-radius: 6px; color: #A3E635;">${room.id}</code>) has been permanently closed and decommissioned by System Administration.</p>
+                  
+                  <div style="background-color: #0F172A; border: 1px solid #334155; border-radius: 14px; padding: 18px; margin-bottom: 24px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">FINAL ROOM SUMMARY</div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+                      <span style="color: #94A3B8;">Total Recorded Expenses:</span>
+                      <strong style="color: #F8FAFC;">${formattedTotal}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+                      <span style="color: #94A3B8;">Total Transactions Logged:</span>
+                      <strong style="color: #F8FAFC;">${roomTransactions.length}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                      <span style="color: #94A3B8;">Total Room Members:</span>
+                      <strong style="color: #F8FAFC;">${membersToNotify.length}</strong>
+                    </div>
+                  </div>
+
+                  <p style="color: #94A3B8; font-size: 12px; margin: 0 0 24px 0;">All transactions and membership records for this room have been archived and purged. You can create or join a new room anytime on Tallyin.</p>
+                  
+                  <div style="text-align: center;">
+                    <a href="https://tallyin.vercel.app" style="display: inline-block; background-color: #A3E635; color: #0F172A; font-weight: 800; font-size: 13px; padding: 12px 28px; border-radius: 12px; text-decoration: none;">Open Tallyin</a>
+                  </div>
+                </div>
+                <div style="background-color: #0F172A; padding: 16px; text-align: center; border-top: 1px solid #334155; color: #64748B; font-size: 11px;">
+                  Tallyin Automated Space Governance • Automated System Notification
+                </div>
+              </div>
+            </body>
+            </html>
+          `;
+
+          await fetch(mailRelayUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipients: emailList,
+              subject: `[Tallyin Alert] Room "${room.name}" has been closed & decommissioned`,
+              htmlBody: emailHtml,
+              senderName: 'Tallyin System Administration'
+            })
+          });
+        } catch (mailErr) {
+          console.warn("Decommission email dispatch warning:", mailErr);
+        }
+      }
+
+      // 3. Unbind all room members in the users table so their home selector updates
+      try {
+        await supabase.from('users').update({ room_id: null }).eq('room_id', room.id);
+      } catch (unbindErr) {
+        console.warn("Member unbinding warning:", unbindErr);
+      }
+
+      // 4. Clean up all related tables
       await Promise.all([
         supabase.from('transactions').delete().eq('room_id', room.id),
         supabase.from('members').delete().eq('room_id', room.id),
@@ -2060,7 +2154,7 @@ export default function AdminDashboard({
         supabase.from('system_settings').delete().eq('key', `join_requests_${room.id}`)
       ]);
 
-      // Remove from frozen_room_ids if present
+      // 5. Remove from frozen_room_ids if present
       try {
         const { data: existing } = await supabase
           .from('system_settings')
@@ -2079,13 +2173,25 @@ export default function AdminDashboard({
         }
       } catch (e) {}
 
-      // Delete the room itself
+      // 6. Delete the room itself
       const { error: roomErr } = await supabase.from('rooms').delete().eq('id', room.id);
       if (roomErr) throw roomErr;
 
+      // 7. Broadcast ROOM_DELETED to all active clients in real-time
+      try {
+        const channel = supabase.channel('system_admin_channel');
+        await channel.send({
+          type: 'broadcast',
+          event: 'ROOM_DELETED',
+          payload: { roomId: room.id, roomName: room.name }
+        });
+      } catch (bcErr) {
+        console.warn("Realtime broadcast notice:", bcErr);
+      }
+
       setCommanderRooms(prev => prev.filter(r => r.id !== room.id));
-      logAuditAction('ROOM_PURGE', `Permanently purged room "${room.name}" (${room.id}) by ${user?.email || 'Admin'}`);
-      if (triggerToast) triggerToast(`Room "${room.name}" has been permanently purged.`);
+      logAuditAction('ROOM_PURGE', `Permanently purged room "${room.name}" (${room.id}) and notified ${emailList.length} members by ${user?.email || 'Admin'}`);
+      if (triggerToast) triggerToast(`Room "${room.name}" has been permanently purged and members notified.`);
     } catch (err) {
       if (triggerToast) triggerToast(`Purge failed: ${err.message}`);
     }
