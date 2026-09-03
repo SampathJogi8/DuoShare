@@ -67,7 +67,9 @@ import {
   ChevronRight,
   ChevronDown,
   Bell,
-  ArrowUpRight
+  ArrowUpRight,
+  MessageSquare,
+  XCircle
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
