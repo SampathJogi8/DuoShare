@@ -118,7 +118,15 @@ class MockQueryBuilder {
           const coAdminsRaw = typeof window !== 'undefined' ? localStorage.getItem('tallyin_co_admins') : null;
           let coAdmins = [];
           try { if (coAdminsRaw) coAdmins = JSON.parse(coAdminsRaw); } catch(e) {}
-          const isCoAdmin = coAdmins.some(c => (typeof c === 'string' ? c : c?.email)?.trim().toLowerCase() === userEmail);
+          const isCoAdmin = coAdmins.some(c => {
+            const email = (typeof c === 'string' ? c : c?.email)?.trim().toLowerCase();
+            if (email !== userEmail) return false;
+            if (c?.expiresAt) {
+              const expTime = new Date(c.expiresAt).getTime();
+              if (Number.isFinite(expTime) && expTime <= Date.now()) return false;
+            }
+            return true;
+          });
           const isAllowed = userEmail && (allowed.some(a => String(a).trim().toLowerCase() === userEmail) || isCoAdmin || userEmail === 'tallyin.alerts@gmail.com');
 
           if (!isAllowed) {

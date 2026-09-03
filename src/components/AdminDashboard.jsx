@@ -110,11 +110,95 @@ export default function AdminDashboard({
   const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
   const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL;
 
+  // Time-based expiry utility helpers
+  const calculateExpiryTimestamp = (duration, customDate, baseTimestamp = null) => {
+    const base = baseTimestamp ? new Date(baseTimestamp).getTime() : Date.now();
+    const effectiveBase = Math.max(base, Date.now());
+    switch (duration) {
+      case '1h': return new Date(effectiveBase + 1 * 3600 * 1000).toISOString();
+      case '6h': return new Date(effectiveBase + 6 * 3600 * 1000).toISOString();
+      case '24h': return new Date(effectiveBase + 24 * 3600 * 1000).toISOString();
+      case '3d': return new Date(effectiveBase + 3 * 24 * 3600 * 1000).toISOString();
+      case '7d': return new Date(effectiveBase + 7 * 24 * 3600 * 1000).toISOString();
+      case '30d': return new Date(effectiveBase + 30 * 24 * 3600 * 1000).toISOString();
+      case 'custom': return customDate ? new Date(customDate).toISOString() : null;
+      case 'permanent':
+      default:
+        return null;
+    }
+  };
+
+  const formatExpirySummary = (expiresAt) => {
+    if (!expiresAt) {
+      return { 
+        text: 'Permanent Access', 
+        label: 'Permanent', 
+        isExpired: false, 
+        isPermanent: true, 
+        badgeColor: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635] border-emerald-300 dark:border-emerald-800' 
+      };
+    }
+    const expTime = new Date(expiresAt).getTime();
+    if (isNaN(expTime)) {
+      return { 
+        text: 'Permanent Access', 
+        label: 'Permanent', 
+        isExpired: false, 
+        isPermanent: true, 
+        badgeColor: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635]' 
+      };
+    }
+    const diffMs = expTime - Date.now();
+    if (diffMs <= 0) {
+      return { 
+        text: `Expired on ${new Date(expiresAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 
+        label: 'Expired', 
+        isExpired: true, 
+        isPermanent: false, 
+        badgeColor: 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800' 
+      };
+    }
+    const totalMins = Math.floor(diffMs / 60000);
+    const totalHours = Math.floor(totalMins / 60);
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    const mins = totalMins % 60;
+
+    if (days > 0) {
+      return { 
+        text: `${days}d ${hours}h left (Until ${new Date(expiresAt).toLocaleDateString([], { month: 'short', day: 'numeric' })})`, 
+        label: `${days}d ${hours}h left`, 
+        isExpired: false, 
+        isPermanent: false, 
+        badgeColor: days <= 1 ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800' : 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800' 
+      };
+    }
+    if (totalHours > 0) {
+      return { 
+        text: `${totalHours}h ${mins}m remaining`, 
+        label: `${totalHours}h ${mins}m left`, 
+        isExpired: false, 
+        isPermanent: false, 
+        badgeColor: 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800' 
+      };
+    }
+    return { 
+      text: `${mins}m remaining (Expiring soon)`, 
+      label: `${mins}m left (Expiring)`, 
+      isExpired: false, 
+      isPermanent: false, 
+      badgeColor: 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800 animate-pulse' 
+    };
+  };
+
   // Normalized Co-Admins list
   const normalizedCoAdmins = useMemo(() => {
+    const now = Date.now();
     return (coAdmins || []).map(item => {
       const email = (typeof item === 'string' ? item : item?.email || '').trim().toLowerCase();
       const perms = typeof item === 'object' && item?.permissions ? item.permissions : null;
+      const expiresAt = typeof item === 'object' && item?.expiresAt ? item.expiresAt : null;
+      const isExpired = expiresAt ? (new Date(expiresAt).getTime() <= now) : false;
 
       return {
         email,
@@ -122,6 +206,13 @@ export default function AdminDashboard({
         role: 'co_admin',
         addedAt: (typeof item === 'object' && item?.addedAt) || new Date().toISOString(),
         addedBy: (typeof item === 'object' && item?.addedBy) || 'tallyin.alerts@gmail.com',
+        expiresAt,
+        isExpired,
+        isTimeBased: Boolean(expiresAt),
+        durationLabel: (typeof item === 'object' && item?.durationLabel) || (expiresAt ? 'Time-Limited' : 'Permanent'),
+        lastAck: typeof item === 'object' && item?.lastAck ? item.lastAck : null,
+        lastAckNumber: typeof item === 'object' && item?.lastAckNumber ? item.lastAckNumber : null,
+        lastAckIp: typeof item === 'object' && item?.lastAckIp ? item.lastAckIp : null,
         permissions: {
           broadcasts: perms ? Boolean(perms.broadcasts) : true,
           settlements: perms ? Boolean(perms.settlements) : true,
@@ -131,13 +222,22 @@ export default function AdminDashboard({
           latency_diagnostics: perms ? Boolean(perms.latency_diagnostics) : true,
           maintenance_control: perms ? Boolean(perms.maintenance_control) : false,
           database_migration: perms ? Boolean(perms.database_migration) : false,
+          room_commander: perms ? Boolean(perms.room_commander) : true,
+          dispute_resolver: perms ? Boolean(perms.dispute_resolver) : true,
+          database_studio: perms ? Boolean(perms.database_studio) : false,
+          system_triggers: perms ? Boolean(perms.system_triggers) : false,
+          email_hub: perms ? Boolean(perms.email_hub) : true,
         }
       };
     }).filter(a => !!a.email);
   }, [coAdmins]);
 
   const currentCoAdminObj = useMemo(() => {
-    return normalizedCoAdmins.find(a => a.email.toLowerCase() === currentEmailClean.toLowerCase());
+    return normalizedCoAdmins.find(a => a.email.toLowerCase() === currentEmailClean.toLowerCase() && !a.isExpired);
+  }, [normalizedCoAdmins, currentEmailClean]);
+
+  const expiredCoAdminObj = useMemo(() => {
+    return normalizedCoAdmins.find(a => a.email.toLowerCase() === currentEmailClean.toLowerCase() && a.isExpired);
   }, [normalizedCoAdmins, currentEmailClean]);
 
   const isCoAdmin = !!currentCoAdminObj;
@@ -183,6 +283,8 @@ export default function AdminDashboard({
   // Co-Admin Management states
   const [newCoAdminEmail, setNewCoAdminEmail] = useState('');
   const [newCoAdminName, setNewCoAdminName] = useState('');
+  const [newCoAdminDuration, setNewCoAdminDuration] = useState('24h'); // '1h' | '6h' | '24h' | '3d' | '7d' | '30d' | 'permanent' | 'custom'
+  const [newCoAdminCustomExpiry, setNewCoAdminCustomExpiry] = useState('');
   const [newCoAdminPerms, setNewCoAdminPerms] = useState({
     broadcasts: true,
     settlements: true,
@@ -192,10 +294,17 @@ export default function AdminDashboard({
     latency_diagnostics: true,
     maintenance_control: false,
     database_migration: false,
+    room_commander: true,
+    dispute_resolver: true,
+    database_studio: false,
+    system_triggers: false,
+    email_hub: true,
   });
   const [isAssigningCoAdmin, setIsAssigningCoAdmin] = useState(false);
   const [editingCoAdminEmail, setEditingCoAdminEmail] = useState(null);
   const [editingPerms, setEditingPerms] = useState({});
+  const [editingDuration, setEditingDuration] = useState('keep'); // 'keep' | '1h' | '24h' | '7d' | '30d' | 'permanent' | 'custom'
+  const [editingCustomExpiry, setEditingCustomExpiry] = useState('');
   const [coAdminFilter, setCoAdminFilter] = useState('');
   const [coAdminAckRegistry, setCoAdminAckRegistry] = useState(() => {
     try {
@@ -2545,8 +2654,8 @@ export default function AdminDashboard({
       if (triggerToast) triggerToast('tallyin.alerts@gmail.com is already the permanent Super Admin.');
       return;
     }
-    if (normalizedCoAdmins.some(a => a.email === cleanEmail)) {
-      if (triggerToast) triggerToast(`${cleanEmail} is already a Co-Admin.`);
+    if (normalizedCoAdmins.some(a => a.email === cleanEmail && !a.isExpired)) {
+      if (triggerToast) triggerToast(`${cleanEmail} is already an active Co-Admin.`);
       return;
     }
 
@@ -2556,6 +2665,8 @@ export default function AdminDashboard({
       const ackNumber = generateAckNumber();
       const timestamp = new Date().toISOString();
       const checksum = generateSecurityChecksum(ackNumber, cleanEmail, clientIp, timestamp);
+      const expiresAt = calculateExpiryTimestamp(newCoAdminDuration, newCoAdminCustomExpiry);
+      const expirySummary = formatExpirySummary(expiresAt);
 
       const ackRecord = {
         ackNumber,
@@ -2568,6 +2679,8 @@ export default function AdminDashboard({
         ipAddress: clientIp,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
         permissions: { ...newCoAdminPerms },
+        expiresAt,
+        validityPeriod: expirySummary.text,
         checksum,
         status: 'ACTIVE_CLEARANCE'
       };
@@ -2578,22 +2691,27 @@ export default function AdminDashboard({
         role: 'co_admin',
         addedAt: timestamp,
         addedBy: user?.email || 'Super Admin',
+        expiresAt,
+        isTimeBased: Boolean(expiresAt),
+        durationLabel: expirySummary.label,
         permissions: { ...newCoAdminPerms },
         lastAck: ackRecord,
         lastAckNumber: ackNumber,
         lastAckIp: clientIp,
       };
 
-      const nextList = [...normalizedCoAdmins, newAdminRecord];
+      const nextList = [...normalizedCoAdmins.filter(a => a.email !== cleanEmail), newAdminRecord];
       await saveCoAdminsList(nextList);
       await saveAckRecord(ackRecord);
       sendCoAdminSecurityEmail({ action: 'GRANT', targetEmail: cleanEmail, targetName: newAdminRecord.name, permissions: newAdminRecord.permissions, ackRecord });
 
-      logAuditAction('ASSIGN_CO_ADMIN', `Granted Co-Admin role to ${cleanEmail} (Ref: ${ackNumber}, IP: ${clientIp}, By: ${user?.email || 'Super Admin'})`);
-      if (triggerToast) triggerToast(`👑 Assigned Co-Admin role! Ref: ${ackNumber}`);
+      logAuditAction('ASSIGN_CO_ADMIN', `Granted Co-Admin role to ${cleanEmail} (${expirySummary.text}, Ref: ${ackNumber}, IP: ${clientIp})`);
+      if (triggerToast) triggerToast(`👑 Assigned Co-Admin role (${expirySummary.label})! Ref: ${ackNumber}`);
 
       setNewCoAdminEmail('');
       setNewCoAdminName('');
+      setNewCoAdminDuration('24h');
+      setNewCoAdminCustomExpiry('');
       setNewCoAdminPerms({
         broadcasts: true,
         settlements: true,
@@ -2603,11 +2721,74 @@ export default function AdminDashboard({
         latency_diagnostics: true,
         maintenance_control: false,
         database_migration: false,
+        room_commander: true,
+        dispute_resolver: true,
+        database_studio: false,
+        system_triggers: false,
+        email_hub: true,
       });
     } catch (err) {
       if (triggerToast) triggerToast(`Failed to add Co-Admin: ${err.message}`);
     } finally {
       setIsAssigningCoAdmin(false);
+    }
+  };
+
+  const handleQuickExtendCoAdmin = async (targetEmail, extensionDuration) => {
+    const cleanTarget = String(targetEmail || '').trim().toLowerCase();
+    try {
+      const targetAdmin = normalizedCoAdmins.find(a => a.email.toLowerCase() === cleanTarget);
+      if (!targetAdmin) return;
+
+      const currentExpiry = targetAdmin.expiresAt;
+      const newExpiresAt = calculateExpiryTimestamp(extensionDuration, null, currentExpiry);
+      const clientIp = await fetchClientIp();
+      const ackNumber = generateAckNumber();
+      const timestamp = new Date().toISOString();
+      const checksum = generateSecurityChecksum(ackNumber, cleanTarget, clientIp, timestamp);
+      const expirySummary = formatExpirySummary(newExpiresAt);
+
+      const ackRecord = {
+        ackNumber,
+        action: 'EXTEND_ACCESS',
+        targetEmail: cleanTarget,
+        targetName: targetAdmin.name || cleanTarget.split('@')[0],
+        authorizedBy: user?.email || 'tallyin.alerts@gmail.com',
+        authorizedByRole: isSuperAdmin ? 'Super Administrator (Root Authority)' : 'Administrative Lead',
+        timestamp,
+        ipAddress: clientIp,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
+        permissions: targetAdmin.permissions,
+        expiresAt: newExpiresAt,
+        validityPeriod: expirySummary.text,
+        checksum,
+        status: 'ACTIVE_CLEARANCE'
+      };
+
+      const nextList = normalizedCoAdmins.map(a => {
+        if (a.email.toLowerCase() === cleanTarget) {
+          return {
+            ...a,
+            expiresAt: newExpiresAt,
+            isTimeBased: Boolean(newExpiresAt),
+            durationLabel: expirySummary.label,
+            lastAck: ackRecord,
+            lastAckNumber: ackNumber,
+            lastAckIp: clientIp,
+          };
+        }
+        return a;
+      });
+
+      await saveCoAdminsList(nextList);
+      await saveAckRecord(ackRecord);
+      sendCoAdminSecurityEmail({ action: 'EXTEND', targetEmail: cleanTarget, targetName: targetAdmin.name, permissions: targetAdmin.permissions, ackRecord });
+
+      logAuditAction('EXTEND_CO_ADMIN', `Updated access duration for ${cleanTarget} (${expirySummary.text}, Ref: ${ackNumber})`);
+      if (triggerToast) triggerToast(`⏳ Co-Admin access updated: ${expirySummary.label}!`);
+    } catch (err) {
+      console.error(err);
+      if (triggerToast) triggerToast(`Failed to extend access: ${err.message}`);
     }
   };
 
@@ -2662,6 +2843,12 @@ export default function AdminDashboard({
       const checksum = generateSecurityChecksum(ackNumber, cleanTarget, clientIp, timestamp);
       const targetAdmin = normalizedCoAdmins.find(a => a.email.toLowerCase() === cleanTarget);
 
+      let newExpiresAt = targetAdmin?.expiresAt;
+      if (editingDuration !== 'keep') {
+        newExpiresAt = calculateExpiryTimestamp(editingDuration, editingCustomExpiry, targetAdmin?.expiresAt);
+      }
+      const expirySummary = formatExpirySummary(newExpiresAt);
+
       const updatedPermissions = {
         broadcasts: Boolean(editingPerms.broadcasts),
         settlements: Boolean(editingPerms.settlements),
@@ -2671,6 +2858,11 @@ export default function AdminDashboard({
         latency_diagnostics: Boolean(editingPerms.latency_diagnostics),
         maintenance_control: Boolean(editingPerms.maintenance_control),
         database_migration: Boolean(editingPerms.database_migration),
+        room_commander: Boolean(editingPerms.room_commander),
+        dispute_resolver: Boolean(editingPerms.dispute_resolver),
+        database_studio: Boolean(editingPerms.database_studio),
+        system_triggers: Boolean(editingPerms.system_triggers),
+        email_hub: Boolean(editingPerms.email_hub),
       };
 
       const ackRecord = {
@@ -2685,6 +2877,8 @@ export default function AdminDashboard({
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
         permissions: updatedPermissions,
         previousPermissions: targetAdmin?.permissions || null,
+        expiresAt: newExpiresAt,
+        validityPeriod: expirySummary.text,
         checksum,
         status: 'ACTIVE_CLEARANCE'
       };
@@ -2694,6 +2888,9 @@ export default function AdminDashboard({
           return {
             ...a,
             permissions: updatedPermissions,
+            expiresAt: newExpiresAt,
+            isTimeBased: Boolean(newExpiresAt),
+            durationLabel: expirySummary.label,
             lastAck: ackRecord,
             lastAckNumber: ackNumber,
             lastAckIp: clientIp,
@@ -2706,10 +2903,12 @@ export default function AdminDashboard({
       await saveAckRecord(ackRecord);
       sendCoAdminSecurityEmail({ action: 'UPDATE', targetEmail: cleanTarget, targetName: targetAdmin?.name, permissions: updatedPermissions, ackRecord });
 
-      logAuditAction('UPDATE_CO_ADMIN_PERMS', `Updated permissions for ${cleanTarget} (Ref: ${ackNumber}, IP: ${clientIp})`);
-      if (triggerToast) triggerToast(`✅ Updated permissions for ${cleanTarget}! Ref: ${ackNumber}`);
+      logAuditAction('UPDATE_CO_ADMIN_PERMS', `Updated permissions & duration for ${cleanTarget} (${expirySummary.text}, Ref: ${ackNumber})`);
+      if (triggerToast) triggerToast(`✅ Updated settings for ${cleanTarget}! Ref: ${ackNumber}`);
       setEditingCoAdminEmail(null);
       setEditingPerms({});
+      setEditingDuration('keep');
+      setEditingCustomExpiry('');
     } catch (err) {
       console.error(err);
       if (triggerToast) triggerToast(`Update error: ${err.message}`);
@@ -2961,7 +3160,7 @@ export default function AdminDashboard({
     if (triggerToast) triggerToast(`Pin removed from room ${roomId}`);
   };
 
-  // Lock Screen if unauthenticated
+  // Lock Screen if unauthenticated or expired
   if (!isAuthorizedAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-[#F0F4F1] dark:bg-slate-950 text-left font-sans animate-fade-in relative overflow-hidden">
@@ -2971,15 +3170,24 @@ export default function AdminDashboard({
           </div>
           <div className="space-y-2">
             <h2 className="text-xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
-              Access Restricted
+              {expiredCoAdminObj ? 'Co-Admin Clearance Expired' : 'Access Restricted'}
             </h2>
-            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-              The Admin Command Portal is restricted exclusively to authorized administrators (<span className="font-bold text-rose-600 dark:text-rose-400">tallyin.alerts@gmail.com</span>) and assigned Co-Admins.
-            </p>
+            {expiredCoAdminObj ? (
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                Your time-based Co-Admin clearance for <strong className="text-rose-600 dark:text-rose-400">{expiredCoAdminObj.email}</strong> expired on{' '}
+                <span className="font-bold text-slate-800 dark:text-slate-200">
+                  {new Date(expiredCoAdminObj.expiresAt).toLocaleString()}
+                </span>. Please contact the Super Administrator (<span className="font-bold text-slate-700 dark:text-slate-300">tallyin.alerts@gmail.com</span>) to request a time extension.
+              </p>
+            ) : (
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                The Admin Command Portal is restricted exclusively to authorized administrators (<span className="font-bold text-rose-600 dark:text-rose-400">tallyin.alerts@gmail.com</span>) and actively assigned Co-Admins.
+              </p>
+            )}
           </div>
           <button
             onClick={onExitAdmin}
-            className="w-full py-3 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hover:bg-[#255038] dark:hover:bg-[#b7f34c] font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+            className="w-full py-3 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hover:bg-[#255038] dark:hover:bg-[#b7f34c] font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Home className="w-4 h-4" />
             <span>Return to App Dashboard</span>
@@ -4189,7 +4397,7 @@ export default function AdminDashboard({
                         >
                           <option value="">Select registered user...</option>
                           {allRegisteredUsers
-                            .filter(u => u.email && u.email.toLowerCase() !== SUPER_ADMIN_EMAIL && !normalizedCoAdmins.some(c => c.email === u.email.toLowerCase()))
+                            .filter(u => u.email && u.email.toLowerCase() !== SUPER_ADMIN_EMAIL && !normalizedCoAdmins.some(c => c.email === u.email.toLowerCase() && !c.isExpired))
                             .map(u => (
                               <option key={u.uid || u.email} value={u.email}>
                                 {u.email} {u.name ? `(${u.name})` : ''}
@@ -4215,6 +4423,85 @@ export default function AdminDashboard({
                   </div>
                 </div>
 
+                {/* Time-Based Access Duration Selector */}
+                <div className="space-y-2 pt-2 border-t border-[#E3E8E3] dark:border-slate-800">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <label className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Access Duration & Auto-Expiry</span>
+                    </label>
+                    <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                      {newCoAdminDuration === 'permanent' 
+                        ? '♾️ Permanent (Indefinite)' 
+                        : newCoAdminDuration === 'custom'
+                        ? (newCoAdminCustomExpiry ? `⏳ Until ${new Date(newCoAdminCustomExpiry).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : '🎯 Pick custom timestamp')
+                        : `⏳ Expires in ${newCoAdminDuration === '1h' ? '1 hour' : newCoAdminDuration === '6h' ? '6 hours' : newCoAdminDuration === '24h' ? '24 hours (1 Day)' : newCoAdminDuration === '3d' ? '3 days' : newCoAdminDuration === '7d' ? '7 days' : '30 days'}`
+                      }
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                    {[
+                      { id: '1h', label: '1 Hour', icon: '⚡', desc: 'Emergency' },
+                      { id: '6h', label: '6 Hours', icon: '⏱️', desc: 'Shift' },
+                      { id: '24h', label: '24 Hours', icon: '📅', desc: '1 Day' },
+                      { id: '3d', label: '3 Days', icon: '📆', desc: '3 Days' },
+                      { id: '7d', label: '7 Days', icon: '🗓️', desc: '1 Week' },
+                      { id: '30d', label: '30 Days', icon: '🏢', desc: '1 Month' },
+                      { id: 'permanent', label: 'Permanent', icon: '♾️', desc: 'No Expiry' },
+                      { id: 'custom', label: 'Custom', icon: '🎯', desc: 'Pick Date' },
+                    ].map(d => {
+                      const isSelected = newCoAdminDuration === d.id;
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => setNewCoAdminDuration(d.id)}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer select-none ${
+                            isSelected
+                              ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20 shadow-sm'
+                              : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs">{d.icon}</span>
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400"></span>}
+                          </div>
+                          <div className="mt-1">
+                            <p className="text-xs font-black text-[#1A3827] dark:text-white leading-none">
+                              {d.label}
+                            </p>
+                            <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5 leading-none">
+                              {d.desc}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {newCoAdminDuration === 'custom' && (
+                    <div className="p-3 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-black text-indigo-900 dark:text-indigo-200">
+                          Pick Custom Expiration Date & Time:
+                        </p>
+                        <p className="text-[10px] text-indigo-700/80 dark:text-indigo-400">
+                          Co-Admin privileges will automatically revoke when this timestamp is reached.
+                        </p>
+                      </div>
+                      <input
+                        type="datetime-local"
+                        required={newCoAdminDuration === 'custom'}
+                        value={newCoAdminCustomExpiry}
+                        min={new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16)}
+                        onChange={e => setNewCoAdminCustomExpiry(e.target.value)}
+                        className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 text-xs font-semibold text-[#1A3827] dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {/* Granular Permission Toggles */}
                 <div className="space-y-2 pt-2">
                   <div className="flex items-center justify-between">
@@ -4233,6 +4520,11 @@ export default function AdminDashboard({
                           latency_diagnostics: true,
                           maintenance_control: false,
                           database_migration: false,
+                          room_commander: true,
+                          dispute_resolver: true,
+                          database_studio: false,
+                          system_triggers: false,
+                          email_hub: true,
                         })}
                         className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
                       >
@@ -4250,6 +4542,11 @@ export default function AdminDashboard({
                           latency_diagnostics: true,
                           maintenance_control: true,
                           database_migration: true,
+                          room_commander: true,
+                          dispute_resolver: true,
+                          database_studio: true,
+                          system_triggers: true,
+                          email_hub: true,
                         })}
                         className="text-[10px] text-indigo-700 dark:text-indigo-400 font-bold hover:underline"
                       >
@@ -4323,7 +4620,7 @@ export default function AdminDashboard({
                   ) : (
                     <>
                       <UserPlus className="w-4 h-4" />
-                      <span>Assign Co-Admin Role & Broadcast Privileges</span>
+                      <span>Grant Co-Admin Clearance {newCoAdminDuration === 'permanent' ? '(Permanent)' : `(${newCoAdminDuration})`}</span>
                     </>
                   )}
                 </button>
@@ -4374,7 +4671,7 @@ export default function AdminDashboard({
 
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635] text-[10px] font-black rounded-lg uppercase">
-                    All Access Active
+                    Permanent All Access
                   </span>
                 </div>
               </div>
@@ -4393,14 +4690,23 @@ export default function AdminDashboard({
               ) : (
                 normalizedCoAdmins.map((admin, idx) => {
                   const isBeingEdited = editingCoAdminEmail === admin.email;
+                  const expiry = formatExpirySummary(admin.expiresAt);
                   return (
                     <div
                       key={admin.email || idx}
-                      className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-3 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-600 transition-all"
+                      className={`p-4 rounded-2xl bg-white dark:bg-slate-900 border space-y-3 shadow-sm transition-all ${
+                        admin.isExpired 
+                          ? 'border-rose-300 dark:border-rose-900/60 opacity-80'
+                          : 'border-[#E3E8E3] dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600'
+                      }`}
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/70 border border-indigo-300 dark:border-indigo-800 flex items-center justify-center text-sm font-black text-indigo-700 dark:text-indigo-300 shrink-0">
+                          <div className={`w-10 h-10 rounded-xl border flex items-center justify-center text-sm font-black shrink-0 ${
+                            admin.isExpired
+                              ? 'bg-rose-100 dark:bg-rose-950/70 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+                              : 'bg-indigo-100 dark:bg-indigo-950/70 border-indigo-300 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300'
+                          }`}>
                             {(admin.name || admin.email || 'A').charAt(0).toUpperCase()}
                           </div>
                           <div>
@@ -4416,10 +4722,15 @@ export default function AdminDashboard({
                               <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 text-[10px] font-extrabold uppercase tracking-wide">
                                 Co-Admin
                               </span>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${expiry.badgeColor}`}>
+                                {expiry.label}
+                              </span>
                             </div>
-                            <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
-                              Added {new Date(admin.addedAt).toLocaleDateString()} by {admin.addedBy || 'Super Admin'}
-                            </p>
+                            <div className="flex items-center gap-2 flex-wrap text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                              <span>Added {new Date(admin.addedAt).toLocaleDateString()} by {admin.addedBy || 'Super Admin'}</span>
+                              <span>•</span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-300">{expiry.text}</span>
+                            </div>
                           </div>
                         </div>
 
@@ -4431,8 +4742,12 @@ export default function AdminDashboard({
                                 if (isBeingEdited) {
                                   setEditingCoAdminEmail(null);
                                   setEditingPerms({});
+                                  setEditingDuration('keep');
+                                  setEditingCustomExpiry('');
                                 } else {
                                   setEditingCoAdminEmail(admin.email);
+                                  setEditingDuration('keep');
+                                  setEditingCustomExpiry('');
                                   setEditingPerms({
                                     broadcasts: Boolean(admin.permissions?.broadcasts),
                                     settlements: Boolean(admin.permissions?.settlements),
@@ -4442,19 +4757,24 @@ export default function AdminDashboard({
                                     latency_diagnostics: Boolean(admin.permissions?.latency_diagnostics),
                                     maintenance_control: Boolean(admin.permissions?.maintenance_control),
                                     database_migration: Boolean(admin.permissions?.database_migration),
+                                    room_commander: Boolean(admin.permissions?.room_commander),
+                                    dispute_resolver: Boolean(admin.permissions?.dispute_resolver),
+                                    database_studio: Boolean(admin.permissions?.database_studio),
+                                    system_triggers: Boolean(admin.permissions?.system_triggers),
+                                    email_hub: Boolean(admin.permissions?.email_hub),
                                   });
                                 }
                               }}
-                              className="px-3 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-700 text-[11px] font-bold text-[#1A3827] dark:text-slate-200 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all flex items-center gap-1.5"
+                              className="px-3 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-700 text-[11px] font-bold text-[#1A3827] dark:text-slate-200 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all flex items-center gap-1.5 cursor-pointer"
                             >
                               <Sliders className="w-3.5 h-3.5 text-indigo-500" />
-                              <span>{isBeingEdited ? 'Cancel Edit' : 'Edit Permissions'}</span>
+                              <span>{isBeingEdited ? 'Cancel Edit' : 'Edit Access'}</span>
                             </button>
 
                             <button
                               type="button"
                               onClick={() => handleRemoveCoAdmin(admin.email)}
-                              className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-[11px] font-bold transition-all flex items-center gap-1.5"
+                              className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
                               title="Revoke Co-Admin Privileges"
                             >
                               <Trash2 className="w-3.5 h-3.5 text-rose-500" />
@@ -4463,6 +4783,46 @@ export default function AdminDashboard({
                           </div>
                         )}
                       </div>
+
+                      {/* Quick Extend Controls for Super Admin */}
+                      {userPermissions.manage_co_admins && (
+                        <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-[#F6F8F6] dark:border-slate-800/60">
+                          <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-indigo-500" />
+                            Quick Time Extension:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickExtendCoAdmin(admin.email, '1h')}
+                            className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+                          >
+                            +1 Hour
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickExtendCoAdmin(admin.email, '24h')}
+                            className="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                          >
+                            +24 Hours
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickExtendCoAdmin(admin.email, '7d')}
+                            className="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                          >
+                            +7 Days
+                          </button>
+                          {!expiry.isPermanent && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickExtendCoAdmin(admin.email, 'permanent')}
+                              className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer"
+                            >
+                              Make Permanent ♾️
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {/* Permissions Pills Display */}
                       <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#F6F8F6] dark:border-slate-800">
@@ -4559,8 +4919,10 @@ export default function AdminDashboard({
                               timestamp: admin.addedAt || new Date().toISOString(),
                               ipAddress: admin.lastAckIp || 'Recorded on File',
                               permissions: admin.permissions,
+                              expiresAt: admin.expiresAt,
+                              validityPeriod: expiry.text,
                               checksum: generateSecurityChecksum(admin.lastAckNumber || 'ACK', admin.email, admin.lastAckIp || '0.0.0.0', admin.addedAt || ''),
-                              status: 'ACTIVE_CLEARANCE'
+                              status: admin.isExpired ? 'EXPIRED_CLEARANCE' : 'ACTIVE_CLEARANCE'
                             };
                             setSelectedAckRecord(record);
                           }}
@@ -4571,13 +4933,57 @@ export default function AdminDashboard({
                         </button>
                       </div>
 
-                      {/* Inline Permission Editor (when expanded) */}
+                      {/* Inline Permission & Duration Editor (when expanded) */}
                       {isBeingEdited && (
-                        <div className="p-4 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/80 border border-indigo-200 dark:border-indigo-900/50 space-y-3 mt-2">
+                        <div className="p-4 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/80 border border-indigo-200 dark:border-indigo-900/50 space-y-4 mt-2">
                           <p className="text-[11px] font-bold text-indigo-900 dark:text-indigo-300">
-                            Configure permissions for {admin.email}:
+                            Configure permissions &amp; access duration for {admin.email}:
                           </p>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+
+                          {/* Modify Duration */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-[#1A3827] dark:text-white flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>Modify Expiration:</span>
+                            </label>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {[
+                                { id: 'keep', label: 'Keep Current Expiry' },
+                                { id: '1h', label: '+1 Hour' },
+                                { id: '24h', label: '+24 Hours' },
+                                { id: '7d', label: '+7 Days' },
+                                { id: '30d', label: '+30 Days' },
+                                { id: 'permanent', label: 'Permanent' },
+                                { id: 'custom', label: 'Custom Date' },
+                              ].map(opt => (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => setEditingDuration(opt.id)}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                    editingDuration === opt.id
+                                      ? 'bg-indigo-600 text-white shadow-sm'
+                                      : 'bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                            {editingDuration === 'custom' && (
+                              <div className="pt-2">
+                                <input
+                                  type="datetime-local"
+                                  value={editingCustomExpiry}
+                                  min={new Date().toISOString().slice(0, 16)}
+                                  onChange={e => setEditingCustomExpiry(e.target.value)}
+                                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 text-xs font-semibold text-[#1A3827] dark:text-white"
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-[#E3E8E3] dark:border-slate-800">
                             {[
                               { key: 'room_commander', label: 'Room Commander' },
                               { key: 'dispute_resolver', label: 'Disputes & Expenses' },
@@ -4604,20 +5010,21 @@ export default function AdminDashboard({
                               </label>
                             ))}
                           </div>
+
                           <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E3E8E3] dark:border-slate-800">
                             <button
                               type="button"
-                              onClick={() => { setEditingCoAdminEmail(null); setEditingPerms({}); }}
-                              className="px-3 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-700 text-xs font-bold text-slate-500"
+                              onClick={() => { setEditingCoAdminEmail(null); setEditingPerms({}); setEditingDuration('keep'); setEditingCustomExpiry(''); }}
+                              className="px-3 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-700 text-xs font-bold text-slate-500 cursor-pointer"
                             >
                               Cancel
                             </button>
                             <button
                               type="button"
                               onClick={() => handleSaveEditedPermissions(admin.email)}
-                              className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm"
+                              className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm cursor-pointer"
                             >
-                              Save Permissions
+                              Save Changes
                             </button>
                           </div>
                         </div>
@@ -7715,6 +8122,36 @@ NOTIFY pgrst, 'reload schema';`;
                   <p className="text-[10px] text-slate-500">{new Date(selectedAckRecord.timestamp).toLocaleDateString()}</p>
                 </div>
               </div>
+
+              {/* Time-Based Validity & Expiry Card */}
+              {selectedAckRecord.action !== 'REVOKE' && (
+                <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+                  selectedAckRecord.expiresAt && new Date(selectedAckRecord.expiresAt).getTime() <= Date.now()
+                    ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-900 dark:text-rose-200'
+                    : selectedAckRecord.expiresAt
+                    ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-200'
+                    : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-900 dark:text-emerald-200'
+                }`}>
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider block opacity-75">
+                      Clearance Validity &amp; Expiration
+                    </span>
+                    <p className="font-extrabold text-[11px] flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{selectedAckRecord.validityPeriod || (selectedAckRecord.expiresAt ? `Valid until ${new Date(selectedAckRecord.expiresAt).toLocaleString()}` : 'Permanent Indefinite Clearance')}</span>
+                    </p>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider shrink-0 ${
+                    selectedAckRecord.expiresAt && new Date(selectedAckRecord.expiresAt).getTime() <= Date.now()
+                      ? 'bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-100'
+                      : selectedAckRecord.expiresAt
+                      ? 'bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100'
+                      : 'bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100'
+                  }`}>
+                    {selectedAckRecord.expiresAt && new Date(selectedAckRecord.expiresAt).getTime() <= Date.now() ? 'Clearance Expired' : selectedAckRecord.expiresAt ? 'Time-Limited' : 'Permanent'}
+                  </span>
+                </div>
+              )}
 
               {/* Cryptographic Checksum */}
               <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs space-y-1">
