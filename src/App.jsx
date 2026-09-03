@@ -2902,61 +2902,6 @@ export default function App() {
     }
   }, [user, fetchUserRooms, triggerToast]);
 
-  // Real-time Active Room Database Sync (Zero Lag / No Refresh Needed)
-  useEffect(() => {
-    if (!userRoomId) return;
-
-    const roomChannel = supabase.channel(`room_realtime_${userRoomId}`);
-
-    roomChannel
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `room_id=eq.${userRoomId}` }, () => {
-        fetchTransactions(userRoomId);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: `room_id=eq.${userRoomId}` }, () => {
-        fetchMembers(userRoomId);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${userRoomId}` }, () => {
-        fetchRoomSettings(userRoomId);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs', filter: `room_id=eq.${userRoomId}` }, () => {
-        fetchActivityLogs(userRoomId);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts', filter: `room_id=eq.${userRoomId}` }, () => {
-        fetchReceipts(userRoomId);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings' }, (payload) => {
-        const key = payload.new?.key || payload.old?.key;
-        if (key === `join_requests_${userRoomId}` || key === `room_mode_${userRoomId}`) {
-          fetchRoomSettings(userRoomId);
-        }
-      })
-      .on('broadcast', { event: 'ROOM_DATA_SYNC' }, () => {
-        fetchTransactions(userRoomId);
-        fetchMembers(userRoomId);
-        fetchRoomSettings(userRoomId);
-        fetchActivityLogs(userRoomId);
-      })
-      .on('broadcast', { event: 'ROOM_DELETED' }, (payload) => {
-        if (payload?.payload?.roomId === userRoomId) {
-          setUserRoomId(null);
-          setHasConfirmedRoom(false);
-          setTransactions([]);
-          setReceipts([]);
-          setMembers([]);
-          setActivityLogs([]);
-          localStorage.removeItem('userRoomId');
-          setOnboardingStep('selection');
-          triggerToast(`⚠️ Room "${payload?.payload?.roomName || userRoomId}" was permanently closed.`);
-          if (user) fetchUserRooms();
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(roomChannel);
-    };
-  }, [userRoomId, fetchTransactions, fetchMembers, fetchRoomSettings, fetchActivityLogs, fetchReceipts, user, fetchUserRooms, triggerToast]);
-
   const handleSendJoinRequest = async (targetRoomId, targetNickname = null) => {
     const activeUser = user;
     if (!activeUser || !targetRoomId) {
@@ -3635,6 +3580,36 @@ export default function App() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'system_settings' },
+        (payload) => {
+          const key = payload.new?.key || payload.old?.key;
+          if (key === `join_requests_${userRoomId}` || key === `room_mode_${userRoomId}`) {
+            fetchRoomSettings(userRoomId);
+          }
+        }
+      )
+      .on('broadcast', { event: 'ROOM_DATA_SYNC' }, () => {
+        fetchTransactions(userRoomId);
+        fetchMembers(userRoomId);
+        fetchRoomSettings(userRoomId);
+        fetchActivityLogs(userRoomId);
+      })
+      .on('broadcast', { event: 'ROOM_DELETED' }, (payload) => {
+        if (payload?.payload?.roomId === userRoomId) {
+          setUserRoomId(null);
+          setHasConfirmedRoom(false);
+          setTransactions([]);
+          setReceipts([]);
+          setMembers([]);
+          setActivityLogs([]);
+          localStorage.removeItem('userRoomId');
+          setOnboardingStep('selection');
+          triggerToast(`⚠️ Room "${payload?.payload?.roomName || userRoomId}" was permanently closed.`);
+          if (user) fetchUserRooms();
+        }
+      })
       .subscribe((status) => {
         console.log(`Realtime subscription status for room ${userRoomId}:`, status);
       });
