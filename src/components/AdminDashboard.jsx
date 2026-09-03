@@ -62,7 +62,12 @@ import {
   AlertOctagon,
   UserMinus,
   Trash,
-  Play
+  Play,
+  Menu,
+  ChevronRight,
+  ChevronDown,
+  Bell,
+  ArrowUpRight
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
@@ -93,12 +98,14 @@ export default function AdminDashboard({
   setPinnedMessages,
   simulatedLatency,
   setSimulatedLatency,
+  isOnline,
   allowedMaintenanceAccounts = ['tallyin.alerts@gmail.com'],
   setAllowedMaintenanceAccounts,
   coAdmins = [],
   setCoAdmins
 }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const currentEmailClean = (user?.email || '').trim().toLowerCase();
   const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
   const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL;
@@ -3010,417 +3017,417 @@ export default function AdminDashboard({
     </div>
   );
 
+  /* ─────────────────────────────────────────────────────────────
+     Sidebar nav helper (Inspired by modern SaaS dashboard)
+  ───────────────────────────────────────────────────────────── */
+  const navItem = (id, label, icon, badge = null, badgeColor = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300') => {
+    const isActive = activeTab === id;
+    return (
+      <button
+        key={id}
+        onClick={() => {
+          setActiveTab(id);
+          setMobileSidebarOpen(false);
+        }}
+        className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all text-left group cursor-pointer ${
+          isActive
+            ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md shadow-[#1A3827]/10'
+            : 'text-slate-600 dark:text-slate-400 hover:bg-[#EAF0EC]/80 dark:hover:bg-slate-800/60 hover:text-[#1A3827] dark:hover:text-slate-100'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <span className={`shrink-0 transition-transform group-hover:scale-110 ${
+            isActive ? 'text-[#A3E635] dark:text-slate-950' : 'text-slate-400 dark:text-slate-500 group-hover:text-[#1A3827] dark:group-hover:text-[#A3E635]'
+          }`}>
+            {icon}
+          </span>
+          <span className="truncate">{label}</span>
+        </div>
+        {badge !== null && badge !== undefined && (
+          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 ${
+            isActive ? 'bg-white/20 text-white dark:bg-black/20 dark:text-slate-950' : badgeColor
+          }`}>
+            {badge}
+          </span>
+        )}
+      </button>
+    );
+  };
+
   return (
-    <div className="space-y-3 animate-fade-in text-left">
+    <div className="flex flex-col lg:flex-row bg-[#F8FAF9] dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-3xl overflow-hidden border border-[#E3E8E3] dark:border-slate-800 shadow-2xl relative min-h-[88dvh] text-left">
 
       {/* ══════════════════════════════════════════
-          HERO HEADER — Dark glass command bar
+          MOBILE SIDEBAR BACKDROP & DRAWER
       ══════════════════════════════════════════ */}
-      <div className="relative rounded-2xl overflow-hidden shadow-xl">
-        {/* Background: deep forest gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0d2218] via-[#1a3827] to-[#0f2d1e] dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" />
-        {/* Subtle grid overlay */}
-        <div className="absolute inset-0 opacity-5" style={{backgroundImage: 'linear-gradient(rgba(163,230,53,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(163,230,53,0.5) 1px, transparent 1px)', backgroundSize: '24px 24px'}} />
-        {/* Glow orb */}
-        <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-[#A3E635]/10 blur-3xl pointer-events-none" />
+      {mobileSidebarOpen && (
+        <div 
+          onClick={() => setMobileSidebarOpen(false)} 
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 lg:hidden animate-fade-in"
+        />
+      )}
 
-        <div className="relative px-5 py-4">
-          <div className="flex items-center justify-between gap-4">
+      {/* ══════════════════════════════════════════
+          LEFT SIDEBAR (Clean & Modern SaaS Style)
+      ══════════════════════════════════════════ */}
+      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-72 lg:w-64 shrink-0 bg-white dark:bg-slate-900/95 border-r border-[#E3E8E3] dark:border-slate-800 flex flex-col transition-transform duration-300 ease-in-out ${
+        mobileSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'
+      }`}>
 
-            {/* Left: Identity block */}
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="relative shrink-0">
-                <img src={faviconLogo} alt="Tallyin" className="w-11 h-11 object-cover rounded-xl shadow-lg border border-white/10 ring-1 ring-[#A3E635]/30" />
-                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#1a3827] dark:border-slate-950 bg-emerald-400 shadow-[0_0_6px_#4ade80]" />
+        {/* Brand Header */}
+        <div className="px-5 pt-5 pb-4 border-b border-[#E3E8E3]/80 dark:border-slate-800/80 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="relative shrink-0">
+              <img src={faviconLogo} alt="Tallyin" className="w-10 h-10 object-cover rounded-2xl shadow-md border border-[#A3E635]/30 ring-2 ring-[#1A3827]/10" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 shadow-[0_0_6px_#10B981]" />
+            </div>
+            <div>
+              <div className="text-base font-black text-[#1A3827] dark:text-white tracking-tight leading-none flex items-center gap-1.5">
+                <span>Tallyin</span>
+                <span className="text-[10px] font-black px-1.5 py-0.2 rounded-md bg-[#1A3827]/10 dark:bg-[#A3E635]/20 text-[#1A3827] dark:text-[#A3E635]">HQ</span>
               </div>
-              <div className="min-w-0">
+              <div className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 mt-1">Admin Command Center</div>
+            </div>
+          </div>
+          <button 
+            onClick={() => setMobileSidebarOpen(false)}
+            className="lg:hidden p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Admin Profile Mini Card inside Sidebar */}
+        <div className="mx-3 my-3 p-3 rounded-2xl bg-[#F4F7F5] dark:bg-slate-800/50 border border-[#E3E8E3]/70 dark:border-slate-800 flex items-center gap-2.5 shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#1A3827] to-[#25573e] dark:from-[#A3E635] dark:to-emerald-500 text-white dark:text-slate-950 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
+            {(user?.email?.[0] || 'A').toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-black text-[#1A3827] dark:text-slate-100 truncate leading-tight">
+              {userNickname || user?.email?.split('@')[0] || 'Administrator'}
+            </div>
+            <div className="flex items-center gap-1 mt-0.5">
+              {isSuperAdmin ? (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400">
+                  <Crown className="w-2.5 h-2.5" /> Super Admin
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400">
+                  <ShieldCheck className="w-2.5 h-2.5" /> Co-Admin
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable Navigation */}
+        <nav className="flex-1 px-3 py-2 space-y-4 overflow-y-auto scrollbar-none">
+
+          {/* ── Section: MAIN MENU ── */}
+          <div className="space-y-1">
+            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 px-3 pb-1">Menu</p>
+            {navItem('overview', isSuperAdmin ? 'Overview' : 'Operations Hub', <Activity className="w-4 h-4" />)}
+            {navItem('activity_feed', 'Activity Feed', <Flame className="w-4 h-4 text-amber-500" />)}
+            {isSuperAdmin && navItem('co_admins', 'Co-Admin Team', <UserCheck className="w-4 h-4 text-indigo-500" />, normalizedCoAdmins.length, 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300')}
+          </div>
+
+          {/* ── Section: USERS & ROOMS ── */}
+          {(userPermissions.user_management || userPermissions.room_explorer || userPermissions.room_commander) && (
+            <div className="space-y-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 px-3 pb-1">Management</p>
+              {userPermissions.user_management && navItem('user_directory', 'User Directory', <Users className="w-4 h-4 text-blue-500" />, allRegisteredUsers.length, 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300')}
+              {userPermissions.user_management && navItem('banned_accounts', 'Banned Accounts', <Ban className="w-4 h-4 text-rose-500" />, bannedUsers.length > 0 ? bannedUsers.length : null, 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300')}
+              {userPermissions.room_explorer && navItem('room_explorer', 'Room Explorer', <Building2 className="w-4 h-4 text-sky-500" />, allSystemRooms.length, 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300')}
+              {userPermissions.room_commander && navItem('room_commander', 'Room Commander', <SlidersHorizontal className="w-4 h-4 text-emerald-500" />)}
+            </div>
+          )}
+
+          {/* ── Section: FINANCE & AUDIT ── */}
+          {(userPermissions.settlements || userPermissions.dispute_resolver) && (
+            <div className="space-y-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 px-3 pb-1">Finance & Audit</p>
+              {userPermissions.settlements && navItem('finance_audit', 'Finance Audit', <PieChart className="w-4 h-4 text-emerald-600" />)}
+              {userPermissions.settlements && navItem('settlements', 'Settlements Hub', <HandCoins className="w-4 h-4 text-teal-600" />)}
+              {userPermissions.dispute_resolver && navItem('dispute_resolver', 'Dispute Resolver', <FileSpreadsheet className="w-4 h-4 text-amber-600" />, allGlobalTx.length, 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300')}
+            </div>
+          )}
+
+          {/* ── Section: SYSTEM TOOLS ── */}
+          <div className="space-y-1">
+            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 px-3 pb-1">System & Tools</p>
+            {userPermissions.database_studio && navItem('database_studio', 'Database Studio', <Database className="w-4 h-4 text-cyan-600" />)}
+            {userPermissions.system_triggers && navItem('system_triggers', 'System Triggers', <Zap className="w-4 h-4 text-orange-500" />)}
+            {(isSuperAdmin || userPermissions.maintenance_control) && navItem('security_audit', 'Security Audit', <ShieldCheck className="w-4 h-4 text-emerald-500" />)}
+            {userPermissions.maintenance_control && navItem('maintenance', 'Maintenance Mode', <Power className="w-4 h-4 text-rose-500" />, isSystemMaintenanceActive ? 'ACTIVE' : null, 'bg-rose-500 text-white animate-pulse')}
+            {userPermissions.broadcasts && navItem('broadcast', 'Broadcast Center', <Radio className="w-4 h-4 text-purple-500" />)}
+            {userPermissions.broadcasts && navItem('email', 'Email Hub', <Mail className="w-4 h-4 text-blue-500" />)}
+            {userPermissions.room_pinning && navItem('pinning', 'Room Pinning', <Pin className="w-4 h-4 text-amber-500" />)}
+            {userPermissions.latency_diagnostics && navItem('latency', 'Latency Diag.', <Sliders className="w-4 h-4 text-slate-500" />)}
+          </div>
+
+          {/* ── Section: DANGER ZONE (Super Admin Only) ── */}
+          {isSuperAdmin && (
+            <div className="space-y-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-rose-500/70 px-3 pb-1">Danger Zone</p>
+              {navItem('chaos_tester', 'Chaos & Feature Flags', <Terminal className="w-4 h-4 text-rose-500" />)}
+            </div>
+          )}
+        </nav>
+
+        {/* Sidebar Footer */}
+        <div className="p-3 border-t border-[#E3E8E3] dark:border-slate-800 space-y-2 shrink-0 bg-[#FAFBFB] dark:bg-slate-900/50">
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-white dark:bg-slate-800/80 border border-[#E3E8E3] dark:border-slate-700/80 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${isSystemMaintenanceActive ? 'bg-rose-500 animate-ping' : 'bg-emerald-500 shadow-[0_0_6px_#10B981]'}`} />
+              <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 font-mono">
+                {pingMs !== null ? `${pingMs}ms` : 'Syncing'}
+              </span>
+            </div>
+            <button
+              onClick={measurePing}
+              className="p-1 rounded-lg text-slate-400 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer"
+              title="Refresh Ping"
+            >
+              <RefreshCw className={`w-3 h-3 ${isPinging ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          <button
+            onClick={onExitAdmin}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#1A3827] hover:bg-[#142d1f] dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-extrabold text-xs shadow-sm transition-all cursor-pointer"
+          >
+            <Home className="w-3.5 h-3.5" />
+            <span>Return to App</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ══════════════════════════════════════════
+          RIGHT MAIN CONTENT AREA
+      ══════════════════════════════════════════ */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#F4F7F5] dark:bg-slate-950/70 overflow-hidden">
+
+        {/* ── Top Header Bar ── */}
+        <header className="shrink-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-[#E3E8E3] dark:border-slate-800 px-5 sm:px-8 py-3.5 flex items-center justify-between gap-4 z-10">
+          
+          {/* Left: Mobile Hamburger & Global Search */}
+          <div className="flex items-center gap-3 flex-1 max-w-lg">
+            <button 
+              onClick={() => setMobileSidebarOpen(true)}
+              className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-all cursor-pointer"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+
+            <div className="relative flex-1 group">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none group-focus-within:text-[#1A3827] dark:group-focus-within:text-[#A3E635] transition-colors" />
+              <input
+                type="text"
+                placeholder="Search for anything (users, rooms, tx, audit logs)..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2.5 bg-[#F8FAF9] dark:bg-slate-800/80 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl text-xs font-semibold text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#1A3827] dark:focus:border-[#A3E635] focus:ring-2 focus:ring-[#1A3827]/10 dark:focus:ring-[#A3E635]/20 shadow-2xs transition-all"
+              />
+              {searchQuery ? (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 flex items-center justify-center text-[9px] font-black hover:bg-slate-300 transition-all cursor-pointer"
+                >
+                  ✕
+                </button>
+              ) : (
+                <span className="hidden sm:inline-block absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600">
+                  /
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Quick Action Controls & User Profile */}
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+            
+            {/* Status Pill */}
+            <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-wider ${
+              isSystemMaintenanceActive
+                ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-300 animate-pulse'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSystemMaintenanceActive ? 'bg-rose-500' : 'bg-emerald-500 shadow-[0_0_6px_#10B981]'}`} />
+              <span>{isSystemMaintenanceActive ? 'Maintenance Active' : 'Live Gateway'}</span>
+            </div>
+
+            {/* Quick Refresh */}
+            <button
+              onClick={measurePing}
+              className="p-2 rounded-xl bg-[#F8FAF9] dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 text-slate-500 dark:text-slate-300 hover:bg-[#EAF0EC] dark:hover:bg-slate-700 transition-all shadow-2xs cursor-pointer"
+              title="Measure Latency"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Exit Shortcut Button */}
+            <button
+              onClick={onExitAdmin}
+              className="hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#1A3827] hover:bg-[#142d1f] dark:bg-[#A3E635] dark:hover:bg-[#8fd32b] text-white dark:text-slate-950 font-black text-xs shadow-sm transition-all cursor-pointer"
+            >
+              <Home className="w-3.5 h-3.5" />
+              <span>Exit Console</span>
+            </button>
+          </div>
+        </header>
+
+        {/* ── Scrollable Dashboard Canvas ── */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-7 space-y-6">
+
+          {/* ── HERO BANNER (Inspired by reference image) ── */}
+          <div className="relative rounded-3xl overflow-hidden shadow-xl border border-emerald-500/20 bg-gradient-to-r from-[#0d2218] via-[#1a3827] to-[#1b4332] text-white p-6 sm:p-8">
+            {/* Ambient background curves & mesh glow */}
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 rounded-full bg-[#A3E635]/15 blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 right-1/4 w-60 h-60 rounded-full bg-emerald-400/10 blur-2xl pointer-events-none" />
+            <div className="absolute inset-0 opacity-5" style={{backgroundImage: 'radial-gradient(circle at 75% 40%, rgba(163,230,53,0.5) 0%, transparent 60%)'}} />
+
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-1.5 max-w-xl">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-lg font-black text-white tracking-tight leading-none">
-                    Admin Console
-                  </h1>
-                  {isSuperAdmin ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 text-[9px] font-black uppercase tracking-widest shrink-0">
-                      <Crown className="w-2.5 h-2.5" />
-                      Super Admin
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-400/15 border border-indigo-400/30 text-indigo-300 text-[9px] font-black uppercase tracking-widest shrink-0">
-                      <ShieldCheck className="w-2.5 h-2.5" />
-                      Co-Admin
-                    </span>
-                  )}
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#A3E635]/20 text-[#A3E635] text-[10px] font-black uppercase tracking-widest border border-[#A3E635]/30">
+                    {isSuperAdmin ? 'Master Authority Active' : 'Delegated Ops Access'}
+                  </span>
+                  <span className="text-white/40 text-xs font-mono">•</span>
+                  <span className="text-white/60 text-xs font-mono">{appVersion || 'v3.83.0'}</span>
                 </div>
-                <p className="text-[10px] text-white/40 mt-0.5 font-mono truncate">
-                  {user?.email || 'Administrator'}
+                <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  Hi, {userNickname || user?.email?.split('@')[0] || 'Administrator'}
+                </h1>
+                <p className="text-white/70 text-xs sm:text-sm font-medium leading-relaxed">
+                  {isSuperAdmin 
+                    ? 'All Cloudflare Worker security policies, dispute resolvers, and database replication pipelines are functioning at peak efficiency.'
+                    : `Your Co-Admin access profile is verified and active. You have access to delegated management tools.`}
                 </p>
               </div>
-            </div>
 
-            {/* Right: Actions */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={measurePing}
-                className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 hover:text-white rounded-xl transition-all"
-                title="Refresh ping"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                onClick={onExitAdmin}
-                className="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/10 text-white font-black text-[10px] rounded-xl transition-all flex items-center gap-1.5"
-              >
-                <Home className="w-3 h-3" />
-                <span>Exit</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Stats row */}
-          <div className="grid grid-cols-4 gap-2 mt-4">
-            {/* Site Status */}
-            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-white/5 border border-white/8 backdrop-blur-sm">
-              <span className="text-[9px] text-white/40 font-bold uppercase tracking-wider">Status</span>
-              <div className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSystemMaintenanceActive ? 'bg-rose-400 shadow-[0_0_6px_#f87171]' : 'bg-emerald-400 shadow-[0_0_6px_#4ade80]'}`} />
-                <span className={`text-[10px] font-black uppercase ${isSystemMaintenanceActive ? 'text-rose-300' : 'text-emerald-300'}`}>
-                  {isSystemMaintenanceActive ? 'Maint.' : 'Live'}
-                </span>
-              </div>
-            </div>
-            {/* Ping */}
-            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-white/5 border border-white/8 backdrop-blur-sm">
-              <span className="text-[9px] text-white/40 font-bold uppercase tracking-wider">Latency</span>
-              <div className="flex items-center gap-1">
-                <Zap className="w-3 h-3 text-[#A3E635]" />
-                <span className="text-[10px] font-black text-white font-mono">{pingMs !== null ? `${pingMs}ms` : '—'}</span>
-              </div>
-            </div>
-            {/* Rooms */}
-            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-white/5 border border-white/8 backdrop-blur-sm">
-              <span className="text-[9px] text-white/40 font-bold uppercase tracking-wider">Rooms</span>
-              <div className="flex items-center gap-1">
-                <Home className="w-3 h-3 text-purple-400" />
-                <span className="text-[10px] font-black text-white">{stats.totalRooms}</span>
-              </div>
-            </div>
-            {/* Users */}
-            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-white/5 border border-white/8 backdrop-blur-sm">
-              <span className="text-[9px] text-white/40 font-bold uppercase tracking-wider">Users</span>
-              <div className="flex items-center gap-1">
-                <Users className="w-3 h-3 text-blue-400" />
-                <span className="text-[10px] font-black text-white">{stats.totalUsers}</span>
+              {/* Action Banner Stats / Chips */}
+              <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                <div className="px-4 py-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 text-center">
+                  <div className="text-xs font-black uppercase tracking-wider text-white/60">Rooms</div>
+                  <div className="text-xl sm:text-2xl font-black text-[#A3E635] mt-0.5">{stats.totalRooms}</div>
+                </div>
+                <div className="px-4 py-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 text-center">
+                  <div className="text-xs font-black uppercase tracking-wider text-white/60">Users</div>
+                  <div className="text-xl sm:text-2xl font-black text-white mt-0.5">{stats.totalUsers}</div>
+                </div>
+                <div className="px-4 py-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 text-center">
+                  <div className="text-xs font-black uppercase tracking-wider text-white/60">Ping</div>
+                  <div className="text-xl sm:text-2xl font-black text-emerald-300 font-mono mt-0.5">{pingMs !== null ? `${pingMs}ms` : '—'}</div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* ══════════════════════════════════════════
-          SEARCH BAR
-      ══════════════════════════════════════════ */}
-      <div className="relative group">
-        <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-emerald-500/20 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity blur-sm -z-10" />
-        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-        <input
-          type="text"
-          placeholder="Search users, rooms, transactions…"
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500/30 shadow-sm transition-all"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 flex items-center justify-center text-[9px] font-black hover:bg-slate-300 transition-all"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-
-      {/* ══════════════════════════════════════════
-          NAVIGATION — Grouped category sections
-      ══════════════════════════════════════════ */}
-      <div className="bg-white dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl overflow-hidden shadow-sm">
-
-        {/* Nav inner: scrollable on mobile, wrapping on desktop */}
-        <div className="px-3 py-2.5 flex items-start gap-4 overflow-x-auto scrollbar-none">
-
-          {/* ── Group: Core ── */}
-          <div className="shrink-0 space-y-1.5">
-            <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400 dark:text-slate-600 pl-1 block">Core</span>
-            <div className="flex items-center gap-1">
-              {[
-                { id: 'overview', label: isSuperAdmin ? 'Overview' : 'Ops Hub', icon: <Activity className="w-3 h-3" /> },
-                { id: 'activity_feed', label: 'Activity', icon: <Flame className="w-3 h-3 text-amber-500" /> },
-              ].map(t => (
-                <button key={t.id} onClick={() => setActiveTab(t.id)}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === t.id
-                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >{t.icon}<span>{t.label}</span></button>
-              ))}
-              {isSuperAdmin && (
-                <button onClick={() => setActiveTab('co_admins')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'co_admins'
-                      ? 'bg-violet-600 text-white shadow-sm'
-                      : 'text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30'
-                  }`}
-                >
-                  <UserCheck className="w-3 h-3" />
-                  <span>Co-Admins</span>
-                  <span className="text-[8px] bg-violet-500/20 dark:bg-violet-500/30 px-1.5 py-0.5 rounded-full">{normalizedCoAdmins.length}</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="w-px self-stretch bg-slate-200 dark:bg-slate-800 shrink-0 my-0.5" />
-
-          {/* ── Group: People & Rooms ── */}
-          {(userPermissions.user_management || userPermissions.room_explorer || userPermissions.room_commander) && (
-            <div className="shrink-0 space-y-1.5">
-              <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400 dark:text-slate-600 pl-1 block">People & Rooms</span>
-              <div className="flex items-center gap-1">
-                {userPermissions.user_management && (
-                  <button onClick={() => setActiveTab('user_directory')}
-                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                      activeTab === 'user_directory'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30'
-                    }`}
-                  >
-                    <Users className="w-3 h-3" />
-                    <span>Users</span>
-                    <span className="text-[8px] bg-blue-500/20 px-1.5 py-0.5 rounded-full">{allRegisteredUsers.length}</span>
-                  </button>
-                )}
-                {userPermissions.user_management && (
-                  <button onClick={() => setActiveTab('banned_accounts')}
-                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                      activeTab === 'banned_accounts'
-                        ? 'bg-rose-600 text-white shadow-sm'
-                        : 'text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-                    }`}
-                  >
-                    <Ban className="w-3 h-3" />
-                    <span>Banned</span>
-                    {bannedUsers.length > 0 && <span className="text-[8px] bg-rose-500/20 px-1.5 py-0.5 rounded-full">{bannedUsers.length}</span>}
-                  </button>
-                )}
-                {userPermissions.room_explorer && (
-                  <button onClick={() => setActiveTab('room_explorer')}
-                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                      activeTab === 'room_explorer'
-                        ? 'bg-sky-600 text-white shadow-sm'
-                        : 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30'
-                    }`}
-                  >
-                    <Building2 className="w-3 h-3" />
-                    <span>Rooms</span>
-                    <span className="text-[8px] bg-sky-500/20 px-1.5 py-0.5 rounded-full">{allSystemRooms.length}</span>
-                  </button>
-                )}
-                {userPermissions.room_commander && (
-                  <button onClick={() => setActiveTab('room_commander')}
-                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                      activeTab === 'room_commander'
-                        ? 'bg-emerald-700 text-white shadow-sm'
-                        : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                    }`}
-                  >
-                    <SlidersHorizontal className="w-3 h-3" />
-                    <span>Commander</span>
-                  </button>
-                )}
+          {/* ── 4 KPI STAT METRICS ROW (Inspired by reference dashboard cards) ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            {/* Card 1: Total Users */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-[#E3E8E3] dark:border-slate-800 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Total Users</span>
+                <div className="w-9 h-9 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Users className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <div className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-white tracking-tight">
+                  {stats.totalUsers}
+                </div>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-[#A3E635] bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full">
+                    <TrendingUp className="w-2.5 h-2.5" /> +100%
+                  </span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">Registered</span>
+                </div>
               </div>
             </div>
-          )}
 
-          {/* Divider */}
-          {(userPermissions.settlements || userPermissions.dispute_resolver) && (
-            <div className="w-px self-stretch bg-slate-200 dark:bg-slate-800 shrink-0 my-0.5" />
-          )}
-
-          {/* ── Group: Finance ── */}
-          {(userPermissions.settlements || userPermissions.dispute_resolver) && (
-            <div className="shrink-0 space-y-1.5">
-              <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400 dark:text-slate-600 pl-1 block">Finance</span>
-              <div className="flex items-center gap-1">
-                {userPermissions.settlements && (
-                  <button onClick={() => setActiveTab('finance_audit')}
-                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                      activeTab === 'finance_audit'
-                        ? 'bg-emerald-700 text-white shadow-sm'
-                        : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                    }`}
-                  >
-                    <PieChart className="w-3 h-3" />
-                    <span>Audit</span>
-                  </button>
-                )}
-                {userPermissions.settlements && (
-                  <button onClick={() => setActiveTab('settlements')}
-                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                      activeTab === 'settlements'
-                        ? 'bg-emerald-700 text-white shadow-sm'
-                        : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                    }`}
-                  >
-                    <HandCoins className="w-3 h-3" />
-                    <span>Settle</span>
-                  </button>
-                )}
-                {userPermissions.dispute_resolver && (
-                  <button onClick={() => setActiveTab('dispute_resolver')}
-                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                      activeTab === 'dispute_resolver'
-                        ? 'bg-amber-600 text-white shadow-sm'
-                        : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                    }`}
-                  >
-                    <FileSpreadsheet className="w-3 h-3" />
-                    <span>Disputes</span>
-                    <span className="text-[8px] bg-amber-500/20 px-1.5 py-0.5 rounded-full">{allGlobalTx.length}</span>
-                  </button>
-                )}
+            {/* Card 2: Total Active Rooms */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-[#E3E8E3] dark:border-slate-800 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Active Rooms</span>
+                <div className="w-9 h-9 rounded-2xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                  <Building2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <div className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-white tracking-tight">
+                  {stats.totalRooms}
+                </div>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold text-purple-600 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 px-2 py-0.5 rounded-full">
+                    <CheckCircle2 className="w-2.5 h-2.5" /> Realtime
+                  </span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">Shared Ledgers</span>
+                </div>
               </div>
             </div>
-          )}
 
-          {/* Divider */}
-          <div className="w-px self-stretch bg-slate-200 dark:bg-slate-800 shrink-0 my-0.5" />
-
-          {/* ── Group: System ── */}
-          <div className="shrink-0 space-y-1.5">
-            <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400 dark:text-slate-600 pl-1 block">System</span>
-            <div className="flex items-center gap-1">
-              {userPermissions.database_studio && (
-                <button onClick={() => setActiveTab('database_studio')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'database_studio'
-                      ? 'bg-cyan-600 text-white shadow-sm'
-                      : 'text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-950/30'
-                  }`}
-                >
-                  <Database className="w-3 h-3" />
-                  <span>DB</span>
-                </button>
-              )}
-              {userPermissions.system_triggers && (
-                <button onClick={() => setActiveTab('system_triggers')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'system_triggers'
-                      ? 'bg-orange-600 text-white shadow-sm'
-                      : 'text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30'
-                  }`}
-                >
-                  <Zap className="w-3 h-3" />
-                  <span>Triggers</span>
-                </button>
-              )}
-              {(isSuperAdmin || userPermissions.maintenance_control) && (
-                <button onClick={() => setActiveTab('security_audit')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'security_audit'
-                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                  <span>Audit</span>
-                </button>
-              )}
-              {userPermissions.maintenance_control && (
-                <button onClick={() => setActiveTab('maintenance')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'maintenance'
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : 'text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-                  }`}
-                >
-                  <Power className="w-3 h-3" />
-                  <span>Maint.</span>
-                </button>
-              )}
-              {userPermissions.broadcasts && (
-                <button onClick={() => setActiveTab('broadcast')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'broadcast'
-                      ? 'bg-purple-600 text-white shadow-sm'
-                      : 'text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30'
-                  }`}
-                >
-                  <Radio className="w-3 h-3" />
-                  <span>Cast</span>
-                </button>
-              )}
-              {userPermissions.broadcasts && (
-                <button onClick={() => setActiveTab('email')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'email'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30'
-                  }`}
-                >
-                  <Mail className="w-3 h-3" />
-                  <span>Email</span>
-                </button>
-              )}
-              {userPermissions.room_pinning && (
-                <button onClick={() => setActiveTab('pinning')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'pinning'
-                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
-                      : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                  }`}
-                >
-                  <Pin className="w-3 h-3" />
-                  <span>Pin</span>
-                </button>
-              )}
-              {userPermissions.latency_diagnostics && (
-                <button onClick={() => setActiveTab('latency')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'latency'
-                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <Sliders className="w-3 h-3 text-emerald-500" />
-                  <span>Latency</span>
-                </button>
-              )}
-              {isSuperAdmin && (
-                <button onClick={() => setActiveTab('chaos_tester')}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 transition-all shrink-0 ${
-                    activeTab === 'chaos_tester'
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : 'text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-                  }`}
-                >
-                  <Terminal className="w-3 h-3" />
-                  <span>Chaos</span>
-                </button>
-              )}
+            {/* Card 3: Global Transactions */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-[#E3E8E3] dark:border-slate-800 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Global Expenses</span>
+                <div className="w-9 h-9 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <div className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-white tracking-tight">
+                  {allGlobalTx.length}
+                </div>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full">
+                    <FileText className="w-2.5 h-2.5" /> In-Sync
+                  </span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">Tx across rooms</span>
+                </div>
+              </div>
             </div>
+
+            {/* Card 4: Network Latency */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-[#E3E8E3] dark:border-slate-800 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Worker Latency</span>
+                <div className="w-9 h-9 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <Zap className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <div className="text-2xl sm:text-3xl font-black text-[#1A3827] dark:text-white tracking-tight font-mono">
+                  {pingMs !== null ? `${pingMs}ms` : '—'}
+                </div>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full">
+                    <Check className="w-2.5 h-2.5" /> Edge CDN
+                  </span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">Cloudflare response</span>
+                </div>
+              </div>
+            </div>
+
           </div>
 
-        </div>
+          {/* ── Active Module Heading & Breadcrumb ── */}
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center gap-2.5">
+              <div className="w-1.5 h-5 rounded-full bg-[#1A3827] dark:bg-[#A3E635]" />
+              <h2 className="text-base font-black text-[#1A3827] dark:text-white capitalize">
+                {activeTab.replace(/_/g, ' ')}
+              </h2>
+            </div>
+            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">
+              Module: <span className="font-mono text-[#1A3827] dark:text-[#A3E635]">{activeTab}</span>
+            </span>
+          </div>
 
-        {/* Active tab indicator strip */}
-        <div className="px-4 py-1.5 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center gap-2">
-          <div className="w-1 h-3.5 rounded-full bg-gradient-to-b from-emerald-500 to-emerald-700 dark:from-[#A3E635] dark:to-emerald-600" />
-          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Viewing</span>
-          <span className="text-[10px] font-black text-[#1A3827] dark:text-[#A3E635] capitalize">
-            {activeTab.replace(/_/g, ' ')}
-          </span>
-        </div>
-      </div>
+          {/* ── Active Tab Content Container ── */}
+          <div className="space-y-6">
+
 
       {/* Tab 1: Overview Controls (Super Admin Root vs MNC Co-Admin Operations Console) */}
       {activeTab === 'overview' && (
@@ -7785,6 +7792,9 @@ NOTIFY pgrst, 'reload schema';`;
           </div>
         </div>
       )}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
