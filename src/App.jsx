@@ -2255,6 +2255,8 @@ export default function App() {
       ? cachedNickname 
       : (displayName && displayName !== 'You' && displayName.trim() ? displayName : null);
 
+    const finalNickname = candidateName || 'You';
+
     if (candidateName) {
       setUserNickname(candidateName);
       setNicknameInput(candidateName);
@@ -2275,6 +2277,10 @@ export default function App() {
             setNicknameInput(data.nickname);
             localStorage.setItem('userNickname', data.nickname);
             setIsNicknameFixed(true);
+            const currentRId = localStorage.getItem('userRoomId') || localRoomId;
+            if (currentRId) {
+              addMemberToRoom(currentRId, data.nickname, currentUser);
+            }
           }
         })
         .catch(() => {});
