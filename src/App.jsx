@@ -11544,8 +11544,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             </div>
 
-            {/* ─── Roommate Budgets & Spending Limits Card (Visible ONLY when toggle is ON) ─── */}
-            {enableMemberBudgets && (
+            {/* ─── Roommate Budgets & Spending Limits Card (Default in Quota Mode, Hidden in Split Mode) ─── */}
+            {isQuotaMode && (
               <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -11554,28 +11554,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     </h3>
                     <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Track individual monthly budget caps & spending capacity</p>
                   </div>
-                  
-                  {/* Feature Toggle Switch */}
-                  <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-800/60 px-3 py-1.5 rounded-2xl border border-[#E3E8E3] dark:border-slate-700">
-                    <span className="text-[10px] font-bold text-[#1A3827] dark:text-slate-300">
-                      {enableMemberBudgets ? 'Enabled' : 'Disabled'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const nextState = !enableMemberBudgets;
-                        setEnableMemberBudgets(nextState);
-                        localStorage.setItem('enableMemberBudgets', nextState ? 'true' : 'false');
-                        triggerToast(nextState ? 'Per-person room budgets enabled' : 'Per-person room budgets disabled');
-                      }}
-                      className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
-                        enableMemberBudgets ? 'bg-[#1A3827] dark:bg-[#A3E635]' : 'bg-slate-300 dark:bg-slate-700'
-                      }`}
-                    >
-                      <div className={`w-4 h-4 rounded-full bg-white dark:bg-slate-900 shadow-md transform transition-transform ${
-                        enableMemberBudgets ? 'translate-x-4' : 'translate-x-0'
-                      }`} />
-                    </button>
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1A3827]/5 dark:bg-[#A3E635]/10 border border-[#1A3827]/10 dark:border-[#A3E635]/20 text-[10px] font-black text-[#1A3827] dark:text-[#A3E635]">
+                    <span>⚡ Quota Engine Active</span>
                   </div>
                 </div>
 
@@ -12896,7 +12876,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             <div className="space-y-2">
               <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Split type</label>
               <div className="bg-[#F6F8F6] dark:bg-slate-950 p-1 rounded-xl flex gap-1 border border-[#E3E8E3]/50 dark:border-slate-800">
-                {(enableMemberBudgets ? ['equal', 'percentage', 'amount', 'budget_weighted'] : ['equal', 'percentage', 'amount']).map(type => (
+                {(isQuotaMode ? ['equal', 'percentage', 'amount', 'budget_weighted'] : ['equal', 'percentage', 'amount']).map(type => (
                   <button
                     key={type}
                     type="button"
