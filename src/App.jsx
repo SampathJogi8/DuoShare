@@ -2191,8 +2191,9 @@ export default function App() {
     if (cachedData) {
       try {
         const parsed = JSON.parse(cachedData);
-        if (parsed && parsed.length > 0) {
-          setUserRooms(parsed);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cleanParsed = parsed.filter(r => r && r.roomId && r.roomId !== 'null' && r.roomId !== 'undefined');
+          setUserRooms(cleanParsed);
         } else {
           setIsFetchingRooms(true);
         }
@@ -2204,20 +2205,46 @@ export default function App() {
     }
 
     try {
-      const { data, error } = await supabase
+      // 1. Fetch rooms where user is a recorded member
+      const { data: memberRows, error: memberErr } = await supabase
         .from('members')
-        .select('room_id, rooms:rooms(name, monthly_budget)')
+        .select('room_id, rooms:rooms(id, name, monthly_budget)')
         .eq('uid', user.id);
       
-      if (error) throw error;
-      
-      const formatted = (data || [])
-        .filter(item => item.rooms !== null)
-        .map(item => ({
-          roomId: item.room_id,
-          roomName: item.rooms?.name || 'Tallyin',
-          monthlyBudget: item.rooms?.monthly_budget || 22000
-        }));
+      if (memberErr) console.warn("Member rooms query notice:", memberErr);
+
+      // 2. Fetch rooms created by the user as Host
+      const { data: createdRooms, error: createdErr } = await supabase
+        .from('rooms')
+        .select('id, name, monthly_budget')
+        .eq('created_by', user.id);
+
+      if (createdErr) console.warn("Created rooms query notice:", createdErr);
+
+      const roomMap = new Map();
+
+      (createdRooms || []).forEach(r => {
+        if (r && r.id && r.id !== 'null' && r.id !== 'undefined') {
+          roomMap.set(r.id, {
+            roomId: r.id,
+            roomName: r.name || 'Tallyin',
+            monthlyBudget: Number(r.monthly_budget) || 22000
+          });
+        }
+      });
+
+      (memberRows || []).forEach(item => {
+        const rid = item.room_id || item.rooms?.id;
+        if (rid && rid !== 'null' && rid !== 'undefined' && item.rooms) {
+          roomMap.set(rid, {
+            roomId: rid,
+            roomName: item.rooms?.name || 'Tallyin',
+            monthlyBudget: Number(item.rooms?.monthly_budget) || 22000
+          });
+        }
+      });
+
+      const formatted = Array.from(roomMap.values());
       setUserRooms(formatted);
       localStorage.setItem(cachedKey, JSON.stringify(formatted));
 
@@ -3451,6 +3478,28 @@ export default function App() {
             .eq('nickname', matched.nickname)
             .then(null, () => {});
         }
+      }
+
+      // Auto-heal empty room by adding current user as host/member if user is active in this room
+      if (mappedMembers.length === 0 && user && roomId) {
+        const selfMember = {
+          uid: user.id,
+          nickname: userNickname && userNickname !== 'You' ? userNickname : (user.user_metadata?.full_name || 'Room Admin'),
+          photoURL: user.user_metadata?.avatar_url || '',
+          email: user.email || '',
+          individualBudget: Number(personalCap) || 1000,
+          joinedAt: new Date().toISOString()
+        };
+        mappedMembers.push(selfMember);
+        supabase.from('members').upsert({
+          room_id: roomId,
+          uid: user.id,
+          nickname: selfMember.nickname,
+          photo_url: selfMember.photoURL,
+          email: selfMember.email,
+          individual_budget: selfMember.individualBudget,
+          joined_at: selfMember.joinedAt
+        }, { onConflict: 'room_id,uid' }).then(null, () => {});
       }
 
       if (user && mappedMembers.length > 0 && !isMember) {
@@ -12064,10 +12113,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => handleApproveJoinRequest(req)}
-                        className="px-3.5 py-2 bg-[#A3E635] text-slate-950 rounded-xl text-xs font-black hover:opacity-90 flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
+                        className="px-3.5 py-2 bg-[#A3E635] text-slate-950 rounded-xl text-xs font-black hover:opacity-90 flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
                       >
                         <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        <span>Approve (+1 Capacity)</span>
+                        <span>{isQuotaMode ? '⚡ Assign Quota & Approve' : 'Approve (+1 Capacity)'}</span>
                       </button>
                       <button
                         onClick={() => handleDeclineJoinRequest(req)}
