@@ -4106,6 +4106,60 @@ export default function AdminDashboard({
         isSuperAdmin ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
+            {/* Primary Database Engine Switcher Card */}
+            <div className="col-span-1 md:col-span-2 bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 border border-emerald-500/40 rounded-3xl p-6 shadow-xl text-white space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
+                    <Database className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5">
+                      <h3 className="text-base font-black tracking-tight text-white">Live Primary Database Engine</h3>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        activeDbEngine === 'supabase'
+                          ? 'bg-emerald-400 text-slate-950 shadow-sm'
+                          : 'bg-amber-400 text-slate-950 shadow-sm'
+                      }`}>
+                        {activeDbEngine === 'supabase' ? '⚡ Supabase Postgres Active' : '☁️ Cloudflare D1 Active'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Instantly switch your live production database backend between Cloudflare D1 and Supabase PostgreSQL.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchDbEngine('d1')}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+                      activeDbEngine === 'd1'
+                        ? 'bg-amber-500 text-slate-950 ring-2 ring-amber-400 shadow-lg scale-105'
+                        : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
+                    }`}
+                  >
+                    <Server className="w-4 h-4" />
+                    <span>☁️ Cloudflare D1</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchDbEngine('supabase')}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+                      activeDbEngine === 'supabase'
+                        ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-400 shadow-lg scale-105'
+                        : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
+                    }`}
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span>⚡ Supabase (Postgres)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* Maintenance Switch Quick Card */}
             <div className="hud-card rounded-3xl p-6 space-y-4">
               <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
@@ -8267,11 +8321,59 @@ NOTIFY pgrst, 'reload schema';`;
           renderAccessRestrictedCard('Database Studio', 'Database Studio Clearance Required')
         ) : (
           <div className="hud-card rounded-3xl p-6 space-y-6">
+
+            {/* Live Database Engine Switcher inside Studio */}
+            <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 border border-emerald-500/40 rounded-2xl p-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
+                  <Database className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-white">Active Database</h4>
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                      activeDbEngine === 'supabase' ? 'bg-emerald-400 text-slate-950' : 'bg-amber-400 text-slate-950'
+                    }`}>
+                      {activeDbEngine === 'supabase' ? '⚡ Supabase Postgres' : '☁️ Cloudflare D1'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">Live target for Studio queries &amp; ledger records.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleSwitchDbEngine('d1')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeDbEngine === 'd1'
+                      ? 'bg-amber-500 text-slate-950 ring-2 ring-amber-400 shadow-md'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                  }`}
+                >
+                  <Server className="w-3.5 h-3.5" />
+                  <span>☁️ Cloudflare D1</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchDbEngine('supabase')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeDbEngine === 'supabase'
+                      ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-400 shadow-md'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                  }`}
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>⚡ Supabase</span>
+                </button>
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
               <div className="space-y-0.5">
                 <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
                   <Database className="w-5 h-5 text-cyan-500" />
-                  Supabase Live Database Studio ({studioRows.length} rows)
+                  Live Database Studio ({studioRows.length} rows)
                 </h3>
                 <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
                   Inspect raw database records across all core tables, export backups, and execute administrative row interventions.
