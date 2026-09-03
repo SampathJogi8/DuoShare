@@ -90,48 +90,31 @@ export default function AdminDashboard({
   // Normalized Co-Admins list
   const normalizedCoAdmins = useMemo(() => {
     return (coAdmins || []).map(item => {
-      if (typeof item === 'string') {
-        return {
-          email: item.trim().toLowerCase(),
-          name: item.split('@')[0],
-          role: 'co_admin',
-          addedAt: new Date().toISOString(),
-          addedBy: 'tallyin.alerts@gmail.com',
-          permissions: {
-            broadcasts: true,
-            settlements: true,
-            user_management: true,
-            room_explorer: true,
-            room_pinning: true,
-            latency_diagnostics: true,
-            maintenance_control: false,
-            database_migration: false,
-          }
-        };
-      }
+      const email = (typeof item === 'string' ? item : item?.email || '').trim().toLowerCase();
+      const perms = typeof item === 'object' && item?.permissions ? item.permissions : null;
+
       return {
-        email: (item?.email || '').trim().toLowerCase(),
-        name: item?.name || (item?.email ? item.email.split('@')[0] : 'Co-Admin'),
-        role: item?.role || 'co_admin',
-        addedAt: item?.addedAt || new Date().toISOString(),
-        addedBy: item?.addedBy || 'tallyin.alerts@gmail.com',
+        email,
+        name: (typeof item === 'object' && item?.name) || email.split('@')[0] || 'Co-Admin',
+        role: 'co_admin',
+        addedAt: (typeof item === 'object' && item?.addedAt) || new Date().toISOString(),
+        addedBy: (typeof item === 'object' && item?.addedBy) || 'tallyin.alerts@gmail.com',
         permissions: {
-          broadcasts: true,
-          settlements: true,
-          user_management: true,
-          room_explorer: true,
-          room_pinning: true,
-          latency_diagnostics: true,
-          maintenance_control: false,
-          database_migration: false,
-          ...(item?.permissions || {})
+          broadcasts: perms ? Boolean(perms.broadcasts) : true,
+          settlements: perms ? Boolean(perms.settlements) : true,
+          user_management: perms ? Boolean(perms.user_management) : true,
+          room_explorer: perms ? Boolean(perms.room_explorer) : true,
+          room_pinning: perms ? Boolean(perms.room_pinning) : true,
+          latency_diagnostics: perms ? Boolean(perms.latency_diagnostics) : true,
+          maintenance_control: perms ? Boolean(perms.maintenance_control) : false,
+          database_migration: perms ? Boolean(perms.database_migration) : false,
         }
       };
     }).filter(a => !!a.email);
   }, [coAdmins]);
 
   const currentCoAdminObj = useMemo(() => {
-    return normalizedCoAdmins.find(a => a.email === currentEmailClean);
+    return normalizedCoAdmins.find(a => a.email.toLowerCase() === currentEmailClean.toLowerCase());
   }, [normalizedCoAdmins, currentEmailClean]);
 
   const isCoAdmin = !!currentCoAdminObj;
@@ -152,14 +135,14 @@ export default function AdminDashboard({
       };
     }
     return {
-      broadcasts: !!currentCoAdminObj?.permissions?.broadcasts,
-      settlements: !!currentCoAdminObj?.permissions?.settlements,
-      user_management: !!currentCoAdminObj?.permissions?.user_management,
-      room_explorer: !!currentCoAdminObj?.permissions?.room_explorer,
-      room_pinning: !!currentCoAdminObj?.permissions?.room_pinning,
-      latency_diagnostics: !!currentCoAdminObj?.permissions?.latency_diagnostics,
-      maintenance_control: !!currentCoAdminObj?.permissions?.maintenance_control,
-      database_migration: !!currentCoAdminObj?.permissions?.database_migration,
+      broadcasts: Boolean(currentCoAdminObj?.permissions?.broadcasts),
+      settlements: Boolean(currentCoAdminObj?.permissions?.settlements),
+      user_management: Boolean(currentCoAdminObj?.permissions?.user_management),
+      room_explorer: Boolean(currentCoAdminObj?.permissions?.room_explorer),
+      room_pinning: Boolean(currentCoAdminObj?.permissions?.room_pinning),
+      latency_diagnostics: Boolean(currentCoAdminObj?.permissions?.latency_diagnostics),
+      maintenance_control: Boolean(currentCoAdminObj?.permissions?.maintenance_control),
+      database_migration: Boolean(currentCoAdminObj?.permissions?.database_migration),
       manage_co_admins: false,
     };
   }, [isSuperAdmin, currentCoAdminObj]);
@@ -480,6 +463,10 @@ export default function AdminDashboard({
 
   const handleAdminSubmitSettle = async (e) => {
     if (e) e.preventDefault();
+    if (!userPermissions.settlements) {
+      if (triggerToast) triggerToast('⚠️ Access Denied: Financial settlement clearance required.');
+      return;
+    }
     const amountNum = parseFloat(customSettleAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
       if (triggerToast) triggerToast('Please enter a valid settlement amount.');
@@ -1006,6 +993,10 @@ export default function AdminDashboard({
 
   // Ban User Handler
   const handleBanUser = async (targetIdentifier, targetReason, extraData = {}) => {
+    if (!userPermissions.user_management) {
+      if (triggerToast) triggerToast('⚠️ Access Denied: User governance clearance required.');
+      return;
+    }
     const rawTarget = String(targetIdentifier || '').trim();
     if (!rawTarget || rawTarget === 'N/A') {
       if (triggerToast) triggerToast('Valid email or username required to ban user.');
@@ -1034,6 +1025,10 @@ export default function AdminDashboard({
 
   // Unban User Handler
   const handleUnbanUser = async (targetIdentifier) => {
+    if (!userPermissions.user_management) {
+      if (triggerToast) triggerToast('⚠️ Access Denied: User governance clearance required.');
+      return;
+    }
     const cleanTarget = String(targetIdentifier || '').trim().toLowerCase();
     const updatedBanned = bannedUsers.filter(b => (b.identifier || b.email)?.toLowerCase() !== cleanTarget);
     await syncBannedUsersToDatabase(updatedBanned);
@@ -1493,25 +1488,39 @@ export default function AdminDashboard({
   };
 
   const handleSaveEditedPermissions = async (targetEmail) => {
+    const cleanTarget = String(targetEmail || '').trim().toLowerCase();
     const nextList = normalizedCoAdmins.map(a => {
-      if (a.email === targetEmail) {
+      if (a.email.toLowerCase() === cleanTarget) {
         return {
           ...a,
-          permissions: { ...(a.permissions || {}), ...(editingPerms || {}) }
+          permissions: {
+            broadcasts: Boolean(editingPerms.broadcasts),
+            settlements: Boolean(editingPerms.settlements),
+            user_management: Boolean(editingPerms.user_management),
+            room_explorer: Boolean(editingPerms.room_explorer),
+            room_pinning: Boolean(editingPerms.room_pinning),
+            latency_diagnostics: Boolean(editingPerms.latency_diagnostics),
+            maintenance_control: Boolean(editingPerms.maintenance_control),
+            database_migration: Boolean(editingPerms.database_migration),
+          }
         };
       }
       return a;
     });
 
     await saveCoAdminsList(nextList);
-    logAuditAction('UPDATE_CO_ADMIN_PERMS', `Updated permissions for ${targetEmail}`);
-    if (triggerToast) triggerToast(`✅ Updated permissions for ${targetEmail}`);
+    logAuditAction('UPDATE_CO_ADMIN_PERMS', `Updated permissions for ${cleanTarget}`);
+    if (triggerToast) triggerToast(`✅ Updated permissions for ${cleanTarget}`);
     setEditingCoAdminEmail(null);
     setEditingPerms({});
   };
 
   // Publish Global Broadcast
   const handlePublishBroadcast = async () => {
+    if (!userPermissions.broadcasts) {
+      if (triggerToast) triggerToast('⚠️ Access Denied: Broadcasts operational clearance required.');
+      return;
+    }
     if (!broadcastText.trim()) {
       if (triggerToast) triggerToast('Please enter broadcast message content.');
       return;
@@ -1669,6 +1678,10 @@ export default function AdminDashboard({
 
   // Pin Room Message
   const handlePinMessage = async () => {
+    if (!userPermissions.room_pinning) {
+      if (triggerToast) triggerToast('⚠️ Access Denied: Room Pinning clearance required.');
+      return;
+    }
     const finalRoomId = isCustomRoomInput ? customPinRoomId.trim().toUpperCase() : targetPinRoomId;
     if (!pinText.trim() || !finalRoomId) {
       if (triggerToast) triggerToast('Please select or enter target room and text.');
@@ -1774,6 +1787,34 @@ export default function AdminDashboard({
       </div>
     );
   }
+
+  const renderAccessRestrictedCard = (moduleName, requiredClearance) => (
+    <div className="hud-card rounded-3xl p-8 sm:p-12 text-center space-y-5 max-w-lg mx-auto my-12 border border-amber-500/30 shadow-xl bg-gradient-to-b from-amber-500/5 to-transparent animate-fade-in">
+      <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center mx-auto shadow-md ring-4 ring-amber-500/10 animate-pulse">
+        <ShieldAlert className="w-8 h-8" />
+      </div>
+      <div className="space-y-2">
+        <span className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
+          Clearance Restricted
+        </span>
+        <h3 className="text-lg font-black text-[#1A3827] dark:text-white">
+          Delegated Clearance Required
+        </h3>
+        <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed max-w-sm mx-auto">
+          Your current Co-Admin profile does not possess authorization to access <strong>{moduleName}</strong>. This module requires <strong>{requiredClearance}</strong>.
+        </p>
+      </div>
+      <div className="pt-2 flex justify-center">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className="px-6 py-2.5 rounded-xl bg-[#1A3827] hover:bg-[#142d1f] dark:bg-[#A3E635] dark:hover:bg-[#8fd32b] text-white dark:text-slate-950 font-black text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer"
+        >
+          <Home className="w-3.5 h-3.5" />
+          <span>Return to Operations Hub</span>
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6 animate-fade-in text-left">
@@ -1899,7 +1940,7 @@ export default function AdminDashboard({
         )}
       </div>
 
-      {/* Navigation Tabs */}
+      {/* Navigation Tabs (Strictly Enforced by Role-Based Access Control) */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
         <button
           onClick={() => setActiveTab('overview')}
@@ -1910,20 +1951,22 @@ export default function AdminDashboard({
           }`}
         >
           <Activity className="w-3.5 h-3.5" />
-          <span>Overview</span>
+          <span>{isSuperAdmin ? 'Master Overview' : 'Operations Hub'}</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('co_admins')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'co_admins'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300'
-          }`}
-        >
-          <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
-          <span>Co-Admins ({normalizedCoAdmins.length})</span>
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => setActiveTab('co_admins')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'co_admins'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300'
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Co-Admins ({normalizedCoAdmins.length})</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('activity_feed')}
@@ -1937,230 +1980,809 @@ export default function AdminDashboard({
           <span>Live Activity Feed</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('user_directory')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'user_directory'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Users className="w-3.5 h-3.5 text-blue-400" />
-          <span>User Accounts ({allRegisteredUsers.length})</span>
-        </button>
+        {userPermissions.user_management && (
+          <button
+            onClick={() => setActiveTab('user_directory')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'user_directory'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5 text-blue-400" />
+            <span>User Accounts ({allRegisteredUsers.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('banned_accounts')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'banned_accounts'
-              ? 'bg-rose-600 text-white shadow-md'
-              : 'hud-card text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-          }`}
-        >
-          <Ban className="w-3.5 h-3.5" />
-          <span>Banned Accounts ({bannedUsers.length})</span>
-        </button>
+        {userPermissions.user_management && (
+          <button
+            onClick={() => setActiveTab('banned_accounts')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'banned_accounts'
+                ? 'bg-rose-600 text-white shadow-md'
+                : 'hud-card text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+            }`}
+          >
+            <Ban className="w-3.5 h-3.5" />
+            <span>Banned Accounts ({bannedUsers.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('finance_audit')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'finance_audit'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <PieChart className="w-3.5 h-3.5 text-emerald-500" />
-          <span>Financial Audit</span>
-        </button>
+        {userPermissions.settlements && (
+          <button
+            onClick={() => setActiveTab('finance_audit')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'finance_audit'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <PieChart className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Financial Audit</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('settlements')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'settlements'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <HandCoins className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-          <span>Settle Payments</span>
-        </button>
+        {userPermissions.settlements && (
+          <button
+            onClick={() => setActiveTab('settlements')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'settlements'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <HandCoins className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+            <span>Settle Payments</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('room_explorer')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'room_explorer'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Building2 className="w-3.5 h-3.5 text-blue-500" />
-          <span>Rooms Directory ({allSystemRooms.length})</span>
-        </button>
+        {userPermissions.room_explorer && (
+          <button
+            onClick={() => setActiveTab('room_explorer')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'room_explorer'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 text-blue-500" />
+            <span>Rooms Directory ({allSystemRooms.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('security_audit')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'security_audit'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Security Audit Logs</span>
-        </button>
+        {(isSuperAdmin || userPermissions.maintenance_control) && (
+          <button
+            onClick={() => setActiveTab('security_audit')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'security_audit'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Security Audit Logs</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('maintenance')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'maintenance'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Power className="w-3.5 h-3.5 text-rose-500" />
-          <span>Site Maintenance</span>
-        </button>
+        {userPermissions.maintenance_control && (
+          <button
+            onClick={() => setActiveTab('maintenance')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'maintenance'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <Power className="w-3.5 h-3.5 text-rose-500" />
+            <span>Site Maintenance</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('broadcast')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'broadcast'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Radio className="w-3.5 h-3.5 text-purple-500" />
-          <span>Broadcasts</span>
-        </button>
+        {userPermissions.broadcasts && (
+          <button
+            onClick={() => setActiveTab('broadcast')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'broadcast'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <Radio className="w-3.5 h-3.5 text-purple-500" />
+            <span>Broadcasts</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('email')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'email'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Mail className="w-3.5 h-3.5 text-blue-400" />
-          <span>Email Hub</span>
-        </button>
+        {userPermissions.broadcasts && (
+          <button
+            onClick={() => setActiveTab('email')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'email'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5 text-blue-400" />
+            <span>Email Hub</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('pinning')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'pinning'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Pin className="w-3.5 h-3.5 text-amber-400" />
-          <span>Room Pinning</span>
-        </button>
+        {userPermissions.room_pinning && (
+          <button
+            onClick={() => setActiveTab('pinning')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'pinning'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <Pin className="w-3.5 h-3.5 text-amber-400" />
+            <span>Room Pinning</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('latency')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'latency'
-              ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
-              : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
-          }`}
-        >
-          <Sliders className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Latency</span>
-        </button>
+        {userPermissions.latency_diagnostics && (
+          <button
+            onClick={() => setActiveTab('latency')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'latency'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-md'
+                : 'hud-card text-[#5C6E5C] dark:text-slate-300 hover:text-[#1A3827]'
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Latency</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('chaos_tester')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
-            activeTab === 'chaos_tester'
-              ? 'bg-rose-600 text-white shadow-md'
-              : 'hud-card text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-          }`}
-        >
-          <Terminal className="w-3.5 h-3.5" />
-          <span>Chaos & Flags</span>
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => setActiveTab('chaos_tester')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'chaos_tester'
+                ? 'bg-rose-600 text-white shadow-md'
+                : 'hud-card text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+            }`}
+          >
+            <Terminal className="w-3.5 h-3.5" />
+            <span>Chaos & Flags</span>
+          </button>
+        )}
       </div>
 
-      {/* Tab 1: Overview Controls */}
+      {/* Tab 1: Overview Controls (Super Admin Root vs MNC Co-Admin Operations Console) */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Maintenance Switch Quick Card */}
-          <div className="hud-card rounded-3xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                <Power className="w-4 h-4 text-rose-500" />
-                Site Maintenance Toggle
-              </h3>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                isSystemMaintenanceActive ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-              }`}>
-                {isSystemMaintenanceActive ? 'ACTIVE (SITE DOWN)' : 'LIVE'}
-              </span>
+        isSuperAdmin ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Maintenance Switch Quick Card */}
+            <div className="hud-card rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+                <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                  <Power className="w-4 h-4 text-rose-500" />
+                  Site Maintenance Toggle
+                </h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                  isSystemMaintenanceActive ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                }`}>
+                  {isSystemMaintenanceActive ? 'ACTIVE (SITE DOWN)' : 'LIVE'}
+                </span>
+              </div>
+
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                Activating maintenance mode will immediately block access for non-admin users and render the maintenance screen system-wide.
+              </p>
+
+              <button
+                onClick={handleToggleMaintenance}
+                className={`w-full py-3 px-4 rounded-xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
+                  isSystemMaintenanceActive
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-rose-600 hover:bg-rose-700 text-white'
+                }`}
+              >
+                <Power className="w-4 h-4" />
+                <span>{isSystemMaintenanceActive ? 'Deactivate Maintenance (Bring Site Live)' : 'Turn Site DOWN (Enable Maintenance Mode)'}</span>
+              </button>
             </div>
 
-            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-              Activating maintenance mode will immediately block access for non-admin users and render the maintenance screen system-wide.
-            </p>
+            {/* Broadcast Quick Status */}
+            <div className="hud-card rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+                <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  Active Global Broadcast
+                </h3>
+                {globalBroadcast?.active && (
+                  <button
+                    onClick={handleClearBroadcast}
+                    className="text-xs text-rose-600 dark:text-rose-400 hover:underline font-bold"
+                  >
+                    Clear Active
+                  </button>
+                )}
+              </div>
 
-            <button
-              onClick={handleToggleMaintenance}
-              className={`w-full py-3 px-4 rounded-xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
-                isSystemMaintenanceActive
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : 'bg-rose-600 hover:bg-rose-700 text-white'
-              }`}
-            >
-              <Power className="w-4 h-4" />
-              <span>{isSystemMaintenanceActive ? 'Deactivate Maintenance (Bring Site Live)' : 'Turn Site DOWN (Enable Maintenance Mode)'}</span>
-            </button>
-          </div>
-
-          {/* Broadcast Quick Status */}
-          <div className="hud-card rounded-3xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                <Radio className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                Active Global Broadcast
-              </h3>
-              {globalBroadcast?.active && (
-                <button
-                  onClick={handleClearBroadcast}
-                  className="text-xs text-rose-600 dark:text-rose-400 hover:underline font-bold"
-                >
-                  Clear Active
-                </button>
+              {globalBroadcast?.active ? (
+                <div className="p-4 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50 rounded-2xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-purple-200 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300">
+                      {globalBroadcast.type || 'Announcement'}
+                    </span>
+                    <span className="text-[10px] text-purple-700 dark:text-purple-300 font-mono">
+                      {new Date(globalBroadcast.createdAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-purple-950 dark:text-purple-100">
+                    {globalBroadcast.text}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400 py-4 text-center">
+                  No active global broadcast broadcasted. Switch to Live Broadcasts tab to push a notification banner.
+                </p>
               )}
             </div>
 
-            {globalBroadcast?.active ? (
-              <div className="p-4 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50 rounded-2xl space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-purple-200 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300">
-                    {globalBroadcast.type || 'Announcement'}
-                  </span>
-                  <span className="text-[10px] text-purple-700 dark:text-purple-300 font-mono">
-                    {new Date(globalBroadcast.createdAt).toLocaleTimeString()}
-                  </span>
-                </div>
-                <p className="text-xs font-bold text-purple-950 dark:text-purple-100">
-                  {globalBroadcast.text}
-                </p>
-              </div>
-            ) : (
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 py-4 text-center">
-                No active global broadcast broadcasted. Switch to Live Broadcasts tab to push a notification banner.
-              </p>
-            )}
           </div>
+        ) : (
+          /* MNC-LEVEL CO-ADMIN EXECUTIVE OPERATIONS DASHBOARD */
+          <div className="space-y-8 animate-fade-in">
+            {/* 1. Executive Operations Header & Security Clearance Banner */}
+            <div className="relative overflow-hidden rounded-3xl bg-slate-900 border border-slate-800 p-6 sm:p-8 shadow-2xl text-white">
+              {/* Ambient radial glows */}
+              <div className="absolute -top-24 -right-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        </div>
+              <div className="relative z-10 space-y-6">
+                {/* Top status bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                    <span className="text-[11px] font-black uppercase tracking-widest text-emerald-400">
+                      Tallyin Enterprise · Delegated Operations Platform
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      Level-2 Security Clearance
+                    </span>
+                    <span className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-slate-300 text-[10px] font-mono">
+                      TLS 1.3 · ZERO DATA LEAK
+                    </span>
+                  </div>
+                </div>
+
+                {/* Operator Profile Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-800 text-white font-black text-2xl flex items-center justify-center shadow-xl ring-4 ring-emerald-500/20 shrink-0">
+                      {(currentCoAdminObj?.name || currentEmailClean || 'C')[0].toUpperCase()}
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5">
+                        <h2 className="text-xl font-black tracking-tight text-white">
+                          {currentCoAdminObj?.name || 'Operations Lead'}
+                        </h2>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold">
+                          Delegated Co-Admin
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 font-mono">
+                        {currentEmailClean}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Assigned by Root Master ({currentCoAdminObj?.addedBy || 'tallyin.alerts@gmail.com'}) · Active Session Verified
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 text-right">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Clearance Modules</p>
+                      <p className="text-xl font-black text-emerald-400">
+                        {Object.values(userPermissions).filter(Boolean).length} <span className="text-xs text-slate-400 font-normal">/ 8 Active</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SLA Ticker */}
+                <div className="pt-2 flex flex-wrap items-center gap-6 text-[11px] text-slate-400 border-t border-slate-800/80">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>SOC-2 / ISO-27001 Protocol Active</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Server className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Cloudflare D1 & Supabase Distributed Engine: 100% Online</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>RBAC Enforced & Sandboxed</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Operations Telemetry Metric Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="hud-card rounded-2xl p-5 space-y-2 border border-[#E3E8E3] dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">System SLA Uptime</p>
+                  <Activity className="w-4 h-4 text-emerald-500" />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-[#1A3827] dark:text-white">99.98%</span>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Nominal</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  <span>Edge Core Latency</span>
+                  <button
+                    onClick={handlePing}
+                    disabled={isPinging}
+                    className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                  >
+                    {isPinging ? 'Pinging...' : pingMs !== null ? `${pingMs}ms (Test Again)` : 'Run Ping'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="hud-card rounded-2xl p-5 space-y-2 border border-[#E3E8E3] dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Production Rooms</p>
+                  <Building2 className="w-4 h-4 text-blue-500" />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-[#1A3827] dark:text-white">{allSystemRooms.length}</span>
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">Monitored</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  <span>Room Partitioning</span>
+                  {userPermissions.room_explorer ? (
+                    <button onClick={() => setActiveTab('room_explorer')} className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+                      Inspect →
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">Locked 🔒</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="hud-card rounded-2xl p-5 space-y-2 border border-[#E3E8E3] dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Verified User Accounts</p>
+                  <Users className="w-4 h-4 text-indigo-500" />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-[#1A3827] dark:text-white">{allRegisteredUsers.length}</span>
+                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">Verified</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  <span>{bannedUsers.length} Suspended Users</span>
+                  {userPermissions.user_management ? (
+                    <button onClick={() => setActiveTab('user_directory')} className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">
+                      Manage →
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">Locked 🔒</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="hud-card rounded-2xl p-5 space-y-2 border border-[#E3E8E3] dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Delegated Scope</p>
+                  <Zap className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-[#1A3827] dark:text-white">
+                    {Math.round((Object.values(userPermissions).filter(Boolean).length / 8) * 100)}%
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Coverage</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  <span>Security Sandbox</span>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Active</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. MNC Delegated Capabilities Matrix */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-black text-[#1A3827] dark:text-white flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    Enterprise Operational Capabilities Matrix
+                  </h3>
+                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                    Live operational modules delegated to your profile. Select any authorized module to open its dedicated console.
+                  </p>
+                </div>
+                <span className="text-xs font-mono font-bold text-[#5C6E5C] dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-xl">
+                  {Object.values(userPermissions).filter(Boolean).length} / 8 GRANTED
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* 1. Broadcasts */}
+                <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${
+                  userPermissions.broadcasts 
+                    ? 'bg-white dark:bg-slate-900 border-purple-200 dark:border-purple-900/50 hover:shadow-lg' 
+                    : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/80 opacity-60'
+                }`}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                        <Radio className="w-5 h-5" />
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        userPermissions.broadcasts ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}>
+                        {userPermissions.broadcasts ? 'GRANTED' : 'RESTRICTED'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-white">Global Broadcasts</h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 leading-relaxed">
+                        Dispatch room-wide announcements, maintenance notices, and broadcast alerts.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-4">
+                    {userPermissions.broadcasts ? (
+                      <button
+                        onClick={() => setActiveTab('broadcast')}
+                        className="w-full py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Launch Broadcasts</span>
+                        <span>→</span>
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 px-3 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 text-slate-500 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Clearance Required</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Settlements */}
+                <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${
+                  userPermissions.settlements 
+                    ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-900/50 hover:shadow-lg' 
+                    : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/80 opacity-60'
+                }`}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                        <HandCoins className="w-5 h-5" />
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        userPermissions.settlements ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}>
+                        {userPermissions.settlements ? 'GRANTED' : 'RESTRICTED'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-white">Financial Settlements</h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 leading-relaxed">
+                        Audit room ledgers, verify payer-receiver debts, and execute administrative settlements.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-4">
+                    {userPermissions.settlements ? (
+                      <button
+                        onClick={() => setActiveTab('settlements')}
+                        className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Open Settlements</span>
+                        <span>→</span>
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 px-3 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 text-slate-500 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Clearance Required</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. User Governance */}
+                <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${
+                  userPermissions.user_management 
+                    ? 'bg-white dark:bg-slate-900 border-blue-200 dark:border-blue-900/50 hover:shadow-lg' 
+                    : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/80 opacity-60'
+                }`}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        userPermissions.user_management ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}>
+                        {userPermissions.user_management ? 'GRANTED' : 'RESTRICTED'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-white">User Accounts & Bans</h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 leading-relaxed">
+                        Audit user identities, suspend policy violators, review ban appeals, and manage accounts.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-4">
+                    {userPermissions.user_management ? (
+                      <button
+                        onClick={() => setActiveTab('user_directory')}
+                        className="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Manage Accounts</span>
+                        <span>→</span>
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 px-3 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 text-slate-500 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Clearance Required</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Room Explorer */}
+                <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${
+                  userPermissions.room_explorer 
+                    ? 'bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-900/50 hover:shadow-lg' 
+                    : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/80 opacity-60'
+                }`}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        userPermissions.room_explorer ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}>
+                        {userPermissions.room_explorer ? 'GRANTED' : 'RESTRICTED'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-white">Rooms Directory</h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 leading-relaxed">
+                        Inspect production rooms, track member rosters, audit budgets, and monitor capacity.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-4">
+                    {userPermissions.room_explorer ? (
+                      <button
+                        onClick={() => setActiveTab('room_explorer')}
+                        className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Explore Rooms</span>
+                        <span>→</span>
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 px-3 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 text-slate-500 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Clearance Required</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 5. Room Pinning */}
+                <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${
+                  userPermissions.room_pinning 
+                    ? 'bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-900/50 hover:shadow-lg' 
+                    : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/80 opacity-60'
+                }`}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                        <Pin className="w-5 h-5" />
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        userPermissions.room_pinning ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}>
+                        {userPermissions.room_pinning ? 'GRANTED' : 'RESTRICTED'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-white">Room Pinning Protocol</h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 leading-relaxed">
+                        Dispatch sticky announcements, guidelines, and priority notices to room headers.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-4">
+                    {userPermissions.room_pinning ? (
+                      <button
+                        onClick={() => setActiveTab('pinning')}
+                        className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Launch Pinning Hub</span>
+                        <span>→</span>
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 px-3 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 text-slate-500 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Clearance Required</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 6. Latency & Diagnostics */}
+                <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${
+                  userPermissions.latency_diagnostics 
+                    ? 'bg-white dark:bg-slate-900 border-teal-200 dark:border-teal-900/50 hover:shadow-lg' 
+                    : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/80 opacity-60'
+                }`}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+                        <Sliders className="w-5 h-5" />
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        userPermissions.latency_diagnostics ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}>
+                        {userPermissions.latency_diagnostics ? 'GRANTED' : 'RESTRICTED'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-white">Latency & Diagnostics</h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 leading-relaxed">
+                        Execute database roundtrip latency benchmarks, test network throughput, and run audits.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-4">
+                    {userPermissions.latency_diagnostics ? (
+                      <button
+                        onClick={() => setActiveTab('latency')}
+                        className="w-full py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Run Diagnostics</span>
+                        <span>→</span>
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 px-3 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 text-slate-500 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Clearance Required</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 7. Emergency Maintenance */}
+                <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${
+                  userPermissions.maintenance_control 
+                    ? 'bg-white dark:bg-slate-900 border-rose-200 dark:border-rose-900/50 hover:shadow-lg' 
+                    : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/80 opacity-60'
+                }`}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                        <Power className="w-5 h-5" />
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        userPermissions.maintenance_control ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}>
+                        {userPermissions.maintenance_control ? 'GRANTED' : 'RESTRICTED'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-white">Site Maintenance</h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 leading-relaxed">
+                        Control system downtime locks and manage whitelisted accounts during maintenance.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-4">
+                    {userPermissions.maintenance_control ? (
+                      <button
+                        onClick={() => setActiveTab('maintenance')}
+                        className="w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Maintenance Station</span>
+                        <span>→</span>
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 px-3 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 text-slate-500 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Root Master Only</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 8. Database Migration */}
+                <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${
+                  userPermissions.database_migration 
+                    ? 'bg-white dark:bg-slate-900 border-cyan-200 dark:border-cyan-900/50 hover:shadow-lg' 
+                    : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/80 opacity-60'
+                }`}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                        <Database className="w-5 h-5" />
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        userPermissions.database_migration ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}>
+                        {userPermissions.database_migration ? 'GRANTED' : 'RESTRICTED'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-white">Database Migration</h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 leading-relaxed">
+                        Replicate and sync data between Cloudflare D1 and Supabase PostgreSQL with zero loss.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-4">
+                    {userPermissions.database_migration ? (
+                      <button
+                        onClick={() => setActiveTab('maintenance')}
+                        className="w-full py-2 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Migration Suite</span>
+                        <span>→</span>
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 px-3 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 text-slate-500 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Root Master Only</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Live Operational Activity Feed */}
+            <div className="hud-card rounded-3xl p-6 space-y-4 border border-[#E3E8E3] dark:border-slate-800">
+              <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+                <h3 className="text-sm font-black text-[#1A3827] dark:text-white flex items-center gap-2">
+                  <Flame className="w-4 h-4 text-amber-500" />
+                  Live Operational Events & Audit Trail
+                </h3>
+                <span className="text-[10px] font-mono text-[#5C6E5C] dark:text-slate-400">
+                  Real-Time Event Stream
+                </span>
+              </div>
+              <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                {auditLogs.slice(0, 6).map((l, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <span className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 text-[10px] font-black font-mono">
+                        {l.action}
+                      </span>
+                      <span className="font-semibold text-[#1A3827] dark:text-slate-200">
+                        {l.details}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-mono shrink-0">
+                      {l.timestamp}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
       )}
 
       {/* Tab: Co-Admins & Permissions Management */}
       {activeTab === 'co_admins' && (
-        <div className="space-y-6 animate-fade-in">
+        !isSuperAdmin ? (
+          renderAccessRestrictedCard('Co-Admin Management', 'Super Admin Root Clearance Required')
+        ) : (
+          <div className="space-y-6 animate-fade-in">
           
           {/* Header Banner */}
           <div className="hud-card rounded-3xl p-6 space-y-4 border border-indigo-500/20">
@@ -2499,7 +3121,16 @@ export default function AdminDashboard({
                                   setEditingPerms({});
                                 } else {
                                   setEditingCoAdminEmail(admin.email);
-                                  setEditingPerms({ ...(admin.permissions || {}) });
+                                  setEditingPerms({
+                                    broadcasts: Boolean(admin.permissions?.broadcasts),
+                                    settlements: Boolean(admin.permissions?.settlements),
+                                    user_management: Boolean(admin.permissions?.user_management),
+                                    room_explorer: Boolean(admin.permissions?.room_explorer),
+                                    room_pinning: Boolean(admin.permissions?.room_pinning),
+                                    latency_diagnostics: Boolean(admin.permissions?.latency_diagnostics),
+                                    maintenance_control: Boolean(admin.permissions?.maintenance_control),
+                                    database_migration: Boolean(admin.permissions?.database_migration),
+                                  });
                                 }
                               }}
                               className="px-3 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-700 text-[11px] font-bold text-[#1A3827] dark:text-slate-200 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all flex items-center gap-1.5"
@@ -2619,11 +3250,15 @@ export default function AdminDashboard({
           </div>
 
         </div>
+        )
       )}
 
       {/* Tab 2: Maintenance Mode Detail */}
       {activeTab === 'maintenance' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
+        !userPermissions.maintenance_control ? (
+          renderAccessRestrictedCard('Site Maintenance Control', 'Maintenance Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
             <div className="space-y-0.5">
               <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
@@ -3058,183 +3693,200 @@ NOTIFY pgrst, 'reload schema';`;
             </div>
           </div>
         </div>
+        )
       )}
 
       {/* Tab 3: Live Broadcasts */}
       {activeTab === 'broadcast' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
-            <div className="space-y-0.5">
-              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                <Radio className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                Real-Time Global Broadcast Banners
-              </h3>
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                Push live floating banner messages to all active user screens across all rooms.
-              </p>
+        !userPermissions.broadcasts ? (
+          renderAccessRestrictedCard('Global Broadcast Communications', 'Broadcast Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                  <Radio className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  Real-Time Global Broadcast Banners
+                </h3>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Push live floating banner messages to all active user screens across all rooms.
+                </p>
+              </div>
+
+              {globalBroadcast?.active && (
+                <button
+                  onClick={handleClearBroadcast}
+                  className="px-3 py-1.5 bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-xs font-bold hover:bg-rose-200 transition-colors"
+                >
+                  Dismiss Active Broadcast
+                </button>
+              )}
             </div>
 
-            {globalBroadcast?.active && (
-              <button
-                onClick={handleClearBroadcast}
-                className="px-3 py-1.5 bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-xs font-bold hover:bg-rose-200 transition-colors"
-              >
-                Remove Current Broadcast
-              </button>
-            )}
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Broadcast Message Content</label>
+                <textarea
+                  value={broadcastText}
+                  onChange={e => setBroadcastText(e.target.value)}
+                  rows={3}
+                  placeholder="Type emergency alert, new feature launch announcement, or maintenance notice..."
+                  className="w-full p-3.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Broadcast Type</label>
+                  <select
+                    value={broadcastType}
+                    onChange={e => setBroadcastType(e.target.value)}
+                    className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                  >
+                    <option value="feature">✨ New Feature Announcement</option>
+                    <option value="alert">⚠️ Urgent System Alert</option>
+                    <option value="maintenance">🔧 Maintenance Warning</option>
+                    <option value="general">📢 General Notice</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Scope</label>
+                  <select
+                    value={broadcastTargetRoom}
+                    onChange={e => setBroadcastTargetRoom(e.target.value)}
+                    className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                  >
+                    <option value="ALL">🌐 All Rooms (System-Wide)</option>
+                    {allSystemRooms.map(r => (
+                      <option key={r.id || r.roomId} value={r.id || r.roomId}>
+                        {r.name || r.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Auto-Expire Duration</label>
+                  <select
+                    value={broadcastDurationDays}
+                    onChange={e => setBroadcastDurationDays(e.target.value)}
+                    className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                  >
+                    <option value="1">1 Day</option>
+                    <option value="2">2 Days (Recommended)</option>
+                    <option value="5">5 Days</option>
+                    <option value="7">7 Days</option>
+                    <option value="0">Until Manually Cleared</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={handlePublishBroadcast}
+                  className="py-3 px-6 bg-purple-700 hover:bg-purple-800 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Publish Live Broadcast</span>
+                </button>
+              </div>
+            </div>
           </div>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Broadcast Type</label>
-                <select
-                  value={broadcastType}
-                  onChange={e => setBroadcastType(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
-                >
-                  <option value="feature">✨ New Feature Release</option>
-                  <option value="announcement">📢 Announcement</option>
-                  <option value="alert">⚠️ Critical Alert</option>
-                  <option value="maintenance">🔧 Maintenance Warning</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Target Audience</label>
-                <select
-                  value={broadcastTargetRoom}
-                  onChange={e => setBroadcastTargetRoom(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
-                >
-                  <option value="ALL">All Active Rooms (Global Broadcast)</option>
-                  {(userRooms || []).map(r => (
-                    <option key={r.roomId} value={r.roomId}>Specific Room: {r.roomName} ({r.roomId})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Validity Duration</label>
-                <select
-                  value={broadcastDurationDays}
-                  onChange={e => setBroadcastDurationDays(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
-                >
-                  <option value="2">⏳ 2 Calendar Days (Default)</option>
-                  <option value="1">⏳ 1 Calendar Day</option>
-                  <option value="3">⏳ 3 Calendar Days</option>
-                  <option value="7">⏳ 7 Calendar Days</option>
-                  <option value="0">∞ Indefinite (Until Cleared)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Broadcast Banner Text</label>
-              <input
-                type="text"
-                placeholder="e.g. Scheduled database maintenance at 2:00 AM UTC. Save your expenses!"
-                value={broadcastText}
-                onChange={e => setBroadcastText(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
-
-            <button
-              onClick={handlePublishBroadcast}
-              className="py-3 px-6 bg-purple-700 hover:bg-purple-800 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2"
-            >
-              <Send className="w-4 h-4" />
-              <span>Publish Live Broadcast</span>
-            </button>
-          </div>
-        </div>
+        )
       )}
 
       {/* Tab 4: Centralized Email Hub */}
       {activeTab === 'email' && (
-        <form onSubmit={handleSendCentralEmail} className="hud-card rounded-3xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
-            <div className="space-y-0.5">
-              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                <Mail className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
-                Centralized Email Dispatcher
-              </h3>
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                Compose and send automated email broadcasts to room members via central mail script relay.
-              </p>
+        !userPermissions.broadcasts ? (
+          renderAccessRestrictedCard('Centralized Email Dispatcher', 'Broadcast Clearance Required')
+        ) : (
+          <form onSubmit={handleSendCentralEmail} className="hud-card rounded-3xl p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
+                  Centralized Email Dispatcher
+                </h3>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Compose and send automated email broadcasts to room members via central mail script relay.
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Recipient Target</label>
-                <select
-                  value={emailRecipientGroup}
-                  onChange={e => setEmailRecipientGroup(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
-                >
-                  <option value="ALL_USERS">All Registered Roommates ({stats.totalUsers})</option>
-                  <option value="CUSTOM">Custom Email Addresses List</option>
-                </select>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Recipient Target</label>
+                  <select
+                    value={emailRecipientGroup}
+                    onChange={e => setEmailRecipientGroup(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
+                  >
+                    <option value="ALL_USERS">All Registered Roommates ({stats.totalUsers})</option>
+                    <option value="CUSTOM">Custom Email Addresses List</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Email Subject</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Important Tallyin System Update"
+                    value={emailSubject}
+                    onChange={e => setEmailSubject(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                </div>
               </div>
 
+              {emailRecipientGroup === 'CUSTOM' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Comma-separated Emails</label>
+                  <input
+                    type="text"
+                    placeholder="user1@example.com, user2@example.com"
+                    value={customEmails}
+                    onChange={e => setCustomEmails(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white"
+                    required
+                  />
+                </div>
+              )}
+
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Email Subject</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Important Tallyin System Update"
-                  value={emailSubject}
-                  onChange={e => setEmailSubject(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Email Body Content</label>
+                <textarea
+                  rows={5}
+                  placeholder="Write your email body message here..."
+                  value={emailBody}
+                  onChange={e => setEmailBody(e.target.value)}
+                  className="w-full p-3.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   required
                 />
               </div>
+
+              <button
+                type="submit"
+                disabled={isSendingEmail}
+                className="py-3 px-6 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs hover:bg-[#255038] dark:hover:bg-[#b7f34c] disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Send className="w-4 h-4" />
+                <span>{isSendingEmail ? 'Dispatching Mail...' : 'Send Broadcast Emails'}</span>
+              </button>
             </div>
-
-            {emailRecipientGroup === 'CUSTOM' && (
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Comma-separated Emails</label>
-                <input
-                  type="text"
-                  placeholder="user1@example.com, user2@example.com"
-                  value={customEmails}
-                  onChange={e => setCustomEmails(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white"
-                  required
-                />
-              </div>
-            )}
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Email Body Content</label>
-              <textarea
-                rows={5}
-                placeholder="Write your email body message here..."
-                value={emailBody}
-                onChange={e => setEmailBody(e.target.value)}
-                className="w-full p-3.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSendingEmail}
-              className="py-3 px-6 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs hover:bg-[#255038] dark:hover:bg-[#b7f34c] disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-2"
-            >
-              <Send className="w-4 h-4" />
-              <span>{isSendingEmail ? 'Dispatching Mail...' : 'Send Broadcast Emails'}</span>
-            </button>
-          </div>
-        </form>
+          </form>
+        )
       )}
 
       {/* Tab 5: Pinned Announcements */}
       {activeTab === 'pinning' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
+        !userPermissions.room_pinning ? (
+          renderAccessRestrictedCard('Room Pinning Protocol', 'Room Pinning Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
             <div className="space-y-0.5">
               <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
@@ -3270,51 +3922,50 @@ NOTIFY pgrst, 'reload schema';`;
                       ))
                     : (userRooms || []).map(r => (
                         <option key={r.roomId} value={r.roomId}>🏠 {r.roomName} ({r.roomId})</option>
-                      ))
-                  }
-                  <option value="CUSTOM">✏️ Type Custom Room Code...</option>
+                      ))}
+                  <option value="CUSTOM">➕ Custom Room ID / Code</option>
                 </select>
-
-                {isCustomRoomInput && (
-                  <input
-                    type="text"
-                    placeholder="Enter Room Code (e.g. DUO-KLIZ-2508)"
-                    value={customPinRoomId}
-                    onChange={e => {
-                      const code = e.target.value.toUpperCase();
-                      setCustomPinRoomId(code);
-                      setTargetPinRoomId(code);
-                    }}
-                    className="w-full mt-2 px-3.5 py-2 bg-white dark:bg-slate-900 border border-amber-400 rounded-xl text-xs font-mono font-bold text-[#1A3827] dark:text-white focus:outline-none"
-                  />
-                )}
               </div>
 
+              {isCustomRoomInput && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Custom Room ID / Code</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. ROOM-ABC-123"
+                    value={customPinRoomId}
+                    onChange={e => setCustomPinRoomId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white uppercase font-mono"
+                  />
+                </div>
+              )}
+
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Pinned By Author Tag</label>
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Author Display Name</label>
                 <input
                   type="text"
+                  placeholder="e.g. Admin / Ops Lead"
                   value={pinAuthor}
                   onChange={e => setPinAuthor(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Announcement Content</label>
-              <input
-                type="text"
-                placeholder="e.g. Rent & WiFi bills due on 5th of every month. Please update your splits!"
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Pinned Announcement Text</label>
+              <textarea
+                rows={3}
+                placeholder="e.g. Please submit all pending food receipts by Sunday evening for monthly settlement."
                 value={pinText}
                 onChange={e => setPinText(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className="w-full p-3.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
 
             <button
               onClick={handlePinMessage}
-              className="py-3 px-6 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2"
+              className="py-3 px-6 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
             >
               <Pin className="w-4 h-4" />
               <span>Pin Announcement to Room</span>
@@ -3322,24 +3973,24 @@ NOTIFY pgrst, 'reload schema';`;
           </div>
 
           {/* Active Pinned Messages List */}
-          {pinnedMessages && Object.keys(pinnedMessages).length > 0 && (
-            <div className="pt-4 border-t border-[#E3E8E3] dark:border-slate-800 space-y-3">
-              <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider">
-                Active Room Pins ({Object.keys(pinnedMessages).length})
-              </h4>
+          {Object.keys(pinnedMessages || {}).length > 0 && (
+            <div className="space-y-3 pt-4 border-t border-[#E3E8E3] dark:border-slate-800">
+              <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-200 uppercase tracking-wider">Active Pinned Messages ({Object.keys(pinnedMessages).length})</h4>
               <div className="space-y-2">
                 {Object.entries(pinnedMessages).map(([rId, pinObj]) => (
-                  <div key={rId} className="p-3 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3 text-xs">
-                    <div className="space-y-0.5 min-w-0">
+                  <div key={rId} className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 flex items-start justify-between gap-3 text-xs">
+                    <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-amber-600 dark:text-amber-400 text-[11px]">{rId}</span>
-                        <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400">• By {pinObj.author}</span>
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-black font-mono">
+                          {rId === 'ALL' ? '🌐 ALL ROOMS' : `ROOM: ${rId}`}
+                        </span>
+                        <span className="text-[10px] text-[#5C6E5C] dark:text-slate-400">by {pinObj.author || 'Admin'}</span>
                       </div>
-                      <p className="font-bold text-[#1A3827] dark:text-slate-200 truncate">{pinObj.text}</p>
+                      <p className="font-semibold text-[#1A3827] dark:text-slate-200 break-words">{pinObj.text}</p>
                     </div>
                     <button
                       onClick={() => handleRemovePin(rId)}
-                      className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl shrink-0"
+                      className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl shrink-0 cursor-pointer"
                       title="Unpin"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -3350,11 +4001,15 @@ NOTIFY pgrst, 'reload schema';`;
             </div>
           )}
         </div>
+        )
       )}
 
       {/* Tab 6: Latency & Throttling */}
       {activeTab === 'latency' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
+        !userPermissions.latency_diagnostics ? (
+          renderAccessRestrictedCard('Latency & Network Diagnostics', 'Diagnostics Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
             <div className="space-y-0.5">
               <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
@@ -3418,11 +4073,15 @@ NOTIFY pgrst, 'reload schema';`;
             </div>
           </div>
         </div>
+        )
       )}
 
       {/* Tab: User Accounts Directory */}
       {activeTab === 'user_directory' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
+        !userPermissions.user_management ? (
+          renderAccessRestrictedCard('User Accounts Directory', 'User Governance Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
             <div className="space-y-0.5">
               <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
@@ -3485,53 +4144,57 @@ NOTIFY pgrst, 'reload schema';`;
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={() => {
-                            setEmailRecipientGroup('CUSTOM');
-                            setCustomEmails(u.email);
-                            setActiveTab('email');
-                            if (triggerToast) triggerToast(`Composing email to ${u.email}`);
-                          }}
-                          className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700"
-                          title="Send Mail"
-                        >
-                          <Mail className="w-3.5 h-3.5" />
-                        </button>
-
-                        {isBanned ? (
-                          <button
-                            onClick={() => handleUnbanUser(userTarget)}
-                            className="px-2.5 py-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black hover:bg-emerald-200 transition-colors flex items-center gap-1"
-                            title="Unban User Account"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                            <span>Unban</span>
-                          </button>
-                        ) : (
                           <button
                             onClick={() => {
-                              setBanEmailInput(userTarget);
-                              handleBanUser(userTarget, banReasonInput, { name: u.name, id: u.id });
+                              setEmailRecipientGroup('CUSTOM');
+                              setCustomEmails(u.email);
+                              setActiveTab('email');
+                              if (triggerToast) triggerToast(`Composing email to ${u.email}`);
                             }}
-                            className="px-2.5 py-1.5 bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-[10px] font-black hover:bg-rose-200 transition-colors flex items-center gap-1"
-                            title="Ban & Block User Account"
+                            className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700"
+                            title="Send Mail"
                           >
-                            <Ban className="w-3.5 h-3.5" />
-                            <span>Ban</span>
+                            <Mail className="w-3.5 h-3.5" />
                           </button>
-                        )}
+
+                          {isBanned ? (
+                            <button
+                              onClick={() => handleUnbanUser(userTarget)}
+                              className="px-2.5 py-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black hover:bg-emerald-200 transition-colors flex items-center gap-1"
+                              title="Unban User Account"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                              <span>Unban</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setBanEmailInput(userTarget);
+                                handleBanUser(userTarget, banReasonInput, { name: u.name, id: u.id });
+                              }}
+                              className="px-2.5 py-1.5 bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-[10px] font-black hover:bg-rose-200 transition-colors flex items-center gap-1"
+                              title="Ban & Block User Account"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Ban</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
-            )}
+                    );
+                  })
+              )}
+            </div>
           </div>
-        </div>
+        )
       )}
 
       {/* Tab: Banned Accounts Management */}
       {activeTab === 'banned_accounts' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
+        !userPermissions.user_management ? (
+          renderAccessRestrictedCard('Banned Accounts & Appeals', 'User Governance Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
             <div className="space-y-0.5">
               <h3 className="text-base font-black text-rose-600 dark:text-rose-400 flex items-center gap-2">
@@ -3676,6 +4339,7 @@ NOTIFY pgrst, 'reload schema';`;
             )}
           </div>
         </div>
+        )
       )}
 
       {/* Tab: Security Audit Logs */}
@@ -3774,7 +4438,10 @@ NOTIFY pgrst, 'reload schema';`;
 
       {/* Tab: Financial Audit */}
       {activeTab === 'finance_audit' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
+        !userPermissions.settlements ? (
+          renderAccessRestrictedCard('Platform Financial Ledger', 'Financial Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
             <div className="space-y-0.5">
               <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
@@ -3851,11 +4518,15 @@ NOTIFY pgrst, 'reload schema';`;
             </div>
           </div>
         </div>
+        )
       )}
 
       {/* Tab: Settle Payments */}
       {activeTab === 'settlements' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
+        !userPermissions.settlements ? (
+          renderAccessRestrictedCard('Room Settlement Center', 'Financial Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
           
           {/* Header & Room Selector */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4 gap-4">
@@ -4254,11 +4925,15 @@ NOTIFY pgrst, 'reload schema';`;
             </div>
           )}
         </div>
+        )
       )}
 
       {/* Tab: System Rooms Directory */}
       {activeTab === 'room_explorer' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
+        !userPermissions.room_explorer ? (
+          renderAccessRestrictedCard('System Rooms Directory', 'Room Explorer Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
             <div className="space-y-0.5">
               <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
@@ -4310,6 +4985,7 @@ NOTIFY pgrst, 'reload schema';`;
             )}
           </div>
         </div>
+        )
       )}
 
       {/* Tab: Security Audit Logs & Log Exporter */}
@@ -4413,7 +5089,10 @@ NOTIFY pgrst, 'reload schema';`;
 
       {/* Tab: Chaos & Feature Flags */}
       {activeTab === 'chaos_tester' && (
-        <div className="hud-card rounded-3xl p-6 space-y-6">
+        !isSuperAdmin ? (
+          renderAccessRestrictedCard('Chaos Engine & Feature Flags', 'Super Admin Root Clearance Required')
+        ) : (
+          <div className="hud-card rounded-3xl p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
             <div className="space-y-0.5">
               <h3 className="text-base font-black text-rose-600 dark:text-rose-400 flex items-center gap-2">
@@ -4521,6 +5200,7 @@ NOTIFY pgrst, 'reload schema';`;
             </div>
           </div>
         </div>
+        )
       )}
     </div>
   );
