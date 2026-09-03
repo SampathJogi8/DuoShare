@@ -1307,6 +1307,52 @@ export default function AdminDashboard({
       system_settings:'key',
     };
 
+    // Row sanitizer — cleans stringified 'null' / 'undefined' from Cloudflare D1 exports
+    const sanitizeRow = (row, tbl) => {
+      const cleaned = { ...row };
+      for (const [k, v] of Object.entries(cleaned)) {
+        if (v === 'null' || v === 'undefined') {
+          cleaned[k] = null;
+        }
+      }
+      if (tbl === 'rooms') {
+        if (cleaned.monthly_budget === null || cleaned.monthly_budget === undefined || isNaN(Number(cleaned.monthly_budget))) {
+          cleaned.monthly_budget = 0;
+        } else {
+          cleaned.monthly_budget = Number(cleaned.monthly_budget);
+        }
+      }
+      if (tbl === 'receipts') {
+        if (cleaned.rotation === null || cleaned.rotation === undefined || isNaN(Number(cleaned.rotation))) {
+          cleaned.rotation = 0;
+        } else {
+          cleaned.rotation = Number(cleaned.rotation);
+        }
+        if (cleaned.amount === null || cleaned.amount === undefined || isNaN(Number(cleaned.amount))) {
+          cleaned.amount = 0;
+        } else {
+          cleaned.amount = Number(cleaned.amount);
+        }
+      }
+      if (tbl === 'transactions') {
+        if (cleaned.amount !== null && cleaned.amount !== undefined) {
+          cleaned.amount = Number(cleaned.amount) || 0;
+        }
+        if (typeof cleaned.is_shared === 'string') {
+          cleaned.is_shared = cleaned.is_shared !== '0' && cleaned.is_shared !== 'false';
+        }
+        if (typeof cleaned.is_edited === 'string') {
+          cleaned.is_edited = cleaned.is_edited === '1' || cleaned.is_edited === 'true';
+        }
+      }
+      if (tbl === 'activity_logs') {
+        if (cleaned.id !== null && cleaned.id !== undefined) {
+          cleaned.id = Number(cleaned.id);
+        }
+      }
+      return cleaned;
+    };
+
     // Batch upsert helper — splits rows into chunks of 100
     const batchUpsert = async (tbl, rows) => {
       const key = CONFLICT_KEY[tbl] || 'id';
@@ -1362,8 +1408,9 @@ export default function AdminDashboard({
           continue;
         }
 
-        addLog(`🔄 ${tbl}: writing ${rows.length} rows…`);
-        const { error, inserted } = await batchUpsert(tbl, rows);
+        const cleanRows = rows.map(r => sanitizeRow(r, tbl));
+        addLog(`🔄 ${tbl}: writing ${cleanRows.length} sanitized rows…`);
+        const { error, inserted } = await batchUpsert(tbl, cleanRows);
 
         if (error) {
           addLog(`❌ ${tbl}: ${error.message}`);
