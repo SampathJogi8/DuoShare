@@ -516,26 +516,22 @@ export default function AdminDashboard({
     }
   }, []);
 
-  // Fetch Database System Stats & Room List
+  // Fetch Database System Stats & Room List from D1 export snapshot
   const fetchSystemStats = useCallback(async () => {
     try {
-      const [roomsRes, usersRes, txRes, receiptsRes, roomListRes] = await Promise.allSettled([
-        supabase.from('rooms').select('id', { count: 'exact', head: true }),
-        supabase.from('members').select('uid', { count: 'exact', head: true }),
-        supabase.from('transactions').select('id', { count: 'exact', head: true }),
-        supabase.from('receipts').select('id', { count: 'exact', head: true }),
-        supabase.from('rooms').select('id, name')
-      ]);
-
+      const res = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/export-all-data');
+      if (!res.ok) throw new Error('Export failed');
+      const json = await res.json();
+      if (!json || !json.data) throw new Error('No data');
+      const d = json.data;
       setStats({
-        totalRooms: roomsRes.status === 'fulfilled' ? roomsRes.value.count || 0 : 0,
-        totalUsers: usersRes.status === 'fulfilled' ? usersRes.value.count || 0 : 0,
-        totalTransactions: txRes.status === 'fulfilled' ? txRes.value.count || 0 : 0,
-        totalReceipts: receiptsRes.status === 'fulfilled' ? receiptsRes.value.count || 0 : 0
+        totalRooms:        d.rooms?.length || 0,
+        totalUsers:        d.users?.length || 0,
+        totalTransactions: d.transactions?.length || 0,
+        totalReceipts:     d.receipts?.length || 0,
       });
-
-      if (roomListRes.status === 'fulfilled' && roomListRes.value.data) {
-        const mapped = roomListRes.value.data.map(r => ({ roomId: r.id, roomName: r.name || r.id }));
+      if (Array.isArray(d.rooms)) {
+        const mapped = d.rooms.map(r => ({ roomId: r.id, roomName: r.name || r.id }));
         setAllSystemRooms(mapped);
       }
     } catch (e) {
@@ -1903,6 +1899,86 @@ export default function AdminDashboard({
                 <Power className="w-4 h-4" />
                 <span>{isSystemMaintenanceActive ? 'Deactivate Maintenance (Site LIVE)' : 'ACTIVATE MAINTENANCE (Site DOWN)'}</span>
               </button>
+            </div>
+
+            {/* Maintenance Page Feature List Editor */}
+            <div className="border-t border-[#E3E8E3] dark:border-slate-800 pt-6 space-y-4">
+              <div className="space-y-1">
+                <h4 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  Maintenance Page Feature Highlights
+                </h4>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  Edit the feature rows shown on the maintenance screen. Each row shows an icon, label, and muted description.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {(maintenanceFeatures || []).map((feat, idx) => (
+                  <div key={idx} className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2.5">
+                    <select
+                      value={feat.icon}
+                      onChange={e => {
+                        const next = [...maintenanceFeatures];
+                        next[idx] = { ...next[idx], icon: e.target.value };
+                        if (setMaintenanceFeatures) setMaintenanceFeatures(next);
+                        localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
+                      }}
+                      className="text-[11px] bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-lg px-2 py-1 text-[#1A3827] dark:text-slate-200 focus:outline-none shrink-0 w-[115px]"
+                    >
+                      <option value="bolt">⚡ Bolt</option>
+                      <option value="zap">⚡ Zap</option>
+                      <option value="palette">🎨 Palette</option>
+                      <option value="sparkles">✨ Sparkles</option>
+                      <option value="shield-check">🛡️ Shield</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={feat.label}
+                      onChange={e => {
+                        const next = [...maintenanceFeatures];
+                        next[idx] = { ...next[idx], label: e.target.value };
+                        if (setMaintenanceFeatures) setMaintenanceFeatures(next);
+                        localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
+                      }}
+                      placeholder="Label"
+                      className="flex-1 text-[11px] bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-lg px-2 py-1 text-[#1A3827] dark:text-slate-200 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={feat.sub}
+                      onChange={e => {
+                        const next = [...maintenanceFeatures];
+                        next[idx] = { ...next[idx], sub: e.target.value };
+                        if (setMaintenanceFeatures) setMaintenanceFeatures(next);
+                        localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
+                      }}
+                      placeholder="Muted description"
+                      className="flex-1 text-[11px] bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-lg px-2 py-1 text-[#5C6E5C] dark:text-slate-400 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = maintenanceFeatures.filter((_, i) => i !== idx);
+                        if (setMaintenanceFeatures) setMaintenanceFeatures(next);
+                        localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
+                      }}
+                      className="shrink-0 text-rose-500 hover:text-rose-700 text-base font-bold p-1 rounded transition-colors"
+                      title="Remove row"
+                    >×</button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = [...(maintenanceFeatures || []), { icon: 'bolt', label: 'New feature', sub: 'Short description' }];
+                    if (setMaintenanceFeatures) setMaintenanceFeatures(next);
+                    localStorage.setItem('tallyin_maintenance_features', JSON.stringify(next));
+                  }}
+                  className="w-full py-2 border border-dashed border-[#E3E8E3] dark:border-slate-700 rounded-xl text-[11px] text-[#5C6E5C] dark:text-slate-400 hover:border-emerald-500 hover:text-emerald-600 transition-colors"
+                >
+                  + Add row
+                </button>
+              </div>
             </div>
 
             {/* Allowed Testing Accounts for Maintenance Bypass */}
