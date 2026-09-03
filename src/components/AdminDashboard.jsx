@@ -625,6 +625,8 @@ export default function AdminDashboard({
     }
   }, []);
 
+  const handlePing = measurePing;
+
   // Fetch Database System Stats & Room List from D1 export snapshot
   const fetchSystemStats = useCallback(async () => {
     try {
@@ -2734,7 +2736,7 @@ export default function AdminDashboard({
                 <div className="flex items-center justify-between pt-1 text-[11px] text-[#5C6E5C] dark:text-slate-400">
                   <span>Edge Core Latency</span>
                   <button
-                    onClick={handlePing}
+                    onClick={measurePing}
                     disabled={isPinging}
                     className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
                   >
