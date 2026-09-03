@@ -3468,14 +3468,18 @@ export default function App() {
 
       if (error) throw error;
       
-      const mappedMembers = (data || []).map(m => ({
-        uid: m.uid,
-        nickname: m.nickname,
-        photoURL: m.photo_url || '',
-        email: m.email || '',
-        individualBudget: Number(m.individual_budget) || 2000,
-        joinedAt: m.joined_at
-      }));
+      const mappedMembers = (data || []).map(m => {
+        const rawBudget = m.individual_budget !== null && m.individual_budget !== undefined ? Number(m.individual_budget) : null;
+        const fallbackQuota = Math.round((monthlyBudget || 3000) / Math.max(1, (data || []).length));
+        return {
+          uid: m.uid,
+          nickname: m.nickname,
+          photoURL: m.photo_url || '',
+          email: m.email || '',
+          individualBudget: (rawBudget !== null && !isNaN(rawBudget) && rawBudget > 0) ? rawBudget : fallbackQuota,
+          joinedAt: m.joined_at
+        };
+      });
       
       // Robust membership validation (matching by UID, Email, or Nickname)
       const currentEmail = user?.email?.toLowerCase().trim();
@@ -3511,7 +3515,7 @@ export default function App() {
             nickname: userNickname && userNickname !== 'You' ? userNickname : (user.user_metadata?.full_name || 'Room Admin'),
             photoURL: user.user_metadata?.avatar_url || '',
             email: user.email || '',
-            individualBudget: Number(personalCap) || 1000,
+            individualBudget: Number(personalCap) || Math.round((monthlyBudget || 3000) / 2),
             joinedAt: new Date().toISOString()
           };
           mappedMembers.push(selfMember);
@@ -5206,14 +5210,20 @@ export default function App() {
       finalBalances = quotaBalances;
     }
 
-    const totalRoomBudgetPool = members.reduce((sum, m) => sum + (Number(m.individualBudget) || 2000), 0);
+    const activeRoomBudget = Number(monthlyBudget) || 3000;
+    const fallbackQuotaShare = Math.round(activeRoomBudget / Math.max(1, members.length));
+    const totalRoomBudgetPool = members.reduce((sum, m) => sum + (Number(m.individualBudget) || fallbackQuotaShare), 0);
+    
     const memberBudgetStats = members.map(m => {
       const spent = memberOutofPocket[m.uid] || 0;
-      const budget = Number(m.individualBudget) || 2000;
+      const budget = (m.individualBudget !== null && m.individualBudget !== undefined && Number(m.individualBudget) > 0)
+        ? Number(m.individualBudget)
+        : fallbackQuotaShare;
       const quotaUsed = Math.min(spent, budget);
       const excess = Math.max(0, spent - budget);
       const remaining = Math.max(0, budget - spent);
       const pct = budget > 0 ? Math.min(100, Math.round((spent / budget) * 100)) : 0;
+      const roomPct = activeRoomBudget > 0 ? Math.min(100, Math.round((spent / activeRoomBudget) * 100)) : 0;
       return {
         ...m,
         spent: Math.round(spent * 100) / 100,
@@ -5222,6 +5232,7 @@ export default function App() {
         excess: Math.round(excess * 100) / 100,
         remaining: Math.round(remaining * 100) / 100,
         pct,
+        roomPct,
         isExhausted: spent >= budget
       };
     });
@@ -12469,7 +12480,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                                     {formatINR(m.remaining)} remaining
                                   </span>
                                 )}
-                                <span className="font-bold text-slate-500">{m.pct}% used</span>
+                                <div className="flex items-center gap-1.5 font-bold text-slate-500 dark:text-slate-400">
+                                  <span>{m.pct}% quota</span>
+                                  <span>•</span>
+                                  <span className="text-[#1A3827] dark:text-[#A3E635]">{m.roomPct}% room</span>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -13948,24 +13963,29 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   }
 
   // ==========================================
-  // SETTLE UP MODAL (Ultra-Minimalist 1-Tap Single Payments)
+  // SETTLE UP MODAL (Role-Based Math & Pairwise Settlement Engine)
   // ==========================================
   function renderSettleModal() {
     const currentUid = auth.currentUser?.uid || 'anonymous';
     const myBalance = computedStats.currentUserBalance || 0;
+    const isHostOrCoHost = (roomCreatedBy && user && roomCreatedBy === user.id) || (roomCoHostUid && user && roomCoHostUid === user.id);
+    const totalGroupSpend = computedStats.totalSpend || 0;
+    const fairSharePerMember = members.length > 0 ? Math.round(totalGroupSpend / members.length) : 0;
 
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in">
-        <div className="bg-white dark:bg-[#0E1315] w-full max-w-md rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-[#1E282C] max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300">
+        <div className="bg-white dark:bg-[#0E1315] w-full max-w-lg rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-[#1E282C] max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300">
           
-          {/* Minimal Header */}
+          {/* Header */}
           <div className="px-6 py-5 border-b border-[#E3E8E3]/60 dark:border-[#1E282C] flex justify-between items-center bg-[#F4F7F4]/40 dark:bg-[#161D20]/40 shrink-0">
             <div>
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-pulse"></span>
-                <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100 tracking-tight">Settle Up</h3>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-pulse"></span>
+                <h3 className="font-black text-lg text-[#1A3827] dark:text-slate-100 tracking-tight">Settle Room Balances</h3>
               </div>
-              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium mt-0.5">1-Tap instant roommate payments</p>
+              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium mt-0.5">
+                Automated proportional debt resolution &amp; payments
+              </p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -13974,7 +13994,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 myBalance < 0 ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800' :
                 'bg-slate-100 dark:bg-slate-800 text-slate-500'
               }`}>
-                {myBalance > 0 ? `+${formatINR(myBalance)}` : myBalance < 0 ? `-${formatINR(Math.abs(myBalance))}` : 'Settled'}
+                {myBalance > 0 ? `You are owed +${formatINR(myBalance)}` : myBalance < 0 ? `You owe -${formatINR(Math.abs(myBalance))}` : 'Settled'}
               </span>
               <button 
                 onClick={() => setIsSettleModalOpen(false)} 
@@ -13986,146 +14006,147 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           {/* Modal Body */}
-          <div className="p-6 space-y-5 overflow-y-auto flex-1">
+          <div className="p-6 space-y-5 overflow-y-auto flex-1 text-left">
             
-            {/* 1-Tap Single Roommate Settlement Cards */}
+            {/* Financial Overview Card */}
+            <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 grid grid-cols-3 gap-2 text-center">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Total Spend</p>
+                <p className="text-xs sm:text-sm font-black text-[#1A3827] dark:text-slate-100 font-mono mt-0.5">{formatINR(totalGroupSpend)}</p>
+              </div>
+              <div className="border-x border-[#E3E8E3] dark:border-slate-800">
+                <p className="text-[9px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Roommates</p>
+                <p className="text-xs sm:text-sm font-black text-[#1A3827] dark:text-slate-100 font-mono mt-0.5">{members.length} Members</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Fair Share</p>
+                <p className="text-xs sm:text-sm font-black text-emerald-700 dark:text-[#A3E635] font-mono mt-0.5">{formatINR(fairSharePerMember)}/ea</p>
+              </div>
+            </div>
+
+            {/* Suggested Transfers / Debt Plan */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">ROOMMATE BALANCES</span>
-                <span className="text-[9px] font-bold text-[#A3E635] uppercase">1-TAP PAY</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">
+                  OPTIMAL SETTLEMENT PLAN ({suggestedTransfers.length})
+                </span>
+                {!isHostOrCoHost && (
+                  <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-900">
+                    👁️ View-Only (Admin settles)
+                  </span>
+                )}
               </div>
 
-              {members.length <= 1 ? (
-                <div className="text-center py-6 text-slate-400 text-xs font-semibold">
-                  No roommates to settle with yet.
+              {suggestedTransfers.length === 0 ? (
+                <div className="text-center py-6 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 text-emerald-800 dark:text-emerald-300 text-xs font-bold">
+                  🎉 All room members are completely settled up! No outstanding balances.
                 </div>
               ) : (
-                members.map(m => {
-                  if (m.uid === currentUid) return null;
+                <div className="space-y-2.5">
+                  {suggestedTransfers.map((t, idx) => {
+                    const isPayer = t.fromUid === currentUid;
+                    const isReceiver = t.toUid === currentUid;
+                    const canExecute = isHostOrCoHost || isPayer || isReceiver;
 
-                  // Determine transfer relationship between current user and roommate m from suggestedTransfers
-                  const transferFromMToMe = suggestedTransfers.find(t => t.fromUid === m.uid && t.toUid === currentUid);
-                  const transferFromMeToM = suggestedTransfers.find(t => t.fromUid === currentUid && t.toUid === m.uid);
+                    return (
+                      <div 
+                        key={idx} 
+                        className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-xl bg-[#1A3827]/10 dark:bg-[#A3E635]/10 flex items-center justify-center text-sm font-black shrink-0">
+                            💸
+                          </div>
+                          <div className="min-w-0 text-xs">
+                            <p className="font-bold text-[#1A3827] dark:text-slate-100">
+                              <span className="text-rose-600 dark:text-rose-400 font-extrabold">{isPayer ? 'You' : t.fromName}</span>
+                              <span className="text-[#5C6E5C] dark:text-slate-400 font-normal"> pays </span>
+                              <span className="text-emerald-700 dark:text-[#A3E635] font-extrabold">{isReceiver ? 'You' : t.toName}</span>
+                            </p>
+                            <p className="text-[10px] font-mono text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">
+                              Amount: <strong className="text-[#1A3827] dark:text-white">{formatINR(t.amount)}</strong>
+                            </p>
+                          </div>
+                        </div>
 
-                  const owesMe = Boolean(transferFromMToMe && transferFromMToMe.amount > 0.01);
-                  const iOwe = Boolean(transferFromMeToM && transferFromMeToM.amount > 0.01);
-                  const settleAmt = owesMe ? transferFromMToMe.amount : iOwe ? transferFromMeToM.amount : 0;
+                        <div className="shrink-0 flex items-center gap-2">
+                          {canExecute ? (
+                            <button
+                              type="button"
+                              onClick={() => executeQuickSettle(t.fromUid, t.toUid, t.amount)}
+                              className="w-full sm:w-auto px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs rounded-xl hover:opacity-90 active:scale-95 transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>{isPayer ? `I Paid ${formatINR(t.amount)}` : isReceiver ? `Mark ${formatINR(t.amount)} Paid` : `Settle ${formatINR(t.amount)}`}</span>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">Admin settlement required</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-                  return (
-                    <div 
-                      key={m.uid} 
-                      className="hud-card rounded-3xl p-4.5 flex items-center justify-between gap-3 shadow-md hover:border-emerald-500/50 transition-all duration-300"
+            {/* Custom Partial Amount Toggle (Host & Co-Host Only) */}
+            {isHostOrCoHost && (
+              <div className="pt-2 border-t border-[#E3E8E3]/60 dark:border-[#1E282C]">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomSettle(!showCustomSettle)}
+                  className="w-full text-center py-2 text-xs font-extrabold text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-[#A3E635] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>{showCustomSettle ? '✕ Hide Custom Settlement' : '⚙️ Custom Partial Settlement'}</span>
+                </button>
+
+                {showCustomSettle && (
+                  <form onSubmit={handleRecordPayment} className="mt-3 space-y-3 p-4 rounded-2xl bg-[#F4F7F4]/60 dark:bg-[#161D20] border border-[#E3E8E3] dark:border-[#1E282C] animate-fade-in">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block uppercase">Payer (Who Paid)</label>
+                        <select
+                          value={settlePayer}
+                          onChange={e => setSettlePayer(e.target.value)}
+                          className="w-full px-2.5 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white"
+                        >
+                          {members.map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block uppercase">Receiver (Who Received)</label>
+                        <select
+                          value={settleReceiver}
+                          onChange={e => setSettleReceiver(e.target.value)}
+                          className="w-full px-2.5 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white"
+                        >
+                          {members.filter(m => m.uid !== settlePayer).map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block uppercase">Amount (₹)</label>
+                      <input
+                        type="number" min="0.01" step="0.01" required
+                        placeholder="Enter amount..."
+                        value={settleAmount}
+                        onChange={e => setSettleAmount(e.target.value)}
+                        className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {/* Avatar */}
-                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black shrink-0 shadow-inner ${
-                          owesMe ? 'bg-emerald-500/10 text-emerald-600 dark:text-[#A3E635] border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]' :
-                          iOwe ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 shadow-[0_0_12px_rgba(244,63,94,0.2)]' :
-                          'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                        }`}>
-                          {m.nickname.charAt(0).toUpperCase()}
-                        </div>
-
-                        <div className="min-w-0">
-                          <h4 className="font-extrabold text-sm text-[#0F172A] dark:text-slate-100 truncate">{m.nickname}</h4>
-                          <p className={`text-[11px] font-bold truncate mt-0.5 ${
-                            owesMe ? 'text-emerald-600 dark:text-[#A3E635]' :
-                            iOwe ? 'text-rose-500' :
-                            'text-slate-400'
-                          }`}>
-                            {owesMe ? `Owes you ${formatINR(settleAmt)}` : iOwe ? `You owe ${formatINR(settleAmt)}` : 'All settled up'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* 1-Tap Action Buttons */}
-                      <div className="shrink-0">
-                        {iOwe ? (
-                          <button
-                            type="button"
-                            onClick={() => executeQuickSettle(currentUid, m.uid, settleAmt)}
-                            className="px-4 py-2.5 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs rounded-2xl hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/20 cursor-pointer flex items-center gap-1.5"
-                          >
-                            <Zap className="w-3.5 h-3.5 fill-current text-[#A3E635] dark:text-slate-950" />
-                            <span>Pay {formatINR(settleAmt)}</span>
-                          </button>
-                        ) : owesMe ? (
-                          <button
-                            type="button"
-                            onClick={() => executeQuickSettle(m.uid, currentUid, settleAmt)}
-                            className="px-4 py-2.5 bg-emerald-600 dark:bg-emerald-500 text-white dark:text-slate-950 font-black text-xs rounded-2xl hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-600/20 cursor-pointer flex items-center gap-1.5"
-                          >
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            <span>Mark {formatINR(settleAmt)} Paid</span>
-                          </button>
-                        ) : (
-                          <span className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-bold rounded-xl">
-                            Settled
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Custom Amount Toggle Button */}
-            <div className="pt-2 border-t border-[#E3E8E3]/60 dark:border-[#1E282C]">
-              <button
-                type="button"
-                onClick={() => setShowCustomSettle(!showCustomSettle)}
-                className="w-full text-center py-2 text-xs font-extrabold text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-[#A3E635] transition-colors flex items-center justify-center gap-1.5"
-              >
-                <span>{showCustomSettle ? '✕ Hide Custom Amount' : '⚙️ Custom Partial Amount'}</span>
-              </button>
-
-              {/* Collapsible Custom Amount Form */}
-              {showCustomSettle && (
-                <form onSubmit={handleRecordPayment} className="mt-3 space-y-3 p-4 rounded-2xl bg-[#F4F7F4]/60 dark:bg-[#161D20] border border-[#E3E8E3] dark:border-[#1E282C] animate-fade-in">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block uppercase">Payer</label>
-                      <select
-                        value={settlePayer}
-                        onChange={e => setSettlePayer(e.target.value)}
-                        className="w-full px-2.5 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white"
-                      >
-                        {members.map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block uppercase">Receiver</label>
-                      <select
-                        value={settleReceiver}
-                        onChange={e => setSettleReceiver(e.target.value)}
-                        className="w-full px-2.5 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white"
-                      >
-                        {members.filter(m => m.uid !== settlePayer).map(m => <option key={m.uid} value={m.uid}>{m.nickname}{m.uid === currentUid ? ' (You)' : ''}</option>)}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block uppercase">Amount (₹)</label>
-                    <input
-                      type="number" min="0.01" step="0.01" required
-                      placeholder="Enter custom amount..."
-                      value={settleAmount}
-                      onChange={e => setSettleAmount(e.target.value)}
-                      className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-extrabold text-xs rounded-xl shadow-sm"
-                  >
-                    Record Custom Settlement
-                  </button>
-                </form>
-              )}
-            </div>
+                      Record Custom Settlement
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
 
           </div>
         </div>
