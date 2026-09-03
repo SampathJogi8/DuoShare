@@ -57,7 +57,8 @@ import {
   ShieldAlert,
   Pin,
   Radio,
-  Activity
+  Activity,
+  Lock
 } from 'lucide-react';
 
 import { supabase } from './supabase';
