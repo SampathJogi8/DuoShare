@@ -2900,21 +2900,114 @@ export default function AdminDashboard({
                 <button
                   type="button"
                   onClick={() => {
-                    const sql = `-- Tallyin: Supabase Schema (matches Cloudflare D1)
-CREATE TABLE IF NOT EXISTS public.users (id TEXT PRIMARY KEY, uid TEXT, email TEXT, name TEXT, avatar_url TEXT, role TEXT DEFAULT 'member', room_id TEXT, login_code TEXT, updated_at TIMESTAMPTZ DEFAULT NOW(), created_at TIMESTAMPTZ DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS public.rooms (id TEXT PRIMARY KEY, name TEXT, pin TEXT, created_by TEXT, monthly_budget REAL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW(), max_members INTEGER DEFAULT 6);
-CREATE TABLE IF NOT EXISTS public.members (id TEXT PRIMARY KEY, room_id TEXT, uid TEXT, nickname TEXT, photo_url TEXT, email TEXT, role TEXT DEFAULT 'member', joined_at TIMESTAMPTZ DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS public.transactions (id TEXT PRIMARY KEY, room_id TEXT, payer_id TEXT, amount REAL DEFAULT 0, title TEXT, category TEXT, date TEXT, time TEXT, paid_by TEXT, paid_by_uid TEXT, is_shared BOOLEAN DEFAULT TRUE, is_edited BOOLEAN DEFAULT FALSE, split_type TEXT DEFAULT 'equal', split TEXT, splits TEXT, created_by TEXT, image_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS public.receipts (id TEXT PRIMARY KEY, transaction_id TEXT, file_url TEXT, bg_class TEXT, rotation REAL DEFAULT 0, image_url TEXT, title TEXT, amount REAL DEFAULT 0, category TEXT, date TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), room_id TEXT);
-CREATE TABLE IF NOT EXISTS public.activity_logs (id BIGINT PRIMARY KEY, room_id TEXT, user_id TEXT, user_name TEXT, action TEXT, details TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS public.system_settings (key TEXT PRIMARY KEY, value TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
+                    const sql = `-- Tallyin: Clean Schema Recreation (Matches Cloudflare D1 Exactly)
+-- 1. Drop old outdated tables in Supabase (Cloudflare D1 has all 1602 rows safe)
+DROP TABLE IF EXISTS public.activity_logs CASCADE;
+DROP TABLE IF EXISTS public.receipts CASCADE;
+DROP TABLE IF EXISTS public.transactions CASCADE;
+DROP TABLE IF EXISTS public.members CASCADE;
+DROP TABLE IF EXISTS public.rooms CASCADE;
+DROP TABLE IF EXISTS public.users CASCADE;
+DROP TABLE IF EXISTS public.system_settings CASCADE;
+
+-- 2. Create tables with exact columns matching Cloudflare D1
+CREATE TABLE public.users (
+  id TEXT PRIMARY KEY,
+  uid TEXT,
+  email TEXT,
+  name TEXT,
+  avatar_url TEXT,
+  role TEXT DEFAULT 'member',
+  room_id TEXT,
+  login_code TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.rooms (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  pin TEXT,
+  created_by TEXT,
+  monthly_budget REAL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  max_members INTEGER DEFAULT 6
+);
+
+CREATE TABLE public.members (
+  id TEXT PRIMARY KEY,
+  room_id TEXT,
+  uid TEXT,
+  nickname TEXT,
+  photo_url TEXT,
+  email TEXT,
+  role TEXT DEFAULT 'member',
+  joined_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.transactions (
+  id TEXT PRIMARY KEY,
+  room_id TEXT,
+  payer_id TEXT,
+  amount REAL DEFAULT 0,
+  title TEXT,
+  category TEXT,
+  date TEXT,
+  time TEXT,
+  paid_by TEXT,
+  paid_by_uid TEXT,
+  is_shared BOOLEAN DEFAULT TRUE,
+  is_edited BOOLEAN DEFAULT FALSE,
+  split_type TEXT DEFAULT 'equal',
+  split TEXT,
+  splits TEXT,
+  created_by TEXT,
+  image_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.receipts (
+  id TEXT PRIMARY KEY,
+  transaction_id TEXT,
+  file_url TEXT,
+  bg_class TEXT,
+  rotation REAL DEFAULT 0,
+  image_url TEXT,
+  title TEXT,
+  amount REAL DEFAULT 0,
+  category TEXT,
+  date TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  room_id TEXT
+);
+
+CREATE TABLE public.activity_logs (
+  id BIGINT PRIMARY KEY,
+  room_id TEXT,
+  user_id TEXT,
+  user_name TEXT,
+  action TEXT,
+  details TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Disable Row Level Security (RLS) so anon migration writes succeed
 ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rooms DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.members DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.receipts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.system_settings DISABLE ROW LEVEL SECURITY;`;
+ALTER TABLE public.system_settings DISABLE ROW LEVEL SECURITY;
+
+-- 4. Immediately flush and reload PostgREST schema cache
+NOTIFY pgrst, 'reload schema';`;
                     navigator.clipboard.writeText(sql).then(() => {
                       if (triggerToast) triggerToast('✅ Schema SQL copied! Paste in Supabase SQL Editor.');
                     });
