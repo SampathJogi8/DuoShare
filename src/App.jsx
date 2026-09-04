@@ -11797,26 +11797,27 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
           {/* Scheduled Maintenance Countdown Banner */}
           {systemMaintenanceCountdown?.active && (
-            <div className="w-full mb-4 rounded-2xl p-3.5 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-900 dark:text-amber-200 shadow-lg flex items-center justify-between gap-3 animate-pulse">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/30 flex items-center justify-center shrink-0">
+            <div className="w-full mb-4 rounded-2xl p-3 sm:p-3.5 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-900 dark:text-amber-200 shadow-lg flex items-start sm:items-center justify-between gap-2.5 sm:gap-3 animate-pulse">
+              <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/30 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
                   <Clock className="w-4 h-4 text-amber-600 dark:text-amber-300" />
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-black text-xs uppercase tracking-wider">Scheduled Maintenance Warning</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/30 text-amber-800 dark:text-amber-200">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                    <span className="font-black text-xs uppercase tracking-wider">Scheduled Maintenance</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/30 text-amber-800 dark:text-amber-200 shrink-0">
                       In ~{Math.max(1, Math.round(((systemMaintenanceCountdown.targetTime || 0) - Date.now()) / 60000))} mins
                     </span>
                   </div>
-                  <p className="text-xs text-amber-800 dark:text-amber-300 truncate">
+                  <p className="text-xs text-amber-800 dark:text-amber-300 break-words line-clamp-2 sm:line-clamp-none mt-0.5">
                     {systemMaintenanceCountdown.message || 'System maintenance will begin shortly. Please finish any ongoing tasks.'}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setSystemMaintenanceCountdown(null)}
-                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0"
+                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0 cursor-pointer"
+                title="Dismiss warning"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -12160,18 +12161,18 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Whitelisted Account Maintenance Mode Testing Banner */}
         {isSystemMaintenanceActive && isUserWhitelistedForMaintenance && (
-          <div className="mb-4 bg-amber-500 text-slate-950 px-4 py-3 rounded-2xl text-xs font-black flex items-center justify-between shadow-lg border border-amber-400 text-left">
+          <div className="mb-4 bg-amber-500 text-slate-950 p-3 sm:px-4 sm:py-3 rounded-2xl text-xs font-black flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shadow-lg border border-amber-400 text-left">
             <div className="flex items-center gap-2.5 min-w-0">
               <ShieldAlert className="w-5 h-5 text-slate-950 shrink-0 animate-pulse" />
-              <div className="min-w-0">
-                <span className="font-black tracking-tight text-xs block truncate">
-                  🚨 SITE MAINTENANCE IS ACTIVE — Browsing via Whitelisted Admin Access ({currentEmailClean || 'Tester'})
+              <div className="min-w-0 flex-1">
+                <span className="font-black tracking-tight text-xs block leading-snug break-words">
+                  🚨 SITE MAINTENANCE IS ACTIVE — Whitelisted Access ({currentEmailClean || 'Tester'})
                 </span>
               </div>
             </div>
             <button 
               onClick={() => setCurrentView('admin')}
-              className="px-3.5 py-1.5 bg-slate-950 text-white rounded-xl text-xs font-extrabold hover:bg-slate-800 transition-all shrink-0 shadow-md active:scale-95 ml-2 cursor-pointer"
+              className="w-full sm:w-auto px-3.5 py-1.5 bg-slate-950 text-white rounded-xl text-xs font-extrabold hover:bg-slate-800 transition-all shrink-0 shadow-md active:scale-95 text-center justify-center flex items-center cursor-pointer"
             >
               Open Admin
             </button>

@@ -20,7 +20,7 @@ export const getActiveDatabaseEngine = () => {
     const saved = localStorage.getItem('tallyin_active_db_engine');
     if (saved === 'd1' || saved === 'supabase') return saved;
   }
-  return 'd1'; // Default active engine is Cloudflare D1 (where all schemas, quotas, and transactions are live and intact)
+  return 'supabase'; // Default active engine is Supabase PostgreSQL
 };
 
 export const setActiveDatabaseEngine = (engine) => {

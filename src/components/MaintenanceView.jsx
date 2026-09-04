@@ -136,7 +136,7 @@ export default function MaintenanceView({
 
       {/* ── Outer Root Container ── */}
       <div 
-        className="relative min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 overflow-hidden transition-colors duration-500 font-sans select-none"
+        className="relative min-h-screen flex flex-col items-center justify-center p-3.5 sm:p-6 overflow-hidden transition-colors duration-500 font-sans select-none"
         style={{ background: colors.bg, color: colors.primaryText }}
       >
 
@@ -153,7 +153,7 @@ export default function MaintenanceView({
         {/* Ambient Glowing Aurora Spots */}
         <div 
           aria-hidden="true"
-          className="anim-aura absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[340px] rounded-full blur-[110px] pointer-events-none"
+          className="anim-aura absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[320px] sm:w-[600px] h-[220px] sm:h-[340px] rounded-full blur-[90px] sm:blur-[110px] pointer-events-none"
           style={{
             background: isDarkMode 
               ? 'radial-gradient(ellipse, rgba(16, 185, 129, 0.2) 0%, rgba(99, 102, 241, 0.12) 60%, transparent 100%)' 
@@ -165,7 +165,7 @@ export default function MaintenanceView({
         <button
           aria-label="Toggle light or dark theme"
           onClick={() => setIsDarkMode(!isDarkMode)}
-          className="absolute top-5 right-5 z-30 p-2.5 rounded-2xl flex items-center justify-center backdrop-blur-md transition-all shadow-md active:scale-95 cursor-pointer"
+          className="absolute top-3 right-3 sm:top-5 sm:right-5 z-30 p-2 sm:p-2.5 rounded-2xl flex items-center justify-center backdrop-blur-md transition-all shadow-md active:scale-95 cursor-pointer"
           style={{
             background: isDarkMode ? 'rgba(30, 41, 59, 0.7)' : 'rgba(255, 255, 255, 0.85)',
             border: `1px solid ${colors.cardBorder}`,
@@ -182,7 +182,7 @@ export default function MaintenanceView({
 
         {/* ── Center Master Glassmorphic Card ── */}
         <div 
-          className="relative z-10 w-full max-w-[620px] rounded-3xl sm:rounded-[32px] p-6 sm:p-10 backdrop-blur-2xl shadow-2xl transition-all duration-300 space-y-7 text-center"
+          className="relative z-10 w-full max-w-[620px] rounded-2xl sm:rounded-[32px] p-4 sm:p-10 backdrop-blur-2xl shadow-2xl transition-all duration-300 space-y-4 sm:space-y-7 text-center"
           style={{
             background: colors.cardBg,
             border: `1px solid ${colors.cardBorder}`,
@@ -193,11 +193,11 @@ export default function MaintenanceView({
         >
 
           {/* ── Brand Emblem (Tallyin Logo with Glow & Secret Bypass) ── */}
-          <div className="flex flex-col items-center justify-center space-y-3">
+          <div className="flex flex-col items-center justify-center space-y-2.5 sm:space-y-3">
             <button
               onClick={handleLogoBypassClick}
               title="Tallyin System (Click for admin bypass)"
-              className={`anim-float relative p-3 rounded-2xl sm:rounded-3xl backdrop-blur-md transition-transform duration-300 active:scale-90 cursor-pointer ${
+              className={`anim-float relative p-2.5 sm:p-3 rounded-2xl sm:rounded-3xl backdrop-blur-md transition-transform duration-300 active:scale-90 cursor-pointer ${
                 logoPulse ? 'scale-110' : ''
               }`}
               style={{
@@ -213,7 +213,7 @@ export default function MaintenanceView({
               <img 
                 src={logoFull} 
                 alt="Tallyin Logo" 
-                className="h-10 sm:h-12 w-auto object-contain drop-shadow-md"
+                className="h-8 sm:h-12 w-auto object-contain drop-shadow-md"
                 onError={(e) => {
                   // Graceful fallback to logoIcon if logoFull fails
                   e.target.src = logoIcon;
@@ -223,7 +223,7 @@ export default function MaintenanceView({
 
             {/* Status Pill */}
             <div 
-              className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-[11px] font-extrabold tracking-widest uppercase shadow-sm"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-extrabold tracking-wider uppercase shadow-sm"
               style={{
                 background: colors.accentLight,
                 border: `1px solid ${isDarkMode ? 'rgba(16, 185, 129, 0.3)' : 'rgba(22, 163, 74, 0.25)'}`,
@@ -231,7 +231,7 @@ export default function MaintenanceView({
               }}
             >
               <span 
-                className="w-2 h-2 rounded-full flex-shrink-0 animate-pulse" 
+                className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0 animate-pulse" 
                 style={{ background: colors.accent, boxShadow: `0 0 8px ${colors.accent}` }}
               />
               <span>System Upgrade in Progress</span>
@@ -239,9 +239,9 @@ export default function MaintenanceView({
           </div>
 
           {/* ── Main Headline & Admin Editable Notice ── */}
-          <div className="space-y-2.5">
+          <div className="space-y-1.5 sm:space-y-2.5 px-1">
             <h1 
-              className="text-2xl sm:text-3xl font-black tracking-tight leading-tight"
+              className="text-xl sm:text-3xl font-black tracking-tight leading-tight"
               style={{ color: colors.primaryText }}
             >
               We’re Upgrading Tallyin
@@ -255,7 +255,7 @@ export default function MaintenanceView({
           </div>
 
           {/* ── Progress Shimmer Indicator ── */}
-          <div className="w-full max-w-md mx-auto space-y-1.5">
+          <div className="w-full max-w-xs sm:max-w-md mx-auto space-y-1 sm:space-y-1.5">
             <div 
               className="relative h-1.5 w-full rounded-full overflow-hidden"
               style={{ background: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)' }}
@@ -279,19 +279,19 @@ export default function MaintenanceView({
           </div>
 
           {/* ── Feature Highlights Grid (Dynamically Rendered & Admin-Editable) ── */}
-          <div className="space-y-3 pt-1">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-2 sm:space-y-3 pt-0.5 sm:pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
               {features.map((feat, idx) => (
                 <div
                   key={idx}
-                  className="rounded-2xl p-4 text-left space-y-2 transition-all duration-200 hover:-translate-y-0.5 shadow-sm"
+                  className="rounded-xl sm:rounded-2xl p-2.5 sm:p-4 text-left flex sm:flex-col items-center sm:items-start gap-2.5 sm:gap-2 transition-all duration-200 hover:-translate-y-0.5 shadow-sm"
                   style={{
                     background: colors.featureCardBg,
                     border: `1px solid ${colors.featureCardBorder}`,
                   }}
                 >
                   <div 
-                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm"
                     style={{
                       background: colors.accentLight,
                       color: colors.accent,
@@ -301,15 +301,15 @@ export default function MaintenanceView({
                     {renderIcon(feat.icon, 'w-4 h-4')}
                   </div>
 
-                  <div className="space-y-0.5">
+                  <div className="space-y-0.5 min-w-0 flex-1">
                     <h3 
-                      className="text-xs font-black leading-snug"
+                      className="text-xs font-black leading-snug truncate sm:whitespace-normal"
                       style={{ color: colors.primaryText }}
                     >
                       {feat.label || 'Next-Gen Core'}
                     </h3>
                     <p 
-                      className="text-[11px] leading-snug font-medium"
+                      className="text-[10px] sm:text-[11px] leading-snug font-medium truncate sm:whitespace-normal"
                       style={{ color: colors.subText }}
                     >
                       {feat.sub || 'Instant responsiveness'}
@@ -322,29 +322,29 @@ export default function MaintenanceView({
 
           {/* ── Account Status Strip / Admin Sign-in ── */}
           <div 
-            className="pt-4 border-t"
+            className="pt-3 sm:pt-4 border-t"
             style={{ borderColor: colors.cardBorder }}
           >
             {user ? (
               <div 
-                className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-2xl"
+                className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl"
                 style={{ background: isDarkMode ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)' }}
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div 
-                    className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0"
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0"
                     style={{ background: colors.accent, color: '#FFFFFF' }}
                   >
                     {initials}
                   </div>
-                  <div className="text-left min-w-0">
+                  <div className="text-left min-w-0 flex-1">
                     <p 
                       className="text-xs font-bold truncate"
                       style={{ color: colors.primaryText }}
                     >
                       {currentUserEmail}
                     </p>
-                    <p className="text-[10px] font-medium" style={{ color: colors.subText }}>
+                    <p className="text-[10px] font-medium truncate" style={{ color: colors.subText }}>
                       Session preserved • Public access paused
                     </p>
                   </div>
@@ -353,7 +353,7 @@ export default function MaintenanceView({
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400"
+                  className="w-full sm:w-auto px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 cursor-pointer"
                   style={{ border: `1px solid ${isDarkMode ? 'rgba(244, 63, 94, 0.2)' : 'rgba(244, 63, 94, 0.3)'}` }}
                 >
                   <LogOut className="w-3.5 h-3.5" />
