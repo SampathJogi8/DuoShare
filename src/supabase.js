@@ -20,7 +20,7 @@ export const getActiveDatabaseEngine = () => {
     const saved = localStorage.getItem('tallyin_active_db_engine');
     if (saved === 'd1' || saved === 'supabase') return saved;
   }
-  return 'supabase'; // Default active engine is Supabase PostgreSQL
+  return 'd1'; // Default active engine is Cloudflare D1
 };
 
 export const setActiveDatabaseEngine = (engine) => {
@@ -31,7 +31,7 @@ export const setActiveDatabaseEngine = (engine) => {
   }
 };
 
-// D1 QueryBuilder Adapter for Cloudflare Worker
+// D1 QueryBuilder Adapter for Cloudflare Worker with Seamless Supabase Fallback
 class D1QueryBuilder {
   constructor(table) {
     this.table = table;
@@ -69,6 +69,7 @@ class D1QueryBuilder {
 
   delete() {
     this.action = 'delete';
+    this.payload = null;
     return this;
   }
 
@@ -123,6 +124,39 @@ class D1QueryBuilder {
     return this;
   }
 
+  async executeOnSupabase() {
+    let q = realSupabase.from(this.table);
+    if (this.action === 'select') {
+      q = q.select('*');
+    } else if (this.action === 'insert') {
+      q = q.insert(this.payload);
+    } else if (this.action === 'update') {
+      q = q.update(this.payload);
+    } else if (this.action === 'delete') {
+      q = q.delete();
+    } else if (this.action === 'upsert') {
+      q = q.upsert(this.payload);
+    }
+
+    this.filters.forEach(f => {
+      if (f.operator === 'eq') q = q.eq(f.column, f.value);
+      else if (f.operator === 'neq') q = q.neq(f.column, f.value);
+      else if (f.operator === 'gte') q = q.gte(f.column, f.value);
+      else if (f.operator === 'lte') q = q.lte(f.column, f.value);
+      else if (f.operator === 'in') q = q.in(f.column, f.value);
+    });
+
+    this.orderFields.forEach(o => {
+      q = q.order(o.column, { ascending: o.ascending });
+    });
+
+    if (this.limitVal) q = q.limit(this.limitVal);
+    if (this.isSingle) q = q.single();
+    else if (this.isMaybeSingle) q = q.maybeSingle();
+
+    return await q;
+  }
+
   async then(onfulfilled, onrejected) {
     try {
       const response = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/query', {
@@ -151,6 +185,7 @@ class D1QueryBuilder {
       }
 
       const res = await response.json();
+      if (res.error) throw new Error(res.error);
       let data = res.data;
 
       if (this.isSingle || this.isMaybeSingle) {
@@ -163,9 +198,14 @@ class D1QueryBuilder {
       const result = { data, error: null };
       return typeof onfulfilled === 'function' ? onfulfilled(result) : result;
     } catch (err) {
-      console.error(`D1QueryBuilder error for ${this.action} on ${this.table}:`, err);
-      const result = { data: null, error: { message: err.message, code: err.code || 'D1_ERROR' } };
-      return typeof onfulfilled === 'function' ? onfulfilled(result) : result;
+      console.warn(`[D1 Adapter] Notice on ${this.table} (${err.message}). Seamlessly executing on Supabase.`);
+      try {
+        const sbResult = await this.executeOnSupabase();
+        return typeof onfulfilled === 'function' ? onfulfilled(sbResult) : sbResult;
+      } catch (sbErr) {
+        const result = { data: null, error: { message: sbErr.message || err.message, code: 'DB_ERROR' } };
+        return typeof onfulfilled === 'function' ? onfulfilled(result) : result;
+      }
     }
   }
 
