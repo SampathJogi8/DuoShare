@@ -2205,53 +2205,75 @@ export default function App() {
     }
 
     try {
-      // 1. Fetch rooms where user is a recorded member (by UID)
-      const { data: memberRows, error: memberErr } = await supabase
+      // 1. Fetch user's member room IDs by UID
+      const { data: memberRowsByUid, error: memberErr } = await supabase
         .from('members')
-        .select('room_id, rooms:rooms(id, name, monthly_budget)')
+        .select('room_id')
         .eq('uid', user.id);
       
       if (memberErr) console.warn("Member rooms query notice:", memberErr);
 
-      // 2. Fetch rooms where user is a recorded member (by Email)
+      // 2. Fetch user's member room IDs by Email
       let memberRowsByEmail = [];
       if (user.email) {
         try {
           const { data: emailRows } = await supabase
             .from('members')
-            .select('room_id, rooms:rooms(id, name, monthly_budget)')
+            .select('room_id')
             .eq('email', user.email.toLowerCase().trim());
           if (emailRows) memberRowsByEmail = emailRows;
         } catch(e) {}
       }
 
-      // 3. Fetch rooms created by the user as Host
+      // Collect all candidate room IDs
+      const rawRoomIds = [
+        ...(memberRowsByUid || []).map(m => m.room_id),
+        ...memberRowsByEmail.map(m => m.room_id)
+      ];
+      
+      const localRoomId = localStorage.getItem('userRoomId');
+      if (localRoomId) rawRoomIds.push(localRoomId);
+
+      const uniqueRoomIds = Array.from(new Set(rawRoomIds.filter(id => id && id !== 'null' && id !== 'undefined')));
+
+      // 3. Fetch full room details for all candidate room IDs
+      let matchedRooms = [];
+      if (uniqueRoomIds.length > 0) {
+        const { data: roomsData } = await supabase
+          .from('rooms')
+          .select('id, name, monthly_budget, room_mode')
+          .in('id', uniqueRoomIds);
+        if (roomsData) matchedRooms = roomsData;
+      }
+
+      // 4. Fetch rooms created by this user
       const { data: createdRooms, error: createdErr } = await supabase
         .from('rooms')
-        .select('id, name, monthly_budget')
+        .select('id, name, monthly_budget, room_mode')
         .eq('created_by', user.id);
 
       if (createdErr) console.warn("Created rooms query notice:", createdErr);
 
       const roomMap = new Map();
 
-      (createdRooms || []).forEach(r => {
-        if (r && r.id && r.id !== 'null' && r.id !== 'undefined') {
+      (matchedRooms || []).forEach(r => {
+        if (r && r.id && r.id !== 'null' && !r.id.startsWith('__SYSTEM_')) {
           roomMap.set(r.id, {
             roomId: r.id,
             roomName: r.name || 'Tallyin',
-            monthlyBudget: Number(r.monthly_budget) || 22000
+            monthlyBudget: Number(r.monthly_budget) || 22000,
+            roomMode: r.room_mode || 'split'
           });
         }
       });
 
-      [...(memberRows || []), ...memberRowsByEmail].forEach(item => {
-        const rid = item.room_id || item.rooms?.id;
-        if (rid && rid !== 'null' && rid !== 'undefined' && item.rooms) {
-          roomMap.set(rid, {
-            roomId: rid,
-            roomName: item.rooms?.name || 'Tallyin',
-            monthlyBudget: Number(item.rooms?.monthly_budget) || 22000
+      (createdRooms || []).forEach(r => {
+        if (r && r.id && r.id !== 'null' && !r.id.startsWith('__SYSTEM_')) {
+          roomMap.set(r.id, {
+            roomId: r.id,
+            roomName: r.name || 'Tallyin',
+            monthlyBudget: Number(r.monthly_budget) || 22000,
+            roomMode: r.room_mode || 'split'
           });
         }
       });

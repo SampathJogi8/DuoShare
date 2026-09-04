@@ -824,8 +824,39 @@ export default function AdminDashboard({
 
   const handlePing = measurePing;
 
-  // Fetch Database System Stats & Room List from D1 export snapshot
+  // Fetch Database System Stats & Room List from Supabase or D1
   const fetchSystemStats = useCallback(async () => {
+    const engine = getActiveDatabaseEngine();
+
+    if (engine === 'supabase') {
+      try {
+        const [roomsRes, membersRes, usersRes, txRes, receiptsRes] = await Promise.all([
+          realSupabase.from('rooms').select('id, name', { count: 'exact' }),
+          realSupabase.from('members').select('id', { count: 'exact', head: true }),
+          realSupabase.from('users').select('id', { count: 'exact', head: true }),
+          realSupabase.from('transactions').select('id', { count: 'exact', head: true }),
+          realSupabase.from('receipts').select('id', { count: 'exact', head: true }),
+        ]);
+
+        const validRooms = (roomsRes.data || []).filter(r => r.id && !r.id.startsWith('__SYSTEM_'));
+        const totalUsersCount = Math.max(membersRes.count || 0, usersRes.count || 0, validRooms.length);
+        
+        setStats({
+          totalRooms: validRooms.length,
+          totalUsers: totalUsersCount,
+          totalTransactions: txRes.count || 0,
+          totalReceipts: receiptsRes.count || 0,
+        });
+
+        if (validRooms.length > 0) {
+          setAllSystemRooms(validRooms.map(r => ({ roomId: r.id, roomName: r.name || r.id })));
+        }
+        return;
+      } catch (err) {
+        console.warn("Supabase stats fetch error:", err);
+      }
+    }
+
     try {
       const res = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/export-all-data');
       if (!res.ok) throw new Error('Export failed');
@@ -872,7 +903,7 @@ export default function AdminDashboard({
       const { data: txList } = await supabase
         .from('transactions')
         .select('*')
-        .order('id', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(100);
 
       if (txList) {
@@ -3972,7 +4003,9 @@ export default function AdminDashboard({
                 </h1>
                 <p className="text-white/70 text-xs sm:text-sm font-medium leading-relaxed">
                   {isSuperAdmin 
-                    ? 'All Cloudflare Worker security policies, dispute resolvers, and database replication pipelines are functioning at peak efficiency.'
+                    ? (activeDbEngine === 'supabase'
+                        ? 'All Supabase PostgreSQL security policies, dispute resolvers, and realtime data channels are functioning at peak efficiency.'
+                        : 'All Cloudflare Worker security policies, dispute resolvers, and database replication pipelines are functioning at peak efficiency.')
                     : `Your Co-Admin access profile is verified and active. You have access to delegated management tools.`}
                 </p>
               </div>
