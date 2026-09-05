@@ -2327,7 +2327,8 @@ export default function App() {
           if (formatted.length > 0) {
             setUserRoomId(formatted[0].roomId);
             setRoomName(formatted[0].roomName);
-            setHasConfirmedRoom(true);
+            setHasConfirmedRoom(false);
+            setOnboardingStep('selection');
             localStorage.setItem('userRoomId', formatted[0].roomId);
           } else {
             setUserRoomId(null);
@@ -2340,7 +2341,7 @@ export default function App() {
         const activeRoom = formatted.find(r => r.roomId === currentStoredRoomId) || formatted[0];
         if (activeRoom && activeRoom.roomId) {
           setUserRoomId(activeRoom.roomId);
-          setHasConfirmedRoom(true);
+          if (activeRoom.roomName) setRoomName(activeRoom.roomName);
           localStorage.setItem('userRoomId', activeRoom.roomId);
         }
       } else {
@@ -2582,7 +2583,6 @@ export default function App() {
     // Fire-and-forget addMemberToRoom — don't await it to avoid login latency
     if (localRoomId) {
       setUserRoomId(localRoomId);
-      setHasConfirmedRoom(true);
       addMemberToRoom(localRoomId, finalNickname, currentUser); // intentionally not awaited
     } else {
       // Fetch in parallel without blocking auth
@@ -2595,7 +2595,6 @@ export default function App() {
           if (!error && userProfile?.room_id && userProfile.room_id !== 'null' && userProfile.room_id !== 'undefined') {
             const rId = userProfile.room_id;
             setUserRoomId(rId);
-            setHasConfirmedRoom(true);
             localStorage.setItem('userRoomId', rId);
             addMemberToRoom(rId, finalNickname, currentUser); // intentionally not awaited
           } else if (currentUser.email) {
@@ -2611,7 +2610,6 @@ export default function App() {
               if (memData?.room_id && memData.room_id !== 'null' && memData.room_id !== 'undefined') {
                 const rId = memData.room_id;
                 setUserRoomId(rId);
-                setHasConfirmedRoom(true);
                 localStorage.setItem('userRoomId', rId);
                 addMemberToRoom(rId, finalNickname, currentUser);
               }
@@ -4149,7 +4147,6 @@ export default function App() {
       setNicknameInput(nick);
       localStorage.setItem('userNickname', nick);
       setIsNicknameFixed(true);
-      setHasConfirmedRoom(true);
       
       if (code === 'TY1001') {
         const demoRoomId = userProfile.room_id || 'TL-DEMO-1001';
@@ -4163,6 +4160,8 @@ export default function App() {
         setOnboardingTipIndex(1); // Open directly into Interactive Sandbox Split Simulator
         triggerToast('🚀 Opened Sandbox Mode as Tester 1 (TY1001)!');
       } else {
+        setOnboardingStep('selection');
+        setHasConfirmedRoom(false);
         triggerToast('Logged in successfully via access code!');
       }
     } catch (err) {
