@@ -2833,8 +2833,8 @@ export default function AdminDashboard({
     } catch (e) { console.error("Database save maintenance error:", e); }
 
     try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
+      const chan = adminChannelRef.current || supabase.channel('system_admin_channel');
+      await chan.send({
         type: 'broadcast',
         event: 'MAINTENANCE_MODE',
         payload: { active: nextState, message: textToSave }
@@ -2855,7 +2855,7 @@ export default function AdminDashboard({
       if (triggerToast) triggerToast('Please enter an email or UID.');
       return;
     }
-    if (allowedMaintenanceAccounts.some(acc => acc.toLowerCase() === clean)) {
+    if (allowedMaintenanceAccounts.some(acc => (typeof acc === 'string' ? acc : acc?.email || acc?.uid || '').toLowerCase() === clean)) {
       if (triggerToast) triggerToast('Account is already in the allowed list.');
       return;
     }
@@ -2874,8 +2874,8 @@ export default function AdminDashboard({
     } catch (e) {}
 
     try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
+      const chan = adminChannelRef.current || supabase.channel('system_admin_channel');
+      await chan.send({
         type: 'broadcast',
         event: 'MAINTENANCE_ALLOWED_ACCOUNTS',
         payload: { accounts: nextList }
@@ -2888,7 +2888,11 @@ export default function AdminDashboard({
 
   // Handle Remove Allowed Testing Account
   const handleRemoveAllowedAccount = async (accountToRemove) => {
-    const nextList = allowedMaintenanceAccounts.filter(acc => acc.toLowerCase() !== accountToRemove.toLowerCase());
+    const targetClean = String(accountToRemove || '').trim().toLowerCase();
+    const nextList = allowedMaintenanceAccounts.filter(acc => {
+      const clean = (typeof acc === 'string' ? acc : acc?.email || acc?.uid || '').trim().toLowerCase();
+      return clean !== targetClean;
+    });
     if (setAllowedMaintenanceAccounts) setAllowedMaintenanceAccounts(nextList);
     localStorage.setItem('tallyin_maintenance_allowed_accounts', JSON.stringify(nextList));
 
@@ -2901,8 +2905,8 @@ export default function AdminDashboard({
     } catch (e) {}
 
     try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
+      const chan = adminChannelRef.current || supabase.channel('system_admin_channel');
+      await chan.send({
         type: 'broadcast',
         event: 'MAINTENANCE_ALLOWED_ACCOUNTS',
         payload: { accounts: nextList }
@@ -3099,8 +3103,8 @@ export default function AdminDashboard({
     }
 
     try {
-      const sysChan = supabase.channel('system_admin_channel');
-      await sysChan.send({
+      const chan = adminChannelRef.current || supabase.channel('system_admin_channel');
+      await chan.send({
         type: 'broadcast',
         event: 'CO_ADMINS',
         payload: { coAdmins: updatedList }
@@ -4023,6 +4027,39 @@ export default function AdminDashboard({
           >
             <Home className="w-4 h-4" />
             <span>Return to App Dashboard</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Lock Screen if Maintenance Mode is active and user lacks explicit maintenance clearance
+  const isWhitelistedInMaintenance = isSuperAdmin || userPermissions.maintenance_control || (allowedMaintenanceAccounts || []).some(acc => {
+    const clean = (typeof acc === 'string' ? acc : acc?.email || acc?.uid || '').trim().toLowerCase();
+    return clean && (clean === currentEmailClean || clean === currentUidClean.toLowerCase());
+  });
+
+  if (isSystemMaintenanceActive && !isWhitelistedInMaintenance) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-[#F0F4F1] dark:bg-slate-950 text-left font-sans animate-fade-in relative overflow-hidden">
+        <div className="w-full max-w-md hud-card rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative border border-rose-500/30 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto shadow-md">
+            <Power className="w-7 h-7" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
+              Maintenance Mode Active
+            </h2>
+            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+              Tallyin is undergoing system maintenance. Only the Super Administrator (<strong className="text-rose-600 dark:text-rose-400">tallyin.alerts@gmail.com</strong>) and authorized personnel with explicit <strong>Site Maintenance (maintenance_control)</strong> permission or whitelist approval can access the console during downtime.
+            </p>
+          </div>
+          <button
+            onClick={onExitAdmin}
+            className="w-full py-3 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hover:bg-[#255038] dark:hover:bg-[#b7f34c] font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Home className="w-4 h-4" />
+            <span>Return to Maintenance Screen</span>
           </button>
         </div>
       </div>
