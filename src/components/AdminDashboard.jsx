@@ -4376,7 +4376,7 @@ export default function AdminDashboard({
                     {isSuperAdmin ? 'Master Authority Active' : 'Delegated Ops Access'}
                   </span>
                   <span className="text-white/40 text-xs font-mono">•</span>
-                  <span className="text-white/60 text-xs font-mono">{appVersion || 'v3.83.0'}</span>
+                  <span className="text-white/60 text-xs font-mono">{appVersion || 'v4.0.0'}</span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                   Hi, {userNickname || user?.email?.split('@')[0] || 'Administrator'}

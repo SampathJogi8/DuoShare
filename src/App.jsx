@@ -78,7 +78,7 @@ import QuickBillModal from './components/QuickBillModal';
 
 const ADMIN_EMAILS = ['tallyin.alerts@gmail.com', 'sampathjogipusala123@gmail.com'];
 const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
-const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v3.1.8';
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.0.0';
 
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {

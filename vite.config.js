@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { readFileSync } from 'fs'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
-const gitVersion = `v${pkg.version || '3.1.8'}`
+const gitVersion = `v${pkg.version || '4.0.0'}`
 
 // https://vite.dev/config/
 export default defineConfig({

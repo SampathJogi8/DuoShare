@@ -471,7 +471,7 @@ export default function MaintenanceView({
           {/* ── Footer Info ── */}
           <div className="pt-2 flex items-center justify-between text-[11px] font-semibold" style={{ color: colors.subText }}>
             <span>Tallyin Financial Systems</span>
-            <span className="font-mono">{appVersion || 'v3.65.0'}</span>
+            <span className="font-mono">{appVersion || 'v4.0.0'}</span>
           </div>
 
         </div>{/* /Card */}
