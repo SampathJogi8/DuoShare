@@ -40,7 +40,27 @@ function getBumpType(msg) {
 
 // ── Apply the bump ───────────────────────────────────────────────────────────
 try {
+  if (process.env.SKIP_BUMP === 'true' || process.env.SKIP_BUMP === '1') {
+    process.exit(0);
+  }
+
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+
+  if (process.env.SET_VERSION) {
+    const newVersion = process.env.SET_VERSION.replace(/^v/, '');
+    pkg.version = newVersion;
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+    if (fs.existsSync(lockPath)) {
+      const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+      lock.version = newVersion;
+      if (lock.packages && lock.packages['']) lock.packages[''].version = newVersion;
+      fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
+    }
+    console.log(`Set version: → ${newVersion}`);
+    execSync('git add package.json package-lock.json', { cwd: projectRoot });
+    process.exit(0);
+  }
+
   const [major, minor, patch] = pkg.version.split('.').map(Number);
 
   if ([major, minor, patch].some(isNaN)) {
