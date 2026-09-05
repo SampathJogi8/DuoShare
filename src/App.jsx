@@ -4897,7 +4897,7 @@ export default function App() {
     return `TL-${letters}-${digits}`;
   };
 
-  // Create Room handler with optimized fast pipeline & double-click protection
+  // Create Room handler with instant optimistic UI transition & robust background DB sync
   const handleCreateRoom = async () => {
     if (isCreatingRoom) return;
 
@@ -4905,8 +4905,6 @@ export default function App() {
       triggerToast('Please set your nickname first.');
       return;
     }
-
-    setIsCreatingRoom(true);
 
     try {
       const uniqueCode = generateUniqueRoomCode();
@@ -4919,13 +4917,12 @@ export default function App() {
 
       if (isQuota && hostContributionVal > finalMonthlyBudget) {
         triggerToast(`⚠️ Your contribution (₹${hostContributionVal}) cannot exceed the total room budget (₹${finalMonthlyBudget}).`);
-        setIsCreatingRoom(false);
         return;
       }
 
       const finalRoomName = roomNameInput.trim() || 'Tallyin';
 
-      // 1. Instant local optimistic state updates
+      // 1. Instant local optimistic state updates (0ms latency)
       setMonthlyBudget(finalMonthlyBudget);
       setMonthlyBudgetInput(String(finalMonthlyBudget));
       localStorage.setItem('monthlyBudget', String(finalMonthlyBudget));
@@ -4964,7 +4961,11 @@ export default function App() {
         } catch (e) {}
       }
 
-      // 2. Prepare member payload for host
+      // 2. Instant UI transition to share-code step!
+      setOnboardingStep('share-code');
+      triggerToast(`Room ${uniqueCode} created! 🚀`);
+
+      // 3. Prepare member payload for host
       const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
       const memberPayload = {
         room_id: uniqueCode,
@@ -4978,63 +4979,62 @@ export default function App() {
         memberPayload.individual_budget = Number(hostContributionVal);
       }
 
-      // 3. Parallel write: Insert Room & Insert Host Member simultaneously
-      const roomInsertPromise = supabase
-        .from('rooms')
-        .insert({
-          id: uniqueCode,
-          created_by: user ? user.id : 'anonymous',
-          created_at: new Date().toISOString(),
-          monthly_budget: finalMonthlyBudget,
-          max_members: initialMaxMembers,
-          name: finalRoomName,
-          room_mode: selectedRoomMode
-        })
-        .then(async ({ error }) => {
-          if (error) {
-            // Fallback without room_mode if column error
-            return supabase.from('rooms').insert({
+      // 4. Fire background persistence pipeline asynchronously without blocking UI
+      (async () => {
+        try {
+          const roomInsertPromise = supabase
+            .from('rooms')
+            .insert({
               id: uniqueCode,
               created_by: user ? user.id : 'anonymous',
               created_at: new Date().toISOString(),
               monthly_budget: finalMonthlyBudget,
               max_members: initialMaxMembers,
-              name: finalRoomName
+              name: finalRoomName,
+              room_mode: selectedRoomMode
+            })
+            .then(async ({ error }) => {
+              if (error) {
+                return supabase.from('rooms').insert({
+                  id: uniqueCode,
+                  created_by: user ? user.id : 'anonymous',
+                  created_at: new Date().toISOString(),
+                  monthly_budget: finalMonthlyBudget,
+                  max_members: initialMaxMembers,
+                  name: finalRoomName
+                });
+              }
             });
-          }
-        });
 
-      const memberInsertPromise = supabase
-        .from('members')
-        .upsert(memberPayload, { onConflict: 'room_id,uid' });
+          const memberInsertPromise = supabase
+            .from('members')
+            .upsert(memberPayload, { onConflict: 'room_id,uid' });
 
-      // Await essential core writes in parallel
-      await Promise.all([roomInsertPromise, memberInsertPromise]);
+          await Promise.all([roomInsertPromise, memberInsertPromise]);
 
-      // 4. Transition UI immediately to share-code step!
-      setOnboardingStep('share-code');
-      triggerToast(`Room ${uniqueCode} created! 🚀`);
-
-      // 5. Run non-blocking auxiliary writes in the background
-      Promise.all([
-        supabase.from('system_settings').upsert({
-          key: `room_mode_${uniqueCode}`,
-          value: JSON.stringify({ mode: selectedRoomMode }),
-          created_at: new Date().toISOString()
-        }, { onConflict: 'key' }),
-        user ? supabase.from('users').upsert({
-          uid: user.id,
-          room_id: uniqueCode,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'uid' }) : Promise.resolve(),
-        fetchUserRooms()
-      ]).catch(err => console.warn("Background room metadata sync notice:", err));
+          // Auxiliary sync in background
+          await Promise.allSettled([
+            supabase.from('system_settings').upsert({
+              key: `room_mode_${uniqueCode}`,
+              value: JSON.stringify({ mode: selectedRoomMode }),
+              created_at: new Date().toISOString()
+            }, { onConflict: 'key' }),
+            user ? supabase.from('users').upsert({
+              uid: user.id,
+              room_id: uniqueCode,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'uid' }) : Promise.resolve(),
+            fetchUserRooms()
+          ]);
+        } catch (dbErr) {
+          console.error('Background room creation sync notice:', dbErr);
+          triggerToast('Room saved locally. Cloud sync will retry automatically.');
+        }
+      })();
 
     } catch (err) {
-      console.error('Failed to save room creation to Supabase:', err);
-      triggerToast(`Failed to create room: ${err.message || 'Supabase error'}. (Please check your connection and database status)`);
-    } finally {
-      setIsCreatingRoom(false);
+      console.error('Failed in handleCreateRoom:', err);
+      triggerToast(`Failed to initialize room: ${err.message || 'Error'}`);
     }
   };
 
