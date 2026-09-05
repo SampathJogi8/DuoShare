@@ -1150,8 +1150,18 @@ export default function App() {
           const deletedId = payload.payload.roomId;
           const deletedName = payload.payload.roomName || deletedId;
 
-          setUserRooms(prev => prev.filter(r => r.roomId !== deletedId));
-          setPendingUserRequests(prev => prev.filter(r => r.roomId !== deletedId));
+          setUserRooms(prev => {
+            const next = prev.filter(r => r.roomId !== deletedId);
+            if (user?.id) {
+              localStorage.setItem(`userRooms_${user.id}`, JSON.stringify(next));
+            }
+            return next;
+          });
+          setPendingUserRequests(prev => {
+            const next = prev.filter(r => r.roomId !== deletedId);
+            localStorage.setItem('tallyin_pending_user_requests', JSON.stringify(next));
+            return next;
+          });
 
           if (userRoomId === deletedId) {
             setUserRoomId(null);
@@ -2257,23 +2267,24 @@ export default function App() {
         } catch(e) {}
       }
 
-      // Collect all candidate room IDs
+      // Collect all candidate room IDs from memberships, pending requests, and local storage
       const rawRoomIds = [
         ...(memberRowsByUid || []).map(m => m.room_id),
-        ...memberRowsByEmail.map(m => m.room_id)
+        ...memberRowsByEmail.map(m => m.room_id),
+        ...(pendingUserRequests || []).map(p => p.roomId)
       ];
       
       const localRoomId = localStorage.getItem('userRoomId');
       if (localRoomId) rawRoomIds.push(localRoomId);
 
-      const uniqueRoomIds = Array.from(new Set(rawRoomIds.filter(id => id && id !== 'null' && id !== 'undefined')));
+      const uniqueRoomIds = Array.from(new Set(rawRoomIds.filter(id => id && id !== 'null' && id !== 'undefined' && !id.startsWith('__SYSTEM_'))));
 
-      // 3. Fetch full room details for all candidate room IDs
+      // 3. Fetch full room details for all candidate room IDs from live database
       let matchedRooms = [];
       if (uniqueRoomIds.length > 0) {
         const { data: roomsData } = await supabase
           .from('rooms')
-          .select('id, name, monthly_budget, room_mode')
+          .select('id, name, monthly_budget, room_mode, created_by')
           .in('id', uniqueRoomIds);
         if (roomsData) matchedRooms = roomsData;
       }
@@ -2281,53 +2292,50 @@ export default function App() {
       // 4. Fetch rooms created by this user
       const { data: createdRooms, error: createdErr } = await supabase
         .from('rooms')
-        .select('id, name, monthly_budget, room_mode')
+        .select('id, name, monthly_budget, room_mode, created_by')
         .eq('created_by', user.id);
 
       if (createdErr) console.warn("Created rooms query notice:", createdErr);
 
+      // Verified existing DB rooms
+      const existingDbRooms = [...(matchedRooms || []), ...(createdRooms || [])].filter(r => r && r.id && r.id !== 'null' && !r.id.startsWith('__SYSTEM_'));
+      const existingDbRoomIds = new Set(existingDbRooms.map(r => r.id));
+
       const roomMap = new Map();
 
-      (matchedRooms || []).forEach(r => {
-        if (r && r.id && r.id !== 'null' && !r.id.startsWith('__SYSTEM_')) {
-          roomMap.set(r.id, {
-            roomId: r.id,
-            roomName: r.name || 'Tallyin',
-            monthlyBudget: Number(r.monthly_budget) || 22000,
-            roomMode: r.room_mode || 'split'
-          });
-        }
-      });
-
-      (createdRooms || []).forEach(r => {
-        if (r && r.id && r.id !== 'null' && !r.id.startsWith('__SYSTEM_')) {
-          roomMap.set(r.id, {
-            roomId: r.id,
-            roomName: r.name || 'Tallyin',
-            monthlyBudget: Number(r.monthly_budget) || 22000,
-            roomMode: r.room_mode || 'split'
-          });
-        }
-      });
-
-      // 4. Include approved rooms from pending requests
-      (pendingUserRequests || []).filter(p => p && p.status === 'approved' && p.roomId).forEach(p => {
-        if (!roomMap.has(p.roomId)) {
-          roomMap.set(p.roomId, {
-            roomId: p.roomId,
-            roomName: p.roomName || 'Tallyin',
-            monthlyBudget: 22000,
-            isApproved: true
-          });
-        }
+      existingDbRooms.forEach(r => {
+        roomMap.set(r.id, {
+          roomId: r.id,
+          roomName: r.name || 'Tallyin',
+          monthlyBudget: Number(r.monthly_budget) || 22000,
+          roomMode: r.room_mode || 'split',
+          createdBy: r.created_by
+        });
       });
 
       const formatted = Array.from(roomMap.values());
       setUserRooms(formatted);
       localStorage.setItem(cachedKey, JSON.stringify(formatted));
 
-      // If user has existing rooms and hasn't confirmed a room yet, activate the current or first room
-      if (formatted.length > 0) {
+      // Clean up localRoomId if it was deleted from DB
+      if (localRoomId && !existingDbRoomIds.has(localRoomId)) {
+        console.warn(`Stored room ${localRoomId} no longer exists in database. Purging deleted reference.`);
+        localStorage.removeItem('userRoomId');
+        localStorage.removeItem('roomName');
+        localStorage.removeItem(`roomMode_${localRoomId}`);
+        if (userRoomId === localRoomId) {
+          if (formatted.length > 0) {
+            setUserRoomId(formatted[0].roomId);
+            setRoomName(formatted[0].roomName);
+            setHasConfirmedRoom(true);
+            localStorage.setItem('userRoomId', formatted[0].roomId);
+          } else {
+            setUserRoomId(null);
+            setHasConfirmedRoom(false);
+            setOnboardingStep('selection');
+          }
+        }
+      } else if (formatted.length > 0) {
         const currentStoredRoomId = localStorage.getItem('userRoomId');
         const activeRoom = formatted.find(r => r.roomId === currentStoredRoomId) || formatted[0];
         if (activeRoom && activeRoom.roomId) {
@@ -2335,12 +2343,15 @@ export default function App() {
           setHasConfirmedRoom(true);
           localStorage.setItem('userRoomId', activeRoom.roomId);
         }
+      } else {
+        setUserRoomId(null);
+        setHasConfirmedRoom(false);
       }
 
-      // Filter out any pending requests for rooms where user is now an approved member
+      // Purge pending requests for rooms that have been deleted or where user is already a member
       const approvedRoomIds = formatted.map(r => r.roomId);
       setPendingUserRequests(prev => {
-        const next = prev.filter(p => !approvedRoomIds.includes(p.roomId));
+        const next = (prev || []).filter(p => p && p.roomId && existingDbRoomIds.has(p.roomId) && !approvedRoomIds.includes(p.roomId));
         localStorage.setItem('tallyin_pending_user_requests', JSON.stringify(next));
         return next;
       });
@@ -4237,11 +4248,20 @@ export default function App() {
       localStorage.removeItem('userRoomId');
       localStorage.removeItem('roomName');
       localStorage.removeItem(`roomMode_${deletedRoomId}`);
-      localStorage.removeItem(`userRooms_${currentHostUid}`);
       localStorage.removeItem(`tallyin_cache_members_${deletedRoomId}`);
       
-      setUserRooms(prev => prev.filter(r => r.roomId !== deletedRoomId));
-      setPendingUserRequests(prev => prev.filter(p => p.roomId !== deletedRoomId));
+      setUserRooms(prev => {
+        const next = prev.filter(r => r.roomId !== deletedRoomId);
+        if (currentHostUid) {
+          localStorage.setItem(`userRooms_${currentHostUid}`, JSON.stringify(next));
+        }
+        return next;
+      });
+      setPendingUserRequests(prev => {
+        const next = prev.filter(p => p.roomId !== deletedRoomId);
+        localStorage.setItem('tallyin_pending_user_requests', JSON.stringify(next));
+        return next;
+      });
       
       if (user) {
         try {
@@ -9922,32 +9942,18 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                   </div>
                 </div>
               ) : (() => {
-                const combinedRooms = [...userRooms];
-                // Include pending, declined, and approved requests from pendingUserRequests if not already in userRooms
-                pendingUserRequests.forEach(p => {
-                  if (p && p.roomId && !combinedRooms.some(r => r.roomId === p.roomId)) {
-                    combinedRooms.push({
-                      roomId: p.roomId,
-                      roomName: p.roomName || p.roomId,
-                      status: p.status || 'pending',
-                      declinedAt: p.declinedAt,
-                      approvedAt: p.approvedAt
-                    });
-                  }
+                const combinedRooms = [...userRooms.filter(r => r && r.roomId && r.roomId !== 'null' && r.roomId !== 'undefined')];
+                // Only include truly pending requests (not approved duplicates or deleted rooms)
+                (pendingUserRequests || []).filter(p => p && p.roomId && p.status === 'pending' && !combinedRooms.some(r => r.roomId === p.roomId)).forEach(p => {
+                  combinedRooms.push({
+                    roomId: p.roomId,
+                    roomName: p.roomName || p.roomId,
+                    status: 'pending',
+                    isPendingReq: true
+                  });
                 });
 
-                // Filter out declined cards older than 24 hours (86,400,000 ms)
-                const visibleRooms = combinedRooms.filter(r => {
-                  const reqItem = pendingUserRequests.find(p => p.roomId === r.roomId) || r;
-                  if (reqItem && reqItem.status === 'declined') {
-                    const declinedTime = reqItem.declinedAt ? new Date(reqItem.declinedAt).getTime() : 0;
-                    if (declinedTime > 0 && (Date.now() - declinedTime >= 24 * 60 * 60 * 1000)) {
-                      return false; // Auto-vanish after 24 hours
-                    }
-                  }
-                  return true;
-                });
-
+                const visibleRooms = combinedRooms;
                 if (visibleRooms.length === 0) return null;
 
                 return (
@@ -11480,14 +11486,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
           {/* Room Switcher Dropdown */}
           {user && (() => {
-            const allSelectableRooms = [...userRooms.filter(r => r && r.roomId && r.roomId !== 'null' && r.roomId !== 'undefined')];
-            if (userRoomId && !allSelectableRooms.some(r => r.roomId === userRoomId)) {
-              allSelectableRooms.unshift({
-                roomId: userRoomId,
-                roomName: roomName || 'Tallyin Room',
-                monthlyBudget: monthlyBudget || 22000
-              });
-            }
+            const allSelectableRooms = userRooms.filter(r => r && r.roomId && r.roomId !== 'null' && r.roomId !== 'undefined' && !r.roomId.startsWith('__SYSTEM_'));
 
             if (allSelectableRooms.length === 0) return null;
 
