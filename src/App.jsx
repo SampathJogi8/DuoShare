@@ -4800,7 +4800,7 @@ export default function App() {
     return `TL-${letters}-${digits}`;
   };
 
-  // Create Room handler with Supabase uniqueness check & double-click protection
+  // Create Room handler with optimized fast pipeline & double-click protection
   const handleCreateRoom = async () => {
     if (isCreatingRoom) return;
 
@@ -4812,23 +4812,7 @@ export default function App() {
     setIsCreatingRoom(true);
 
     try {
-      let uniqueCode = generateUniqueRoomCode();
-      
-      // Quick check if code exists (1 attempt is almost always unique)
-      try {
-        const { data: existingRoom } = await supabase
-          .from('rooms')
-          .select('id')
-          .eq('id', uniqueCode)
-          .maybeSingle();
-        if (existingRoom) {
-          uniqueCode = generateUniqueRoomCode();
-        }
-      } catch (err) {
-        console.warn("Uniqueness check query notice:", err);
-      }
-      
-      // 1. Create a metadata document for the room to claim it
+      const uniqueCode = generateUniqueRoomCode();
       const initialMaxMembers = Number(newRoomMaxMembersInput) || Number(roomMaxMembersInput) || 2;
       const isQuota = selectedRoomMode === 'quota';
       const finalMonthlyBudget = isQuota ? (Number(newRoomBudgetInput) || 3000) : (Number(monthlyBudgetInput) || 3000);
@@ -4842,6 +4826,9 @@ export default function App() {
         return;
       }
 
+      const finalRoomName = roomNameInput.trim() || 'Tallyin';
+
+      // 1. Instant local optimistic state updates
       setMonthlyBudget(finalMonthlyBudget);
       setMonthlyBudgetInput(String(finalMonthlyBudget));
       localStorage.setItem('monthlyBudget', String(finalMonthlyBudget));
@@ -4849,96 +4836,103 @@ export default function App() {
         setPersonalCap(hostContributionVal);
         localStorage.setItem('personalCap', String(hostContributionVal));
       }
-      let roomError = null;
 
-      try {
-        const { error: errWithMode } = await supabase
-          .from('rooms')
-          .insert({
-            id: uniqueCode,
-            created_by: user ? user.id : 'anonymous',
-            created_at: new Date().toISOString(),
-            monthly_budget: finalMonthlyBudget,
-            max_members: initialMaxMembers,
-            name: roomNameInput.trim() || 'Tallyin',
-            room_mode: selectedRoomMode
-          });
-
-        if (errWithMode) {
-          console.warn("D1 room_mode insert check/fallback:", errWithMode);
-          const { error: errFallback } = await supabase
-            .from('rooms')
-            .insert({
-              id: uniqueCode,
-              created_by: user ? user.id : 'anonymous',
-              created_at: new Date().toISOString(),
-              monthly_budget: finalMonthlyBudget,
-              max_members: initialMaxMembers,
-              name: roomNameInput.trim() || 'Tallyin'
-            });
-          roomError = errFallback;
-        }
-      } catch (e) {
-        const { error: errFallback } = await supabase
-          .from('rooms')
-          .insert({
-            id: uniqueCode,
-            created_by: user ? user.id : 'anonymous',
-            created_at: new Date().toISOString(),
-            monthly_budget: finalMonthlyBudget,
-            max_members: initialMaxMembers,
-            name: roomNameInput.trim() || 'Tallyin'
-          });
-        roomError = errFallback;
-      }
-
-      if (roomError) throw roomError;
-
-      // Always save room_mode to system_settings as fail-safe fallback
-      try {
-        await supabase
-          .from('system_settings')
-          .upsert({
-            key: `room_mode_${uniqueCode}`,
-            value: JSON.stringify({ mode: selectedRoomMode }),
-            created_at: new Date().toISOString()
-          }, { onConflict: 'key' });
-      } catch (e) {}
-
-      setIsQuotaMode(selectedRoomMode === 'quota');
-      localStorage.setItem('isQuotaMode', selectedRoomMode === 'quota' ? 'true' : 'false');
+      setIsQuotaMode(isQuota);
+      localStorage.setItem('isQuotaMode', isQuota ? 'true' : 'false');
       localStorage.setItem(`roomMode_${uniqueCode}`, selectedRoomMode);
       
       setRoomMaxMembers(initialMaxMembers);
       setSettingsMaxMembersInput(initialMaxMembers);
-      
-      // Register as member with host personal contribution quota
-      await addMemberToRoom(uniqueCode, userNickname, null, hostContributionVal);
-      await fetchUserRooms();
-      
-      // 2. Set active room locally
-      const finalRoomName = roomNameInput.trim() || 'Tallyin';
       setRoomName(finalRoomName);
       setSettingsRoomNameInput(finalRoomName);
       localStorage.setItem('roomName', finalRoomName);
       
       setUserRoomId(uniqueCode);
       localStorage.setItem('userRoomId', uniqueCode);
-      setOnboardingStep('share-code');
-      triggerToast(`Room ${uniqueCode} created!`);
-      
-      // 3. Write to users profile to bind user session
+
+      // Add to userRooms cache immediately
+      const newRoomSummary = {
+        roomId: uniqueCode,
+        roomName: finalRoomName,
+        role: 'Host',
+        memberCount: 1,
+        totalSpend: 0
+      };
+      setUserRooms(prev => [newRoomSummary, ...(prev || []).filter(r => r.roomId !== uniqueCode)]);
       if (user) {
-        const { error: userError } = await supabase
-          .from('users')
-          .upsert({
-            uid: user.id,
-            room_id: uniqueCode,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'uid' });
-        
-        if (userError) throw userError;
+        try {
+          const cachedKey = `userRooms_${user.id}`;
+          const prevCached = JSON.parse(localStorage.getItem(cachedKey) || '[]');
+          localStorage.setItem(cachedKey, JSON.stringify([newRoomSummary, ...prevCached.filter(r => r.roomId !== uniqueCode)]));
+        } catch (e) {}
       }
+
+      // 2. Prepare member payload for host
+      const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
+      const memberPayload = {
+        room_id: uniqueCode,
+        uid: user ? user.id : 'anonymous',
+        nickname: userNickname,
+        photo_url: avatarUrl,
+        email: user?.email || '',
+        joined_at: new Date().toISOString()
+      };
+      if (hostContributionVal !== null && hostContributionVal !== undefined && !isNaN(Number(hostContributionVal))) {
+        memberPayload.individual_budget = Number(hostContributionVal);
+      }
+
+      // 3. Parallel write: Insert Room & Insert Host Member simultaneously
+      const roomInsertPromise = supabase
+        .from('rooms')
+        .insert({
+          id: uniqueCode,
+          created_by: user ? user.id : 'anonymous',
+          created_at: new Date().toISOString(),
+          monthly_budget: finalMonthlyBudget,
+          max_members: initialMaxMembers,
+          name: finalRoomName,
+          room_mode: selectedRoomMode
+        })
+        .then(async ({ error }) => {
+          if (error) {
+            // Fallback without room_mode if column error
+            return supabase.from('rooms').insert({
+              id: uniqueCode,
+              created_by: user ? user.id : 'anonymous',
+              created_at: new Date().toISOString(),
+              monthly_budget: finalMonthlyBudget,
+              max_members: initialMaxMembers,
+              name: finalRoomName
+            });
+          }
+        });
+
+      const memberInsertPromise = supabase
+        .from('members')
+        .upsert(memberPayload, { onConflict: 'room_id,uid' });
+
+      // Await essential core writes in parallel
+      await Promise.all([roomInsertPromise, memberInsertPromise]);
+
+      // 4. Transition UI immediately to share-code step!
+      setOnboardingStep('share-code');
+      triggerToast(`Room ${uniqueCode} created! 🚀`);
+
+      // 5. Run non-blocking auxiliary writes in the background
+      Promise.all([
+        supabase.from('system_settings').upsert({
+          key: `room_mode_${uniqueCode}`,
+          value: JSON.stringify({ mode: selectedRoomMode }),
+          created_at: new Date().toISOString()
+        }, { onConflict: 'key' }),
+        user ? supabase.from('users').upsert({
+          uid: user.id,
+          room_id: uniqueCode,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'uid' }) : Promise.resolve(),
+        fetchUserRooms()
+      ]).catch(err => console.warn("Background room metadata sync notice:", err));
+
     } catch (err) {
       console.error('Failed to save room creation to Supabase:', err);
       triggerToast(`Failed to create room: ${err.message || 'Supabase error'}. (Please check your connection and database status)`);
