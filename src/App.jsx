@@ -66,7 +66,7 @@ import {
 } from 'lucide-react';
 
 import { supabase } from './supabase';
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut as fbSignOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as fbSignOut } from 'firebase/auth';
 import { auth as firebaseAuth, googleProvider } from './firebase';
 import logoIcon from './assets/logo_icon.png';
 import logoFull from './assets/logo_full.png';
@@ -2548,13 +2548,31 @@ export default function App() {
         .select('room_id')
         .eq('uid', currentUser.id)
         .maybeSingle()
-        .then(({ data: userProfile, error }) => {
-          if (!error && userProfile?.room_id) {
+        .then(async ({ data: userProfile, error }) => {
+          if (!error && userProfile?.room_id && userProfile.room_id !== 'null' && userProfile.room_id !== 'undefined') {
             const rId = userProfile.room_id;
             setUserRoomId(rId);
             setHasConfirmedRoom(true);
             localStorage.setItem('userRoomId', rId);
             addMemberToRoom(rId, finalNickname, currentUser); // intentionally not awaited
+          } else if (currentUser.email) {
+            // Auto-heal active room from members table
+            try {
+              const { data: memData } = await supabase
+                .from('members')
+                .select('room_id')
+                .eq('email', currentUser.email.toLowerCase().trim())
+                .order('joined_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (memData?.room_id && memData.room_id !== 'null' && memData.room_id !== 'undefined') {
+                const rId = memData.room_id;
+                setUserRoomId(rId);
+                setHasConfirmedRoom(true);
+                localStorage.setItem('userRoomId', rId);
+                addMemberToRoom(rId, finalNickname, currentUser);
+              }
+            } catch (e) {}
           }
         })
         .catch(e => console.error('Error fetching user room ID:', e));
@@ -2577,12 +2595,23 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (localStorage.getItem('tallyin_code_user')) {
-      return;
-    }
+    // Check for redirect login result if user returned from redirect flow
+    getRedirectResult(firebaseAuth).then((result) => {
+      if (result && result.user) {
+        localStorage.removeItem('tallyin_code_user');
+        const currentUser = mapFirebaseUser(result.user);
+        setUser(currentUser);
+        handleAuthUser(currentUser);
+      }
+    }).catch((err) => {
+      console.warn("Redirect auth error:", err);
+    });
 
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
-      if (localStorage.getItem('tallyin_code_user')) return;
+      if (localStorage.getItem('tallyin_code_user')) {
+        setAuthLoading(false);
+        return;
+      }
 
       setAuthError(null); // Clear any connection warning as soon as auth state resolves
       const currentUser = mapFirebaseUser(fbUser);
@@ -2590,9 +2619,11 @@ export default function App() {
       if (currentUser) {
         handleAuthUser(currentUser);
       } else {
-        setUserRoomId(null);
-        localStorage.removeItem('userRoomId');
-        setHasConfirmedRoom(false);
+        if (!localStorage.getItem('tallyin_code_user')) {
+          setUserRoomId(null);
+          localStorage.removeItem('userRoomId');
+          setHasConfirmedRoom(false);
+        }
         setAuthLoading(false);
       }
     }, (err) => {
@@ -3901,19 +3932,28 @@ export default function App() {
 
   // Login handler
   const handleGoogleLogin = async () => {
+    localStorage.removeItem('tallyin_code_user');
     setAuthError(null);
     setAuthLoading(true);
     try {
-      await signInWithPopup(firebaseAuth, googleProvider);
+      const result = await signInWithPopup(firebaseAuth, googleProvider);
+      if (result && result.user) {
+        const currentUser = mapFirebaseUser(result.user);
+        setUser(currentUser);
+        await handleAuthUser(currentUser);
+      }
     } catch (err) {
       if (err.code === 'auth/popup-blocked') {
         try {
           await signInWithRedirect(firebaseAuth, googleProvider);
+          return;
         } catch (redirErr) {
           console.error("Firebase redirect login error:", redirErr);
           setAuthError(`Auth Error: ${redirErr.message}`);
           setAuthLoading(false);
         }
+      } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        setAuthLoading(false);
       } else {
         console.error("Firebase login error:", err);
         setAuthError(`Auth Error: ${err.message}`);
