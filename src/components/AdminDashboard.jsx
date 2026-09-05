@@ -80,6 +80,108 @@ const ADMIN_EMAILS = [
   'sampathjogipusala123@gmail.com'
 ];
 
+export const DEFAULT_EMAIL_MATRIX = {
+  co_admin_actions: {
+    id: 'co_admin_actions',
+    label: 'Co-Admin Role & Permission Changes',
+    category: 'Security & Access',
+    description: 'Send automated email notification when co-admin privileges, clearances, or access durations are granted, updated, or revoked.',
+    enabled: true,
+    routing: 'CO_ADMINS_AND_SUPER',
+    customRecipients: ''
+  },
+  dispute_tickets: {
+    id: 'dispute_tickets',
+    label: 'Dispute Resolver & Support Tickets',
+    category: 'Disputes & Support',
+    description: 'Send email notification when new user disputes or support queries are lodged or resolved.',
+    enabled: true,
+    routing: 'SUPER_ADMINS',
+    customRecipients: ''
+  },
+  welcome_onboarding: {
+    id: 'welcome_onboarding',
+    label: 'User Onboarding & Room Invites',
+    category: 'User Onboarding',
+    description: 'Dispatch a welcoming email with user tips and guidelines upon joining a room.',
+    enabled: true,
+    routing: 'ALL_USERS',
+    customRecipients: ''
+  },
+  maintenance_alerts: {
+    id: 'maintenance_alerts',
+    label: 'System Maintenance & Downtime Alerts',
+    category: 'System Operations',
+    description: 'Broadcast planned maintenance countdowns and emergency maintenance window activations.',
+    enabled: true,
+    routing: 'ALL_USERS',
+    customRecipients: ''
+  },
+  settlement_receipts: {
+    id: 'settlement_receipts',
+    label: 'Settlement Confirmations & Receipts',
+    category: 'Finance & Payments',
+    description: 'Send automated receipt summary emails whenever a room debt or expense balance is settled.',
+    enabled: true,
+    routing: 'ALL_USERS',
+    customRecipients: ''
+  },
+  broadcast_announcements: {
+    id: 'broadcast_announcements',
+    label: 'Global News & Feature Announcements',
+    category: 'Broadcasts',
+    description: 'Deliver official Tallyin news releases and version release notes directly to inboxes.',
+    enabled: true,
+    routing: 'ALL_USERS',
+    customRecipients: ''
+  }
+};
+
+export const EMAIL_TEMPLATE_PRESETS = [
+  {
+    id: 'custom',
+    name: '✍️ Custom Dispatch',
+    category: 'Custom Broadcast',
+    subject: '',
+    body: ''
+  },
+  {
+    id: 'emergency_maint',
+    name: '🚨 Emergency Maintenance Window',
+    category: 'System Operations',
+    subject: '🚨 URGENT: Scheduled Maintenance & System Update',
+    body: `Hello {{userName}},\n\nPlease be advised that Tallyin will be undergoing brief system maintenance to perform essential infrastructure and security upgrades.\n\nDuring this window, live synchronization may experience brief interruptions. Your room data and expense calculations remain fully secure.\n\nWe appreciate your patience.\n\nBest regards,\nTallyin Operations Team`
+  },
+  {
+    id: 'coadmin_access',
+    name: '🛡️ Co-Admin Role & Clearance Granted',
+    category: 'Security & Access',
+    subject: '🛡️ Tallyin Security: Administrative Access Granted',
+    body: `Hello {{userName}},\n\nYou have been granted administrative clearance on Tallyin HQ by {{adminName}}.\n\nYou now have authorized access to manage system modules and live operations according to your assigned permission matrix.\n\nPlease ensure you maintain strict administrative protocols.\n\nSincerely,\nTallyin Security Administration`
+  },
+  {
+    id: 'settlement_reminder',
+    name: '💰 Monthly Settlement & Balance Audit',
+    category: 'Finance & Payments',
+    subject: '💰 Room Settle-Up Reminder: {{roomName}}',
+    body: `Hi {{userName}},\n\nThis is a friendly reminder to review and settle any pending balances in {{roomName}} on Tallyin.\n\nClear all dues easily using 1-tap UPI or mark offline payments directly within your room.\n\nHappy sharing!\nTeam Tallyin`
+  },
+  {
+    id: 'feature_release',
+    name: '🚀 New Feature Announcement',
+    category: 'Broadcasts',
+    subject: '🚀 What\'s New in Tallyin: Interactive Tours, Quota Toggles & More!',
+    body: `Hello {{userName}},\n\nWe're excited to announce major new features in Tallyin:\n\n✨ Interactive Onboarding Sandbox - Learn splitting with live bill math\n⚡ Instant Room Modes - Switch between Equal Split and Quota Mode effortlessly\n📊 Real-time Sync & Central Notifications Hub\n\nOpen your room today to try out these new tools!\n\nCheers,\nThe Tallyin Team`
+  },
+  {
+    id: 'dispute_resolution',
+    name: '⚖️ Dispute Resolution Confirmation',
+    category: 'Disputes & Support',
+    subject: '⚖️ Tallyin Support: Ticket Resolution Notice',
+    body: `Hello {{userName}},\n\nYour recent inquiry regarding room transactions has been officially reviewed and resolved by our administration team.\n\nPlease check your room dashboard to see the latest balances and updated settlement receipts.\n\nIf you have any further questions, reach out via the in-app Dispute Resolver.\n\nRegards,\nTallyin Support Desk`
+  }
+];
+
 export default function AdminDashboard({
   user,
   userNickname,
@@ -415,7 +517,30 @@ export default function AdminDashboard({
   const [broadcastTargetRoom, setBroadcastTargetRoom] = useState('ALL');
   const [broadcastDurationDays, setBroadcastDurationDays] = useState('2'); // default 2 calendar days
 
-  // Email form states
+  // Email form & Live Sync matrix states
+  const [emailHubSubTab, setEmailHubSubTab] = useState('matrix'); // 'matrix' | 'dispatcher' | 'outbox'
+  const [emailNotificationMatrix, setEmailNotificationMatrix] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tallyin_admin_email_matrix');
+      return saved ? { ...DEFAULT_EMAIL_MATRIX, ...JSON.parse(saved) } : DEFAULT_EMAIL_MATRIX;
+    } catch {
+      return DEFAULT_EMAIL_MATRIX;
+    }
+  });
+  const [emailOutboxLog, setEmailOutboxLog] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tallyin_admin_email_outbox');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isSavingEmailMatrix, setIsSavingEmailMatrix] = useState(false);
+  const [emailTemplatePreset, setEmailTemplatePreset] = useState('custom');
+  const [emailSearchFilter, setEmailSearchFilter] = useState('');
+  const [emailCategoryFilter, setEmailCategoryFilter] = useState('ALL');
+  const [emailStatusFilter, setEmailStatusFilter] = useState('ALL');
+  const [selectedOutboxDetail, setSelectedOutboxDetail] = useState(null);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [emailRecipientGroup, setEmailRecipientGroup] = useState('ALL_USERS');
@@ -1063,6 +1188,20 @@ export default function AdminDashboard({
           setUserDisputesAndQueries(prev => [payload.payload.dispute, ...prev.filter(d => d.id !== payload.payload.dispute.id)]);
           playAppealAlertSound();
           if (triggerToast) triggerToast(`🚨 New ${payload.payload.dispute.type === 'dispute' ? 'Dispute' : 'Support Query'} from ${payload.payload.dispute.user_email || 'a user'}!`);
+        }
+      })
+      .on('broadcast', { event: 'EMAIL_MATRIX_UPDATED' }, (payload) => {
+        if (payload?.payload?.matrix) {
+          setEmailNotificationMatrix(payload.payload.matrix);
+          if (payload.payload.matrix.co_admin_actions?.enabled !== undefined) {
+            setCoAdminEmailNotifyGlobal(payload.payload.matrix.co_admin_actions.enabled);
+          }
+          if (triggerToast) triggerToast('📧 Email notification matrix updated live by administrator.');
+        }
+      })
+      .on('broadcast', { event: 'EMAIL_OUTBOX_UPDATED' }, (payload) => {
+        if (payload?.payload?.outbox && Array.isArray(payload.payload.outbox)) {
+          setEmailOutboxLog(payload.payload.outbox);
         }
       })
       .subscribe();
@@ -1914,6 +2053,39 @@ export default function AdminDashboard({
     }
   }, []);
 
+  // Fetch Central Email Notifications Matrix & Outbox Log from system_settings
+  const fetchEmailConfiguration = useCallback(async () => {
+    try {
+      const [matrixRes, outboxRes] = await Promise.all([
+        supabase.from('system_settings').select('value').eq('key', 'admin_email_notification_matrix').maybeSingle(),
+        supabase.from('system_settings').select('value').eq('key', 'admin_email_outbox_log').maybeSingle()
+      ]);
+
+      if (matrixRes?.data?.value) {
+        try {
+          const parsed = JSON.parse(matrixRes.data.value);
+          setEmailNotificationMatrix(prev => ({ ...prev, ...parsed }));
+          localStorage.setItem('tallyin_admin_email_matrix', JSON.stringify(parsed));
+          if (parsed.co_admin_actions?.enabled !== undefined) {
+            setCoAdminEmailNotifyGlobal(parsed.co_admin_actions.enabled);
+          }
+        } catch (e) {}
+      }
+
+      if (outboxRes?.data?.value) {
+        try {
+          const parsed = JSON.parse(outboxRes.data.value);
+          if (Array.isArray(parsed)) {
+            setEmailOutboxLog(parsed);
+            localStorage.setItem('tallyin_admin_email_outbox', JSON.stringify(parsed));
+          }
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn("Fetch email configuration notice:", err);
+    }
+  }, []);
+
   useEffect(() => {
     if (isAuthorizedAdmin) {
       measurePing();
@@ -1923,8 +2095,9 @@ export default function AdminDashboard({
       fetchBannedUsers();
       fetchBanAppeals();
       fetchCoAdminAckRegistry();
+      fetchEmailConfiguration();
     }
-  }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry]);
+  }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry, fetchEmailConfiguration]);
 
   // Fetch Rooms for Room Commander with members count
   const fetchCommanderRooms = useCallback(async () => {
@@ -3531,9 +3704,104 @@ export default function AdminDashboard({
     if (triggerToast) triggerToast('Broadcast message cleared across all devices.');
   };
 
-  // Send Centralized Emails
+  // Central Outbox Logger
+  const recordEmailToOutbox = useCallback(async (entry) => {
+    const newEntry = {
+      id: 'EML-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase(),
+      timestamp: new Date().toISOString(),
+      recipient: entry.recipient || 'All Registered Roommates',
+      recipientCount: entry.recipientCount || 1,
+      subject: entry.subject || 'System Notification',
+      preview: entry.preview || (entry.body ? entry.body.substring(0, 120) : ''),
+      category: entry.category || 'General Broadcast',
+      status: entry.status || 'DELIVERED',
+      triggerSource: entry.triggerSource || 'Manual Dispatcher',
+      dispatchedBy: user?.email || userNickname || 'Admin'
+    };
+
+    setEmailOutboxLog(prev => {
+      const next = [newEntry, ...prev].slice(0, 200);
+      try { localStorage.setItem('tallyin_admin_email_outbox', JSON.stringify(next)); } catch (e) {}
+      
+      supabase.from('system_settings').upsert({
+        key: 'admin_email_outbox_log',
+        value: JSON.stringify(next),
+        updated_at: new Date().toISOString()
+      }).catch(console.warn);
+
+      if (adminChannelRef.current) {
+        adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'EMAIL_OUTBOX_UPDATED',
+          payload: { outbox: next }
+        }).catch(console.warn);
+      }
+      return next;
+    });
+  }, [user, userNickname]);
+
+  // Save & Live Sync Email Matrix
+  const handleSaveEmailMatrix = async (updatedMatrix) => {
+    const target = updatedMatrix || emailNotificationMatrix;
+    setIsSavingEmailMatrix(true);
+    try {
+      localStorage.setItem('tallyin_admin_email_matrix', JSON.stringify(target));
+      if (target.co_admin_actions?.enabled !== undefined) {
+        setCoAdminEmailNotifyGlobal(target.co_admin_actions.enabled);
+        localStorage.setItem('tallyin_coadmin_email_notify_global', JSON.stringify(target.co_admin_actions.enabled));
+      }
+
+      await supabase.from('system_settings').upsert({
+        key: 'admin_email_notification_matrix',
+        value: JSON.stringify(target),
+        updated_at: new Date().toISOString()
+      });
+
+      if (adminChannelRef.current) {
+        adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'EMAIL_MATRIX_UPDATED',
+          payload: { matrix: target }
+        }).catch(console.warn);
+      }
+
+      logAuditAction('UPDATE_EMAIL_NOTIFICATION_MATRIX', `Updated automated email notification settings`);
+      if (triggerToast) triggerToast('✅ Email notification rules saved & synced live!');
+    } catch (err) {
+      console.error(err);
+      if (triggerToast) triggerToast('⚠️ Failed to save email matrix to database');
+    } finally {
+      setIsSavingEmailMatrix(false);
+    }
+  };
+
+  // Clear Outbox Log
+  const handleClearOutbox = async () => {
+    if (!window.confirm('Are you sure you want to clear the entire sent email outbox history?')) return;
+    setEmailOutboxLog([]);
+    localStorage.removeItem('tallyin_admin_email_outbox');
+    try {
+      await supabase.from('system_settings').upsert({
+        key: 'admin_email_outbox_log',
+        value: JSON.stringify([]),
+        updated_at: new Date().toISOString()
+      });
+      if (adminChannelRef.current) {
+        adminChannelRef.current.send({
+          type: 'broadcast',
+          event: 'EMAIL_OUTBOX_UPDATED',
+          payload: { outbox: [] }
+        }).catch(console.warn);
+      }
+      if (triggerToast) triggerToast('🗑️ Email outbox history cleared.');
+    } catch (e) {
+      console.warn("Outbox clear error:", e);
+    }
+  };
+
+  // Send Centralized Emails with variable interpolation & outbox logging
   const handleSendCentralEmail = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!emailSubject.trim() || (!emailBody.trim() && !customEmails.trim())) {
       if (triggerToast) triggerToast('Subject and email content required.');
       return;
@@ -3545,15 +3813,19 @@ export default function AdminDashboard({
     try {
       let recipientList = [];
       if (emailRecipientGroup === 'CUSTOM' && customEmails.trim()) {
-        recipientList = customEmails.split(',').map(e => e.trim()).filter(Boolean);
+        recipientList = customEmails.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+      } else if (emailRecipientGroup === 'SUPER_ADMINS') {
+        recipientList = [...ADMIN_EMAILS];
+      } else if (emailRecipientGroup === 'CO_ADMINS') {
+        recipientList = normalizedCoAdmins.map(a => a.email.toLowerCase()).filter(Boolean);
       } else {
         // Fetch all member & user emails from Supabase
         const [{ data: memberData }, { data: userData }] = await Promise.all([
           supabase.from('members').select('email'),
           supabase.from('users').select('email')
         ]);
-        const mEmails = (memberData || []).map(m => m.email).filter(Boolean);
-        const uEmails = (userData || []).map(u => u.email).filter(Boolean);
+        const mEmails = (memberData || []).map(m => (m.email || '').trim().toLowerCase()).filter(Boolean);
+        const uEmails = (userData || []).map(u => (u.email || '').trim().toLowerCase()).filter(Boolean);
         recipientList = Array.from(new Set([...mEmails, ...uEmails]));
       }
 
@@ -3563,7 +3835,28 @@ export default function AdminDashboard({
         return;
       }
 
+      const activePreset = EMAIL_TEMPLATE_PRESETS.find(p => p.id === emailTemplatePreset);
+      const categoryTag = activePreset ? activePreset.category : 'Custom Broadcast';
+      const adminDisplayName = userNickname || user?.email?.split('@')[0] || 'System Admin';
+      const currentRoomName = userRooms?.[0]?.roomName || 'Your Shared Space';
+      const currentAppUrl = typeof window !== 'undefined' ? window.location.origin : 'https://tallyin.app';
+
       for (const targetEmail of recipientList) {
+        const userNameGuess = targetEmail.split('@')[0];
+        const personalizedSubject = emailSubject
+          .replace(/\{\{userName\}\}/g, userNameGuess)
+          .replace(/\{\{roomName\}\}/g, currentRoomName)
+          .replace(/\{\{adminName\}\}/g, adminDisplayName)
+          .replace(/\{\{appUrl\}\}/g, currentAppUrl)
+          .replace(/\{\{date\}\}/g, new Date().toLocaleDateString());
+
+        const personalizedBody = emailBody
+          .replace(/\{\{userName\}\}/g, userNameGuess)
+          .replace(/\{\{roomName\}\}/g, currentRoomName)
+          .replace(/\{\{adminName\}\}/g, adminDisplayName)
+          .replace(/\{\{appUrl\}\}/g, currentAppUrl)
+          .replace(/\{\{date\}\}/g, new Date().toLocaleDateString());
+
         await fetch(activeScriptUrl, {
           method: 'POST',
           mode: 'no-cors',
@@ -3571,19 +3864,19 @@ export default function AdminDashboard({
           body: JSON.stringify({
             action: 'send_email',
             to: targetEmail,
-            subject: emailSubject,
-            body: emailBody,
+            subject: personalizedSubject,
+            body: personalizedBody,
             htmlBody: `
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0;">
                 <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #10b981;">
-                  <h2 style="color: #1a3827; margin: 0;">Tallyin System Alert</h2>
-                  <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Official System Notification • tallyin.alerts@gmail.com</p>
+                  <h2 style="color: #1a3827; margin: 0; font-size: 20px;">Tallyin Official Notification</h2>
+                  <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Verified System Dispatch • tallyin.alerts@gmail.com</p>
                 </div>
                 <div style="padding: 20px 0; color: #334155; font-size: 14px; line-height: 1.6;">
-                  ${emailBody.replace(/\n/g, '<br/>')}
+                  ${personalizedBody.replace(/\n/g, '<br/>')}
                 </div>
                 <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
-                  Dispatched via Tallyin Centralized Admin Portal
+                  Dispatched via Tallyin Centralized Admin Portal to <strong>${targetEmail}</strong>
                 </div>
               </div>
             `
@@ -3591,10 +3884,22 @@ export default function AdminDashboard({
         });
       }
 
-      if (triggerToast) triggerToast(`Email broadcast dispatched to ${recipientList.length} recipients!`);
+      await recordEmailToOutbox({
+        recipient: emailRecipientGroup === 'CUSTOM' ? customEmails : (emailRecipientGroup === 'ALL_USERS' ? `All Users (${recipientList.length})` : emailRecipientGroup),
+        recipientCount: recipientList.length,
+        subject: emailSubject,
+        preview: emailBody.substring(0, 100),
+        category: categoryTag,
+        status: 'DELIVERED',
+        triggerSource: 'Admin Email Hub'
+      });
+
+      logAuditAction('DISPATCH_BROADCAST_EMAIL', `Dispatched broadcast "${emailSubject}" to ${recipientList.length} recipients`);
+      if (triggerToast) triggerToast(`✅ Email broadcast dispatched to ${recipientList.length} recipients!`);
       setEmailSubject('');
       setEmailBody('');
       setCustomEmails('');
+      setEmailTemplatePreset('custom');
     } catch (err) {
       console.error(err);
       if (triggerToast) triggerToast('Email dispatch completed with warnings.');
@@ -6520,87 +6825,745 @@ NOTIFY pgrst, 'reload schema';`;
         )
       )}
 
-      {/* Tab 4: Centralized Email Hub */}
+      {/* Tab 4: Centralized Email Hub & Notification Matrix */}
       {activeTab === 'email' && (
         !userPermissions.broadcasts ? (
-          renderAccessRestrictedCard('Centralized Email Dispatcher', 'Broadcast Clearance Required')
+          renderAccessRestrictedCard('Centralized Email Hub & Notification Matrix', 'Broadcast Clearance Required')
         ) : (
-          <form onSubmit={handleSendCentralEmail} className="hud-card rounded-3xl p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
-              <div className="space-y-0.5">
-                <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                  <Mail className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
-                  Centralized Email Dispatcher
-                </h3>
-                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                  Compose and send automated email broadcasts to room members via central mail script relay.
-                </p>
+          <div className="space-y-6">
+            {/* Top Navigation Subtabs */}
+            <div className="hud-card rounded-3xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-[#E3E8E3] dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black shadow-xs">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                    Central Email Notifications Hub
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300">
+                      Live Sync
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                    Automated event triggers, custom mail dispatcher & real-time outbox audit history.
+                  </p>
+                </div>
+              </div>
+
+              {/* Subtab Switcher */}
+              <div className="flex items-center gap-1.5 p-1 bg-[#F4F7F5] dark:bg-slate-800/80 rounded-2xl border border-[#E3E8E3]/60 dark:border-slate-700/60 w-full sm:w-auto overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setEmailHubSubTab('matrix')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    emailHubSubTab === 'matrix'
+                      ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Sliders className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>Notification Matrix</span>
+                  <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635] text-[9px] font-mono">
+                    {Object.values(emailNotificationMatrix).filter(r => r.enabled).length}/{Object.keys(emailNotificationMatrix).length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEmailHubSubTab('dispatcher')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    emailHubSubTab === 'dispatcher'
+                      ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Send className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Email Dispatcher</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEmailHubSubTab('outbox')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    emailHubSubTab === 'outbox'
+                      ? 'bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Outbox & Log</span>
+                  {emailOutboxLog.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 text-[9px] font-mono">
+                      {emailOutboxLog.length}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Recipient Target</label>
-                  <select
-                    value={emailRecipientGroup}
-                    onChange={e => setEmailRecipientGroup(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
+            {/* ══════════════════════════════════════════
+                SUBTAB 1: NOTIFICATION RULES MATRIX
+            ══════════════════════════════════════════ */}
+            {emailHubSubTab === 'matrix' && (
+              <div className="space-y-4">
+                <div className="hud-card rounded-3xl p-6 border border-[#E3E8E3] dark:border-slate-800 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                        Automated Trigger Switchboard & Routing Rules
+                      </h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                        Define which platform events dispatch automated email notifications and customize the recipient routing group.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isSavingEmailMatrix}
+                        onClick={() => handleSaveEmailMatrix()}
+                        className="px-4 py-2 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs rounded-xl shadow-sm hover:bg-[#255038] dark:hover:bg-[#b7f34c] transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        <Save className={`w-3.5 h-3.5 ${isSavingEmailMatrix ? 'animate-spin' : ''}`} />
+                        <span>{isSavingEmailMatrix ? 'Syncing...' : 'Save & Live Sync Rules'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Rules Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {Object.keys(emailNotificationMatrix).map(key => {
+                      const rule = emailNotificationMatrix[key] || DEFAULT_EMAIL_MATRIX[key];
+                      if (!rule) return null;
+                      return (
+                        <div
+                          key={key}
+                          className={`p-4 rounded-2xl border transition-all space-y-3 ${
+                            rule.enabled
+                              ? 'bg-white dark:bg-slate-900/90 border-emerald-300/80 dark:border-emerald-800/80 shadow-xs ring-1 ring-emerald-500/10'
+                              : 'bg-slate-50/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-80'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
+                                  {rule.category || 'General'}
+                                </span>
+                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  rule.enabled
+                                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635]'
+                                    : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                                }`}>
+                                  {rule.enabled ? 'ACTIVE' : 'MUTED'}
+                                </span>
+                              </div>
+                              <h5 className="text-xs font-black text-[#1A3827] dark:text-white leading-tight">
+                                {rule.label}
+                              </h5>
+                              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                                {rule.description}
+                              </p>
+                            </div>
+
+                            {/* Master Toggle Switch */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = {
+                                  ...emailNotificationMatrix,
+                                  [key]: {
+                                    ...rule,
+                                    enabled: !rule.enabled
+                                  }
+                                };
+                                setEmailNotificationMatrix(next);
+                                handleSaveEmailMatrix(next);
+                              }}
+                              className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
+                                rule.enabled ? 'bg-emerald-600 dark:bg-[#A3E635]' : 'bg-slate-300 dark:bg-slate-700'
+                              }`}
+                              title={rule.enabled ? 'Mute this notification' : 'Enable this notification'}
+                            >
+                              <span className={`w-4 h-4 rounded-full bg-white dark:bg-slate-950 absolute top-1 transition-transform ${
+                                rule.enabled ? 'left-6' : 'left-1'
+                              }`} />
+                            </button>
+                          </div>
+
+                          {/* Recipient Routing Config */}
+                          <div className="pt-2 border-t border-[#E3E8E3]/60 dark:border-slate-800/80 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">
+                                Destination Routing:
+                              </label>
+                              <select
+                                disabled={!rule.enabled}
+                                value={rule.routing || 'ALL_USERS'}
+                                onChange={e => {
+                                  const next = {
+                                    ...emailNotificationMatrix,
+                                    [key]: {
+                                      ...rule,
+                                      routing: e.target.value
+                                    }
+                                  };
+                                  setEmailNotificationMatrix(next);
+                                  handleSaveEmailMatrix(next);
+                                }}
+                                className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[11px] font-bold text-[#1A3827] dark:text-white disabled:opacity-50"
+                              >
+                                <option value="SUPER_ADMINS">👑 Super Admins Only</option>
+                                <option value="ALL_CO_ADMINS">🛡️ Active Co-Admins</option>
+                                <option value="CO_ADMINS_AND_SUPER">👑 + 🛡️ All Admins (Super + Co-Admins)</option>
+                                <option value="ALL_USERS">👥 All Registered Roommates</option>
+                                <option value="CUSTOM">✉️ Custom Recipient List</option>
+                              </select>
+                            </div>
+
+                            {rule.routing === 'CUSTOM' && (
+                              <div className="space-y-1">
+                                <input
+                                  type="text"
+                                  disabled={!rule.enabled}
+                                  placeholder="admin1@example.com, alert@domain.com"
+                                  value={rule.customRecipients || ''}
+                                  onChange={e => {
+                                    const next = {
+                                      ...emailNotificationMatrix,
+                                      [key]: {
+                                        ...rule,
+                                        customRecipients: e.target.value
+                                      }
+                                    };
+                                    setEmailNotificationMatrix(next);
+                                  }}
+                                  onBlur={() => handleSaveEmailMatrix()}
+                                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-[11px] text-[#1A3827] dark:text-white"
+                                />
+                              </div>
+                            )}
+
+                            {/* Quick Test Trigger Button */}
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                Event ID: {rule.id}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={!rule.enabled || isSendingEmail}
+                                onClick={async () => {
+                                  if (triggerToast) triggerToast(`🧪 Dispatching test trigger for ${rule.label}...`);
+                                  try {
+                                    const activeScriptUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+                                    const targetEmail = user?.email || 'tallyin.alerts@gmail.com';
+                                    await fetch(activeScriptUrl, {
+                                      method: 'POST',
+                                      mode: 'no-cors',
+                                      headers: { 'Content-Type': 'text/plain' },
+                                      body: JSON.stringify({
+                                        action: 'send_email',
+                                        to: targetEmail,
+                                        subject: `[TEST TRIGGER] ${rule.label}`,
+                                        body: `This is a test notification trigger sent from Tallyin Admin Email Matrix for ${rule.label}. Routing mode: ${rule.routing}.`,
+                                        htmlBody: `
+                                          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #10b981; border-radius: 12px;">
+                                            <h3 style="color: #1a3827; margin: 0 0 10px 0;">🧪 Test Trigger: ${rule.label}</h3>
+                                            <p style="color: #475569; font-size: 13px;">This test email verifies that the central mail relay and trigger switchboard are operating with zero errors.</p>
+                                            <div style="background: #f1f5f9; padding: 10px; border-radius: 8px; font-size: 12px; font-family: monospace;">
+                                              Category: ${rule.category}<br/>
+                                              Routing: ${rule.routing}<br/>
+                                              Timestamp: ${new Date().toISOString()}
+                                            </div>
+                                          </div>
+                                        `
+                                      })
+                                    });
+                                    await recordEmailToOutbox({
+                                      recipient: targetEmail,
+                                      recipientCount: 1,
+                                      subject: `[TEST TRIGGER] ${rule.label}`,
+                                      preview: `Test notification trigger for ${rule.label}`,
+                                      category: rule.category,
+                                      status: 'DELIVERED',
+                                      triggerSource: 'Matrix Test Button'
+                                    });
+                                    if (triggerToast) triggerToast(`✅ Test email dispatched to ${targetEmail}!`);
+                                  } catch (err) {
+                                    console.error(err);
+                                    if (triggerToast) triggerToast('⚠️ Test dispatch notice: ' + err.message);
+                                  }
+                                }}
+                                className="px-2 py-1 rounded-md text-[10px] font-bold text-slate-500 hover:text-emerald-600 dark:hover:text-[#A3E635] hover:bg-slate-100 dark:hover:bg-slate-800 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                              >
+                                <Play className="w-2.5 h-2.5" />
+                                <span>Test Trigger</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Database Engine Status Banner */}
+                  <div className="p-3.5 rounded-2xl bg-[#F4F7F5] dark:bg-slate-900/60 border border-[#E3E8E3] dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Database className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                      <span className="font-bold text-[#1A3827] dark:text-slate-200">
+                        Live Database Engine: <strong className="uppercase font-mono">{getActiveDatabaseEngine()}</strong>
+                      </span>
+                      <span className="text-slate-400 dark:text-slate-500">•</span>
+                      <span className="text-slate-500 dark:text-slate-400 text-[11px]">
+                        Persisted to <code className="font-mono bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">system_settings.admin_email_notification_matrix</code>
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10B981]" />
+                      <span className="text-[11px] font-semibold text-emerald-800 dark:text-[#A3E635]">
+                        Multi-Admin Realtime Sync Active
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════
+                SUBTAB 2: INTERACTIVE EMAIL DISPATCHER
+            ══════════════════════════════════════════ */}
+            {emailHubSubTab === 'dispatcher' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left Column: Composer Form (7 cols) */}
+                <form onSubmit={handleSendCentralEmail} className="lg:col-span-7 hud-card rounded-3xl p-6 space-y-5 border border-[#E3E8E3] dark:border-slate-800">
+                  <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+                    <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                      <Edit3 className="w-4 h-4 text-blue-500" />
+                      Compose Email Notification
+                    </h4>
+                    <span className="text-xs text-slate-400 font-mono">
+                      Relay: Google Apps Script WebApp
+                    </span>
+                  </div>
+
+                  {/* Template Preset Dropdown */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                      ⚡ Quick-Load Template Preset
+                    </label>
+                    <select
+                      value={emailTemplatePreset}
+                      onChange={e => {
+                        const presetKey = e.target.value;
+                        setEmailTemplatePreset(presetKey);
+                        const found = EMAIL_TEMPLATE_PRESETS.find(p => p.id === presetKey);
+                        if (found && presetKey !== 'custom') {
+                          setEmailSubject(found.subject);
+                          setEmailBody(found.body);
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
+                    >
+                      {EMAIL_TEMPLATE_PRESETS.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Recipient Target & Subject */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Recipient Target</label>
+                      <select
+                        value={emailRecipientGroup}
+                        onChange={e => setEmailRecipientGroup(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
+                      >
+                        <option value="ALL_USERS">👥 All Registered Roommates ({stats.totalUsers})</option>
+                        <option value="SUPER_ADMINS">👑 Super Admins Only</option>
+                        <option value="CO_ADMINS">🛡️ Active Co-Admins Only</option>
+                        <option value="CUSTOM">✉️ Custom Email Addresses List</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Subject Line</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Important Tallyin System Update"
+                        value={emailSubject}
+                        onChange={e => setEmailSubject(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {emailRecipientGroup === 'CUSTOM' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Comma-separated Emails</label>
+                      <input
+                        type="text"
+                        placeholder="user1@example.com, user2@example.com"
+                        value={customEmails}
+                        onChange={e => setCustomEmails(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white font-mono"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {/* Variable Injector Chips */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200">
+                        Insert Dynamic Placeholders:
+                      </label>
+                      <span className="text-[10px] text-slate-400">Click to insert at end of body</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { code: '{{userName}}', label: 'User Name' },
+                        { code: '{{roomName}}', label: 'Room Name' },
+                        { code: '{{adminName}}', label: 'Admin Name' },
+                        { code: '{{date}}', label: 'Today\'s Date' },
+                        { code: '{{appUrl}}', label: 'App URL' }
+                      ].map(v => (
+                        <button
+                          key={v.code}
+                          type="button"
+                          onClick={() => setEmailBody(prev => prev + (prev.endsWith(' ') || prev === '' ? '' : ' ') + v.code)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-[#A3E635] text-[11px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <Plus className="w-2.5 h-2.5" />
+                          <span>{v.code}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Body Textarea */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Email Message Body</label>
+                    <textarea
+                      rows={7}
+                      placeholder="Write your email body message here..."
+                      value={emailBody}
+                      onChange={e => setEmailBody(e.target.value)}
+                      className="w-full p-3.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans leading-relaxed"
+                      required
+                    />
+                  </div>
+
+                  {/* Submit Action */}
+                  <button
+                    type="submit"
+                    disabled={isSendingEmail}
+                    className="w-full py-3.5 px-6 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs hover:bg-[#255038] dark:hover:bg-[#b7f34c] disabled:opacity-50 rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <option value="ALL_USERS">All Registered Roommates ({stats.totalUsers})</option>
-                    <option value="CUSTOM">Custom Email Addresses List</option>
-                  </select>
-                </div>
+                    <Send className={`w-4 h-4 ${isSendingEmail ? 'animate-bounce' : ''}`} />
+                    <span>{isSendingEmail ? 'Dispatching Broadcast via Mail Relay...' : 'Send Broadcast Email'}</span>
+                  </button>
+                </form>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Email Subject</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Important Tallyin System Update"
-                    value={emailSubject}
-                    onChange={e => setEmailSubject(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    required
-                  />
+                {/* Right Column: Live HTML Preview (5 cols) */}
+                <div className="lg:col-span-5 space-y-4">
+                  <div className="hud-card rounded-3xl p-5 border border-[#E3E8E3] dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                        <h5 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">
+                          Live Email Preview
+                        </h5>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400">Desktop & Mobile Styled</span>
+                    </div>
+
+                    {/* Styled Mock Email Container */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
+                      {/* Email Header Bar */}
+                      <div className="p-4 bg-gradient-to-r from-[#1A3827] to-[#25573e] text-white text-center border-b-2 border-emerald-500">
+                        <div className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-white/10 text-white mb-1.5">
+                          <img src={faviconLogo} alt="Tallyin" className="w-6 h-6 rounded-lg object-contain" />
+                        </div>
+                        <h4 className="text-sm font-black tracking-tight leading-tight m-0 text-white">
+                          Tallyin System Alert
+                        </h4>
+                        <p className="text-[10px] text-emerald-200/80 m-0 mt-0.5">
+                          Official Notification • tallyin.alerts@gmail.com
+                        </p>
+                      </div>
+
+                      {/* Recipient Meta Bar */}
+                      <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                        <span><strong>To:</strong> {emailRecipientGroup === 'CUSTOM' ? (customEmails || 'custom-recipient@domain.com') : emailRecipientGroup}</span>
+                        <span className="text-[10px] font-mono">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+
+                      {/* Preview Subject */}
+                      <div className="px-4 pt-3 pb-1 border-b border-slate-100">
+                        <h5 className="text-xs font-bold text-slate-900 leading-snug">
+                          {emailSubject ? (
+                            emailSubject
+                              .replace(/\{\{userName\}\}/g, 'Alex')
+                              .replace(/\{\{roomName\}\}/g, userRooms?.[0]?.roomName || 'Flat 402')
+                              .replace(/\{\{adminName\}\}/g, userNickname || 'Admin')
+                              .replace(/\{\{date\}\}/g, new Date().toLocaleDateString())
+                          ) : (
+                            <span className="text-slate-400 italic">Subject will appear here...</span>
+                          )}
+                        </h5>
+                      </div>
+
+                      {/* Preview Body */}
+                      <div className="p-4 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap min-h-[140px] max-h-[260px] overflow-y-auto">
+                        {emailBody ? (
+                          emailBody
+                            .replace(/\{\{userName\}\}/g, 'Alex')
+                            .replace(/\{\{roomName\}\}/g, userRooms?.[0]?.roomName || 'Flat 402')
+                            .replace(/\{\{adminName\}\}/g, userNickname || 'Admin')
+                            .replace(/\{\{date\}\}/g, new Date().toLocaleDateString())
+                            .replace(/\{\{appUrl\}\}/g, 'https://tallyin.app')
+                        ) : (
+                          <span className="text-slate-400 italic">Email body text will dynamically render here in real time...</span>
+                        )}
+                      </div>
+
+                      {/* Preview Footer */}
+                      <div className="p-3 bg-slate-50 border-t border-slate-100 text-center text-[10px] text-slate-400">
+                        Dispatched via Tallyin Centralized Admin Portal • End-to-End Encrypted
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {emailRecipientGroup === 'CUSTOM' && (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Comma-separated Emails</label>
-                  <input
-                    type="text"
-                    placeholder="user1@example.com, user2@example.com"
-                    value={customEmails}
-                    onChange={e => setCustomEmails(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white"
-                    required
-                  />
+            {/* ══════════════════════════════════════════
+                SUBTAB 3: OUTBOX & SENT HISTORY LOG
+            ══════════════════════════════════════════ */}
+            {emailHubSubTab === 'outbox' && (
+              <div className="space-y-4">
+                <div className="hud-card rounded-3xl p-6 border border-[#E3E8E3] dark:border-slate-800 space-y-4">
+                  {/* Outbox Header & Filters */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+                    <div>
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-purple-500" />
+                        Dispatched Email Outbox & Audit History ({emailOutboxLog.length})
+                      </h4>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                        Permanent audit trail of all automated trigger notifications and manual broadcasts.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Search Filter */}
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search outbox..."
+                          value={emailSearchFilter}
+                          onChange={e => setEmailSearchFilter(e.target.value)}
+                          className="pl-8 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white w-40 sm:w-56"
+                        />
+                      </div>
+
+                      {/* Category Filter */}
+                      <select
+                        value={emailCategoryFilter}
+                        onChange={e => setEmailCategoryFilter(e.target.value)}
+                        className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white"
+                      >
+                        <option value="ALL">All Categories</option>
+                        <option value="Security & Access">Security & Access</option>
+                        <option value="System Operations">System Operations</option>
+                        <option value="Finance & Payments">Finance & Payments</option>
+                        <option value="Disputes & Support">Disputes & Support</option>
+                        <option value="Broadcasts">Broadcasts</option>
+                        <option value="Custom Broadcast">Custom Broadcast</option>
+                      </select>
+
+                      {/* Clear Outbox */}
+                      {emailOutboxLog.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearOutbox}
+                          className="px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 hover:bg-rose-100 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Clear Outbox</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Outbox Entries List */}
+                  {emailOutboxLog.length === 0 ? (
+                    <div className="p-12 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 mx-auto flex items-center justify-center">
+                        <Mail className="w-6 h-6" />
+                      </div>
+                      <h5 className="text-sm font-black text-[#1A3827] dark:text-slate-100">
+                        No Email Notifications Sent Yet
+                      </h5>
+                      <p className="text-xs text-[#5C6E5C] dark:text-slate-400 max-w-sm mx-auto">
+                        Automated events or manual dispatches from the Email Hub will automatically be recorded here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {emailOutboxLog
+                        .filter(item => {
+                          const matchSearch = !emailSearchFilter || 
+                            item.subject?.toLowerCase().includes(emailSearchFilter.toLowerCase()) ||
+                            item.recipient?.toLowerCase().includes(emailSearchFilter.toLowerCase()) ||
+                            item.preview?.toLowerCase().includes(emailSearchFilter.toLowerCase());
+                          const matchCat = emailCategoryFilter === 'ALL' || item.category === emailCategoryFilter;
+                          return matchSearch && matchCat;
+                        })
+                        .map(item => (
+                          <div
+                            key={item.id}
+                            className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-[#E3E8E3] dark:border-slate-800 hover:border-emerald-300 dark:hover:border-slate-700 transition-all space-y-2.5 shadow-2xs"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635] text-[10px] font-black uppercase">
+                                  <CheckCircle2 className="w-2.5 h-2.5" />
+                                  {item.status || 'DELIVERED'}
+                                </span>
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 font-mono">
+                                  {item.category || 'General'}
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-400">
+                                  Ref: {item.id}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-3 text-xs text-slate-400">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(item.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                </span>
+                                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                  By: {item.dispatchedBy || 'System'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="text-xs font-black text-[#1A3827] dark:text-white flex items-center gap-2">
+                                <span>{item.subject}</span>
+                              </div>
+                              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 line-clamp-2">
+                                {item.preview}
+                              </p>
+                            </div>
+
+                            <div className="pt-2 border-t border-[#E3E8E3]/60 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+                              <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+                                <strong>Recipient:</strong>
+                                <span className="font-mono px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-slate-700 dark:text-slate-300">
+                                  {item.recipient}
+                                </span>
+                                {item.recipientCount > 1 && (
+                                  <span className="text-[10px] font-bold text-slate-400">
+                                    ({item.recipientCount} emails)
+                                  </span>
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOutboxDetail(item)}
+                                className="text-emerald-700 dark:text-[#A3E635] hover:underline font-black text-xs flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>Inspect Payload</span>
+                                <ChevronRight className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
-              )}
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Email Body Content</label>
-                <textarea
-                  rows={5}
-                  placeholder="Write your email body message here..."
-                  value={emailBody}
-                  onChange={e => setEmailBody(e.target.value)}
-                  className="w-full p-3.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                />
               </div>
+            )}
 
-              <button
-                type="submit"
-                disabled={isSendingEmail}
-                className="py-3 px-6 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs hover:bg-[#255038] dark:hover:bg-[#b7f34c] disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <Send className="w-4 h-4" />
-                <span>{isSendingEmail ? 'Dispatching Mail...' : 'Send Broadcast Emails'}</span>
-              </button>
-            </div>
-          </form>
+            {/* Outbox Detail Inspection Modal */}
+            {selectedOutboxDetail && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-scale-up">
+                  <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <FileCheck className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
+                      <h4 className="text-sm font-black text-[#1A3827] dark:text-white">
+                        Outbox Dispatch Inspection
+                      </h4>
+                    </div>
+                    <button
+                      onClick={() => setSelectedOutboxDetail(null)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl space-y-1 font-mono text-[11px]">
+                      <div><strong>Reference:</strong> {selectedOutboxDetail.id}</div>
+                      <div><strong>Timestamp:</strong> {new Date(selectedOutboxDetail.timestamp).toISOString()}</div>
+                      <div><strong>Category:</strong> {selectedOutboxDetail.category}</div>
+                      <div><strong>Recipient:</strong> {selectedOutboxDetail.recipient} ({selectedOutboxDetail.recipientCount || 1})</div>
+                      <div><strong>Dispatched By:</strong> {selectedOutboxDetail.dispatchedBy}</div>
+                      <div><strong>Status:</strong> {selectedOutboxDetail.status}</div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-bold text-[#1A3827] dark:text-slate-200">Subject:</label>
+                      <div className="p-2.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl font-semibold text-slate-900 dark:text-white">
+                        {selectedOutboxDetail.subject}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-bold text-[#1A3827] dark:text-slate-200">Message Content Snippet:</label>
+                      <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
+                        {selectedOutboxDetail.preview}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-[#E3E8E3] dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailSubject(selectedOutboxDetail.subject);
+                        setEmailBody(selectedOutboxDetail.preview);
+                        setEmailHubSubTab('dispatcher');
+                        setSelectedOutboxDetail(null);
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Load into Dispatcher</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOutboxDetail(null)}
+                      className="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         )
       )}
 
