@@ -238,7 +238,7 @@ export default function BannedUserView({
       // 4. Send Automated Email Alert to Admin Recipients
       try {
         const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
-        const adminRecipients = ['tallyin.alerts@gmail.com'];
+        const adminRecipients = ['tallyin.alerts@gmail.com', 'sampathjogipusala123@gmail.com'];
 
         for (const adminEmail of adminRecipients) {
           fetch(mailRelayUrl, {

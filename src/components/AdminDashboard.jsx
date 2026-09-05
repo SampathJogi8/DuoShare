@@ -76,7 +76,8 @@ import securityShieldLogo from '../assets/tallyin_security_shield.png';
 import { supabase, realSupabase, getActiveDatabaseEngine, setActiveDatabaseEngine } from '../supabase';
 
 const ADMIN_EMAILS = [
-  'tallyin.alerts@gmail.com'
+  'tallyin.alerts@gmail.com',
+  'sampathjogipusala123@gmail.com'
 ];
 
 export default function AdminDashboard({
@@ -101,7 +102,7 @@ export default function AdminDashboard({
   simulatedLatency,
   setSimulatedLatency,
   isOnline,
-  allowedMaintenanceAccounts = ['tallyin.alerts@gmail.com'],
+  allowedMaintenanceAccounts = ['tallyin.alerts@gmail.com', 'sampathjogipusala123@gmail.com'],
   setAllowedMaintenanceAccounts,
   coAdmins = [],
   setCoAdmins
@@ -110,7 +111,7 @@ export default function AdminDashboard({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const currentEmailClean = (user?.email || '').trim().toLowerCase();
   const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
-  const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL;
+  const isSuperAdmin = ADMIN_EMAILS.includes(currentEmailClean);
 
   // Time-based expiry utility helpers
   const calculateExpiryTimestamp = (duration, customDate, baseTimestamp = null) => {

@@ -76,7 +76,7 @@ import AdminDashboard from './components/AdminDashboard';
 import BannedUserView from './components/BannedUserView';
 import QuickBillModal from './components/QuickBillModal';
 
-const ADMIN_EMAILS = ['tallyin.alerts@gmail.com'];
+const ADMIN_EMAILS = ['tallyin.alerts@gmail.com', 'sampathjogipusala123@gmail.com'];
 const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v3.1.8';
 
@@ -768,7 +768,7 @@ export default function App() {
         if (saved) return JSON.parse(saved);
       } catch (e) {}
     }
-    return ['tallyin.alerts@gmail.com'];
+    return ['tallyin.alerts@gmail.com', 'sampathjogipusala123@gmail.com'];
   });
 
   const [coAdmins, setCoAdmins] = useState(() => {
@@ -2294,6 +2294,17 @@ export default function App() {
       setUserRooms(formatted);
       localStorage.setItem(cachedKey, JSON.stringify(formatted));
 
+      // If user has existing rooms and hasn't confirmed a room yet, activate the current or first room
+      if (formatted.length > 0) {
+        const currentStoredRoomId = localStorage.getItem('userRoomId');
+        const activeRoom = formatted.find(r => r.roomId === currentStoredRoomId) || formatted[0];
+        if (activeRoom && activeRoom.roomId) {
+          setUserRoomId(activeRoom.roomId);
+          setHasConfirmedRoom(true);
+          localStorage.setItem('userRoomId', activeRoom.roomId);
+        }
+      }
+
       // Filter out any pending requests for rooms where user is now an approved member
       const approvedRoomIds = formatted.map(r => r.roomId);
       setPendingUserRequests(prev => {
@@ -2528,6 +2539,7 @@ export default function App() {
     // Fire-and-forget addMemberToRoom — don't await it to avoid login latency
     if (localRoomId) {
       setUserRoomId(localRoomId);
+      setHasConfirmedRoom(true);
       addMemberToRoom(localRoomId, finalNickname, currentUser); // intentionally not awaited
     } else {
       // Fetch in parallel without blocking auth
@@ -2540,6 +2552,7 @@ export default function App() {
           if (!error && userProfile?.room_id) {
             const rId = userProfile.room_id;
             setUserRoomId(rId);
+            setHasConfirmedRoom(true);
             localStorage.setItem('userRoomId', rId);
             addMemberToRoom(rId, finalNickname, currentUser); // intentionally not awaited
           }
@@ -3503,10 +3516,11 @@ export default function App() {
         };
       });
       
-      // Robust membership validation (matching by UID, Email, or Nickname)
+      // Robust membership validation (matching by UID, Email, Nickname, or Admin status)
       const currentEmail = user?.email?.toLowerCase().trim();
       const currentNick = userNickname?.toLowerCase().trim();
-      const isMember = !user || mappedMembers.length === 0 || mappedMembers.some(m => 
+      const isUserAdmin = currentEmail && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(currentEmail);
+      const isMember = isUserAdmin || !user || mappedMembers.length === 0 || mappedMembers.some(m => 
         (user?.id && m.uid === user.id) ||
         (currentEmail && m.email && m.email.toLowerCase().trim() === currentEmail) ||
         (currentNick && currentNick !== 'you' && m.nickname && m.nickname.toLowerCase().trim() === currentNick)
@@ -11628,7 +11642,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {/* Direct Admin Portal Button for Super Admin & Co-Admins */}
             {(() => {
               const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
-              const isSuperAdmin = currentEmailClean === 'tallyin.alerts@gmail.com';
+              const isSuperAdmin = ADMIN_EMAILS.includes(currentEmailClean);
               if (isSuperAdmin) {
                 return (
                   <button 
@@ -11721,7 +11735,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 </button>
                 {(() => {
                   const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
-                  const isSuperAdmin = currentEmailClean === 'tallyin.alerts@gmail.com';
+                  const isSuperAdmin = ADMIN_EMAILS.includes(currentEmailClean);
                   if (!isSuperAdmin && !isUserCoAdmin) return null;
                   return (
                     <button 
