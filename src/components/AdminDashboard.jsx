@@ -308,6 +308,17 @@ export default function AdminDashboard({
   const [editingPerms, setEditingPerms] = useState({});
   const [editingDuration, setEditingDuration] = useState('keep'); // 'keep' | '1h' | '24h' | '7d' | '30d' | 'permanent' | 'custom'
   const [editingCustomExpiry, setEditingCustomExpiry] = useState('');
+  const [coAdminEmailNotifyGlobal, setCoAdminEmailNotifyGlobal] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_coadmin_email_notify_global');
+        if (saved !== null) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return true;
+  });
+  const [newCoAdminSendEmail, setNewCoAdminSendEmail] = useState(true);
+  const [editingSendEmail, setEditingSendEmail] = useState(true);
   const [coAdminFilter, setCoAdminFilter] = useState('');
   const [coAdminAckRegistry, setCoAdminAckRegistry] = useState(() => {
     try {
@@ -2971,7 +2982,12 @@ export default function AdminDashboard({
   };
 
   // Automated Security Clearance Email Dispatcher
-  const sendCoAdminSecurityEmail = async ({ action, targetEmail, targetName, permissions, ackRecord }) => {
+  const sendCoAdminSecurityEmail = async ({ action, targetEmail, targetName, permissions, ackRecord, forceSendEmail = null }) => {
+    const shouldSend = forceSendEmail !== null ? Boolean(forceSendEmail) : Boolean(coAdminEmailNotifyGlobal);
+    if (!shouldSend) {
+      console.log(`[Admin] Co-Admin notification email skipped for ${targetEmail} (${action}) per notification preferences.`);
+      return;
+    }
     const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
     const isRevoke = action === 'REVOKE';
     const actionTitle = isRevoke 
@@ -3199,9 +3215,9 @@ export default function AdminDashboard({
       const nextList = [...normalizedCoAdmins.filter(a => a.email !== cleanEmail), newAdminRecord];
       await saveCoAdminsList(nextList);
       await saveAckRecord(ackRecord);
-      sendCoAdminSecurityEmail({ action: 'GRANT', targetEmail: cleanEmail, targetName: newAdminRecord.name, permissions: newAdminRecord.permissions, ackRecord });
+      sendCoAdminSecurityEmail({ action: 'GRANT', targetEmail: cleanEmail, targetName: newAdminRecord.name, permissions: newAdminRecord.permissions, ackRecord, forceSendEmail: newCoAdminSendEmail });
 
-      logAuditAction('ASSIGN_CO_ADMIN', `Granted Co-Admin role to ${cleanEmail} (${expirySummary.text}, Ref: ${ackNumber}, IP: ${clientIp})`);
+      logAuditAction('ASSIGN_CO_ADMIN', `Granted Co-Admin role to ${cleanEmail} (${expirySummary.text}, Ref: ${ackNumber}, IP: ${clientIp}, Email: ${newCoAdminSendEmail ? 'Sent' : 'Skipped'})`);
       if (triggerToast) triggerToast(`👑 Assigned Co-Admin role (${expirySummary.label})! Ref: ${ackNumber}`);
 
       setNewCoAdminEmail('');
@@ -3397,9 +3413,9 @@ export default function AdminDashboard({
 
       await saveCoAdminsList(nextList);
       await saveAckRecord(ackRecord);
-      sendCoAdminSecurityEmail({ action: 'UPDATE', targetEmail: cleanTarget, targetName: targetAdmin?.name, permissions: updatedPermissions, ackRecord });
+      sendCoAdminSecurityEmail({ action: 'UPDATE', targetEmail: cleanTarget, targetName: targetAdmin?.name, permissions: updatedPermissions, ackRecord, forceSendEmail: editingSendEmail });
 
-      logAuditAction('UPDATE_CO_ADMIN_PERMS', `Updated permissions & duration for ${cleanTarget} (${expirySummary.text}, Ref: ${ackNumber})`);
+      logAuditAction('UPDATE_CO_ADMIN_PERMS', `Updated permissions & duration for ${cleanTarget} (${expirySummary.text}, Ref: ${ackNumber}, Email: ${editingSendEmail ? 'Sent' : 'Skipped'})`);
       if (triggerToast) triggerToast(`✅ Updated settings for ${cleanTarget}! Ref: ${ackNumber}`);
       setEditingCoAdminEmail(null);
       setEditingPerms({});
@@ -5212,6 +5228,30 @@ export default function AdminDashboard({
                   </div>
                 </div>
 
+                {/* Email Notification Dispatch Toggle */}
+                <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 shadow-sm">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-2 rounded-xl transition-colors ${newCoAdminSendEmail ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-[#A3E635]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                      <Mail className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100">Send Security Clearance Email</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Email official authorization certificate &amp; portal link to <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{newCoAdminEmail || 'user'}</span></p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewCoAdminSendEmail(!newCoAdminSendEmail)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                      newCoAdminSendEmail
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                        : 'bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    {newCoAdminSendEmail ? '✓ Send Email' : '✕ Do Not Send'}
+                  </button>
+                </div>
+
                 <button
                   type="submit"
                   disabled={isAssigningCoAdmin}
@@ -5242,14 +5282,35 @@ export default function AdminDashboard({
 
           {/* Active Administrators Directory */}
           <div className="hud-card rounded-3xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
               <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
                 <Users className="w-4 h-4 text-blue-500" />
                 Active Administrative Team ({1 + normalizedCoAdmins.length})
               </h4>
-              <span className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold">
-                Live Status Verified
-              </span>
+              <div className="flex items-center gap-3">
+                {/* Global Email Alerts Toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !coAdminEmailNotifyGlobal;
+                    setCoAdminEmailNotifyGlobal(next);
+                    localStorage.setItem('tallyin_coadmin_email_notify_global', JSON.stringify(next));
+                    if (triggerToast) triggerToast(next ? '📧 Co-Admin email notifications ENABLED' : '🔕 Co-Admin email notifications MUTED');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm border ${
+                    coAdminEmailNotifyGlobal
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-[#A3E635]'
+                      : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+                  }`}
+                  title="Toggle whether emails are sent when assigning, editing, or extending Co-Admins"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>Email Alerts: <strong className="font-black uppercase">{coAdminEmailNotifyGlobal ? 'ON' : 'OFF'}</strong></span>
+                </button>
+                <span className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-semibold hidden md:inline">
+                  Live Status Verified
+                </span>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -5614,6 +5675,25 @@ export default function AdminDashboard({
                                 <span>{p.label}</span>
                               </label>
                             ))}
+                          </div>
+
+                          {/* Email Update Notification Toggle */}
+                          <div className="flex items-center justify-between p-2.5 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50">
+                            <div className="flex items-center gap-2">
+                              <Mail className={`w-3.5 h-3.5 ${editingSendEmail ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                              <span className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200">Send Email Update Notification</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setEditingSendEmail(!editingSendEmail)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                                editingSendEmail
+                                  ? 'bg-indigo-600 text-white shadow-sm'
+                                  : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                              }`}
+                            >
+                              {editingSendEmail ? '✓ Send Email' : '✕ Do Not Send'}
+                            </button>
                           </div>
 
                           <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E3E8E3] dark:border-slate-800">
