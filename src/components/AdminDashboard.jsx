@@ -88,6 +88,7 @@ export default function AdminDashboard({
   isDarkMode,
   setIsDarkMode,
   appVersion,
+  initialTab = 'overview',
   onExitAdmin,
   isSystemMaintenanceActive,
   setIsSystemMaintenanceActive,
@@ -107,11 +108,18 @@ export default function AdminDashboard({
   coAdmins = [],
   setCoAdmins
 }) {
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
+  const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const currentEmailClean = (user?.email || '').trim().toLowerCase();
   const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
   const isSuperAdmin = ADMIN_EMAILS.includes(currentEmailClean);
+
+  // Sync activeTab if initialTab prop changes
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Time-based expiry utility helpers
   const calculateExpiryTimestamp = (duration, customDate, baseTimestamp = null) => {
@@ -363,6 +371,13 @@ export default function AdminDashboard({
   const [selectedDisputeTicket, setSelectedDisputeTicket] = useState(null);
   const [adminResponseText, setAdminResponseText] = useState('');
   const [isUpdatingTicket, setIsUpdatingTicket] = useState(false);
+
+  // Calculate live pending/open dispute tickets
+  const openDisputesCount = useMemo(() => {
+    return (userDisputesAndQueries || []).filter(d => 
+      !d.status || d.status === 'OPEN' || d.status === 'IN_REVIEW' || d.status === 'UNDER_REVIEW' || d.status === 'PENDING'
+    ).length;
+  }, [userDisputesAndQueries]);
 
   // 3. Database Studio states
   const [studioTable, setStudioTable] = useState('rooms');
@@ -3868,7 +3883,13 @@ export default function AdminDashboard({
               <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 px-3 pb-1">Finance & Audit</p>
               {userPermissions.settlements && navItem('finance_audit', 'Finance Audit', <PieChart className="w-4 h-4 text-emerald-600" />)}
               {userPermissions.settlements && navItem('settlements', 'Settlements Hub', <HandCoins className="w-4 h-4 text-teal-600" />)}
-              {userPermissions.dispute_resolver && navItem('dispute_resolver', 'Dispute Resolver', <FileSpreadsheet className="w-4 h-4 text-amber-600" />, allGlobalTx.length, 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300')}
+              {userPermissions.dispute_resolver && navItem(
+                'dispute_resolver', 
+                'Dispute Resolver', 
+                <FileSpreadsheet className="w-4 h-4 text-amber-600" />, 
+                openDisputesCount > 0 ? `${openDisputesCount} Open` : (userDisputesAndQueries.length > 0 ? userDisputesAndQueries.length : null), 
+                openDisputesCount > 0 ? 'bg-rose-500 text-white font-black animate-pulse shadow-sm' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+              )}
             </div>
           )}
 
@@ -4205,6 +4226,61 @@ export default function AdminDashboard({
                   >
                     <Zap className="w-4 h-4" />
                     <span>⚡ Supabase (Postgres)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Disputes & Inquiries Realtime Card */}
+            <div className={`col-span-1 md:col-span-2 rounded-3xl p-6 border shadow-xl transition-all ${
+              openDisputesCount > 0
+                ? 'bg-gradient-to-r from-amber-950 via-rose-950 to-red-950 border-rose-500/50 text-white ring-1 ring-rose-400/30'
+                : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 text-slate-800 dark:text-slate-100'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                    openDisputesCount > 0
+                      ? 'bg-rose-500/20 text-rose-400 border border-rose-400/40'
+                      : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                  }`}>
+                    <FileSpreadsheet className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-black tracking-tight">
+                        Dispute Resolver &amp; User Inquiries Desk
+                      </h3>
+                      {openDisputesCount > 0 ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500 text-white animate-pulse">
+                          🚨 {openDisputesCount} Pending Action
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635]">
+                          ✓ All Clear ({userDisputesAndQueries.length} Total)
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-xs mt-1 ${openDisputesCount > 0 ? 'text-rose-200/90' : 'text-[#5C6E5C] dark:text-slate-400'}`}>
+                      {openDisputesCount > 0
+                        ? `There are ${openDisputesCount} open tickets from users awaiting dispute resolution or support.`
+                        : 'No pending disputes or user queries require immediate attention.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('dispute_resolver')}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95 ${
+                      openDisputesCount > 0
+                        ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/30'
+                        : 'bg-[#1A3827] dark:bg-emerald-500 text-white dark:text-slate-950 hover:opacity-90'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Open Desk ({openDisputesCount > 0 ? `${openDisputesCount} Open` : 'View All'}) →</span>
                   </button>
                 </div>
               </div>
