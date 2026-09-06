@@ -2381,6 +2381,11 @@ export default function AdminDashboard({
   };
 
   const handlePurgeRoom = async (room) => {
+    if (room.id === 'DUO-KLIZ-2508') {
+      if (triggerToast) triggerToast('🛡️ Protected Space: The Genesis Duo room cannot be purged.');
+      return;
+    }
+
     if (!window.confirm(`⚠️ DANGER: Are you sure you want to completely PURGE room "${room.name}" (${room.id})? This will permanently delete the room and all associated records.`)) {
       return;
     }
@@ -9336,6 +9341,11 @@ NOTIFY pgrst, 'reload schema';`;
                             <span className="font-black text-sm text-[#1A3827] dark:text-slate-100 truncate">
                               {room.name || 'Unnamed Room'}
                             </span>
+                            {room.id === 'DUO-KLIZ-2508' && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-500/30">
+                                👑 Genesis Duo
+                              </span>
+                            )}
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
                               room.isFrozen
                                 ? 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 animate-pulse'
@@ -9412,12 +9422,18 @@ NOTIFY pgrst, 'reload schema';`;
                         >
                           <Pin className="w-3 h-3" /> Pin Notice
                         </button>
-                        <button
-                          onClick={() => handlePurgeRoom(room)}
-                          className="text-rose-600 dark:text-rose-400 hover:underline font-bold flex items-center gap-1"
-                        >
-                          <Trash className="w-3 h-3" /> Purge Room
-                        </button>
+                        {room.id === 'DUO-KLIZ-2508' ? (
+                          <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1 text-[10px]">
+                            🛡️ Protected Genesis Space
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handlePurgeRoom(room)}
+                            className="text-rose-600 dark:text-rose-400 hover:underline font-bold flex items-center gap-1"
+                          >
+                            <Trash className="w-3 h-3" /> Purge Room
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))
