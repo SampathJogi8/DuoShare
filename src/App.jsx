@@ -5598,6 +5598,29 @@ export default function App() {
     const data = transactions.filter(t => t.category !== '__FUND_INIT__' && t.category !== '__FUND_SPEND__' && t.category !== '__SHOPPING__' && t.category !== '__BILL__' && t.category !== '__CHORE__' && t.category !== '__DELETE_PROPOSAL__');
     const currentUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
 
+    // Helper to resolve any candidate UID (which might be an old session UID, ghost UID, or nickname)
+    // to the active matching member's UID in the room
+    const resolveMemberUid = (candidateUid, candidateNickname, candidateEmail) => {
+      if (candidateUid && members.some(m => m.uid === candidateUid)) {
+        return candidateUid;
+      }
+      const cleanNick = (candidateNickname || '').toLowerCase().trim();
+      const cleanEmail = (candidateEmail || '').toLowerCase().trim();
+      if (cleanNick || cleanEmail) {
+        const match = members.find(m => 
+          (cleanNick && m.nickname && m.nickname.toLowerCase().trim() === cleanNick) ||
+          (cleanNick && m.name && m.name.toLowerCase().trim() === cleanNick) ||
+          (cleanEmail && m.email && m.email.toLowerCase().trim() === cleanEmail) ||
+          (cleanNick && m.email && m.email.toLowerCase().trim() === cleanNick)
+        );
+        if (match) return match.uid;
+      }
+      if (cleanNick && (cleanNick === (userNickname || '').toLowerCase().trim() || cleanNick === 'you' || cleanNick === 'alex')) {
+        return currentUid;
+      }
+      return candidateUid || (cleanNick ? 'roommate' : currentUid);
+    };
+
     // Calculate totals
     let totalSpend = 0;
     let totalRoomSpend = 0;
@@ -5634,15 +5657,10 @@ export default function App() {
       }
 
       // Determine payer UID
-      let payerUid = t.paidByUid;
+      let payerUid = resolveMemberUid(t.paidByUid, t.paidBy, null);
       if (!payerUid) {
-        const match = members.find(m => m.nickname === t.paidBy || m.name === t.paidBy || m.email === t.paidBy);
-        if (match) {
-          payerUid = match.uid;
-        } else {
-          const isSelf = t.paidBy === userNickname;
-          payerUid = isSelf ? currentUid : 'roommate';
-        }
+        const isSelf = t.paidBy && (t.paidBy.toLowerCase().trim() === (userNickname || '').toLowerCase().trim() || t.paidBy.toLowerCase().trim() === 'you');
+        payerUid = isSelf ? currentUid : 'roommate';
       }
 
       if (!isPayment) {
@@ -5670,34 +5688,18 @@ export default function App() {
         let receiverUid = null;
         if (splitsArr && Array.isArray(splitsArr)) {
           const recSplit = splitsArr.find(s => {
-            let sUid = s.uid;
-            if (!sUid) {
-              const match = members.find(m => m.nickname === s.nickname || m.name === s.nickname);
-              sUid = match ? match.uid : null;
-            }
+            const sUid = resolveMemberUid(s.uid, s.nickname, null);
             return sUid !== payerUid && (Number(s.amount) > 0 || splitsArr.length === 2);
           });
           if (recSplit) {
-            receiverUid = recSplit.uid;
-            if (!receiverUid) {
-              const match = members.find(m => m.nickname === recSplit.nickname || m.name === recSplit.nickname);
-              receiverUid = match ? match.uid : null;
-            }
-            if (!receiverUid) {
-              const isSelf = recSplit.nickname === userNickname || recSplit.nickname === 'Alex';
-              receiverUid = isSelf ? currentUid : 'roommate';
-            }
+            receiverUid = resolveMemberUid(recSplit.uid, recSplit.nickname, null);
           }
         }
 
         // Fallback receiver if splits are empty or invalid
         if (!receiverUid) {
           const otherMember = members.find(m => m.uid !== payerUid);
-          if (otherMember) {
-            receiverUid = otherMember.uid;
-          } else {
-            receiverUid = payerUid === currentUid ? 'roommate' : currentUid;
-          }
+          receiverUid = otherMember ? otherMember.uid : (payerUid === currentUid ? 'roommate' : currentUid);
         }
 
         // Subtract paid amount from receiver's balance (since they received, their net balance decreases)
@@ -5717,15 +5719,7 @@ export default function App() {
         // Subtract split shares from everyone
         if (t.splits && Array.isArray(t.splits) && t.splits.length > 0) {
           t.splits.forEach(split => {
-            let splitUid = split.uid;
-            if (!splitUid) {
-              const match = members.find(m => m.nickname === split.nickname || m.name === split.nickname);
-              splitUid = match ? match.uid : null;
-            }
-            if (!splitUid) {
-              const isSelf = split.nickname === userNickname || split.nickname === 'Alex';
-              splitUid = isSelf ? currentUid : 'roommate';
-            }
+            const splitUid = resolveMemberUid(split.uid, split.nickname, null);
             
             if (roomBalances[splitUid] !== undefined) {
               roomBalances[splitUid] -= Number(split.amount) || 0;
@@ -5784,7 +5778,15 @@ export default function App() {
       Object.keys(roomBalances).forEach(k => {
         if (!activeMemberUids.includes(k) && roomBalances[k] !== 0) {
           const orphanBal = roomBalances[k];
-          if (activeMemberUids.length === 2) {
+          // Try to reconcile orphan balance to an active member if key matches by nickname
+          const matchedMem = members.find(m => 
+            (m.nickname && m.nickname.toLowerCase().trim() === k.toLowerCase().trim()) ||
+            (m.name && m.name.toLowerCase().trim() === k.toLowerCase().trim()) ||
+            (m.email && m.email.toLowerCase().trim() === k.toLowerCase().trim())
+          );
+          if (matchedMem) {
+            roomBalances[matchedMem.uid] = Math.round(((roomBalances[matchedMem.uid] || 0) + orphanBal) * 100) / 100;
+          } else if (activeMemberUids.length === 2) {
             const otherMemberUid = activeMemberUids.find(id => id !== currentUid) || activeMemberUids[0];
             if (otherMemberUid) {
               roomBalances[otherMemberUid] = Math.round(((roomBalances[otherMemberUid] || 0) + orphanBal) * 100) / 100;
@@ -5817,17 +5819,14 @@ export default function App() {
 
     settlementTransactions.forEach(t => {
       const amt = Number(t.amount) || 0;
-      let payerUid = t.paidByUid;
-      if (!payerUid) {
-        payerUid = t.paidBy === userNickname ? currentUid : 'roommate';
-      }
+      let payerUid = resolveMemberUid(t.paidByUid, t.paidBy, null);
       if (payerUid === currentUid) {
         mySettlementsPaid += amt;
       }
 
       let isReceiver = false;
       if (t.splits && Array.isArray(t.splits)) {
-        isReceiver = t.splits.some(s => s.uid === currentUid && Number(s.amount) > 0);
+        isReceiver = t.splits.some(s => resolveMemberUid(s.uid, s.nickname, null) === currentUid && Number(s.amount) > 0);
       } else if (payerUid !== currentUid) {
         isReceiver = true;
       }
@@ -5866,22 +5865,19 @@ export default function App() {
       // Factor in direct settlements/payments
       settlementTransactions.forEach(t => {
         const amt = Number(t.amount) || 0;
-        let payerUid = t.paidByUid;
-        if (!payerUid) {
-          payerUid = t.paidBy === userNickname ? currentUid : 'roommate';
-        }
+        let payerUid = resolveMemberUid(t.paidByUid, t.paidBy, null);
         if (quotaBalances[payerUid] !== undefined) {
           quotaBalances[payerUid] += amt;
         }
         
         let receiverUid = null;
         if (t.splits && Array.isArray(t.splits)) {
-          const recSplit = t.splits.find(s => s.uid !== payerUid && Number(s.amount) > 0);
-          if (recSplit) receiverUid = recSplit.uid;
+          const recSplit = t.splits.find(s => resolveMemberUid(s.uid, s.nickname, null) !== payerUid && Number(s.amount) > 0);
+          if (recSplit) receiverUid = resolveMemberUid(recSplit.uid, recSplit.nickname, null);
         }
         if (!receiverUid) {
           const other = members.find(m => m.uid !== payerUid);
-          if (other) receiverUid = other.uid;
+          receiverUid = other ? other.uid : (payerUid === currentUid ? 'roommate' : currentUid);
         }
         if (receiverUid && quotaBalances[receiverUid] !== undefined) {
           quotaBalances[receiverUid] -= amt;
@@ -21143,16 +21139,27 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           modalBalances['roommate'] = 0;
         }
 
+        const resolveMemberUid = (candidateUid, candidateNickname) => {
+          if (candidateUid && members.some(m => m.uid === candidateUid)) return candidateUid;
+          const cleanNick = (candidateNickname || '').toLowerCase().trim();
+          if (cleanNick) {
+            const match = members.find(m => 
+              (m.nickname && m.nickname.toLowerCase().trim() === cleanNick) ||
+              (m.name && m.name.toLowerCase().trim() === cleanNick) ||
+              (m.email && m.email.toLowerCase().trim() === cleanNick)
+            );
+            if (match) return match.uid;
+          }
+          if (cleanNick && (cleanNick === (userNickname || '').toLowerCase().trim() || cleanNick === 'you')) return currentUid;
+          return candidateUid || (cleanNick ? 'roommate' : currentUid);
+        };
+
         filteredTx.forEach(t => {
           const amount = Number(t.amount) || 0;
           const isPayment = t.category === 'Payment';
           
           // Determine payer UID
-          let payerUid = t.paidByUid;
-          if (!payerUid) {
-            const isSelf = t.paidBy === userNickname;
-            payerUid = isSelf ? currentUid : 'roommate';
-          }
+          let payerUid = resolveMemberUid(t.paidByUid, t.paidBy);
 
           // Add paid amount to payer's balance
           if (modalBalances[payerUid] !== undefined) {
@@ -21164,11 +21171,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           // Subtract split shares from everyone
           if (t.splits && Array.isArray(t.splits)) {
             t.splits.forEach(split => {
-              let splitUid = split.uid;
-              if (!splitUid) {
-                const isSelf = split.nickname === userNickname || split.nickname === 'Alex';
-                splitUid = isSelf ? currentUid : 'roommate';
-              }
+              const splitUid = resolveMemberUid(split.uid, split.nickname);
               if (modalBalances[splitUid] !== undefined) {
                 modalBalances[splitUid] -= Number(split.amount) || 0;
               } else {
