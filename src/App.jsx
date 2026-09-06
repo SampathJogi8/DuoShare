@@ -62,7 +62,8 @@ import {
   Scale,
   HelpCircle,
   XCircle,
-  Users
+  Users,
+  Eye
 } from 'lucide-react';
 
 import { supabase } from './supabase';
@@ -390,6 +391,54 @@ const getFileLabel = (dataUrl) => {
   return 'File';
 };
 
+// Client-side image compression to prevent payload errors and allow large mobile photos
+const compressImageFile = (dataUrl, maxDim = 1200, quality = 0.75) => {
+  return new Promise((resolve) => {
+    if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+      return resolve(dataUrl);
+    }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+};
+
+// Formats YYYY-MM-DD reliably to DD Mon in local timezone
+const formatReceiptDate = (dateStr) => {
+  if (!dateStr) return new Date().toLocaleDateString([], { day: '2-digit', month: 'short' });
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString([], { day: '2-digit', month: 'short' });
+    }
+  }
+  return new Date().toLocaleDateString([], { day: '2-digit', month: 'short' });
+};
+
 
 
 const parseTimeAndHistory = (timeStr) => {
@@ -489,6 +538,11 @@ export default function App() {
       try {
         const parsedCodeUser = JSON.parse(codeUserStr);
         if (parsedCodeUser && parsedCodeUser.id) {
+          // Heal dummy email if previously set to @tallyin.app
+          if (parsedCodeUser.email && parsedCodeUser.email.endsWith('@tallyin.app') && !parsedCodeUser.email.startsWith('tester1@')) {
+            const rawSaved = (localStorage.getItem('codeLoginEmail') || localStorage.getItem('tallyin_user_email') || '').trim();
+            parsedCodeUser.email = (rawSaved && !rawSaved.endsWith('@tallyin.app')) ? rawSaved : '';
+          }
           return parsedCodeUser;
         }
       } catch (e) {
@@ -503,7 +557,9 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [showCodeLogin, setShowCodeLogin] = useState(false);
   const [accessCodeInput, setAccessCodeInput] = useState('');
-  const [codeLoginEmail, setCodeLoginEmail] = useState('');
+  const [codeLoginEmail, setCodeLoginEmail] = useState(() => {
+    return localStorage.getItem('codeLoginEmail') || localStorage.getItem('tallyin_user_email') || '';
+  });
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
   const auth = useMemo(() => ({
@@ -586,11 +642,26 @@ export default function App() {
 
   // Onboarding Setup View state
   const [userRoomId, setUserRoomId] = useState(() => localStorage.getItem('userRoomId') || null); 
+  const [roomPrefix, setRoomPrefix] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('join');
+      if (code && code.toUpperCase().startsWith('DUO')) return 'DUO-';
+    }
+    return 'TL-';
+  });
   const [joinInput, setJoinInput] = useState(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const code = params.get('join');
-      return code ? code.trim().toUpperCase() : '';
+      if (code) {
+        let clean = code.trim().toUpperCase();
+        if (clean.startsWith('TL-')) clean = clean.slice(3);
+        else if (clean.startsWith('TL')) clean = clean.slice(2);
+        else if (clean.startsWith('DUO-')) clean = clean.slice(4);
+        else if (clean.startsWith('DUO')) clean = clean.slice(3);
+        return clean;
+      }
     }
     return '';
   });
@@ -1488,6 +1559,7 @@ export default function App() {
   
   // File upload reference
   const fileInputRef = useRef(null);
+  const formReceiptInputRef = useRef(null);
 
   // Ban Management State & Lockout Memo
   const [bannedUsers, setBannedUsers] = useState(() => {
@@ -1683,25 +1755,25 @@ export default function App() {
       setCustomSplitValues(initialCustomValues);
       setEnableQuotaSplit(Boolean(tx.splitType && tx.splitType !== 'quota' && (tx.splits?.length > 1 || !tx.isShared)));
 
-      // Try to load the corresponding receipt image from the receipts list
-      if (tx.isShared) {
-        let receiptDateStr = '';
-        if (tx.date) {
-          const parts = tx.date.split('-');
-          if (parts.length === 3) {
-            const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-            receiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
-          }
-        }
-        const matchingReceipt = receipts.find(r => r.title === tx.title && r.amount === tx.amount && r.category === tx.category && r.date === receiptDateStr);
-        if (matchingReceipt && matchingReceipt.imageUrl) {
-          setFormReceiptImages(getImages(matchingReceipt.imageUrl));
-        } else {
-          setFormReceiptImages([]);
-        }
+      // Try to load the corresponding receipt image from the transaction or receipts list
+      let loadedImgs = [];
+      if (tx.imageUrl) {
+        loadedImgs = getImages(tx.imageUrl);
+      } else if (tx.image_url) {
+        loadedImgs = getImages(tx.image_url);
       } else {
-        setFormReceiptImages([]);
+        const receiptDateStr = formatReceiptDate(tx.date);
+        const matchingReceipt = receipts.find(r => 
+          r.title === tx.title && 
+          Number(r.amount) === Number(tx.amount) && 
+          r.category === tx.category && 
+          (!receiptDateStr || r.date === receiptDateStr)
+        );
+        if (matchingReceipt && matchingReceipt.imageUrl) {
+          loadedImgs = getImages(matchingReceipt.imageUrl);
+        }
       }
+      setFormReceiptImages(loadedImgs);
     } else {
       setEditingTransaction(null);
       setFormFor('');
@@ -1769,16 +1841,94 @@ export default function App() {
     setIsFundCategoryManuallyModified(false);
   };
 
-  // Helper to convert HEIC image to JPEG/PNG format for browser compatibility
+  // Helper to convert HEIC image to JPEG format with native browser decoder + heic2any fallback
   const convertHeicToPng = async (file) => {
+    // 1. Try native browser decoding first (iOS Safari 17+ and macOS Safari natively decode HEIC in hardware)
+    try {
+      const nativeDecodedFile = await new Promise((resolve) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        let finished = false;
+
+        const cleanup = () => {
+          if (!finished) {
+            finished = true;
+            URL.revokeObjectURL(objectUrl);
+          }
+        };
+
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            let w = img.width;
+            let h = img.height;
+            const maxDim = 1600;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob((blob) => {
+              cleanup();
+              if (blob) {
+                const convertedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                  type: "image/jpeg"
+                });
+                resolve(convertedFile);
+              } else {
+                resolve(null);
+              }
+            }, 'image/jpeg', 0.8);
+          } catch {
+            cleanup();
+            resolve(null);
+          }
+        };
+
+        img.onerror = () => {
+          cleanup();
+          resolve(null);
+        };
+
+        // 3 second timeout for native image loading
+        setTimeout(() => {
+          if (!finished) {
+            cleanup();
+            resolve(null);
+          }
+        }, 3000);
+
+        img.src = objectUrl;
+      });
+
+      if (nativeDecodedFile) {
+        console.log("HEIC converted natively via browser decoder:", nativeDecodedFile.name);
+        return nativeDecodedFile;
+      }
+    } catch (e) {
+      console.warn("Native HEIC decoding attempt failed, trying heic2any fallback:", e);
+    }
+
+    // 2. Fallback to heic2any wasm converter
     try {
       const heic2anyModule = await import('heic2any');
       const heic2any = heic2anyModule.default || heic2anyModule;
       
+      // Ensure file has proper blob wrapper
+      const heicBlob = file.type ? file : new Blob([file], { type: 'image/heic' });
+
       const convertedBlob = await heic2any({
-        blob: file,
+        blob: heicBlob,
         toType: 'image/jpeg',
-        quality: 0.6
+        quality: 0.7
       });
       
       const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
@@ -1786,60 +1936,92 @@ export default function App() {
         type: "image/jpeg"
       });
     } catch (error) {
-      console.error("HEIC conversion failed:", error);
-      throw new Error("Failed to convert HEIC: " + (error.message || error.toString()), { cause: error });
+      const errMsg = error?.message || error?.toString() || '';
+      console.warn("HEIC converter message:", errMsg);
+      
+      // If heic2any reported that image is already browser readable, it means iOS already transcoded it
+      if (errMsg.includes('already browser readable') || errMsg.includes('ERR_USER')) {
+        console.log("File is already browser-readable format:", file.name);
+        return file;
+      }
+
+      // Instead of completely failing and aborting the file upload, return the file so the app can still attempt to read/compress it
+      return file;
     }
   };
 
   const handleFormReceiptChange = async (e) => {
-    const files = Array.from(e.target.files || []);
+    const fileList = e.target.files;
+    const files = Array.from(fileList || []);
+    // Reset file input value so selecting the same file again fires onChange
+    e.target.value = '';
     if (files.length === 0) return;
 
     const existingCount = formReceiptImages.length;
-    if (existingCount + files.length > 4) {
+    const remainingSlots = Math.max(0, 4 - existingCount);
+    if (remainingSlots <= 0) {
       triggerToast("You can upload a maximum of 4 receipt files per transaction.");
       return;
     }
 
+    const filesToProcess = files.slice(0, remainingSlots);
+    if (files.length > remainingSlots) {
+      triggerToast(`Only ${remainingSlots} more file(s) can be attached (maximum 4).`);
+    }
+
     const loadedImages = [];
-    for (let file of files) {
+    for (let file of filesToProcess) {
       // HEIC conversion for images
-      if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
-        triggerToast(`Converting HEIC image (${file.name})... Please wait.`);
+      if (file.name && (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif')) {
+        triggerToast(`Processing HEIC photo (${file.name})...`);
         try {
           file = await convertHeicToPng(file);
         } catch (err) {
-          triggerToast(err.message);
-          continue;
+          console.warn('HEIC conversion warning:', err);
         }
       }
 
-      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      const isExcel = file.type.includes('spreadsheet') || file.type === 'application/vnd.ms-excel' || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
-      const maxSize = (isPdf || isExcel) ? 10 * 1024 * 1024 : 3 * 1024 * 1024;
-      const sizeLabel = (isPdf || isExcel) ? '10MB' : '3MB';
+      const isPdf = file.type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'));
+      const isExcel = (file.type && file.type.includes('spreadsheet')) || file.type === 'application/vnd.ms-excel' || (file.name && (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')));
+      const isImage = file.type?.startsWith('image/') || (!isPdf && !isExcel);
+      const maxSize = 12 * 1024 * 1024; // 12MB limit
 
       if (file.size > maxSize) {
-        triggerToast(`File ${file.name} is too large. Please upload files under ${sizeLabel}.`);
+        triggerToast(`File ${file.name} is too large. Please upload files under 12MB.`);
         continue;
       }
 
-      const p = new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => {
-          triggerToast(`Failed to read file ${file.name}`);
-          resolve(null);
-        };
-        reader.readAsDataURL(file);
-      });
-      const result = await p;
-      if (result) {
-        loadedImages.push(result);
+      try {
+        const dataUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => {
+            triggerToast(`Failed to read file ${file.name}`);
+            resolve(null);
+          };
+          reader.readAsDataURL(file);
+        });
+
+        if (dataUrl) {
+          if (isImageDataUrl(dataUrl) || isImage) {
+            try {
+              const compressed = await compressImageFile(dataUrl);
+              loadedImages.push(compressed || dataUrl);
+            } catch (cErr) {
+              loadedImages.push(dataUrl);
+            }
+          } else {
+            loadedImages.push(dataUrl);
+          }
+        }
+      } catch (err) {
+        console.error("Receipt file read error:", err);
       }
     }
 
-    setFormReceiptImages(prev => [...prev, ...loadedImages]);
+    if (loadedImages.length > 0) {
+      setFormReceiptImages(prev => [...prev, ...loadedImages]);
+    }
   };
 
   const preprocessImageForOcr = (dataUrl) => {
@@ -4093,11 +4275,11 @@ export default function App() {
       const { data: memberData, error: memberError } = await supabase
         .from('members')
         .select('*')
-        .eq('uid', userProfile.uid)
-        .limit(1);
+        .eq('uid', userProfile.uid);
         
       if (memberError) console.warn("Member fetch warning for code user:", memberError);
-      const member = memberData?.[0];
+      const memberWithEmail = (memberData || []).find(m => m.email && m.email.includes('@') && !m.email.endsWith('@tallyin.app'));
+      const member = memberWithEmail || memberData?.[0];
       
       const TEST_CODE_NAMES = {
         'TY1001': 'Tester 1',
@@ -4107,17 +4289,30 @@ export default function App() {
         'TY1005': 'Tester 5',
         'TY1006': 'Tester 6',
       };
-      const autoName = TEST_CODE_NAMES[code] || member?.nickname || 'Roommate';
+      const autoName = TEST_CODE_NAMES[code] || userProfile.name || member?.nickname || 'Roommate';
 
       setUserNickname(autoName);
       setNicknameInput(autoName);
       localStorage.setItem('userNickname', autoName);
       setIsNicknameFixed(true);
 
-      const realEmail = codeLoginEmail.trim().toLowerCase() || `tester${code.slice(-1)}@tallyin.app`;
+      const isSandboxCode = ['TY1001', 'TY1002', 'TY1003', 'TY1004', 'TY1005', 'TY1006'].includes(code);
+      const userTypedEmail = (codeLoginEmail && typeof codeLoginEmail === 'string' && codeLoginEmail.includes('@') && !codeLoginEmail.endsWith('@tallyin.app')) ? codeLoginEmail.trim().toLowerCase() : '';
+      if (userTypedEmail) {
+        localStorage.setItem('codeLoginEmail', userTypedEmail);
+        localStorage.setItem('tallyin_user_email', userTypedEmail);
+      }
+
+      const existingProfileEmail = (userProfile?.email && !userProfile.email.endsWith('@tallyin.app') && userProfile.email.includes('@')) ? userProfile.email.trim() : '';
+      const existingMemberEmail = (member?.email && !member.email.endsWith('@tallyin.app') && member.email.includes('@')) ? member.email.trim() : '';
+      const rawCached = (localStorage.getItem('codeLoginEmail') || localStorage.getItem('tallyin_user_email') || '').trim();
+      const cachedEmail = (rawCached && !rawCached.endsWith('@tallyin.app') && rawCached.includes('@')) ? rawCached : '';
+
+      const realEmail = userTypedEmail || existingProfileEmail || existingMemberEmail || cachedEmail || (isSandboxCode ? `tester${code.slice(-1)}@tallyin.app` : '');
+
       const simulatedUser = {
         id: userProfile.uid,
-        email: realEmail || member?.email || '',
+        email: realEmail || '',
         user_metadata: {
           full_name: autoName,
           avatar_url: member?.photo_url || ''
@@ -4126,12 +4321,17 @@ export default function App() {
         loginCode: code
       };
       
-      // Save the real email back to the members table if provided
-      if (realEmail && member) {
+      // Save the real email back to members and users tables if provided and NOT a fake address
+      if (realEmail && !realEmail.endsWith('@tallyin.app')) {
         supabase.from('members')
           .update({ email: realEmail })
           .eq('uid', userProfile.uid)
           .then(({ error }) => { if (error) console.warn('Email save error:', error); });
+
+        supabase.from('users')
+          .update({ email: realEmail, name: autoName })
+          .eq('uid', userProfile.uid)
+          .then(({ error }) => { if (error) console.warn('User profile email save error:', error); });
       }
       
       localStorage.setItem('tallyin_code_user', JSON.stringify(simulatedUser));
@@ -4893,7 +5093,8 @@ export default function App() {
     for (let i = 0; i < 4; i++) {
       letters += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    const digits = Math.floor(1000 + Math.random() * 9000);
+    let digits = Math.floor(1000 + Math.random() * 9000);
+    if (digits === 8888) digits = 8889; // Guarantee never 8888
     return `TL-${letters}-${digits}`;
   };
 
@@ -5048,17 +5249,54 @@ export default function App() {
       triggerToast('Please enter a valid room ID.');
       return;
     }
-    const cleanId = joinInput.trim();
+    const rawInput = joinInput.trim().toUpperCase();
+    let cleanId = rawInput;
+    if (!cleanId.startsWith('TL-') && !cleanId.startsWith('DUO-')) {
+      cleanId = `${roomPrefix || 'TL-'}${rawInput}`;
+    }
     
     try {
       // Verify room exists in Supabase
-      const { data: room, error: roomError } = await supabase
+      let { data: room, error: roomError } = await supabase
         .from('rooms')
         .select('*')
         .eq('id', cleanId)
         .maybeSingle();
 
-      if (roomError) throw roomError;
+      // Intelligent fallback between TL- and DUO- (e.g. for the 2 room members using DUO)
+      if (!room) {
+        const altId = cleanId.startsWith('TL-') 
+          ? `DUO-${cleanId.slice(3)}` 
+          : cleanId.startsWith('DUO-') 
+            ? `TL-${cleanId.slice(4)}` 
+            : null;
+        if (altId) {
+          const { data: altRoom } = await supabase
+            .from('rooms')
+            .select('*')
+            .eq('id', altId)
+            .maybeSingle();
+          if (altRoom) {
+            room = altRoom;
+            cleanId = altId;
+          }
+        }
+      }
+
+      // If still not found, try raw input as-is
+      if (!room && rawInput !== cleanId) {
+        const { data: rawRoom } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('id', rawInput)
+          .maybeSingle();
+        if (rawRoom) {
+          room = rawRoom;
+          cleanId = rawInput;
+        }
+      }
+
+      if (roomError && !room) throw roomError;
       
       if (!room) {
         triggerToast(`Room ${cleanId} does not exist. Please check the code.`);
@@ -5894,9 +6132,15 @@ export default function App() {
       }
     }
 
+    const isValidNotificationEmail = (e) => {
+      if (!e || typeof e !== 'string') return false;
+      const clean = e.trim().toLowerCase();
+      return clean.includes('@') && clean.includes('.') && !clean.endsWith('@tallyin.app') && clean !== 'null' && clean !== 'undefined';
+    };
+
     const stateEmails = targetMembers
       .map(m => m.email)
-      .filter(e => e && typeof e === 'string' && e.includes('@'));
+      .filter(isValidNotificationEmail);
 
     // 2. Fetch fresh emails from Supabase DB
     let dbEmails = [];
@@ -5918,8 +6162,8 @@ export default function App() {
             });
           }
 
-          // Fetch user emails from users table for UIDs missing emails in members table
-          const missingEmailUids = filteredDb.filter(m => !m.email || !m.email.includes('@')).map(m => m.uid);
+          // Fetch user emails from users table for UIDs missing emails or having dummy @tallyin.app emails in members table
+          const missingEmailUids = filteredDb.filter(m => !isValidNotificationEmail(m.email)).map(m => m.uid);
           let extraUserEmails = [];
           if (missingEmailUids.length > 0) {
             try {
@@ -5928,13 +6172,13 @@ export default function App() {
                 .select('email, uid')
                 .in('uid', missingEmailUids);
               if (uData) {
-                extraUserEmails = uData.map(u => u.email).filter(e => e && e.includes('@'));
+                extraUserEmails = uData.map(u => u.email).filter(isValidNotificationEmail);
               }
             } catch(e) {}
           }
 
           dbEmails = [
-            ...filteredDb.map(m => m.email).filter(e => e && typeof e === 'string' && e.includes('@')),
+            ...filteredDb.map(m => m.email).filter(isValidNotificationEmail),
             ...extraUserEmails
           ];
         }
@@ -5947,18 +6191,22 @@ export default function App() {
 
     // For general room expenses, ensure current user/login emails are included
     if (!isSettlement) {
-      const currentUserEmail = (user?.email && typeof user.email === 'string' && user.email.includes('@')) ? user.email : '';
-      const storedCodeEmail = (codeLoginEmail && typeof codeLoginEmail === 'string' && codeLoginEmail.includes('@')) ? codeLoginEmail.trim() : '';
+      const currentUserEmail = isValidNotificationEmail(user?.email) ? user.email.trim() : '';
+      const storedCodeEmail = isValidNotificationEmail(codeLoginEmail) ? codeLoginEmail.trim() : '';
+      const storedLocalEmail = isValidNotificationEmail(localStorage.getItem('codeLoginEmail'))
+        ? localStorage.getItem('codeLoginEmail').trim()
+        : (isValidNotificationEmail(localStorage.getItem('tallyin_user_email')) ? localStorage.getItem('tallyin_user_email').trim() : '');
       if (currentUserEmail) emailSet.add(currentUserEmail);
       if (storedCodeEmail) emailSet.add(storedCodeEmail);
+      if (storedLocalEmail) emailSet.add(storedLocalEmail);
     }
-    const emailList = [...emailSet].map(e => e.trim()).filter(Boolean);
+    const emailList = [...emailSet].map(e => e.trim().toLowerCase()).filter(isValidNotificationEmail);
 
     console.log('[Tallyin Email Debug] Action Type:', actionType, 'Tx ID:', txIdFormatted);
     console.log('[Tallyin Email Debug] All member emails found:', emailList);
 
     if (emailList.length === 0) {
-      console.warn('[Tallyin Email Debug] No valid recipient emails found — email notification skipped.');
+      console.warn('[Tallyin Email Debug] No valid recipient emails found for room ' + activeRoomId + ' — email notification skipped.');
       return;
     }
 
@@ -6399,6 +6647,12 @@ export default function App() {
           }
         }
 
+        // Hosted web URLs are rendered directly in the HTML email body as clickable links;
+        // Do NOT send URL to Google Apps Script base64Decode or it will throw Exception: Could not decode string.
+        if (typeof fileData === 'string' && (fileData.startsWith('http://') || fileData.startsWith('https://'))) {
+          continue;
+        }
+
         if (typeof fileData === 'string' && fileData.length > 50) {
           try {
             let base64Data = fileData;
@@ -6413,6 +6667,10 @@ export default function App() {
                 mimeType = header.split(';')[0].replace('data:', '') || 'image/jpeg';
               }
             }
+
+            // Strip newlines/spaces from base64 string
+            base64Data = base64Data.replace(/[\r\n\s]/g, '');
+            if (!base64Data || base64Data.startsWith('http')) continue;
 
             if (mimeType.includes('pdf') || base64Data.startsWith('JVBERi0')) {
               ext = 'pdf';
@@ -6895,7 +7153,8 @@ export default function App() {
       isShared: isSharedExpense,
       splitType: finalSplitType,
       split: splitLabel,
-      splits: splitsArray
+      splits: splitsArray,
+      imageUrl: activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null
     };
 
     if (editingTransaction) {
@@ -6907,23 +7166,15 @@ export default function App() {
       ));
 
       // 2. Resolve receipt dates & optimistic receipts update
-      let oldReceiptDateStr = '';
-      if (editingTransaction.date) {
-        const parts = editingTransaction.date.split('-');
-        if (parts.length === 3) {
-          const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-          oldReceiptDateStr = dateObj.toLocaleDateString([], { day: '2-digit', month: 'short' });
-        }
-      }
+      const oldReceiptDateStr = formatReceiptDate(editingTransaction.date);
+      const newReceiptDateStr = formatReceiptDate(formDate);
+      const serializedImages = activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null;
 
-      if (newPayload.isShared) {
-        const newReceiptDateStr = new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' });
-        const serializedImages = activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null;
-        
+      if (activeReceiptImages.length > 0) {
         setReceipts(prev => {
           let found = false;
           const updated = prev.map(r => {
-            if (r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && r.date === oldReceiptDateStr) {
+            if ((r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && (!oldReceiptDateStr || r.date === oldReceiptDateStr)) || (editingTransaction.imageUrl && r.imageUrl === editingTransaction.imageUrl)) {
               found = true;
               return {
                 ...r,
@@ -6937,7 +7188,7 @@ export default function App() {
             return r;
           });
           
-          if (!found && activeReceiptImages.length > 0) {
+          if (!found) {
             const bgColors = [
               'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
               'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
@@ -6962,7 +7213,7 @@ export default function App() {
           return updated;
         });
       } else {
-        setReceipts(prev => prev.filter(r => !(r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && r.date === oldReceiptDateStr)));
+        setReceipts(prev => prev.filter(r => !(r.title === editingTransaction.title && Number(r.amount) === Number(editingTransaction.amount) && (!oldReceiptDateStr || r.date === oldReceiptDateStr))));
       }
 
       // 3. Close the modal immediately (zero-latency transition)
@@ -6992,15 +7243,14 @@ export default function App() {
               is_edited: true,
               split_type: newPayload.splitType,
               split: newPayload.split,
-              splits: newPayload.splits
+              splits: newPayload.splits,
+              image_url: activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null
             })
             .eq('id', editingTransaction.id);
 
           if (txError) throw txError;
 
-          if (newPayload.isShared) {
-            const newReceiptDateStr = new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' });
-            
+          if (activeReceiptImages.length > 0) {
             const { data: updatedReceipts, error: receiptUpdateError } = await supabase
               .from('receipts')
               .update({
@@ -7013,8 +7263,6 @@ export default function App() {
               .eq('room_id', currentRoom)
               .eq('title', editingTransaction.title)
               .eq('amount', editingTransaction.amount)
-              .eq('category', editingTransaction.category)
-              .eq('date', oldReceiptDateStr)
               .select();
 
             if (receiptUpdateError) throw receiptUpdateError;
@@ -7050,9 +7298,7 @@ export default function App() {
               .delete()
               .eq('room_id', currentRoom)
               .eq('title', editingTransaction.title)
-              .eq('amount', editingTransaction.amount)
-              .eq('category', editingTransaction.category)
-              .eq('date', oldReceiptDateStr);
+              .eq('amount', editingTransaction.amount);
             if (deleteError) throw deleteError;
           }
 
@@ -7081,7 +7327,8 @@ export default function App() {
         ...newPayload,
         createdBy: user ? user.id : 'anonymous',
         roomId: currentRoom,
-        room_id: currentRoom
+        room_id: currentRoom,
+        imageUrl: activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null
       };
       setTransactions(prev => [optimisticTx, ...prev]);
       closeAddExpenseModal();
@@ -7102,7 +7349,8 @@ export default function App() {
             split_type: newPayload.splitType,
             split: newPayload.split,
             splits: newPayload.splits,
-            created_by: user ? user.id : 'anonymous'
+            created_by: user ? user.id : 'anonymous',
+            image_url: activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null
           })
           .select()
           .single();
@@ -7116,7 +7364,7 @@ export default function App() {
         if (insertedTx) {
           setTransactions(prev => prev.map(t =>
             t.id === optimisticId
-              ? { ...newPayload, id: insertedTx.id, createdBy: insertedTx.created_by, roomId: insertedTx.room_id, room_id: insertedTx.room_id }
+              ? { ...newPayload, id: insertedTx.id, createdBy: insertedTx.created_by, roomId: insertedTx.room_id, room_id: insertedTx.room_id, imageUrl: activeReceiptImages.length > 0 ? JSON.stringify(activeReceiptImages) : null }
               : t
           ));
         }
@@ -7144,7 +7392,7 @@ export default function App() {
           triggerToast(`Also added to fund "${myFunds.find(f => String(f.id) === String(formFundId))?.title || 'Fund'}"`);
         }
 
-        if (newPayload.isShared && activeReceiptImages.length > 0) {
+        if (activeReceiptImages.length > 0) {
           const bgColors = [
             'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
             'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-400',
@@ -7154,13 +7402,14 @@ export default function App() {
           const rotations = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2'];
           const randomBg = bgColors[Math.floor(Math.random() * bgColors.length)];
           const randomRot = rotations[Math.floor(Math.random() * rotations.length)];
+          const receiptDateFormatted = formatReceiptDate(formDate);
 
           const newReceipt = {
             id: `optimistic-receipt-${Date.now()}`,
             title: formFor,
             amount: amountNum,
             category: formCategory,
-            date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
+            date: receiptDateFormatted,
             bgClass: randomBg,
             rotation: randomRot,
             imageUrl: JSON.stringify(activeReceiptImages)
@@ -7174,7 +7423,7 @@ export default function App() {
               title: formFor,
               amount: amountNum,
               category: formCategory,
-              date: new Date(formDate).toLocaleDateString([], { day: '2-digit', month: 'short' }),
+              date: receiptDateFormatted,
               bg_class: randomBg,
               rotation: randomRot,
               image_url: JSON.stringify(activeReceiptImages)
@@ -7270,22 +7519,20 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     if (!file) return;
 
     if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
-      triggerToast("Converting HEIC image... Please wait.");
+      triggerToast("Processing HEIC image...");
       try {
         file = await convertHeicToPng(file);
       } catch (err) {
-        triggerToast(err.message);
-        return;
+        console.warn("HEIC conversion fallback:", err);
       }
     }
 
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const isExcel = file.type.includes('spreadsheet') || file.type === 'application/vnd.ms-excel' || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
-    const maxSize = (isPdf || isExcel) ? 10 * 1024 * 1024 : 3 * 1024 * 1024;
-    const sizeLabel = (isPdf || isExcel) ? '10MB' : '3MB';
+    const maxSize = 12 * 1024 * 1024; // 12MB limit
 
     if (file.size > maxSize) {
-      triggerToast(`File size too large. Please upload files under ${sizeLabel}.`);
+      triggerToast(`File size too large. Please upload files under 12MB.`);
       return;
     }
 
@@ -7301,7 +7548,12 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
     const reader = new FileReader();
     reader.onload = async () => {
-      const base64Data = reader.result;
+      let base64Data = reader.result;
+      if (isImageDataUrl(base64Data)) {
+        try {
+          base64Data = await compressImageFile(base64Data);
+        } catch(cErr) {}
+      }
 
       const bgColors = [
         'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-[#A3E635]',
@@ -7385,22 +7637,20 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       const loadedImages = [];
       for (let file of files) {
         if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
-          triggerToast(`Converting HEIC image (${file.name})... Please wait.`);
+          triggerToast(`Processing HEIC image (${file.name})...`);
           try {
             file = await convertHeicToPng(file);
           } catch (err) {
-            triggerToast(err.message);
-            continue;
+            console.warn("HEIC conversion fallback:", err);
           }
         }
 
         const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
         const isExcel = file.type.includes('spreadsheet') || file.type === 'application/vnd.ms-excel' || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
-        const maxSize = (isPdf || isExcel) ? 10 * 1024 * 1024 : 3 * 1024 * 1024;
-        const sizeLabel = (isPdf || isExcel) ? '10MB' : '3MB';
+        const maxSize = 12 * 1024 * 1024; // 12MB limit
 
         if (file.size > maxSize) {
-          triggerToast(`File ${file.name} is too large. Please upload files under ${sizeLabel}.`);
+          triggerToast(`File ${file.name} is too large. Please upload files under 12MB.`);
           continue;
         }
 
@@ -7413,8 +7663,15 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           };
           reader.readAsDataURL(file);
         });
-        const result = await p;
-        if (result) loadedImages.push(result);
+        let result = await p;
+        if (result) {
+          if (isImageDataUrl(result)) {
+            try {
+              result = await compressImageFile(result);
+            } catch(cErr) {}
+          }
+          loadedImages.push(result);
+        }
       }
 
       if (loadedImages.length === 0) return;
@@ -9821,16 +10078,6 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                 </svg>
                 <span>Sign in with Google</span>
               </button>
-
-              {/* 1-Tap Sandbox Tester Button */}
-              <button
-                type="button"
-                onClick={handleOpenSandboxTY1001}
-                className="w-full bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] hover:bg-[#dfe8e2] dark:hover:bg-slate-700/80 py-3 px-4 rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-2 border border-[#1A3827]/10 dark:border-slate-700 shadow-xs cursor-pointer"
-              >
-                <span>🧪</span>
-                <span>Open Sandbox Mode (TY1001)</span>
-              </button>
               
               <div className="flex items-center justify-center gap-2 pt-1 text-xs">
                 <span className="text-[#5C6E5C] dark:text-slate-400 font-medium">Or have an access code?</span>
@@ -9848,20 +10095,11 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           ) : (
             <form onSubmit={handleCodeLogin} className="space-y-4 text-left">
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Enter your 6-digit Access Code</label>
-                  <button
-                    type="button"
-                    onClick={handleOpenSandboxTY1001}
-                    className="text-[10px] font-black text-emerald-700 dark:text-[#A3E635] hover:underline cursor-pointer"
-                  >
-                    Quick: TY1001 (Sandbox)
-                  </button>
-                </div>
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Enter your 6-digit Access Code</label>
                 <input
                   type="text"
                   maxLength={6}
-                  placeholder="e.g. TY1001"
+                  placeholder="e.g. 123456"
                   value={accessCodeInput}
                   onChange={e => setAccessCodeInput(e.target.value)}
                   className="w-full px-3.5 py-3 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-mono tracking-widest uppercase text-center font-bold animate-fade-in"
@@ -10624,24 +10862,86 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           {/* Wizard step: join-room */}
           {onboardingStep === 'join-room' && (
             <div className="space-y-4 text-left">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Room code</label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Room code</label>
+                  {/* Quick Prefix Switcher */}
+                  <div className="flex items-center gap-1 bg-[#F6F8F6] dark:bg-slate-900 p-0.5 rounded-lg border border-[#E3E8E3] dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setRoomPrefix('TL-')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                        roomPrefix === 'TL-'
+                          ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                          : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
+                      }`}
+                      title="Default room prefix"
+                    >
+                      TL- (Default)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRoomPrefix('DUO-')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                        roomPrefix === 'DUO-'
+                          ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                          : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
+                      }`}
+                      title="Alternative for 2 room members"
+                    >
+                      DUO- (2 Members)
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter room code (e.g. TL-7729-XM)"
-                    value={joinInput}
-                    onChange={(e) => setJoinInput(e.target.value.toUpperCase())}
-                    className="flex-1 px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
-                  />
+                  <div className="flex items-center flex-1 border border-[#E3E8E3] dark:border-slate-800 rounded-xl bg-white dark:bg-slate-950 focus-within:ring-1 focus-within:ring-[#1A3827] dark:focus-within:ring-[#A3E635] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setRoomPrefix(prev => prev === 'TL-' ? 'DUO-' : 'TL-')}
+                      className="px-3 py-2.5 bg-slate-100 dark:bg-slate-900 border-r border-[#E3E8E3] dark:border-slate-800 font-mono font-bold text-xs text-[#1A3827] dark:text-[#A3E635] flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors select-none shrink-0 cursor-pointer"
+                      title="Click to toggle prefix (TL- / DUO-)"
+                    >
+                      <span>{roomPrefix}</span>
+                      <span className="text-[9px] text-slate-400">⇄</span>
+                    </button>
+                    <input
+                      type="text"
+                      placeholder={roomPrefix === 'TL-' ? "e.g. PSJ8-8888 or 7729-XM" : "e.g. KLIZ-2508"}
+                      value={joinInput}
+                      onChange={(e) => {
+                        let val = e.target.value.toUpperCase();
+                        if (val.startsWith('TL-')) {
+                          setRoomPrefix('TL-');
+                          val = val.slice(3);
+                        } else if (val.startsWith('DUO-')) {
+                          setRoomPrefix('DUO-');
+                          val = val.slice(4);
+                        } else if (val.startsWith('TL')) {
+                          setRoomPrefix('TL-');
+                          val = val.slice(2).replace(/^-/, '');
+                        } else if (val.startsWith('DUO')) {
+                          setRoomPrefix('DUO-');
+                          val = val.slice(3).replace(/^-/, '');
+                        }
+                        setJoinInput(val);
+                      }}
+                      className="flex-1 px-3 py-2.5 text-xs focus:outline-none text-[#1A3827] dark:text-white bg-transparent font-semibold font-mono tracking-wide"
+                    />
+                  </div>
                   <button
                     onClick={() => setIsQrScannerOpen(true)}
-                    className="p-2.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl text-[#5C6E5C] dark:text-slate-400 transition-all shrink-0"
+                    className="p-2.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl text-[#5C6E5C] dark:text-slate-400 transition-all shrink-0 cursor-pointer"
                     title="Scan Room QR Code"
                   >
                     <ScanLine className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
                   </button>
                 </div>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                  {roomPrefix === 'TL-'
+                    ? 'Default prefix TL- is active. Just type the remaining code (e.g. PSJ8-8888).'
+                    : 'DUO- prefix active for 2-member spaces (e.g. DUO-KLIZ-2508).'}
+                </p>
               </div>
               
               <div className="flex gap-2.5 pt-2">
@@ -11554,7 +11854,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         type="file" 
         ref={fileInputRef} 
         onChange={handleReceiptUpload} 
-        accept="image/*,application/pdf,.pdf,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
+        accept="image/*,.heic,.heif,image/heic,image/heif,application/pdf,.pdf,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
         className="hidden" 
       />
 
@@ -13560,6 +13860,33 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       </div>
 
                       <div className="flex items-center gap-1 border-l border-slate-150 dark:border-slate-800 pl-2">
+                        {(() => {
+                          const receiptData = t.imageUrl || (receipts.find(r => 
+                            r.title === t.title && 
+                            Number(r.amount) === Number(t.amount) && 
+                            r.category === t.category
+                          )?.imageUrl);
+                          if (!receiptData) return null;
+                          return (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveReceiptZoom({
+                                  title: t.title,
+                                  amount: t.amount,
+                                  category: t.category,
+                                  date: t.date,
+                                  imageUrl: receiptData
+                                });
+                                setActiveReceiptImageIndex(0);
+                              }}
+                              className="p-1.5 text-emerald-600 dark:text-[#A3E635] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-all cursor-pointer"
+                              title="View attached receipt(s)"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          );
+                        })()}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -14162,22 +14489,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-3">
                   <input 
+                    ref={formReceiptInputRef}
                     type="file"
-                    accept="image/*,application/pdf,.pdf,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    accept="image/*,.heic,.heif,image/heic,image/heif,application/pdf,.pdf,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     multiple
                     onChange={handleFormReceiptChange}
-                    className="hidden"
+                    className="sr-only"
                     id="form-receipt-upload"
-                    disabled={formReceiptImages.length >= 4}
+                    tabIndex={-1}
                   />
                   {formReceiptImages.length < 4 && (
-                    <label 
-                      htmlFor="form-receipt-upload"
-                      className="flex items-center justify-center gap-2 bg-[#F6F8F6] dark:bg-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-700 text-[#1A3827] dark:text-slate-200 px-4 py-2 rounded-xl font-bold border border-[#E3E8E3] dark:border-slate-700 transition-all text-xs cursor-pointer shadow-sm disabled:opacity-50"
+                    <button 
+                      type="button"
+                      onClick={() => formReceiptInputRef.current?.click()}
+                      className="flex items-center justify-center gap-2 bg-[#F6F8F6] dark:bg-slate-800 hover:bg-[#EAF0EC] dark:hover:bg-slate-700 text-[#1A3827] dark:text-slate-200 px-4 py-2 rounded-xl font-bold border border-[#E3E8E3] dark:border-slate-700 transition-all text-xs cursor-pointer shadow-sm active:scale-95"
                     >
                       <Upload className="w-3.5 h-3.5 text-[#1A3827] dark:text-slate-200" />
                       <span>Choose Files</span>
-                    </label>
+                    </button>
                   )}
                   {formReceiptImages.length > 0 && (
                     <div className="flex items-center gap-3">
@@ -17987,8 +18316,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         >
           <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
             <div>
-              <h3 className="font-black text-sm sm:text-base text-[#1A3827] dark:text-white uppercase tracking-tight">{activeReceiptZoom.title}</h3>
-              <p className="text-[10px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">{activeReceiptZoom.category} • {activeReceiptZoom.date}</p>
+              <h3 className="font-black text-sm sm:text-base text-[#1A3827] dark:text-white uppercase tracking-tight">
+                {typeof activeReceiptZoom === 'object' ? (activeReceiptZoom?.title || 'Receipt') : 'Receipt'}
+              </h3>
+              <p className="text-[10px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">
+                {typeof activeReceiptZoom === 'object' && activeReceiptZoom?.category ? `${activeReceiptZoom.category} • ` : ''}
+                {typeof activeReceiptZoom === 'object' ? (activeReceiptZoom?.date || '') : ''}
+              </p>
             </div>
             <button 
               onClick={() => setActiveReceiptZoom(null)}
@@ -17999,7 +18333,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           {(() => {
-            const images = getImages(activeReceiptZoom.imageUrl);
+            const rawImageUrl = typeof activeReceiptZoom === 'object' ? activeReceiptZoom?.imageUrl : activeReceiptZoom;
+            const images = getImages(rawImageUrl);
+            const zoomTitle = (typeof activeReceiptZoom === 'object' ? activeReceiptZoom?.title : null) || 'Receipt';
             if (images.length > 0) {
               const currentFile = images[activeReceiptImageIndex] || images[0];
               const isImg = isImageDataUrl(currentFile);
@@ -18010,14 +18346,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     {isImg ? (
                       <img 
                         src={currentFile} 
-                        alt={`${activeReceiptZoom.title} - File ${activeReceiptImageIndex + 1}`} 
+                        alt={`${zoomTitle} - File ${activeReceiptImageIndex + 1}`} 
                         className="max-w-full max-h-[45vh] object-contain rounded-lg transition-all duration-300 p-2"
                       />
                     ) : isPdf ? (
                       <div className="w-full h-full flex flex-col" style={{minHeight:'42vh'}}>
                         <iframe
                           src={currentFile}
-                          title={`PDF preview - ${activeReceiptZoom.title}`}
+                          title={`PDF preview - ${zoomTitle}`}
                           className="w-full flex-1 rounded-xl border-0"
                           style={{minHeight:'38vh'}}
                         />
@@ -18028,7 +18364,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           </div>
                           <a
                             href={currentFile}
-                            download={`${activeReceiptZoom.title}_receipt_${activeReceiptImageIndex + 1}.pdf`}
+                            download={`${zoomTitle}_receipt_${activeReceiptImageIndex + 1}.pdf`}
                             className="flex items-center gap-1 px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg text-[10px] transition-all shadow"
                           >
                             <Download className="w-3 h-3" />
@@ -19787,8 +20123,117 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <div className="bg-emerald-50/50 dark:bg-[#1e2d24] border border-emerald-100 dark:border-[#2f4638] rounded-2xl p-3 text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold space-y-1">
                   <p>✨ Centralized Mailer Active</p>
                   <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
-                    Alerts are sent automatically to all roommates' Google Sign-in email addresses. No personal setup or inputs required!
+                    Alerts are sent automatically to all roommates whenever an expense is added or updated.
                   </p>
+                </div>
+
+                {/* Personal alert email configuration */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                    Your Expense Alert Email
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      placeholder="e.g. you@example.com"
+                      value={codeLoginEmail}
+                      onChange={(e) => setCodeLoginEmail(e.target.value)}
+                      className="flex-1 px-3 py-2 text-xs border border-[#E3E8E3] dark:border-slate-800 rounded-xl bg-[#F6F8F6] dark:bg-slate-800/50 text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827]"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const trimmed = (codeLoginEmail || '').trim().toLowerCase();
+                        if (!trimmed || !trimmed.includes('@') || !trimmed.includes('.')) {
+                          triggerToast('Please enter a valid email address');
+                          return;
+                        }
+                        localStorage.setItem('codeLoginEmail', trimmed);
+                        localStorage.setItem('tallyin_user_email', trimmed);
+                        if (user) {
+                          setUser(prev => ({ ...prev, email: trimmed }));
+                          const currentUid = user.id || auth.currentUser?.uid;
+                          if (currentUid) {
+                            try {
+                              await supabase.from('members').update({ email: trimmed }).eq('uid', currentUid);
+                              await supabase.from('users').update({ email: trimmed }).eq('uid', currentUid);
+                            } catch(e) {}
+                          }
+                        }
+                        triggerToast('Alert email saved! Roommate notifications will be sent here.');
+                      }}
+                      className="px-4 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 cursor-pointer shadow-sm shrink-0"
+                    >
+                      Save Email
+                    </button>
+                  </div>
+                </div>
+
+                {/* Room alert recipients status */}
+                <div className="pt-2">
+                  <p className="text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400 mb-2 uppercase tracking-wider">
+                    Room Alert Recipients ({members.length})
+                  </p>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                    {members.map(m => {
+                      const isMe = m.uid === (user?.id || auth.currentUser?.uid);
+                      const displayEmail = (isMe && codeLoginEmail && codeLoginEmail.includes('@')) 
+                        ? codeLoginEmail.trim() 
+                        : (m.email && !m.email.endsWith('@tallyin.app') ? m.email : '');
+                      const hasEmail = Boolean(displayEmail);
+
+                      return (
+                        <div key={m.uid} className="flex items-center justify-between text-xs py-1 px-2.5 rounded-lg bg-[#F6F8F6] dark:bg-slate-800/40">
+                          <span className="font-semibold text-[#1A3827] dark:text-slate-200">
+                            {m.nickname || m.name || 'Roommate'}{isMe ? ' (You)' : ''}
+                          </span>
+                          {hasEmail ? (
+                            <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                              ✓ {displayEmail}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                              ⚠️ No email registered
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Send Test Email Button */}
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const targetEmail = (codeLoginEmail || user?.email || '').trim();
+                      if (!targetEmail || !targetEmail.includes('@')) {
+                        triggerToast('Please save your email above first to receive the test alert.');
+                        return;
+                      }
+                      triggerToast('Sending test email alert...');
+                      try {
+                        await sendEmailNotification({
+                          id: 'test-ping-' + Date.now(),
+                          title: 'Test Expense Alert',
+                          amount: 250,
+                          category: 'Food',
+                          paidBy: userNickname || 'You',
+                          date: getLocalDateStr(),
+                          time: '12:00 PM',
+                          isShared: true,
+                          split: 'Split equally'
+                        }, 'add');
+                        triggerToast('Test alert dispatched to ' + targetEmail + '! Check your inbox.');
+                      } catch (e) {
+                        triggerToast('Test alert failed: ' + (e.message || 'Unknown error'));
+                      }
+                    }}
+                    className="text-xs text-[#1A3827] dark:text-[#A3E635] hover:underline font-bold cursor-pointer"
+                  >
+                    ✉️ Send test notification to my inbox
+                  </button>
                 </div>
               </div>
             )}
@@ -20666,7 +21111,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 qrScannerRef.current = null;
               }
               setIsQrScannerOpen(false);
-              setJoinInput(roomCode);
+              const cleanCode = (roomCode || '').trim().toUpperCase();
+              if (cleanCode.startsWith('DUO-')) {
+                setRoomPrefix('DUO-');
+                setJoinInput(cleanCode.slice(4));
+              } else if (cleanCode.startsWith('TL-')) {
+                setRoomPrefix('TL-');
+                setJoinInput(cleanCode.slice(3));
+              } else {
+                setJoinInput(cleanCode);
+              }
               triggerToast(`Room code scanned: ${roomCode}`);
             }}
             onError={(err) => console.warn('QR scan error:', err)}

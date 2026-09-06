@@ -126,16 +126,29 @@ class D1QueryBuilder {
 
   async executeOnSupabase() {
     let q = realSupabase.from(this.table);
+    let payload = this.payload;
+
+    if (this.table === 'transactions' && payload) {
+      const items = Array.isArray(payload) ? payload : [payload];
+      const cleaned = items.map(t => ({
+        ...t,
+        is_shared: t.is_shared === 1 || t.is_shared === true || t.is_shared === '1' || t.is_shared === 'true',
+        is_edited: t.is_edited === 1 || t.is_edited === true || t.is_edited === '1' || t.is_edited === 'true'
+      }));
+      payload = Array.isArray(this.payload) ? cleaned : cleaned[0];
+    }
+
     if (this.action === 'select') {
       q = q.select('*');
     } else if (this.action === 'insert') {
-      q = q.insert(this.payload);
+      q = q.insert(payload);
     } else if (this.action === 'update') {
-      q = q.update(this.payload);
+      q = q.update(payload);
     } else if (this.action === 'delete') {
       q = q.delete();
     } else if (this.action === 'upsert') {
-      q = q.upsert(this.payload);
+      const onConflict = this.table === 'members' ? 'room_id,uid' : this.table === 'system_settings' ? 'key' : 'id';
+      q = q.upsert(payload, { onConflict });
     }
 
     this.filters.forEach(f => {
@@ -188,6 +201,13 @@ class D1QueryBuilder {
       if (res.error) throw new Error(res.error);
       let data = res.data;
 
+      // Replicate mutation to Supabase in background to maintain 100% database parity
+      if (['insert', 'update', 'delete', 'upsert'].includes(this.action)) {
+        this.executeOnSupabase().catch(e => {
+          console.warn(`[Dual-Sync] Replicating ${this.action} to Supabase:`, e?.message || e);
+        });
+      }
+
       if (this.isSingle || this.isMaybeSingle) {
         data = Array.isArray(data) && data.length > 0 ? data[0] : null;
         if (this.isSingle && data === null) {
@@ -221,7 +241,7 @@ class D1QueryBuilder {
   }
 }
 
-// Proxy that routes dynamically to Supabase or Cloudflare D1
+// Proxy that routes dynamically to Supabase or Cloudflare D1 with dual-write replication
 export const supabase = new Proxy(realSupabase, {
   get(target, prop, receiver) {
     if (prop === 'from') {
@@ -230,8 +250,39 @@ export const supabase = new Proxy(realSupabase, {
         if (engine === 'd1') {
           return new D1QueryBuilder(table);
         }
-        // Direct Native Supabase client
-        return realSupabase.from(table);
+        // Direct Native Supabase client with background D1 replication
+        const queryBuilder = realSupabase.from(table);
+        const originalInsert = queryBuilder.insert.bind(queryBuilder);
+        const originalUpsert = queryBuilder.upsert.bind(queryBuilder);
+        const originalUpdate = queryBuilder.update.bind(queryBuilder);
+        const originalDelete = queryBuilder.delete.bind(queryBuilder);
+
+        const replicateToD1 = (action, data) => {
+          fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table, action, data })
+          }).catch(e => console.warn(`[Dual-Sync] Replicating ${action} to D1:`, e?.message || e));
+        };
+
+        queryBuilder.insert = (...args) => {
+          replicateToD1('insert', args[0]);
+          return originalInsert(...args);
+        };
+        queryBuilder.upsert = (...args) => {
+          replicateToD1('upsert', args[0]);
+          return originalUpsert(...args);
+        };
+        queryBuilder.update = (...args) => {
+          replicateToD1('update', args[0]);
+          return originalUpdate(...args);
+        };
+        queryBuilder.delete = (...args) => {
+          replicateToD1('delete', null);
+          return originalDelete(...args);
+        };
+
+        return queryBuilder;
       };
     }
     const value = Reflect.get(target, prop, receiver);
