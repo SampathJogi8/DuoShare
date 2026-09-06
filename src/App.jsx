@@ -1023,7 +1023,9 @@ export default function App() {
 
       if (autoName && autoName !== 'You') {
         setUserNickname(autoName);
-        setNicknameInput(autoName);
+        if (!isEditingNickname) {
+          setNicknameInput(autoName);
+        }
         localStorage.setItem('userNickname', autoName);
         setIsNicknameFixed(true);
       }
@@ -1462,10 +1464,11 @@ export default function App() {
     return !!(cached && cached !== 'You' && cached.trim() !== '');
   });
   const [isEditingRoomName, setIsEditingRoomName] = useState(false);
+  const [isEditingMonthlyBudget, setIsEditingMonthlyBudget] = useState(false);
   const [roomNameInput, setRoomNameInput] = useState('');
-  const [newRoomBudgetInput, setNewRoomBudgetInput] = useState('3000');
-  const [newRoomHostQuotaInput, setNewRoomHostQuotaInput] = useState('1000');
-  const [newRoomMaxMembersInput, setNewRoomMaxMembersInput] = useState('2');
+  const [newRoomBudgetInput, setNewRoomBudgetInput] = useState('');
+  const [newRoomHostQuotaInput, setNewRoomHostQuotaInput] = useState('');
+  const [newRoomMaxMembersInput, setNewRoomMaxMembersInput] = useState('');
   const [settingsRoomNameInput, setSettingsRoomNameInput] = useState(() => localStorage.getItem('roomName') || 'Tallyin');
   const [nicknamePromptAction, setNicknamePromptAction] = useState(null); // null | 'create' | 'join'
   const [onboardingStep, setOnboardingStep] = useState('selection'); // 'selection' | 'room-name' | 'room-mode' | 'room-budget' | 'share-code'
@@ -2514,7 +2517,7 @@ export default function App() {
         if (userRoomId === localRoomId) {
           if (formatted.length > 0) {
             setUserRoomId(formatted[0].roomId);
-            setRoomName(formatted[0].roomName);
+            if (!isEditingRoomName) setRoomName(formatted[0].roomName);
             setHasConfirmedRoom(false);
             setOnboardingStep('selection');
             localStorage.setItem('userRoomId', formatted[0].roomId);
@@ -2529,7 +2532,7 @@ export default function App() {
         const activeRoom = formatted.find(r => r.roomId === currentStoredRoomId) || formatted[0];
         if (activeRoom && activeRoom.roomId) {
           setUserRoomId(activeRoom.roomId);
-          if (activeRoom.roomName) setRoomName(activeRoom.roomName);
+          if (activeRoom.roomName && !isEditingRoomName) setRoomName(activeRoom.roomName);
           localStorage.setItem('userRoomId', activeRoom.roomId);
         }
       } else {
@@ -3231,14 +3234,14 @@ export default function App() {
       // Only update monthly_budget from DB if user is NOT currently editing budget
       if (data.monthly_budget !== undefined && data.monthly_budget !== null) {
         const b = Number(data.monthly_budget);
-        const isEditing = isManageRoomOpen || onboardingStep === 'room-budget' || (typeof document !== 'undefined' && document.activeElement?.id === 'monthly_budget_input');
+        const isEditing = isEditingMonthlyBudget || onboardingStep === 'room-budget' || (typeof document !== 'undefined' && document.activeElement?.id === 'monthly_budget_input');
         if (!isEditing) {
           setMonthlyBudget(b);
           setMonthlyBudgetInput(String(b));
           localStorage.setItem('monthlyBudget', String(b));
         }
       }
-      if (data.name) {
+      if (data.name && !isEditingRoomName) {
         setRoomName(data.name);
         localStorage.setItem('roomName', data.name);
       }
@@ -3290,8 +3293,8 @@ export default function App() {
       localStorage.setItem('isQuotaMode', activeMode === 'quota' ? 'true' : 'false');
       localStorage.setItem(`roomMode_${roomId}`, activeMode);
 
-      // Do not overwrite draft editing inputs if Manage Room modal is currently open
-      if (!isManageRoomOpen) {
+      // Do not overwrite draft editing inputs if Manage Room modal is currently open or user is editing room name
+      if (!isManageRoomOpen && !isEditingRoomName) {
         setSettingsMaxMembersInput(limitVal);
         if (data.name) setSettingsRoomNameInput(data.name);
       }
@@ -3880,7 +3883,8 @@ export default function App() {
           nickname: m.nickname,
           photoURL: m.photo_url || '',
           email: m.email || '',
-          individualBudget: (rawBudget !== null && !isNaN(rawBudget) && rawBudget > 0) ? rawBudget : fallbackQuota,
+          role: m.role || 'member',
+          individualBudget: (rawBudget !== null && !isNaN(rawBudget) && rawBudget >= 0) ? rawBudget : fallbackQuota,
           joinedAt: m.joined_at
         };
       });
@@ -4205,13 +4209,16 @@ export default function App() {
 
 
 
-  // Initialize settings draft inputs whenever Manage Room modal is opened
+  // Initialize settings draft inputs ONLY when Manage Room modal opens
   useEffect(() => {
     if (isManageRoomOpen) {
       setSettingsMaxMembersInput(roomMaxMembers);
-      setSettingsRoomNameInput(roomName);
+      if (!isEditingRoomName) {
+        setSettingsRoomNameInput(roomName);
+      }
     }
-  }, [isManageRoomOpen, roomMaxMembers, roomName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isManageRoomOpen]);
 
   // Check for due recurring expenses (Feature 1)
   useEffect(() => {
@@ -10560,7 +10567,8 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                     min="2"
                     max="50"
                     value={roomMaxMembersInput}
-                    onChange={(e) => setRoomMaxMembersInput(Math.max(2, Math.min(50, Number(e.target.value) || 2)))}
+                    onChange={(e) => setRoomMaxMembersInput(e.target.value)}
+                    onBlur={() => setRoomMaxMembersInput(String(Math.max(2, Math.min(50, Number(roomMaxMembersInput) || 2))))}
                     className="flex-1 px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
                   />
                   <span className="text-xs font-extrabold text-[#5C6E5C] dark:text-slate-400 shrink-0">Members</span>
@@ -10743,14 +10751,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                         type="number"
                         inputMode="numeric"
                         value={newRoomBudgetInput}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setNewRoomBudgetInput(val);
-                          const total = Number(val) || 0;
-                          if (total > 0 && (!newRoomHostQuotaInput || newRoomHostQuotaInput === '0')) {
-                            setNewRoomHostQuotaInput(String(Math.round(total / maxMemsNum)));
-                          }
-                        }}
+                        onChange={(e) => setNewRoomBudgetInput(e.target.value)}
                         placeholder="e.g. 3000"
                         className="flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 focus:outline-none focus:ring-1 focus:ring-[#1A3827]"
                       />
@@ -15372,6 +15373,82 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </button>
             </div>
 
+            {/* Room Name */}
+            <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Room Name</p>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Display name of this shared space.</p>
+                </div>
+                {!isEditingRoomName && isHost && (
+                  <button
+                    onClick={() => {
+                      setSettingsRoomNameInput(roomName);
+                      setIsEditingRoomName(true);
+                    }}
+                    className="px-3 py-1 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-xs rounded-xl transition-all"
+                  >
+                    Rename
+                  </button>
+                )}
+              </div>
+              {isEditingRoomName ? (
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={settingsRoomNameInput}
+                    onChange={(e) => setSettingsRoomNameInput(e.target.value)}
+                    placeholder="Enter room name"
+                    className="flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-semibold"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setIsEditingRoomName(false);
+                        setSettingsRoomNameInput(roomName);
+                      }}
+                      className="px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-bold hover:bg-[#F6F8F6] dark:hover:bg-slate-800"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const newRoomName = settingsRoomNameInput.trim() || 'Tallyin';
+                        setRoomName(newRoomName);
+                        localStorage.setItem('roomName', newRoomName);
+                        setIsEditingRoomName(false);
+                        setUserRooms(prev => prev.map(r => r.roomId === userRoomId ? { ...r, roomName: newRoomName } : r));
+                        const cachedKey = `userRooms_${user?.id}`;
+                        try {
+                          const cached = JSON.parse(localStorage.getItem(cachedKey) || '[]');
+                          const updated = cached.map(r => r.roomId === userRoomId ? { ...r, roomName: newRoomName } : r);
+                          localStorage.setItem(cachedKey, JSON.stringify(updated));
+                        } catch(e) {}
+                        if (userRoomId) {
+                          try {
+                            const { error: updateError } = await supabase
+                              .from('rooms')
+                              .update({ name: newRoomName })
+                              .eq('id', userRoomId);
+                            if (updateError) throw updateError;
+                            await logActivity('settings', `${userNickname} renamed room to "${newRoomName}"`);
+                            triggerToast(`Room name updated to "${newRoomName}"!`);
+                          } catch {
+                            triggerToast('Saved locally.');
+                          }
+                        }
+                      }}
+                      className="px-3 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-900 rounded-xl text-xs font-bold hover:bg-[#255038] dark:hover:bg-slate-200"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200 pt-0.5">{roomName}</p>
+              )}
+            </div>
+
             {/* Room Operating Mode Switcher (Host only) */}
             <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 space-y-3 bg-[#F6F8F6]/60 dark:bg-slate-950/60">
               <div className="flex items-center justify-between">
@@ -15600,7 +15677,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   min={Math.max(2, members.length)}
                   max="50"
                   value={settingsMaxMembersInput}
-                  onChange={e => setSettingsMaxMembersInput(Math.max(2, Number(e.target.value) || 2))}
+                  onChange={e => setSettingsMaxMembersInput(e.target.value)}
+                  onBlur={() => setSettingsMaxMembersInput(String(Math.max(members.length || 2, Number(settingsMaxMembersInput) || 2)))}
                   disabled={!isHost}
                   className={`flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 ${!isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
                 />
@@ -15650,17 +15728,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   type="text"
                   inputMode="numeric"
                   value={monthlyBudgetInput}
+                  onFocus={() => setIsEditingMonthlyBudget(true)}
+                  onBlur={() => setTimeout(() => setIsEditingMonthlyBudget(false), 300)}
                   onChange={e => {
-                    const rawVal = e.target.value;
-                    setMonthlyBudgetInput(rawVal);
-                    const num = Number(rawVal);
-                    if (!isNaN(num) && num > 0) {
-                      setMonthlyBudget(num);
-                      localStorage.setItem('monthlyBudget', String(num));
-                      if (userRoomId) {
-                        supabase.from('rooms').update({ monthly_budget: num }).eq('id', userRoomId).then(null, () => {});
-                      }
-                    }
+                    setMonthlyBudgetInput(e.target.value);
                   }}
                   disabled={!isHost}
                   className={`flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 ${!isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -15668,9 +15739,18 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 {isHost && (
                   <button
                     onClick={async () => {
-                      const finalB = Number(monthlyBudgetInput) || monthlyBudget || 22000;
+                      const finalB = Number(monthlyBudgetInput) || monthlyBudget || 3000;
                       setMonthlyBudget(finalB);
+                      setMonthlyBudgetInput(String(finalB));
                       localStorage.setItem('monthlyBudget', String(finalB));
+                      setIsEditingMonthlyBudget(false);
+                      setUserRooms(prev => prev.map(r => r.roomId === userRoomId ? { ...r, monthlyBudget: finalB } : r));
+                      const cachedKey = `userRooms_${user?.id}`;
+                      try {
+                        const cached = JSON.parse(localStorage.getItem(cachedKey) || '[]');
+                        const updated = cached.map(r => r.roomId === userRoomId ? { ...r, monthlyBudget: finalB } : r);
+                        localStorage.setItem(cachedKey, JSON.stringify(updated));
+                      } catch(e) {}
                       if (userRoomId) {
                         try {
                           const { error: updateError } = await supabase
@@ -15679,7 +15759,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             .eq('id', userRoomId);
                           if (updateError) throw updateError;
                           await logActivity('settings', `${userNickname} updated the monthly budget to ₹${finalB.toLocaleString('en-IN')}`);
-                          triggerToast(`Monthly budget cap updated to ₹${finalB.toLocaleString('en-IN')} for all room members!`);
+                          triggerToast(`Monthly budget cap updated to ₹${finalB.toLocaleString('en-IN')}!`);
                         } catch {
                           triggerToast('Budget saved locally.');
                         }
@@ -19828,7 +19908,15 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         const newRoomName = settingsRoomNameInput.trim() || 'Tallyin';
                         setRoomName(newRoomName);
                         localStorage.setItem('roomName', newRoomName);
+                        setSettingsRoomNameInput(newRoomName);
                         setIsEditingRoomName(false);
+                        setUserRooms(prev => prev.map(r => r.roomId === userRoomId ? { ...r, roomName: newRoomName } : r));
+                        const cachedKey = `userRooms_${user?.id}`;
+                        try {
+                          const cached = JSON.parse(localStorage.getItem(cachedKey) || '[]');
+                          const updated = cached.map(r => r.roomId === userRoomId ? { ...r, roomName: newRoomName } : r);
+                          localStorage.setItem(cachedKey, JSON.stringify(updated));
+                        } catch(e) {}
                         if (userRoomId) {
                           try {
                             const { error: updateError } = await supabase
@@ -19836,7 +19924,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                               .update({ name: newRoomName })
                               .eq('id', userRoomId);
                             if (updateError) throw updateError;
-                            triggerToast('Room name updated!');
+                            await logActivity('settings', `${userNickname} renamed room to "${newRoomName}"`);
+                            triggerToast(`Room name updated to "${newRoomName}"!`);
                           } catch {
                             triggerToast('Saved locally. Failed to sync to cloud.');
                           }
@@ -19851,7 +19940,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   </div>
                 ) : (
                   <button 
-                    onClick={() => setIsEditingRoomName(true)}
+                    onClick={() => {
+                      setSettingsRoomNameInput(roomName);
+                      setIsEditingRoomName(true);
+                    }}
                     className="px-4 py-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-xs rounded-xl transition-all w-full sm:w-auto"
                   >
                     Rename
@@ -19873,25 +19965,27 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   type="text"
                   inputMode="numeric"
                   value={monthlyBudgetInput}
+                  onFocus={() => setIsEditingMonthlyBudget(true)}
+                  onBlur={() => setTimeout(() => setIsEditingMonthlyBudget(false), 300)}
                   onChange={e => {
-                    const rawVal = e.target.value;
-                    setMonthlyBudgetInput(rawVal);
-                    const num = Number(rawVal);
-                    if (!isNaN(num) && num > 0) {
-                      setMonthlyBudget(num);
-                      localStorage.setItem('monthlyBudget', String(num));
-                      if (userRoomId) {
-                        supabase.from('rooms').update({ monthly_budget: num }).eq('id', userRoomId).then(null, () => {});
-                      }
-                    }
+                    setMonthlyBudgetInput(e.target.value);
                   }}
                   className="w-28 px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-semibold"
                 />
                 <button
                   onClick={async () => {
-                    const finalB = Number(monthlyBudgetInput) || monthlyBudget || 22000;
+                    const finalB = Number(monthlyBudgetInput) || monthlyBudget || 3000;
                     setMonthlyBudget(finalB);
+                    setMonthlyBudgetInput(String(finalB));
                     localStorage.setItem('monthlyBudget', String(finalB));
+                    setIsEditingMonthlyBudget(false);
+                    setUserRooms(prev => prev.map(r => r.roomId === userRoomId ? { ...r, monthlyBudget: finalB } : r));
+                    const cachedKey = `userRooms_${user?.id}`;
+                    try {
+                      const cached = JSON.parse(localStorage.getItem(cachedKey) || '[]');
+                      const updated = cached.map(r => r.roomId === userRoomId ? { ...r, monthlyBudget: finalB } : r);
+                      localStorage.setItem(cachedKey, JSON.stringify(updated));
+                    } catch(e) {}
                     if (userRoomId) {
                       try {
                         const { error: updateError } = await supabase
@@ -19899,6 +19993,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           .update({ monthly_budget: finalB })
                           .eq('id', userRoomId);
                         if (updateError) throw updateError;
+                        await logActivity('settings', `${userNickname} updated the monthly budget to ₹${finalB.toLocaleString('en-IN')}`);
                         triggerToast(`Monthly budget cap updated to ₹${finalB.toLocaleString('en-IN')}!`);
                       } catch {
                         triggerToast('Budget saved locally.');
