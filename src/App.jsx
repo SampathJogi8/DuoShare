@@ -2441,8 +2441,39 @@ export default function App() {
       created_at: new Date().toISOString()
     };
     setActivityLogs(prev => [optimisticLog, ...prev].slice(0, 100));
+
+    // Instant realtime broadcast across room channel
     try {
-      const { error } = await supabase
+      const roomChannel = supabase.channel(`room:${targetRoom}`);
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'ACTIVITY_LOGGED',
+        payload: { log: optimisticLog, roomId: targetRoom }
+      }).catch(() => {});
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'ROOM_DATA_SYNC',
+        payload: { roomId: targetRoom }
+      }).catch(() => {});
+    } catch (e) {}
+
+    // Instant realtime broadcast to System Admin Channel
+    try {
+      const adminChan = supabase.channel('system_admin_channel');
+      adminChan.send({
+        type: 'broadcast',
+        event: 'ACTIVITY_LOGGED',
+        payload: { log: optimisticLog, roomId: targetRoom }
+      }).catch(() => {});
+      adminChan.send({
+        type: 'broadcast',
+        event: 'ROOM_DATA_SYNC',
+        payload: { roomId: targetRoom }
+      }).catch(() => {});
+    } catch (e) {}
+
+    try {
+      const { data, error } = await supabase
         .from('activity_logs')
         .insert({
           room_id: targetRoom,
@@ -2451,13 +2482,30 @@ export default function App() {
           action: action,
           details: details,
           created_at: new Date().toISOString()
-        });
+        })
+        .select();
       if (error) {
         // RLS (Row Level Security) may be blocking the insert.
         // Fix: In Supabase Dashboard → Authentication → Policies → activity_logs
         // Add INSERT policy: (auth.uid() = user_id)
         // Also ensure SELECT policy exists for reading logs.
         console.warn('[Tallyin] Activity log insert blocked:', error.code, error.message);
+      } else if (data && data[0]) {
+        const persisted = data[0];
+        setActivityLogs(prev => prev.map(l => l.id === optimisticLog.id ? persisted : l));
+        // Broadcast persisted log with its real database ID
+        try {
+          supabase.channel(`room:${targetRoom}`).send({
+            type: 'broadcast',
+            event: 'ACTIVITY_LOGGED',
+            payload: { log: persisted, roomId: targetRoom }
+          }).catch(() => {});
+          supabase.channel('system_admin_channel').send({
+            type: 'broadcast',
+            event: 'ACTIVITY_LOGGED',
+            payload: { log: persisted, roomId: targetRoom }
+          }).catch(() => {});
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('[Tallyin] Failed to insert log activity:', err);
@@ -4189,6 +4237,26 @@ export default function App() {
           }
         }
       )
+      .on('broadcast', { event: 'ACTIVITY_LOGGED' }, (payload) => {
+        const newLog = payload?.payload?.log;
+        if (newLog && (!newLog.room_id || newLog.room_id === userRoomId)) {
+          setActivityLogs(prev => {
+            if (prev.some(l => l.id === newLog.id)) return prev;
+            const optIndex = prev.findIndex(l => 
+              String(l.id).startsWith('optimistic-') &&
+              l.action === newLog.action &&
+              l.details === newLog.details
+            );
+            if (optIndex !== -1) {
+              const copy = [...prev];
+              copy[optIndex] = newLog;
+              return copy;
+            }
+            return [newLog, ...prev].slice(0, 100);
+          });
+        }
+        fetchActivityLogs(userRoomId);
+      })
       .on('broadcast', { event: 'ROOM_DATA_SYNC' }, () => {
         fetchTransactions(userRoomId);
         fetchMembers(userRoomId);

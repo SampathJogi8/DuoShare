@@ -1032,6 +1032,9 @@ export default function AdminDashboard({
 
   // Financial Audit & Live Stream states
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [recentActivityLogs, setRecentActivityLogs] = useState([]);
+  const [activityFeedFilter, setActivityFeedFilter] = useState('all'); // 'all' | 'transactions' | 'room_ops'
+  const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
   const [categoryBreakdown, setCategoryBreakdown] = useState([]);
   const [totalFinancialVolume, setTotalFinancialVolume] = useState(0);
   const [simulatedErrorRate, setSimulatedErrorRate] = useState(() => {
@@ -1050,21 +1053,29 @@ export default function AdminDashboard({
     return { aiOcr: true, smartSettlements: true, budgetAlerts: true };
   });
 
-  const fetchFinancialsAndLogs = useCallback(async () => {
+  const fetchFinancialsAndLogs = useCallback(async (isManual = false) => {
+    if (isManual) setIsRefreshingFeed(true);
     try {
-      const { data: txList } = await supabase
-        .from('transactions')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
+      const [txRes, logRes] = await Promise.all([
+        supabase
+          .from('transactions')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('activity_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100)
+      ]);
 
-      if (txList) {
-        setRecentTransactions(txList);
-        const total = txList.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+      if (txRes?.data) {
+        setRecentTransactions(txRes.data);
+        const total = txRes.data.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
         setTotalFinancialVolume(total);
 
         const catMap = {};
-        txList.forEach(t => {
+        txRes.data.forEach(t => {
           const cat = t.category || 'General';
           if (!cat.startsWith('__')) {
             catMap[cat] = (catMap[cat] || 0) + (Number(t.amount) || 0);
@@ -1079,10 +1090,57 @@ export default function AdminDashboard({
 
         setCategoryBreakdown(sortedCats);
       }
+
+      if (logRes?.data) {
+        setRecentActivityLogs(logRes.data);
+      }
     } catch (e) {
-      console.warn("Financials fetch error:", e);
+      console.warn("Financials and logs fetch error:", e);
+    } finally {
+      if (isManual) {
+        setTimeout(() => setIsRefreshingFeed(false), 400);
+      }
     }
   }, []);
+
+  const mergedActivityFeed = useMemo(() => {
+    const items = [];
+
+    if (activityFeedFilter === 'all' || activityFeedFilter === 'transactions') {
+      recentTransactions.forEach(tx => {
+        items.push({
+          id: `tx-${tx.id}`,
+          feedType: 'transaction',
+          title: tx.title || 'Expense',
+          amount: Number(tx.amount || 0),
+          category: tx.category || 'General',
+          actor: tx.paid_by || 'User',
+          roomId: tx.room_id || 'Platform',
+          details: tx.title,
+          timestamp: tx.created_at || tx.date || new Date().toISOString(),
+          raw: tx
+        });
+      });
+    }
+
+    if (activityFeedFilter === 'all' || activityFeedFilter === 'room_ops') {
+      recentActivityLogs.forEach(log => {
+        items.push({
+          id: `log-${log.id}`,
+          feedType: 'room_op',
+          action: log.action || 'activity',
+          title: log.details || `${log.user_name || 'User'} performed ${log.action}`,
+          actor: log.user_name || 'User',
+          roomId: log.room_id || 'Platform',
+          details: log.details,
+          timestamp: log.created_at || new Date().toISOString(),
+          raw: log
+        });
+      });
+    }
+
+    return items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [recentTransactions, recentActivityLogs, activityFeedFilter]);
 
   // Ban Management States
   const adminChannelRef = useRef(null);
@@ -1176,6 +1234,25 @@ export default function AdminDashboard({
   useEffect(() => {
     const channel = supabase.channel('system_admin_channel');
     channel
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+        fetchFinancialsAndLogs();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, (payload) => {
+        if (payload.eventType === 'INSERT' && payload.new) {
+          setRecentActivityLogs(prev => [payload.new, ...prev.filter(l => l.id !== payload.new.id)].slice(0, 100));
+        }
+        fetchFinancialsAndLogs();
+      })
+      .on('broadcast', { event: 'ACTIVITY_LOGGED' }, (payload) => {
+        if (payload?.payload?.log) {
+          const newLog = payload.payload.log;
+          setRecentActivityLogs(prev => [newLog, ...prev.filter(l => l.id !== newLog.id)].slice(0, 100));
+        }
+        fetchFinancialsAndLogs();
+      })
+      .on('broadcast', { event: 'ROOM_DATA_SYNC' }, () => {
+        fetchFinancialsAndLogs();
+      })
       .on('broadcast', { event: 'BAN_APPEAL_SUBMITTED' }, (payload) => {
         if (payload?.payload?.appeal) {
           setBanAppeals(prev => [payload.payload.appeal, ...prev.filter(a => a.email !== payload.payload.appeal.email)]);
@@ -1209,7 +1286,7 @@ export default function AdminDashboard({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [triggerToast, playAppealAlertSound]);
+  }, [triggerToast, playAppealAlertSound, fetchFinancialsAndLogs]);
 
   const fetchBanAppeals = useCallback(async () => {
     try {
@@ -2098,6 +2175,17 @@ export default function AdminDashboard({
       fetchEmailConfiguration();
     }
   }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry, fetchEmailConfiguration]);
+
+  // Live heartbeat polling loop for realtime activity feed and platform financials
+  useEffect(() => {
+    if (!isAuthorizedAdmin) return;
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchFinancialsAndLogs();
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isAuthorizedAdmin, fetchFinancialsAndLogs]);
 
   // Fetch Rooms for Room Commander with members count
   const fetchCommanderRooms = useCallback(async () => {
@@ -8169,49 +8257,223 @@ NOTIFY pgrst, 'reload schema';`;
       {/* Tab: Live Activity Feed */}
       {activeTab === 'activity_feed' && (
         <div className="hud-card rounded-3xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
-            <div className="space-y-0.5">
-              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                <Flame className="w-5 h-5 text-amber-500" />
-                Live Real-Time Activity Feed
-              </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5">
+                <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
+                  <Flame className="w-5 h-5 text-amber-500" />
+                  Live Real-Time Activity Feed
+                </h3>
+                <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-black tracking-wider shadow-xs">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span>LIVE STREAM ACTIVE</span>
+                </div>
+              </div>
               <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                Recent transactions and room activities logged across the entire platform.
+                Instant multi-room event stream capturing transactions, member activities, settings, and settlements platform-wide.
               </p>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fetchFinancialsAndLogs(true)}
+                disabled={isRefreshingFeed}
+                className="px-3.5 py-1.5 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingFeed ? 'animate-spin text-emerald-600' : ''}`} />
+                <span>{isRefreshingFeed ? 'Syncing...' : 'Refresh Feed'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800/80">
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5">Total Stream Events</span>
+              <p className="text-lg font-black text-[#1A3827] dark:text-slate-100 font-mono">
+                {recentTransactions.length + recentActivityLogs.length}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800/80">
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block mb-0.5">Transactions (₹)</span>
+              <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                {recentTransactions.length}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800/80">
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block mb-0.5">Room Operations</span>
+              <p className="text-lg font-black text-blue-600 dark:text-blue-400 font-mono">
+                {recentActivityLogs.length}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800/80">
+              <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block mb-0.5">Monitored Volume</span>
+              <p className="text-lg font-black text-purple-600 dark:text-purple-400 font-mono">
+                ₹{totalFinancialVolume.toLocaleString('en-IN')}
+              </p>
+            </div>
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
             <button
-              onClick={fetchFinancialsAndLogs}
-              className="px-3 py-1.5 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-colors flex items-center gap-1.5"
+              onClick={() => setActivityFeedFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                activityFeedFilter === 'all'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Refresh Feed</span>
+              <Activity className="w-3.5 h-3.5" />
+              <span>All Events ({recentTransactions.length + recentActivityLogs.length})</span>
+            </button>
+            <button
+              onClick={() => setActivityFeedFilter('transactions')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                activityFeedFilter === 'transactions'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <span className="font-extrabold text-xs">₹</span>
+              <span>Transactions ({recentTransactions.length})</span>
+            </button>
+            <button
+              onClick={() => setActivityFeedFilter('room_ops')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                activityFeedFilter === 'room_ops'
+                  ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Room Operations ({recentActivityLogs.length})</span>
             </button>
           </div>
 
-          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-            {recentTransactions.length === 0 ? (
-              <p className="text-xs text-slate-400 italic text-center py-8">No recent transactions recorded in database.</p>
+          {/* Feed List */}
+          <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1">
+            {mergedActivityFeed.length === 0 ? (
+              <div className="p-8 text-center bg-white/50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-[#E3E8E3] dark:border-slate-800">
+                <Radio className="w-8 h-8 text-slate-400 mx-auto mb-2 animate-pulse" />
+                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No events found for this filter.</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                  Live events will appear automatically when users create expenses or perform room operations.
+                </p>
+              </div>
             ) : (
-              recentTransactions.map(tx => (
-                <div key={tx.id} className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800/80 flex items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-xl bg-[#EAF0EC] dark:bg-slate-800 flex items-center justify-center font-bold text-[#1A3827] dark:text-[#A3E635] shrink-0">
-                      ₹
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{tx.title}</p>
-                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
-                        Paid by <span className="font-bold text-[#1A3827] dark:text-slate-200">{tx.paid_by || 'User'}</span> • Room: <span className="font-mono">{tx.room_id || 'N/A'}</span>
-                      </p>
-                    </div>
-                  </div>
+              mergedActivityFeed.map(item => {
+                if (item.feedType === 'transaction') {
+                  return (
+                    <div key={item.id} className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800/80 flex items-center justify-between gap-3 text-xs hover:border-emerald-300 dark:hover:border-emerald-700/50 transition-all shadow-xs">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-[#A3E635] flex items-center justify-center font-extrabold text-sm shrink-0 border border-emerald-200 dark:border-emerald-900/50">
+                          ₹
+                        </div>
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{item.title}</p>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50">
+                              EXPENSE
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+                            <span>Paid by <strong className="text-[#1A3827] dark:text-slate-200">{item.actor}</strong></span>
+                            <span>•</span>
+                            <span>Room: <code className="font-mono font-bold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">{item.roomId}</code></span>
+                            <span>•</span>
+                            <span>{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(item.timestamp).toLocaleDateString()}</span>
+                          </p>
+                        </div>
+                      </div>
 
-                  <div className="text-right shrink-0">
-                    <p className="font-mono font-black text-sm text-[#1A3827] dark:text-[#A3E635]">₹{Number(tx.amount || 0).toLocaleString('en-IN')}</p>
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">{tx.category || 'General'}</span>
-                  </div>
-                </div>
-              ))
+                      <div className="text-right shrink-0">
+                        <p className="font-mono font-black text-sm text-[#1A3827] dark:text-[#A3E635]">
+                          ₹{Number(item.amount || 0).toLocaleString('en-IN')}
+                        </p>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">
+                          {item.category}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                } else {
+                  // Room operation log
+                  const isDelete = item.action === 'delete' || item.action === 'remove';
+                  const isSettle = item.action === 'settle' || item.action === 'settled_payment';
+                  const isSettings = item.action === 'settings';
+                  const isBudget = item.action === 'update_budget';
+                  const isCreate = item.action === 'create';
+                  const isEdit = item.action === 'edit';
+
+                  const iconBg = isDelete
+                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border-rose-200 dark:border-rose-900/50'
+                    : isSettle
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-900/50'
+                    : isSettings
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-900/50'
+                    : isBudget
+                    ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200 dark:border-cyan-900/50'
+                    : isCreate
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50'
+                    : isEdit
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-900/50'
+                    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+
+                  const tagColor = isDelete
+                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border-rose-200/60'
+                    : isSettle
+                    ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border-purple-200/60'
+                    : isSettings
+                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200/60'
+                    : isBudget
+                    ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300 border-cyan-200/60'
+                    : isCreate
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200/60'
+                    : isEdit
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200/60'
+                    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200';
+
+                  return (
+                    <div key={item.id} className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800/80 flex items-center justify-between gap-3 text-xs hover:border-slate-400/40 dark:hover:border-slate-700 transition-all shadow-xs">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${iconBg}`}>
+                          {isDelete ? <Trash2 className="w-4 h-4" /> :
+                           isSettle ? <CheckCircle2 className="w-4 h-4" /> :
+                           isSettings ? <Sliders className="w-4 h-4" /> :
+                           isBudget ? <DollarSign className="w-4 h-4" /> :
+                           isCreate ? <Zap className="w-4 h-4" /> :
+                           isEdit ? <Edit3 className="w-4 h-4" /> :
+                           <Activity className="w-4 h-4" />}
+                        </div>
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{item.title}</p>
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase border ${tagColor}`}>
+                              {item.action}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+                            <span>User: <strong className="text-[#1A3827] dark:text-slate-200">{item.actor}</strong></span>
+                            <span>•</span>
+                            <span>Room: <code className="font-mono font-bold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">{item.roomId}</code></span>
+                            <span>•</span>
+                            <span>{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(item.timestamp).toLocaleDateString()}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-mono text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                          ROOM OP
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+              })
             )}
           </div>
         </div>
