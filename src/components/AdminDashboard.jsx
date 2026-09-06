@@ -213,6 +213,7 @@ export default function AdminDashboard({
   const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const currentEmailClean = (user?.email || '').trim().toLowerCase();
+  const currentUidClean = (user?.id || user?.uid || '').trim().toLowerCase();
   const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
 
   // Sync activeTab if initialTab prop changes
@@ -4072,7 +4073,7 @@ export default function AdminDashboard({
   // Lock Screen if Maintenance Mode is active and user lacks explicit maintenance clearance
   const isWhitelistedInMaintenance = isSuperAdmin || userPermissions.maintenance_control || (allowedMaintenanceAccounts || []).some(acc => {
     const clean = (typeof acc === 'string' ? acc : acc?.email || acc?.uid || '').trim().toLowerCase();
-    return clean && (clean === currentEmailClean || clean === currentUidClean.toLowerCase());
+    return clean && (clean === currentEmailClean || (currentUidClean && clean === currentUidClean));
   });
 
   if (isSystemMaintenanceActive && !isWhitelistedInMaintenance) {
