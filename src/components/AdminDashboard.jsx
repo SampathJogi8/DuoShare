@@ -1230,28 +1230,48 @@ export default function AdminDashboard({
     }
   }, []);
 
-  // Keep persistent subscribed Realtime channel for Admin broadcasts, Appeals & User Disputes
+  const fetchFinancialsRef = useRef(fetchFinancialsAndLogs);
+  fetchFinancialsRef.current = fetchFinancialsAndLogs;
+
+  // Dedicated realtime channel for Admin Dashboard database changes
   useEffect(() => {
-    const channel = supabase.channel('system_admin_channel');
-    channel
+    const channelId = `admin_db_changes_${Math.random().toString(36).substring(2, 9)}`;
+    const liveFeedChannel = supabase.channel(channelId);
+
+    liveFeedChannel
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
-        fetchFinancialsAndLogs();
+        if (fetchFinancialsRef.current) fetchFinancialsRef.current();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, (payload) => {
         if (payload.eventType === 'INSERT' && payload.new) {
           setRecentActivityLogs(prev => [payload.new, ...prev.filter(l => l.id !== payload.new.id)].slice(0, 100));
         }
-        fetchFinancialsAndLogs();
+        if (fetchFinancialsRef.current) fetchFinancialsRef.current();
       })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Admin Dashboard] Live database change stream active');
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(liveFeedChannel);
+    };
+  }, []);
+
+  // Keep persistent subscribed Realtime channel for Admin broadcasts, Appeals & User Disputes
+  useEffect(() => {
+    const channel = supabase.channel('system_admin_channel');
+    channel
       .on('broadcast', { event: 'ACTIVITY_LOGGED' }, (payload) => {
         if (payload?.payload?.log) {
           const newLog = payload.payload.log;
           setRecentActivityLogs(prev => [newLog, ...prev.filter(l => l.id !== newLog.id)].slice(0, 100));
         }
-        fetchFinancialsAndLogs();
+        if (fetchFinancialsRef.current) fetchFinancialsRef.current();
       })
       .on('broadcast', { event: 'ROOM_DATA_SYNC' }, () => {
-        fetchFinancialsAndLogs();
+        if (fetchFinancialsRef.current) fetchFinancialsRef.current();
       })
       .on('broadcast', { event: 'BAN_APPEAL_SUBMITTED' }, (payload) => {
         if (payload?.payload?.appeal) {
@@ -1283,10 +1303,7 @@ export default function AdminDashboard({
       })
       .subscribe();
     adminChannelRef.current = channel;
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [triggerToast, playAppealAlertSound, fetchFinancialsAndLogs]);
+  }, [triggerToast, playAppealAlertSound]);
 
   const fetchBanAppeals = useCallback(async () => {
     try {
