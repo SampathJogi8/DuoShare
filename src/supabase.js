@@ -54,7 +54,12 @@ class D1QueryBuilder {
     if (['transactions', 'receipts', 'members', 'rooms', 'users'].includes(this.table)) {
       const rows = Array.isArray(data) ? data : [data];
       rows.forEach(row => {
-        if (!row.id) row.id = crypto.randomUUID();
+        if (this.table === 'users') {
+          if (!row.id) row.id = row.uid || crypto.randomUUID();
+          if (!row.uid) row.uid = row.id;
+        } else if (!row.id) {
+          row.id = crypto.randomUUID();
+        }
       });
     }
     this.payload = data;
@@ -75,6 +80,22 @@ class D1QueryBuilder {
 
   upsert(data, options = {}) {
     this.action = 'upsert';
+    if (['transactions', 'receipts', 'members', 'rooms', 'users'].includes(this.table)) {
+      const rows = Array.isArray(data) ? data : [data];
+      rows.forEach(row => {
+        if (this.table === 'users') {
+          if (!row.id) row.id = row.uid || crypto.randomUUID();
+          if (!row.uid) row.uid = row.id;
+        } else if (!row.id) {
+          row.id = crypto.randomUUID();
+        }
+      });
+    }
+    const safeOptions = { ...options };
+    if (this.table === 'users' && safeOptions.onConflict === 'uid') {
+      safeOptions.onConflict = 'id';
+    }
+    this.options = safeOptions;
     this.payload = data;
     return this;
   }
@@ -138,6 +159,15 @@ class D1QueryBuilder {
       payload = Array.isArray(this.payload) ? cleaned : cleaned[0];
     }
 
+    if (this.table === 'users' && payload) {
+      const items = Array.isArray(payload) ? payload : [payload];
+      items.forEach(r => {
+        if (!r.id) r.id = r.uid || crypto.randomUUID();
+        if (!r.uid) r.uid = r.id;
+      });
+      payload = Array.isArray(this.payload) ? items : items[0];
+    }
+
     if (this.action === 'select') {
       q = q.select('*');
     } else if (this.action === 'insert') {
@@ -147,7 +177,10 @@ class D1QueryBuilder {
     } else if (this.action === 'delete') {
       q = q.delete();
     } else if (this.action === 'upsert') {
-      const onConflict = this.table === 'members' ? 'room_id,uid' : this.table === 'system_settings' ? 'key' : 'id';
+      let onConflict = this.options?.onConflict;
+      if (!onConflict || (this.table === 'users' && onConflict === 'uid')) {
+        onConflict = this.table === 'members' ? 'room_id,uid' : this.table === 'system_settings' ? 'key' : 'id';
+      }
       q = q.upsert(payload, { onConflict });
     }
 
@@ -266,12 +299,37 @@ export const supabase = new Proxy(realSupabase, {
 
         queryBuilder.insert = (...args) => {
           mutationAction = 'insert';
-          mutationData = args[0];
+          let data = args[0];
+          if (table === 'users' && data) {
+            const rows = Array.isArray(data) ? data : [data];
+            rows.forEach(row => {
+              if (!row.id) row.id = row.uid || crypto.randomUUID();
+              if (!row.uid) row.uid = row.id;
+            });
+            data = Array.isArray(args[0]) ? rows : rows[0];
+            args[0] = data;
+          }
+          mutationData = data;
           return originalInsert(...args);
         };
         queryBuilder.upsert = (...args) => {
           mutationAction = 'upsert';
-          mutationData = args[0];
+          let data = args[0];
+          let options = args[1] || {};
+          if (table === 'users' && data) {
+            const rows = Array.isArray(data) ? data : [data];
+            rows.forEach(row => {
+              if (!row.id) row.id = row.uid || crypto.randomUUID();
+              if (!row.uid) row.uid = row.id;
+            });
+            data = Array.isArray(args[0]) ? rows : rows[0];
+            args[0] = data;
+            if (options.onConflict === 'uid') {
+              options = { ...options, onConflict: 'id' };
+              args[1] = options;
+            }
+          }
+          mutationData = data;
           return originalUpsert(...args);
         };
         queryBuilder.update = (...args) => {
