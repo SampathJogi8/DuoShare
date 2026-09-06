@@ -238,6 +238,9 @@ export default {
 
         // --- UPDATE ---
         if (action === "update") {
+          if (!filters || filters.length === 0) {
+            return Response.json({ error: `Safety guard: Refusing UPDATE on ${table} without WHERE filters.` }, { status: 400, headers: corsHeaders });
+          }
           if (table === "receipts" && data.image_url) {
             const idFilter = filters && filters.find(f => f.column === "id");
             const id = idFilter ? idFilter.value : null;
@@ -282,6 +285,9 @@ export default {
 
         // --- DELETE ---
         if (action === "delete") {
+          if (!filters || filters.length === 0) {
+            return Response.json({ error: `Safety guard: Refusing DELETE on ${table} without WHERE filters.` }, { status: 400, headers: corsHeaders });
+          }
           let sql = `DELETE FROM ${table}`;
           let params = [];
 

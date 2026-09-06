@@ -1023,7 +1023,7 @@ export default function App() {
 
       if (autoName && autoName !== 'You') {
         setUserNickname(autoName);
-        if (!isEditingNickname) {
+        if (!isUserActivelyEditingNickname()) {
           setNicknameInput(autoName);
         }
         localStorage.setItem('userNickname', autoName);
@@ -1473,6 +1473,54 @@ export default function App() {
   const [nicknamePromptAction, setNicknamePromptAction] = useState(null); // null | 'create' | 'join'
   const [onboardingStep, setOnboardingStep] = useState('selection'); // 'selection' | 'room-name' | 'room-mode' | 'room-budget' | 'share-code'
   const [selectedRoomMode, setSelectedRoomMode] = useState('split'); // 'split' | 'quota'
+  const isEditingRoomNameRef = useRef(false);
+  const isEditingMonthlyBudgetRef = useRef(false);
+  const isEditingNicknameRef = useRef(false);
+  const isManageRoomOpenRef = useRef(false);
+
+  useEffect(() => {
+    isEditingRoomNameRef.current = isEditingRoomName;
+  }, [isEditingRoomName]);
+
+  useEffect(() => {
+    isEditingMonthlyBudgetRef.current = isEditingMonthlyBudget;
+  }, [isEditingMonthlyBudget]);
+
+  useEffect(() => {
+    isEditingNicknameRef.current = isEditingNickname;
+  }, [isEditingNickname]);
+
+  useEffect(() => {
+    isManageRoomOpenRef.current = isManageRoomOpen;
+  }, [isManageRoomOpen]);
+
+  // Robust checks to never overwrite active user drafts during background syncs
+  const isUserActivelyEditingRoomName = useCallback(() => {
+    if (isEditingRoomNameRef.current) return true;
+    if (typeof document !== 'undefined') {
+      const activeId = document.activeElement?.id;
+      if (activeId === 'settings_room_name_input' || activeId === 'manage_room_name_input') return true;
+    }
+    return false;
+  }, []);
+
+  const isUserActivelyEditingBudget = useCallback(() => {
+    if (isEditingMonthlyBudgetRef.current) return true;
+    if (typeof document !== 'undefined') {
+      const activeId = document.activeElement?.id;
+      if (activeId === 'monthly_budget_input' || activeId === 'manage_monthly_budget_input') return true;
+    }
+    return false;
+  }, []);
+
+  const isUserActivelyEditingNickname = useCallback(() => {
+    if (isEditingNicknameRef.current) return true;
+    if (typeof document !== 'undefined') {
+      const activeId = document.activeElement?.id;
+      if (activeId === 'settings_nickname_input') return true;
+    }
+    return false;
+  }, []);
   const [activityLogs, setActivityLogs] = useState(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -2517,7 +2565,7 @@ export default function App() {
         if (userRoomId === localRoomId) {
           if (formatted.length > 0) {
             setUserRoomId(formatted[0].roomId);
-            if (!isEditingRoomName) setRoomName(formatted[0].roomName);
+            if (!isUserActivelyEditingRoomName()) setRoomName(formatted[0].roomName);
             setHasConfirmedRoom(false);
             setOnboardingStep('selection');
             localStorage.setItem('userRoomId', formatted[0].roomId);
@@ -2532,7 +2580,7 @@ export default function App() {
         const activeRoom = formatted.find(r => r.roomId === currentStoredRoomId) || formatted[0];
         if (activeRoom && activeRoom.roomId) {
           setUserRoomId(activeRoom.roomId);
-          if (activeRoom.roomName && !isEditingRoomName) setRoomName(activeRoom.roomName);
+          if (activeRoom.roomName && !isUserActivelyEditingRoomName()) setRoomName(activeRoom.roomName);
           localStorage.setItem('userRoomId', activeRoom.roomId);
         }
       } else {
@@ -2709,7 +2757,7 @@ export default function App() {
 
     if (candidateName) {
       setUserNickname(candidateName);
-      setNicknameInput(candidateName);
+      if (!isUserActivelyEditingNickname()) setNicknameInput(candidateName);
       localStorage.setItem('userNickname', candidateName);
       setIsNicknameFixed(true);
     } else {
@@ -2724,7 +2772,7 @@ export default function App() {
         .then(({ data }) => {
           if (data?.nickname && data.nickname !== 'You' && data.nickname.trim()) {
             setUserNickname(data.nickname);
-            setNicknameInput(data.nickname);
+            if (!isUserActivelyEditingNickname()) setNicknameInput(data.nickname);
             localStorage.setItem('userNickname', data.nickname);
             setIsNicknameFixed(true);
             const currentRId = localStorage.getItem('userRoomId') || localRoomId;
@@ -3234,14 +3282,13 @@ export default function App() {
       // Only update monthly_budget from DB if user is NOT currently editing budget
       if (data.monthly_budget !== undefined && data.monthly_budget !== null) {
         const b = Number(data.monthly_budget);
-        const isEditing = isEditingMonthlyBudget || onboardingStep === 'room-budget' || (typeof document !== 'undefined' && document.activeElement?.id === 'monthly_budget_input');
-        if (!isEditing) {
+        if (!isUserActivelyEditingBudget() && onboardingStep !== 'room-budget') {
           setMonthlyBudget(b);
           setMonthlyBudgetInput(String(b));
           localStorage.setItem('monthlyBudget', String(b));
         }
       }
-      if (data.name && !isEditingRoomName) {
+      if (data.name && !isUserActivelyEditingRoomName()) {
         setRoomName(data.name);
         localStorage.setItem('roomName', data.name);
       }
@@ -3294,8 +3341,11 @@ export default function App() {
       localStorage.setItem(`roomMode_${roomId}`, activeMode);
 
       // Do not overwrite draft editing inputs if Manage Room modal is currently open or user is editing room name
-      if (!isManageRoomOpen && !isEditingRoomName) {
+      const isEditingCap = isManageRoomOpenRef.current || (typeof document !== 'undefined' && document.activeElement?.id === 'manage_max_members_input');
+      if (!isEditingCap) {
         setSettingsMaxMembersInput(limitVal);
+      }
+      if (!isManageRoomOpenRef.current && !isUserActivelyEditingRoomName()) {
         if (data.name) setSettingsRoomNameInput(data.name);
       }
 
@@ -4213,7 +4263,7 @@ export default function App() {
   useEffect(() => {
     if (isManageRoomOpen) {
       setSettingsMaxMembersInput(roomMaxMembers);
-      if (!isEditingRoomName) {
+      if (!isUserActivelyEditingRoomName()) {
         setSettingsRoomNameInput(roomName);
       }
     }
@@ -15383,8 +15433,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 {!isEditingRoomName && isHost && (
                   <button
                     onClick={() => {
-                      setSettingsRoomNameInput(roomName);
+                      isEditingRoomNameRef.current = true;
                       setIsEditingRoomName(true);
+                      setSettingsRoomNameInput(roomName);
                     }}
                     className="px-3 py-1 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-xs rounded-xl transition-all"
                   >
@@ -15395,8 +15446,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               {isEditingRoomName ? (
                 <div className="flex flex-col sm:flex-row gap-2 pt-1">
                   <input
+                    id="manage_room_name_input"
                     type="text"
                     value={settingsRoomNameInput}
+                    onFocus={() => {
+                      isEditingRoomNameRef.current = true;
+                      setIsEditingRoomName(true);
+                    }}
                     onChange={(e) => setSettingsRoomNameInput(e.target.value)}
                     placeholder="Enter room name"
                     className="flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-semibold"
@@ -15404,6 +15460,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
+                        isEditingRoomNameRef.current = false;
                         setIsEditingRoomName(false);
                         setSettingsRoomNameInput(roomName);
                       }}
@@ -15414,9 +15471,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     <button
                       onClick={async () => {
                         const newRoomName = settingsRoomNameInput.trim() || 'Tallyin';
+                        isEditingRoomNameRef.current = false;
+                        setIsEditingRoomName(false);
                         setRoomName(newRoomName);
                         localStorage.setItem('roomName', newRoomName);
-                        setIsEditingRoomName(false);
+                        setSettingsRoomNameInput(newRoomName);
                         setUserRooms(prev => prev.map(r => r.roomId === userRoomId ? { ...r, roomName: newRoomName } : r));
                         const cachedKey = `userRooms_${user?.id}`;
                         try {
@@ -19768,8 +19827,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Display Name</p>
                 {isEditingNickname ? (
                   <input 
+                    id="settings_nickname_input"
                     type="text"
                     value={nicknameInput}
+                    onFocus={() => {
+                      isEditingNicknameRef.current = true;
+                      setIsEditingNickname(true);
+                    }}
                     onChange={(e) => setNicknameInput(e.target.value)}
                     className="mt-1 px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-xs focus:outline-none text-[#1A3827] dark:text-white font-semibold w-full max-w-xs bg-white dark:bg-slate-950"
                   />
@@ -19782,6 +19846,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <div className="flex gap-2 justify-start sm:justify-end">
                     <button 
                       onClick={() => {
+                        isEditingNicknameRef.current = false;
                         setIsEditingNickname(false);
                         setNicknameInput(userNickname);
                       }}
@@ -19791,6 +19856,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     </button>
                     <button 
                       onClick={async () => {
+                        isEditingNicknameRef.current = false;
+                        setIsEditingNickname(false);
                         setUserNickname(nicknameInput);
                         localStorage.setItem('userNickname', nicknameInput);
                         if (nicknameInput && nicknameInput !== 'You' && nicknameInput.trim() !== '') {
@@ -19799,7 +19866,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         if (userRoomId && user) {
                           await addMemberToRoom(userRoomId, nicknameInput);
                         }
-                        setIsEditingNickname(false);
                         triggerToast('Display name updated!');
                       }}
                       className="px-3 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-900 rounded-lg text-xs font-bold hover:bg-[#255038] dark:hover:bg-slate-200"
@@ -19809,7 +19875,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   </div>
                 ) : (
                   <button 
-                    onClick={() => setIsEditingNickname(true)}
+                    onClick={() => {
+                      isEditingNicknameRef.current = true;
+                      setIsEditingNickname(true);
+                      setNicknameInput(userNickname);
+                    }}
                     className="px-4 py-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-xs rounded-xl transition-all w-full sm:w-auto"
                   >
                     Edit
@@ -19882,8 +19952,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Room name</p>
                 {isEditingRoomName ? (
                   <input 
+                    id="settings_room_name_input"
                     type="text"
                     value={settingsRoomNameInput}
+                    onFocus={() => {
+                      isEditingRoomNameRef.current = true;
+                      setIsEditingRoomName(true);
+                    }}
                     onChange={(e) => setSettingsRoomNameInput(e.target.value)}
                     className="mt-1 px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-lg text-xs focus:outline-none text-[#1A3827] dark:text-white font-semibold w-full max-w-xs bg-white dark:bg-slate-900"
                   />
@@ -19896,6 +19971,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <div className="flex gap-2 justify-start sm:justify-end">
                     <button 
                       onClick={() => {
+                        isEditingRoomNameRef.current = false;
                         setIsEditingRoomName(false);
                         setSettingsRoomNameInput(roomName);
                       }}
@@ -19906,10 +19982,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     <button 
                       onClick={async () => {
                         const newRoomName = settingsRoomNameInput.trim() || 'Tallyin';
+                        isEditingRoomNameRef.current = false;
+                        setIsEditingRoomName(false);
                         setRoomName(newRoomName);
                         localStorage.setItem('roomName', newRoomName);
                         setSettingsRoomNameInput(newRoomName);
-                        setIsEditingRoomName(false);
                         setUserRooms(prev => prev.map(r => r.roomId === userRoomId ? { ...r, roomName: newRoomName } : r));
                         const cachedKey = `userRooms_${user?.id}`;
                         try {
@@ -19941,8 +20018,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 ) : (
                   <button 
                     onClick={() => {
-                      setSettingsRoomNameInput(roomName);
+                      isEditingRoomNameRef.current = true;
                       setIsEditingRoomName(true);
+                      setSettingsRoomNameInput(roomName);
                     }}
                     className="px-4 py-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-xs rounded-xl transition-all w-full sm:w-auto"
                   >

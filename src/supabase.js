@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://mphuwixprztbzrxndqsl.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1waHV3aXhwcnp0YnpyeG5kcXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNzA5NjEsImV4cCI6MjA5NzY0Njk2MX0.ZRkGOUewER5uCMeohVGAnOvmI9faSZazAy2p4NNcUow';
+const supabaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || 'https://mphuwixprztbzrxndqsl.supabase.co';
+const supabaseAnonKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1waHV3aXhwcnp0YnpyeG5kcXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNzA5NjEsImV4cCI6MjA5NzY0Njk2MX0.ZRkGOUewER5uCMeohVGAnOvmI9faSZazAy2p4NNcUow';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn("Supabase credentials missing. Please check your .env configuration.");
@@ -252,34 +252,59 @@ export const supabase = new Proxy(realSupabase, {
         }
         // Direct Native Supabase client with background D1 replication
         const queryBuilder = realSupabase.from(table);
+        let mutationAction = null;
+        let mutationData = null;
+        const mutationFilters = [];
+
         const originalInsert = queryBuilder.insert.bind(queryBuilder);
         const originalUpsert = queryBuilder.upsert.bind(queryBuilder);
         const originalUpdate = queryBuilder.update.bind(queryBuilder);
         const originalDelete = queryBuilder.delete.bind(queryBuilder);
-
-        const replicateToD1 = (action, data) => {
-          fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/query', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ table, action, data })
-          }).catch(e => console.warn(`[Dual-Sync] Replicating ${action} to D1:`, e?.message || e));
-        };
+        const originalEq = queryBuilder.eq.bind(queryBuilder);
+        const originalIn = queryBuilder.in.bind(queryBuilder);
+        const originalThen = queryBuilder.then.bind(queryBuilder);
 
         queryBuilder.insert = (...args) => {
-          replicateToD1('insert', args[0]);
+          mutationAction = 'insert';
+          mutationData = args[0];
           return originalInsert(...args);
         };
         queryBuilder.upsert = (...args) => {
-          replicateToD1('upsert', args[0]);
+          mutationAction = 'upsert';
+          mutationData = args[0];
           return originalUpsert(...args);
         };
         queryBuilder.update = (...args) => {
-          replicateToD1('update', args[0]);
+          mutationAction = 'update';
+          mutationData = args[0];
           return originalUpdate(...args);
         };
         queryBuilder.delete = (...args) => {
-          replicateToD1('delete', null);
+          mutationAction = 'delete';
+          mutationData = null;
           return originalDelete(...args);
+        };
+        queryBuilder.eq = (column, value) => {
+          mutationFilters.push({ column, operator: 'eq', value });
+          return originalEq(column, value);
+        };
+        queryBuilder.in = (column, values) => {
+          mutationFilters.push({ column, operator: 'in', value: values });
+          return originalIn(column, values);
+        };
+
+        queryBuilder.then = (onfulfilled, onrejected) => {
+          if (mutationAction) {
+            const canReplicate = !['update', 'delete'].includes(mutationAction) || mutationFilters.length > 0;
+            if (canReplicate) {
+              fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ table, action: mutationAction, filters: mutationFilters, data: mutationData })
+              }).catch(e => console.warn(`[Dual-Sync] Replicating ${mutationAction} to D1:`, e?.message || e));
+            }
+          }
+          return originalThen(onfulfilled, onrejected);
         };
 
         return queryBuilder;
