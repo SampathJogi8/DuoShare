@@ -77,7 +77,8 @@ import AdminDashboard from './components/AdminDashboard';
 import BannedUserView from './components/BannedUserView';
 import QuickBillModal from './components/QuickBillModal';
 
-const ADMIN_EMAILS = ['tallyin.alerts@gmail.com', 'sampathjogipusala123@gmail.com'];
+const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
+const ADMIN_EMAILS = [SUPER_ADMIN_EMAIL];
 const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.0.0';
 
@@ -855,7 +856,7 @@ export default function App() {
         if (saved) return JSON.parse(saved);
       } catch (e) {}
     }
-    return ['tallyin.alerts@gmail.com', 'sampathjogipusala123@gmail.com'];
+    return [SUPER_ADMIN_EMAIL];
   });
 
   const [coAdmins, setCoAdmins] = useState(() => {
@@ -12446,7 +12447,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {/* Direct Admin Portal Button for Super Admin & Co-Admins */}
             {(() => {
               const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
-              const isSuperAdmin = ADMIN_EMAILS.includes(currentEmailClean);
+              const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
               if (isSuperAdmin) {
                 return (
                   <button 
@@ -12574,7 +12575,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 </button>
                 {(() => {
                   const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
-                  const isSuperAdmin = ADMIN_EMAILS.includes(currentEmailClean);
+                  const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
                   if (!isSuperAdmin && !isUserCoAdmin) return null;
                   return (
                     <button 

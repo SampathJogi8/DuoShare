@@ -75,9 +75,9 @@ import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
 import { supabase, realSupabase, getActiveDatabaseEngine, setActiveDatabaseEngine } from '../supabase';
 
+const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
 const ADMIN_EMAILS = [
-  'tallyin.alerts@gmail.com',
-  'sampathjogipusala123@gmail.com'
+  SUPER_ADMIN_EMAIL
 ];
 
 export const DEFAULT_EMAIL_MATRIX = {
@@ -205,7 +205,7 @@ export default function AdminDashboard({
   simulatedLatency,
   setSimulatedLatency,
   isOnline,
-  allowedMaintenanceAccounts = ['tallyin.alerts@gmail.com', 'sampathjogipusala123@gmail.com'],
+  allowedMaintenanceAccounts = [SUPER_ADMIN_EMAIL],
   setAllowedMaintenanceAccounts,
   coAdmins = [],
   setCoAdmins
@@ -213,8 +213,7 @@ export default function AdminDashboard({
   const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const currentEmailClean = (user?.email || '').trim().toLowerCase();
-  const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
-  const isSuperAdmin = ADMIN_EMAILS.includes(currentEmailClean);
+  const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
 
   // Sync activeTab if initialTab prop changes
   useEffect(() => {
@@ -382,13 +381,13 @@ export default function AdminDashboard({
       room_explorer: Boolean(currentCoAdminObj?.permissions?.room_explorer),
       room_pinning: Boolean(currentCoAdminObj?.permissions?.room_pinning),
       latency_diagnostics: Boolean(currentCoAdminObj?.permissions?.latency_diagnostics),
-      maintenance_control: Boolean(currentCoAdminObj?.permissions?.maintenance_control),
-      database_migration: Boolean(currentCoAdminObj?.permissions?.database_migration),
-      manage_co_admins: false,
+      maintenance_control: false, // Root Super Admin only
+      database_migration: false,  // Root Super Admin only
+      manage_co_admins: false,    // Root Super Admin only
       room_commander: Boolean(currentCoAdminObj?.permissions?.room_commander ?? currentCoAdminObj?.permissions?.room_explorer),
       dispute_resolver: Boolean(currentCoAdminObj?.permissions?.dispute_resolver ?? currentCoAdminObj?.permissions?.settlements),
-      database_studio: Boolean(currentCoAdminObj?.permissions?.database_studio ?? currentCoAdminObj?.permissions?.database_migration),
-      system_triggers: Boolean(currentCoAdminObj?.permissions?.system_triggers ?? currentCoAdminObj?.permissions?.maintenance_control),
+      database_studio: false,     // Root Super Admin only
+      system_triggers: false,     // Root Super Admin only
       email_hub: Boolean(currentCoAdminObj?.permissions?.email_hub ?? currentCoAdminObj?.permissions?.broadcasts),
     };
   }, [isSuperAdmin, currentCoAdminObj]);
@@ -2850,6 +2849,10 @@ export default function AdminDashboard({
 
   // Handle Add Allowed Testing Account (Maintenance Bypass)
   const handleAddAllowedAccount = async () => {
+    if (!isSuperAdmin) {
+      if (triggerToast) triggerToast('⛔ Access Denied: Only Root Super Admin (tallyin.alerts@gmail.com) can manage maintenance testing accounts.');
+      return;
+    }
     const clean = newAllowedAccountInput.trim().toLowerCase();
     if (!clean) {
       if (triggerToast) triggerToast('Please enter an email or UID.');
@@ -2888,7 +2891,15 @@ export default function AdminDashboard({
 
   // Handle Remove Allowed Testing Account
   const handleRemoveAllowedAccount = async (accountToRemove) => {
+    if (!isSuperAdmin) {
+      if (triggerToast) triggerToast('⛔ Access Denied: Only Root Super Admin (tallyin.alerts@gmail.com) can manage maintenance testing accounts.');
+      return;
+    }
     const targetClean = String(accountToRemove || '').trim().toLowerCase();
+    if (targetClean === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      if (triggerToast) triggerToast('Root Super Admin cannot be removed from allowed accounts.');
+      return;
+    }
     const nextList = allowedMaintenanceAccounts.filter(acc => {
       const clean = (typeof acc === 'string' ? acc : acc?.email || acc?.uid || '').trim().toLowerCase();
       return clean !== targetClean;
@@ -2931,8 +2942,8 @@ export default function AdminDashboard({
   const [migrationLog, setMigrationLog] = useState([]);
 
   const handleMigrateD1ToSupabase = async () => {
-    if (!userPermissions.database_migration) {
-      if (triggerToast) triggerToast('⚠️ Database migration is restricted to Super Admin or authorized operators.');
+    if (!isSuperAdmin) {
+      if (triggerToast) triggerToast('⛔ Access Denied: Database migration is strictly restricted to Root Super Admin (tallyin.alerts@gmail.com).');
       return;
     }
     setIsMigratingD1ToSupabase(true);
@@ -3087,6 +3098,11 @@ export default function AdminDashboard({
 
   // Co-Admin Management Handlers
   const saveCoAdminsList = async (updatedList) => {
+    if (!isSuperAdmin) {
+      console.error("Security violation: Unauthorized attempt to modify co-admins list by", currentEmailClean);
+      if (triggerToast) triggerToast('⛔ Access Denied: Only Root Super Admin (tallyin.alerts@gmail.com) can modify administrative privileges.');
+      return;
+    }
     if (setCoAdmins) {
       setCoAdmins(updatedList);
     }
@@ -3349,6 +3365,10 @@ export default function AdminDashboard({
 
   const handleAddCoAdmin = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (!isSuperAdmin) {
+      if (triggerToast) triggerToast('⛔ Access Denied: Only Root Super Admin (tallyin.alerts@gmail.com) can grant Co-Admin privileges.');
+      return;
+    }
     const cleanEmail = (newCoAdminEmail || '').trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
       if (triggerToast) triggerToast('Please provide a valid email address.');
@@ -3377,8 +3397,8 @@ export default function AdminDashboard({
         action: 'GRANT',
         targetEmail: cleanEmail,
         targetName: (newCoAdminName || '').trim() || cleanEmail.split('@')[0],
-        authorizedBy: user?.email || 'tallyin.alerts@gmail.com',
-        authorizedByRole: isSuperAdmin ? 'Super Administrator (Root Authority)' : 'Administrative Lead',
+        authorizedBy: SUPER_ADMIN_EMAIL,
+        authorizedByRole: 'Super Administrator (Root Authority)',
         timestamp,
         ipAddress: clientIp,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
@@ -3394,7 +3414,7 @@ export default function AdminDashboard({
         name: (newCoAdminName || '').trim() || cleanEmail.split('@')[0],
         role: 'co_admin',
         addedAt: timestamp,
-        addedBy: user?.email || 'Super Admin',
+        addedBy: SUPER_ADMIN_EMAIL,
         expiresAt,
         isTimeBased: Boolean(expiresAt),
         durationLabel: expirySummary.label,
@@ -3439,6 +3459,10 @@ export default function AdminDashboard({
   };
 
   const handleQuickExtendCoAdmin = async (targetEmail, extensionDuration) => {
+    if (!isSuperAdmin) {
+      if (triggerToast) triggerToast('⛔ Access Denied: Only Root Super Admin (tallyin.alerts@gmail.com) can extend administrative clearance.');
+      return;
+    }
     const cleanTarget = String(targetEmail || '').trim().toLowerCase();
     try {
       const targetAdmin = normalizedCoAdmins.find(a => a.email.toLowerCase() === cleanTarget);
@@ -3457,8 +3481,8 @@ export default function AdminDashboard({
         action: 'EXTEND_ACCESS',
         targetEmail: cleanTarget,
         targetName: targetAdmin.name || cleanTarget.split('@')[0],
-        authorizedBy: user?.email || 'tallyin.alerts@gmail.com',
-        authorizedByRole: isSuperAdmin ? 'Super Administrator (Root Authority)' : 'Administrative Lead',
+        authorizedBy: SUPER_ADMIN_EMAIL,
+        authorizedByRole: 'Super Administrator (Root Authority)',
         timestamp,
         ipAddress: clientIp,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
@@ -3497,7 +3521,15 @@ export default function AdminDashboard({
   };
 
   const handleRemoveCoAdmin = async (targetEmail) => {
+    if (!isSuperAdmin) {
+      if (triggerToast) triggerToast('⛔ Access Denied: Only Root Super Admin (tallyin.alerts@gmail.com) can revoke Co-Admin access.');
+      return;
+    }
     const cleanTarget = (targetEmail || '').trim().toLowerCase();
+    if (cleanTarget === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      if (triggerToast) triggerToast('Root Super Admin cannot be revoked.');
+      return;
+    }
     if (!window.confirm(`Are you sure you want to revoke Co-Admin access for ${cleanTarget}?`)) {
       return;
     }
@@ -3514,8 +3546,8 @@ export default function AdminDashboard({
         action: 'REVOKE',
         targetEmail: cleanTarget,
         targetName: targetAdmin?.name || cleanTarget.split('@')[0],
-        authorizedBy: user?.email || 'tallyin.alerts@gmail.com',
-        authorizedByRole: isSuperAdmin ? 'Super Administrator (Root Authority)' : 'Administrative Lead',
+        authorizedBy: SUPER_ADMIN_EMAIL,
+        authorizedByRole: 'Super Administrator (Root Authority)',
         timestamp,
         ipAddress: clientIp,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
@@ -3539,6 +3571,10 @@ export default function AdminDashboard({
   };
 
   const handleSaveEditedPermissions = async (targetEmail) => {
+    if (!isSuperAdmin) {
+      if (triggerToast) triggerToast('⛔ Access Denied: Only Root Super Admin (tallyin.alerts@gmail.com) can modify administrative privileges.');
+      return;
+    }
     const cleanTarget = String(targetEmail || '').trim().toLowerCase();
     try {
       const clientIp = await fetchClientIp();
@@ -3560,12 +3596,12 @@ export default function AdminDashboard({
         room_explorer: Boolean(editingPerms.room_explorer),
         room_pinning: Boolean(editingPerms.room_pinning),
         latency_diagnostics: Boolean(editingPerms.latency_diagnostics),
-        maintenance_control: Boolean(editingPerms.maintenance_control),
-        database_migration: Boolean(editingPerms.database_migration),
+        maintenance_control: false,
+        database_migration: false,
         room_commander: Boolean(editingPerms.room_commander),
         dispute_resolver: Boolean(editingPerms.dispute_resolver),
-        database_studio: Boolean(editingPerms.database_studio),
-        system_triggers: Boolean(editingPerms.system_triggers),
+        database_studio: false,
+        system_triggers: false,
         email_hub: Boolean(editingPerms.email_hub),
       };
 
@@ -3574,8 +3610,8 @@ export default function AdminDashboard({
         action: 'UPDATE_PERMISSIONS',
         targetEmail: cleanTarget,
         targetName: targetAdmin?.name || cleanTarget.split('@')[0],
-        authorizedBy: user?.email || 'tallyin.alerts@gmail.com',
-        authorizedByRole: isSuperAdmin ? 'Super Administrator (Root Authority)' : 'Administrative Lead',
+        authorizedBy: SUPER_ADMIN_EMAIL,
+        authorizedByRole: 'Super Administrator (Root Authority)',
         timestamp,
         ipAddress: clientIp,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown Device',
@@ -4746,7 +4782,7 @@ export default function AdminDashboard({
                         {currentEmailClean}
                       </p>
                       <p className="text-[11px] text-slate-500">
-                        Assigned by Root Master ({currentCoAdminObj?.addedBy || 'tallyin.alerts@gmail.com'}) · Active Session Verified
+                        Assigned by Root Master ({SUPER_ADMIN_EMAIL}) · Active Session Verified
                       </p>
                       <div className="flex items-center gap-2 pt-1 flex-wrap">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-emerald-950/60 border border-emerald-500/30 text-[10px] font-mono font-bold text-emerald-300">
@@ -4760,8 +4796,8 @@ export default function AdminDashboard({
                               ackNumber: currentCoAdminObj?.lastAckNumber || 'ACK-CAD-ACTIVE',
                               targetEmail: currentEmailClean,
                               targetName: currentCoAdminObj?.name || 'Co-Admin Operator',
-                              authorizedBy: currentCoAdminObj?.addedBy || 'Super Admin',
-                              authorizedByRole: 'Super Administrator',
+                              authorizedBy: SUPER_ADMIN_EMAIL,
+                              authorizedByRole: 'Super Administrator (Root Authority)',
                               timestamp: currentCoAdminObj?.addedAt || new Date().toISOString(),
                               ipAddress: currentCoAdminObj?.lastAckIp || 'Recorded on File',
                               permissions: currentCoAdminObj?.permissions,
@@ -5393,7 +5429,7 @@ export default function AdminDashboard({
           </div>
 
           {/* Add Co-Admin Form (Only Super Admin can add) */}
-          {userPermissions.manage_co_admins ? (
+          {isSuperAdmin ? (
             <div className="hud-card rounded-3xl p-6 space-y-5 border border-emerald-500/20">
               <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
                 <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
@@ -5811,14 +5847,14 @@ export default function AdminDashboard({
                               </span>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
-                              <span>Added {new Date(admin.addedAt).toLocaleDateString()} by {admin.addedBy || 'Super Admin'}</span>
+                              <span>Added {new Date(admin.addedAt).toLocaleDateString()} by {SUPER_ADMIN_EMAIL}</span>
                               <span>•</span>
                               <span className="font-semibold text-slate-700 dark:text-slate-300">{expiry.text}</span>
                             </div>
                           </div>
                         </div>
 
-                        {userPermissions.manage_co_admins && (
+                        {isSuperAdmin && (
                           <div className="flex items-center gap-2 shrink-0">
                             <button
                               type="button"
@@ -5869,7 +5905,7 @@ export default function AdminDashboard({
                       </div>
 
                       {/* Quick Extend Controls for Super Admin */}
-                      {userPermissions.manage_co_admins && (
+                      {isSuperAdmin && (
                         <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-[#F6F8F6] dark:border-slate-800/60">
                           <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 flex items-center gap-1">
                             <Clock className="w-3 h-3 text-indigo-500" />
@@ -10213,8 +10249,8 @@ NOTIFY pgrst, 'reload schema';`;
                 </div>
                 <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-0.5 min-w-0">
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Authorized By</span>
-                  <p className="font-extrabold text-[#1A3827] dark:text-white truncate text-[11px]">{selectedAckRecord.authorizedBy}</p>
-                  <p className="text-[10px] text-slate-500">{selectedAckRecord.authorizedByRole || 'Super Administrator'}</p>
+                  <p className="font-extrabold text-[#1A3827] dark:text-white truncate text-[11px]">{SUPER_ADMIN_EMAIL}</p>
+                  <p className="text-[10px] text-slate-500">Super Administrator (Root Authority)</p>
                 </div>
                 <div className="p-3 rounded-xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800 space-y-0.5 min-w-0">
                   <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
