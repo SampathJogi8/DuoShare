@@ -3622,7 +3622,9 @@ export default function App() {
           to: recipientEmail,
           subject: subject,
           htmlBody: htmlBody,
-          textBody: textBody
+          textBody: textBody,
+          name: roomId === 'DUO-KLIZ-2508' ? '👑 Tallyin Genesis Duo' : 'Tallyin',
+          senderName: roomId === 'DUO-KLIZ-2508' ? '👑 Tallyin Genesis Duo' : 'Tallyin'
         })
       });
       console.log(`Approval email dispatched to ${recipientEmail}`);
@@ -3823,7 +3825,9 @@ export default function App() {
           to: recipientEmail,
           subject: subject,
           htmlBody: htmlBody,
-          textBody: textBody
+          textBody: textBody,
+          name: roomId === 'DUO-KLIZ-2508' ? '👑 Tallyin Genesis Duo' : 'Tallyin',
+          senderName: roomId === 'DUO-KLIZ-2508' ? '👑 Tallyin Genesis Duo' : 'Tallyin'
         })
       });
       console.log(`Decline email dispatched to ${recipientEmail}`);
@@ -6263,7 +6267,8 @@ export default function App() {
     const amountVal = isNaN(rawAmt) ? 0 : rawAmt;
     const formattedAmount = `₹${amountVal.toLocaleString("en-IN")}`;
     const activeRoomId = userRoomId || localStorage.getItem('userRoomId') || 'TL-ROOM';
-    const roomDisplayName = activeRoomId;
+    const isGenesisRoomEmail = activeRoomId === 'DUO-KLIZ-2508';
+    const roomDisplayName = isGenesisRoomEmail ? '👑 DUO-KLIZ-2508 (Genesis Duo)' : activeRoomId;
     const txTitle = transaction?.title || 'Expense';
     const txPaidBy = transaction?.paidBy || transaction?.paid_by || 'Roommate';
     const txCategory = transaction?.category || 'General';
@@ -6308,6 +6313,26 @@ export default function App() {
       actionBadge = 'New Roommate';
       subjectText = `🎉 ${txPaidBy} has joined room "${roomDisplayName}" on Tallyin!`;
       introText = `Great news! <strong>${txPaidBy}</strong> has joined your Tallyin shared space <strong>${roomDisplayName}</strong>. Give them a warm welcome!`;
+    }
+
+    // Distinct Royal Genesis Email Overrides
+    if (isGenesisRoomEmail) {
+      if (actionType === 'update' || actionType === 'edit') {
+        actionTitle = '👑 Genesis Expense Updated';
+        actionBadge = 'Genesis Duo • Update';
+        subjectText = `👑 [Genesis Duo] ${txPaidBy} updated "${txTitle}" (${formattedAmount})`;
+        introText = `The transaction "${txTitle}" (${formattedAmount}) was updated in the <strong>Genesis Duo Founding Space (${roomDisplayName})</strong> by <strong>${txPaidBy}</strong>.`;
+      } else if (actionType === 'settle') {
+        actionTitle = '👑 Founding Space Settlement';
+        actionBadge = 'Genesis Duo • Settled';
+        subjectText = `👑 [Genesis Duo] Settlement of ${formattedAmount} from ${txPaidBy}`;
+        introText = `A 50/50 founding space settlement of <strong>${formattedAmount}</strong> was recorded in <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>.`;
+      } else {
+        actionTitle = '👑 Genesis Duo Expense Logged';
+        actionBadge = 'Genesis Duo • Expense';
+        subjectText = `👑 [Genesis Duo] ${txPaidBy} added ${formattedAmount} for "${txTitle}"`;
+        introText = `A new founding space entry <strong>"${txTitle}"</strong> of <strong>${formattedAmount}</strong> was recorded in <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>.`;
+      }
     }
 
     let messageText = `Tallyin: "${txTitle}" of ${formattedAmount} logged by ${txPaidBy} in Room ${roomDisplayName} on ${txDateTime}. Category: ${txCategory}, Split: ${txSplit}.`;
@@ -6435,7 +6460,27 @@ export default function App() {
       if (storedCodeEmail) emailSet.add(storedCodeEmail);
       if (storedLocalEmail) emailSet.add(storedLocalEmail);
     }
-    const emailList = [...emailSet].map(e => e.trim().toLowerCase()).filter(isValidNotificationEmail);
+    let emailList = Array.from(new Set(
+      [...emailSet]
+        .map(e => (typeof e === 'string' ? e.trim().toLowerCase() : ''))
+        .filter(isValidNotificationEmail)
+    ));
+
+    if (isGenesisRoomEmail) {
+      // DUO-KLIZ-2508 is exclusively for Sampath & Anirudh.
+      // Filter out any unauthorized or non-founding emails, and ensure both founders are uniquely included.
+      const genesisAllowed = ['sampathjogipusala123@gmail.com', 'nv776654@gmail.com'];
+      const filteredGenesisEmails = emailList.filter(e => {
+        const clean = e.toLowerCase();
+        return genesisAllowed.includes(clean) || clean.includes('sampath') || clean.includes('anirudh');
+      });
+      for (const gEmail of genesisAllowed) {
+        if (!filteredGenesisEmails.includes(gEmail)) {
+          filteredGenesisEmails.push(gEmail);
+        }
+      }
+      emailList = Array.from(new Set(filteredGenesisEmails));
+    }
 
     console.log('[Tallyin Email Debug] Action Type:', actionType, 'Tx ID:', txIdFormatted);
     console.log('[Tallyin Email Debug] All member emails found:', emailList);
@@ -6584,7 +6629,154 @@ export default function App() {
       `;
     }
 
-    const htmlBody = actionType === 'new_member' ? `
+    const htmlBody = isGenesisRoomEmail ? `
+      <div style="background-color: #060e0a; padding: 40px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 16px 40px rgba(245, 158, 11, 0.15); border: 1px solid #fde68a;">
+          
+          <!-- Top Royal Genesis Banner -->
+          <div style="background: linear-gradient(135deg, #0b2418 0%, #1c1809 50%, #071d13 100%); padding: 32px 36px; border-bottom: 2px solid #f59e0b;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="vertical-align: middle;">
+                  <table style="border-collapse: collapse;">
+                    <tr>
+                      <td style="padding-right: 12px; vertical-align: middle;">
+                        <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="👑" width="42" height="42" style="display: block; border-radius: 12px; border: 1.5px solid #f59e0b;" />
+                      </td>
+                      <td style="vertical-align: middle;">
+                        <span style="font-size: 22px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px;">Tallyin Genesis</span>
+                        <span style="display: block; font-size: 10px; color: #fbbf24; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 2px;">👑 FOUNDING DUO SPACE • EST. JUNE 2026</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td style="text-align: right; vertical-align: middle;">
+                  <span style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.2)); color: #fef08a; border: 1px solid #f59e0b; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; padding: 7px 14px; border-radius: 20px; display: inline-block;">${actionBadge}</span>
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Royal Sub-Banner -->
+          <div style="background: linear-gradient(135deg, #fefce8 0%, #fef3c7 100%); border-bottom: 1px solid #fde68a; padding: 10px 24px; text-align: center;">
+            <span style="font-size: 11px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 1px;">👑 Exclusive Founding Space Ledger Entry • Trichy Tollgate (DUO-KLIZ-2508)</span>
+          </div>
+
+          <!-- Main Body -->
+          <div style="padding: 36px 36px 28px 36px;">
+            <h2 style="color: #0F172A; margin: 0 0 6px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">${actionTitle}</h2>
+            <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 16px 0;">
+              Hello Roommate,
+            </p>
+            <p style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 20px 0;">
+              ${introText}
+            </p>
+
+            ${receiptImages && receiptImages.length > 0 ? `
+              <!-- Attachment Alert Banner -->
+              <div style="background: linear-gradient(135deg, #ecfdf5 0%, #fffbeb 100%); border: 1px solid #a7f3d0; border-left: 4px solid #10b981; padding: 14px 18px; border-radius: 12px; margin-bottom: 24px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="width: 24px; vertical-align: middle; font-size: 18px;">📎</td>
+                    <td style="padding-left: 10px; vertical-align: middle;">
+                      <div style="font-size: 12px; font-weight: 800; color: #065f46;">
+                        ${receiptImages.length} RECEIPT DOCUMENT(S) ATTACHED
+                      </div>
+                      <div style="font-size: 11px; color: #047857; margin-top: 2px;">
+                        Attached files are available in your email app at the bottom.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            ` : ''}
+
+            <!-- Prominent Amount Highlight Card with Royal Gold/Emerald Trim -->
+            <div style="background: linear-gradient(135deg, #fefce8 0%, #f0fdf4 100%); border: 1px solid #fde68a; border-left: 6px solid #d97706; padding: 22px 26px; border-radius: 16px; margin-bottom: 28px;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td>
+                    <span style="font-size: 10px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px;">TOTAL AMOUNT</span>
+                    <span style="font-size: 32px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">${formattedAmount}</span>
+                  </td>
+                  <td style="text-align: right; vertical-align: middle;">
+                    <span style="font-size: 10px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px;">CATEGORY</span>
+                    <span style="background-color: #fef3c7; color: #78350f; border: 1px solid #fde68a; font-size: 12px; font-weight: 800; padding: 6px 16px; border-radius: 20px; display: inline-block;">${txCategory}</span>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Detailed Grid Info Cards -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+              <tr>
+                <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
+                  <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">TRANSACTION ID</span>
+                    <span style="font-size: 13px; font-weight: 800; color: #1c1917; font-family: monospace;">${txIdFormatted}</span>
+                  </div>
+                </td>
+                <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
+                  <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">DESCRIPTION / TITLE</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txTitle}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
+                  <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">PAID BY</span>
+                    <span style="font-size: 13px; font-weight: 800; color: #0F172A;">${txPaidBy}</span>
+                  </div>
+                </td>
+                <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
+                  <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">DATE & TIMESTAMP</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${txDateTime}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="width: 50%; padding-right: 8px;">
+                  <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">FOUNDING SPACE</span>
+                    <span style="font-size: 12px; font-weight: 800; color: #b45309; font-family: monospace;">👑 DUO-KLIZ-2508</span>
+                  </div>
+                </td>
+                <td style="width: 50%; padding-left: 8px;">
+                  <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                    <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">SPLIT ALLOCATION</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #0F172A;">50 / 50 Genesis Split</span>
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Roommate Share Breakdown -->
+            ${splitRowsHtml}
+
+            <!-- Attached Receipt Proofs -->
+            ${receiptRowsHtml}
+
+            <!-- CTA Button -->
+            <div style="text-align: center; margin-top: 32px;">
+              <a href="https://tallyin.vercel.app" style="background: linear-gradient(135deg, #d97706 0%, #047857 100%); color: #ffffff; padding: 14px 34px; border-radius: 14px; font-weight: 800; font-size: 14px; text-decoration: none; display: inline-block; box-shadow: 0 4px 16px rgba(217, 119, 6, 0.35);">👑 Open Genesis Duo Ledger</a>
+            </div>
+          </div>
+
+          <!-- Royal Footer -->
+          <div style="background: linear-gradient(135deg, #0b2418 0%, #1c1809 100%); padding: 24px 36px; border-top: 2px solid #f59e0b; text-align: center;">
+            <p style="font-size: 11px; color: #fef08a; line-height: 1.5; margin: 0 0 6px 0; font-weight: 700;">
+              👑 Tallyin Genesis Founding Space • Permanent Duo Ledger of Sampath & Anirudh
+            </p>
+            <p style="font-size: 10px; color: #86efac; margin: 0;">
+              Est. June 22, 2026 • Trichy Tollgate (DUO-KLIZ-2508) • Tamper-Resistant Space
+            </p>
+          </div>
+        </div>
+      </div>
+    ` : actionType === 'new_member' ? `
       <div style="background-color: #F1F5F9; padding: 40px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid #E2E8F0;">
           
@@ -6985,7 +7177,9 @@ export default function App() {
             subject: subjectText,
             htmlBody: personalizedHtmlBody,
             textBody: personalizedTextBody,
-            attachments: emailAttachments
+            attachments: emailAttachments,
+            name: isGenesisRoomEmail ? '👑 Tallyin Genesis Duo' : 'Tallyin',
+            senderName: isGenesisRoomEmail ? '👑 Tallyin Genesis Duo' : 'Tallyin'
           })
         });
       });
@@ -9146,7 +9340,21 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
 
   const sendStatementEmail = async (txList, recipientList, type, ownerName = '', targetMonthStr = '') => {
     if (txList.length === 0) return;
-    const cleanRecipients = recipientList.map(e => e.trim()).filter(e => e && e.includes('@'));
+    const activeRoomCode = userRoomId || localStorage.getItem('userRoomId') || '';
+    const isGenesisRoomStatement = activeRoomCode === 'DUO-KLIZ-2508';
+
+    let cleanRecipients = Array.from(new Set(
+      recipientList
+        .map(e => (typeof e === 'string' ? e.trim().toLowerCase() : ''))
+        .filter(e => e && e.includes('@') && !e.endsWith('@tallyin.app'))
+    ));
+
+    if (isGenesisRoomStatement) {
+      const genesisAllowed = ['sampathjogipusala123@gmail.com', 'nv776654@gmail.com'];
+      const filtered = cleanRecipients.filter(e => genesisAllowed.includes(e) || e.includes('sampath') || e.includes('anirudh'));
+      cleanRecipients = filtered.length > 0 ? filtered : genesisAllowed;
+    }
+
     if (cleanRecipients.length === 0) return;
 
     const activeMonthStr = targetMonthStr || selectedMonth || 'ledger';
@@ -9193,11 +9401,11 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         <body>
           <div class="header-info">
             <span class="header-title">${reportTitle}</span><br/>
-            <b>Room Workspace:</b> ${userRoomId || 'N/A'}<br/>
-            <b>Room Name:</b> ${roomName}<br/>
+            <b>Room Workspace:</b> ${isGenesisRoomStatement ? '👑 DUO-KLIZ-2508 (Genesis Duo Founding Space)' : (userRoomId || 'N/A')}<br/>
+            <b>Room Name:</b> ${isGenesisRoomStatement ? '👑 Genesis Duo' : roomName}<br/>
             <b>Generated on:</b> ${new Date().toLocaleDateString()}<br/>
             <b>Total Selected Spend:</b> ${formatINR(totalSpend)}<br/>
-            ${type !== 'personal' ? `<b>Members:</b> ${memberNames}` : `<b>Owner Name:</b> ${ownerName}`}
+            ${type !== 'personal' ? `<b>Members:</b> ${isGenesisRoomStatement ? '👑 Sampath & Anirudh' : memberNames}` : `<b>Owner Name:</b> ${ownerName}`}
           </div>
           <table>
             <thead>
@@ -9286,20 +9494,24 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                 <table style="border-collapse: collapse;">
                   <tr>
                     <td style="vertical-align: middle; padding-right: 10px;">
-                      <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="T" width="36" height="36" style="display: block; border-radius: 10px;" />
+                      ${isGenesisRoomStatement ? `
+                        <div style="width: 36px; height: 36px; line-height: 36px; text-align: center; background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%); border-radius: 10px; font-size: 20px;">👑</div>
+                      ` : `
+                        <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="T" width="36" height="36" style="display: block; border-radius: 10px;" />
+                      `}
                     </td>
                     <td style="vertical-align: middle;">
-                      <span style="font-size: 22px; font-weight: 900; color: #1A3827; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">Tallyin</span>
+                      <span style="font-size: 22px; font-weight: 900; color: #1A3827; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">${isGenesisRoomStatement ? '👑 Tallyin Genesis Duo' : 'Tallyin'}</span>
                     </td>
                   </tr>
                 </table>
               </div>
               <div class="meta-info">
-                <h2>Account Statement</h2>
-                <b>Room Name:</b> ${roomName}<br/>
-                <b>Workspace ID:</b> ${userRoomId || 'N/A'}<br/>
+                <h2>${isGenesisRoomStatement ? '👑 Genesis Duo Account Statement' : 'Account Statement'}</h2>
+                <b>Room Name:</b> ${isGenesisRoomStatement ? '👑 Genesis Duo' : roomName}<br/>
+                <b>Workspace ID:</b> ${isGenesisRoomStatement ? '👑 DUO-KLIZ-2508' : (userRoomId || 'N/A')}<br/>
                 <b>Generated on:</b> ${new Date().toLocaleDateString()}<br/>
-                ${type !== 'personal' ? `<b>Members:</b> ${memberNames}` : `<b>Statement Owner:</b> ${ownerName}`}
+                ${type !== 'personal' ? `<b>Members:</b> ${isGenesisRoomStatement ? '👑 Sampath & Anirudh' : memberNames}` : `<b>Statement Owner:</b> ${ownerName}`}
               </div>
             </div>
             
@@ -9385,15 +9597,143 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       ];
 
       const activeScriptUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
-      const subject = `Tallyin ${type === 'room' ? 'Room Ledger' : type === 'fund' ? 'Fund Tracker' : `Personal Statement - ${ownerName}`}: ${roomName} (${activeMonthStr})`;
+      const subject = isGenesisRoomStatement
+        ? `👑 [Genesis Duo] ${type === 'room' ? 'Room Ledger' : type === 'fund' ? 'Fund Tracker' : `Personal Statement - ${ownerName}`}: DUO-KLIZ-2508 (${activeMonthStr})`
+        : `Tallyin ${type === 'room' ? 'Room Ledger' : type === 'fund' ? 'Fund Tracker' : `Personal Statement - ${ownerName}`}: ${roomName} (${activeMonthStr})`;
       
-      const statementDesc = type === 'room' 
-        ? 'room financial statement of account (shared ledger)' 
-        : type === 'fund' 
-          ? 'room fund tracker transaction report' 
-          : `personal expense statement of account for <strong>${ownerName}</strong>`;
+      const statementDesc = isGenesisRoomStatement
+        ? `official founding space statement of account in <strong>👑 DUO-KLIZ-2508 (Genesis Duo)</strong>`
+        : (type === 'room' 
+          ? 'room financial statement of account (shared ledger)' 
+          : type === 'fund' 
+            ? 'room fund tracker transaction report' 
+            : `personal expense statement of account for <strong>${ownerName}</strong>`);
 
-      const htmlBody = `
+      const htmlBody = isGenesisRoomStatement ? `
+        <div style="background-color: #0b1510; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4); border: 1px solid #d97706;">
+            
+            <!-- Genesis Duo Royal Header Banner -->
+            <div style="background: linear-gradient(135deg, #0b1f14 0%, #064e3b 50%, #1e1b4b 100%); padding: 32px 32px; text-align: left; border-bottom: 2px solid #f59e0b;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    <table style="border-collapse: collapse;">
+                      <tr>
+                        <td style="vertical-align: middle; padding-right: 14px;">
+                          <div style="width: 46px; height: 46px; line-height: 46px; text-align: center; background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%); border-radius: 12px; font-size: 24px; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);">👑</div>
+                        </td>
+                        <td style="vertical-align: middle;">
+                          <div style="font-size: 20px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px; line-height: 1.1;">Tallyin Genesis Duo</div>
+                          <div style="font-size: 10px; font-weight: 800; color: #fbbf24; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 4px;">Founding Space • Monthly Statement</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td style="text-align: right; vertical-align: middle;">
+                    <span style="background: rgba(245, 158, 11, 0.2); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.5); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; padding: 6px 14px; border-radius: 20px;">👑 ROYAL STATEMENT</span>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Content Area -->
+            <div style="padding: 32px;">
+              <div style="display: inline-block; background-color: #fef3c7; border: 1px solid #fde68a; padding: 4px 14px; border-radius: 14px; margin-bottom: 12px;">
+                <span style="font-size: 11px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 1px;">👑 Exclusive Founding Space Statement • DUO-KLIZ-2508</span>
+              </div>
+              <h2 style="color: #0F172A; margin: 0 0 8px 0; font-size: 22px; font-weight: 900; letter-spacing: -0.5px;">Genesis Duo Monthly Ledger Statement</h2>
+              <p style="font-size: 14px; color: #64748B; line-height: 1.6; margin: 0 0 16px 0;">
+                Hello Roommate,
+              </p>
+              <p style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 24px 0;">
+                Attached are your official monthly financial accounts for the <strong>Genesis Duo Founding Space (DUO-KLIZ-2508)</strong> for the period of <strong>${activeMonthStr}</strong>.
+              </p>
+
+              <!-- Amount Highlight Card -->
+              <div style="background: linear-gradient(135deg, #fefce8 0%, #f0fdf4 100%); border: 1px solid #fde68a; border-left: 6px solid #d97706; padding: 22px 26px; border-radius: 16px; margin-bottom: 28px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td>
+                      <span style="font-size: 10px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px;">TOTAL STATEMENT SPEND</span>
+                      <span style="font-size: 30px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">${formatINR(totalSpend)}</span>
+                    </td>
+                    <td style="text-align: right; vertical-align: middle;">
+                      <span style="background-color: #fef3c7; color: #78350f; border: 1px solid #fde68a; font-size: 12px; font-weight: 800; padding: 6px 16px; border-radius: 20px; display: inline-block;">👑 ${activeMonthStr}</span>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- Key Metadata Info Cards -->
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+                <tr>
+                  <td style="width: 50%; padding-right: 8px; padding-bottom: 16px;">
+                    <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                      <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">FOUNDING SPACE</span>
+                      <span style="font-size: 13px; font-weight: 800; color: #b45309; font-family: monospace;">👑 DUO-KLIZ-2508</span>
+                    </div>
+                  </td>
+                  <td style="width: 50%; padding-left: 8px; padding-bottom: 16px;">
+                    <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                      <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">PERIOD</span>
+                      <span style="font-size: 13px; font-weight: 700; color: #0F172A;">${activeMonthStr}</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="width: 50%; padding-right: 8px;">
+                    <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                      <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">TRANSACTIONS</span>
+                      <span style="font-size: 13px; font-weight: 700; color: #166534;">${txList.length} Entries Logged</span>
+                    </div>
+                  </td>
+                  <td style="width: 50%; padding-left: 8px;">
+                    <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 16px; border-radius: 14px;">
+                      <span style="font-size: 9px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">RECIPIENT</span>
+                      <span style="font-size: 13px; font-weight: 700; color: #0F172A; text-overflow: ellipsis; display: block; overflow: hidden; white-space: nowrap;">${ownerName || 'Sampath & Anirudh'}</span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Attachments Description -->
+              <div style="border-top: 1px solid #e7e5e4; padding-top: 24px; margin-bottom: 24px;">
+                <h4 style="font-size: 12px; font-weight: 800; text-transform: uppercase; color: #92400e; letter-spacing: 0.5px; margin: 0 0 12px 0;">Attached Genesis Documents</h4>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr style="border-bottom: 1px solid #f5f5f4;">
+                    <td style="padding: 10px 0; font-size: 13px; color: #0F172A; font-weight: 600;">📄 Official PDF Statement</td>
+                    <td style="padding: 10px 0; font-size: 12px; color: #78716c; text-align: right;">Print-ready Genesis ledger</td>
+                  </tr>
+                  <tr style="border-bottom: 1px solid #f5f5f4;">
+                    <td style="padding: 10px 0; font-size: 13px; color: #0F172A; font-weight: 600;">📊 Excel Sheet (.xls)</td>
+                    <td style="padding: 10px 0; font-size: 12px; color: #78716c; text-align: right;">Calculated spreadsheet</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 10px 0; font-size: 13px; color: #0F172A; font-weight: 600;">📝 CSV Document</td>
+                    <td style="padding: 10px 0; font-size: 12px; color: #78716c; text-align: right;">Raw comma-separated table data</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- CTA Button -->
+              <div style="text-align: center; margin-top: 32px; margin-bottom: 16px;">
+                <a href="https://tallyin.vercel.app" style="background: linear-gradient(135deg, #d97706 0%, #047857 100%); color: #ffffff; padding: 14px 34px; border-radius: 14px; font-weight: 800; font-size: 14px; text-decoration: none; display: inline-block; box-shadow: 0 4px 16px rgba(217, 119, 6, 0.35);">👑 View Genesis Duo Dashboard</a>
+              </div>
+            </div>
+
+            <!-- Royal Footer -->
+            <div style="background: linear-gradient(135deg, #0b2418 0%, #1c1809 100%); padding: 24px 36px; border-top: 2px solid #f59e0b; text-align: center;">
+              <p style="font-size: 11px; color: #fef08a; line-height: 1.5; margin: 0 0 6px 0; font-weight: 700;">
+                👑 Tallyin Genesis Founding Space • Permanent Duo Ledger of Sampath & Anirudh
+              </p>
+              <p style="font-size: 10px; color: #86efac; margin: 0;">
+                Est. June 22, 2026 • Trichy Tollgate (DUO-KLIZ-2508) • Confidential Statement
+              </p>
+            </div>
+          </div>
+        </div>
+      ` : `
         <div style="background-color: #F8FAFC; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
           <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03); border: 1px solid #E2E8F0;">
             
@@ -9514,7 +9854,9 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         const greetingText = roommateName !== 'Roommate' ? `Hello ${roommateName},` : 'Hello Roommate,';
 
         const personalizedHtmlBody = htmlBody.replace('Hello Roommate,', greetingText);
-        const personalizedTextBody = `Hi ${roommateName},\n\nYour Tallyin statement is attached.`;
+        const personalizedTextBody = isGenesisRoomStatement
+          ? `👑 Genesis Duo Founding Space (${activeRoomCode})\n\nHi ${roommateName},\n\nYour official Genesis Duo statement of account for ${activeMonthStr} is attached (PDF, Excel, CSV).\n\nTotal Spend: ${formatINR(totalSpend)}`
+          : `Hi ${roommateName},\n\nYour Tallyin statement is attached.`;
 
         await fetch(activeScriptUrl, {
           method: 'POST',
@@ -9527,7 +9869,9 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             subject: subject,
             htmlBody: personalizedHtmlBody,
             textBody: personalizedTextBody,
-            attachments: attachments
+            attachments: attachments,
+            name: isGenesisRoomStatement ? '👑 Tallyin Genesis Duo' : 'Tallyin',
+            senderName: isGenesisRoomStatement ? '👑 Tallyin Genesis Duo' : 'Tallyin'
           })
         });
       }
