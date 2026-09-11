@@ -5242,8 +5242,6 @@ export default function App() {
     hostEmail,
     remainingMembers = []
   }) => {
-    if (notificationMethod === 'none') return;
-
     const isGenesisRoom = roomId === 'DUO-KLIZ-2508';
     const senderTitle = isGenesisRoom ? '👑 Tallyin Genesis Duo' : 'Tallyin';
 
@@ -5253,17 +5251,47 @@ export default function App() {
       return clean.includes('@') && clean.includes('.') && !clean.endsWith('@tallyin.app') && clean !== 'null' && clean !== 'undefined';
     };
 
-    // 1. Resolve removed member verified email
+    // 1. Resolve removed member verified email (Multi-tier resolution)
     let removedEmail = removedMember?.email;
-    if (!isValidNotificationEmail(removedEmail)) {
+    if (!isValidNotificationEmail(removedEmail) && removedMember?.uid) {
       try {
         const { data: uData } = await supabase
           .from('users')
           .select('email')
-          .eq('uid', removedMember.uid)
+          .or(`uid.eq.${removedMember.uid},id.eq.${removedMember.uid}`)
           .maybeSingle();
         if (uData?.email && isValidNotificationEmail(uData.email)) {
           removedEmail = uData.email;
+        }
+      } catch (e) {}
+    }
+    if (!isValidNotificationEmail(removedEmail) && removedMember?.nickname) {
+      try {
+        const { data: uName } = await supabase
+          .from('users')
+          .select('email')
+          .ilike('name', removedMember.nickname.trim())
+          .maybeSingle();
+        if (uName?.email && isValidNotificationEmail(uName.email)) {
+          removedEmail = uName.email;
+        }
+      } catch (e) {}
+    }
+    if (!isValidNotificationEmail(removedEmail) && removedMember?.nickname) {
+      try {
+        const d1Res = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            table: 'users',
+            action: 'select',
+            filters: [{ column: 'name', operator: 'eq', value: removedMember.nickname }]
+          })
+        });
+        const d1Json = await d1Res.json();
+        const d1User = (d1Json?.data || []).find(u => isValidNotificationEmail(u?.email));
+        if (d1User?.email) {
+          removedEmail = d1User.email;
         }
       } catch (e) {}
     }
@@ -5312,25 +5340,26 @@ export default function App() {
 
       const textBody = `Hello ${removedMember.nickname || 'Roommate'},\n\nYou have been removed from room "${roomDisplayName || roomId}" on Tallyin by the room host (${hostNickname || 'Host'}${hostEmail ? ` - ${hostEmail}` : ''}).\n\nYou no longer have access to this room's shared expenses. If you believe this was done in error, please contact the room host.`;
 
-      fetch(CENTRAL_EMAIL_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          action: 'send_email',
-          to: removedEmail.trim(),
-          subject: subject,
-          body: textBody,
-          textBody: textBody,
-          htmlBody: htmlBody,
-          name: senderTitle,
-          senderName: senderTitle
-        })
-      }).then(() => {
+      try {
+        await fetch(CENTRAL_EMAIL_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'send_email',
+            to: removedEmail.trim(),
+            subject: subject,
+            body: textBody,
+            textBody: textBody,
+            htmlBody: htmlBody,
+            name: senderTitle,
+            senderName: senderTitle
+          })
+        });
         console.log(`[Removal Notification] Email dispatched to removed member: ${removedEmail}`);
-      }).catch(e => {
+      } catch (e) {
         console.warn("Failed to send removal email to removed member:", e);
-      });
+      }
     }
 
     // B. Dispatch Email to OTHER PERSON / REMAINING ROOMMATES
@@ -5445,13 +5474,12 @@ export default function App() {
         }).catch(err => console.warn(`Failed to dispatch email to ${r.email}:`, err));
       });
 
-      Promise.all(otherPromises)
-        .then(() => {
-          console.log(`[Removal Notification] Email dispatched to ${otherRecipients.length} remaining member(s):`, otherRecipients.map(r => r.email));
-        })
-        .catch(e => {
-          console.warn("Failed to send removal emails to other roommates:", e);
-        });
+      try {
+        await Promise.allSettled(otherPromises);
+        console.log(`[Removal Notification] Email dispatched to ${otherRecipients.length} remaining member(s):`, otherRecipients.map(r => r.email));
+      } catch (e) {
+        console.warn("Failed to send removal emails to other roommates:", e);
+      }
     }
   };
 
@@ -5481,9 +5509,35 @@ export default function App() {
           const { data: uData } = await supabase
             .from('users')
             .select('email')
-            .eq('uid', memberUid)
+            .or(`uid.eq.${memberUid},id.eq.${memberUid}`)
             .maybeSingle();
-          if (uData?.email) removedMemberEmail = uData.email;
+          if (uData?.email && uData.email.includes('@')) removedMemberEmail = uData.email;
+        } catch (e) {}
+      }
+      if (!removedMemberEmail || !removedMemberEmail.includes('@') || removedMemberEmail.endsWith('@tallyin.app')) {
+        try {
+          const { data: uName } = await supabase
+            .from('users')
+            .select('email')
+            .ilike('name', member.nickname.trim())
+            .maybeSingle();
+          if (uName?.email && uName.email.includes('@')) removedMemberEmail = uName.email;
+        } catch (e) {}
+      }
+      if (!removedMemberEmail || !removedMemberEmail.includes('@') || removedMemberEmail.endsWith('@tallyin.app')) {
+        try {
+          const d1Res = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              table: 'users',
+              action: 'select',
+              filters: [{ column: 'name', operator: 'eq', value: member.nickname }]
+            })
+          });
+          const d1Json = await d1Res.json();
+          const d1User = (d1Json?.data || []).find(u => u?.email && u.email.includes('@') && !u.email.endsWith('@tallyin.app'));
+          if (d1User?.email) removedMemberEmail = d1User.email;
         } catch (e) {}
       }
 
@@ -5623,7 +5677,7 @@ export default function App() {
       await logActivity('remove', `${currentHostNickname} removed ${member.nickname} from the room.`);
       
       // Dispatch email notifications to removed person AND other roommates
-      sendMemberRemovalNotifications({
+      await sendMemberRemovalNotifications({
         removedMember: {
           uid: memberUid,
           nickname: member.nickname,
@@ -5637,7 +5691,11 @@ export default function App() {
       }).catch(err => console.warn("Notice: removal email dispatch warning:", err));
 
       fetchMembers(activeRoomId);
-      triggerToast(`Removed ${member.nickname} from room. Roommates notified.`);
+      triggerToast(
+        removedMemberEmail && removedMemberEmail.includes('@')
+          ? `Removed ${member.nickname}. Removal email dispatched to ${removedMemberEmail}.`
+          : `Removed ${member.nickname} from room. Roommates notified.`
+      );
     } catch (err) {
       console.error('Remove member error:', err);
       triggerToast('Failed to remove member.');
