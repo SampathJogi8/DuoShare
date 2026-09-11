@@ -2733,6 +2733,48 @@ export default function App() {
         const maxLimit = roomData?.max_members ? Number(roomData.max_members) : 6;
         const currentCount = existingMembers ? existingMembers.length : 0;
 
+        // Check if user was previously removed from this room
+        let isRemovedMember = false;
+        try {
+          const { data: remSetting } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', `removed_members_${roomId}`)
+            .maybeSingle();
+
+          if (remSetting?.value) {
+            let remList = typeof remSetting.value === 'string' ? JSON.parse(remSetting.value) : remSetting.value;
+            if (Array.isArray(remList)) {
+              const currentEmail = activeUser?.email?.toLowerCase().trim();
+              const currentNick = (nickname || '').toLowerCase().trim();
+              isRemovedMember = remList.some(r => 
+                (activeUser?.id && r.uid === activeUser.id) ||
+                (currentEmail && r.email && r.email.toLowerCase().trim() === currentEmail) ||
+                (currentNick && currentNick !== 'you' && r.nickname && r.nickname.toLowerCase().trim() === currentNick)
+              );
+            }
+          }
+        } catch (e) {}
+
+        if (isRemovedMember) {
+          triggerToast(`🔒 You were previously removed from "${roomName}". Host approval is required to rejoin.`);
+          setJoinRequestModalInfo({
+            roomId,
+            roomName,
+            hostNickname,
+            hostEmail,
+            currentCount,
+            maxLimit,
+            isRemovedRejoin: true
+          });
+          if (userRoomId === roomId) {
+            setUserRoomId(null);
+            localStorage.removeItem('userRoomId');
+            setHasConfirmedRoom(false);
+          }
+          return { success: false, reason: 'removed_member_requires_approval', currentCount, maxLimit };
+        }
+
         if (currentCount >= maxLimit) {
           triggerToast(`🔒 Room "${roomName}" (${roomId}) is full (${currentCount}/${maxLimit} members).`);
           setJoinRequestModalInfo({ roomId, roomName, hostNickname, hostEmail, currentCount, maxLimit });
@@ -3724,6 +3766,29 @@ export default function App() {
             created_at: new Date().toISOString()
           }, { onConflict: 'key' });
       } catch (e) { console.warn("Notice: failed to update approved user request state:", e); }
+
+      // Clear from removed_members list if previously removed
+      try {
+        const { data: remSetting } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `removed_members_${userRoomId}`)
+          .maybeSingle();
+
+        if (remSetting?.value) {
+          let remList = typeof remSetting.value === 'string' ? JSON.parse(remSetting.value) : remSetting.value;
+          if (Array.isArray(remList)) {
+            const filteredRem = remList.filter(r => r.uid !== req.uid && (!req.email || r.email !== req.email));
+            await supabase
+              .from('system_settings')
+              .upsert({
+                key: `removed_members_${userRoomId}`,
+                value: JSON.stringify(filteredRem),
+                created_at: new Date().toISOString()
+              }, { onConflict: 'key' });
+          }
+        }
+      } catch (e) { console.warn("Notice: failed to clear user from removed_members list:", e); }
 
       await fetchMembers(userRoomId);
       
@@ -5433,6 +5498,46 @@ export default function App() {
         console.warn("Notice: failed to clear removed user's room binding:", uErr);
       }
 
+      // Record removed member in system_settings so re-joining always requires host approval
+      try {
+        const { data: existingRemData } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `removed_members_${activeRoomId}`)
+          .maybeSingle();
+
+        let remList = [];
+        if (existingRemData?.value) {
+          try {
+            remList = typeof existingRemData.value === 'string' ? JSON.parse(existingRemData.value) : existingRemData.value;
+            if (!Array.isArray(remList)) remList = [];
+          } catch (e) { remList = []; }
+        }
+
+        const newRemEntry = {
+          uid: memberUid,
+          email: (removedMemberEmail || member.email || '').toLowerCase().trim(),
+          nickname: member.nickname || '',
+          removedAt: new Date().toISOString(),
+          removedBy: currentHostNickname
+        };
+
+        const updatedRemList = [
+          newRemEntry,
+          ...remList.filter(r => r.uid !== memberUid && (!newRemEntry.email || r.email !== newRemEntry.email))
+        ];
+
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: `removed_members_${activeRoomId}`,
+            value: JSON.stringify(updatedRemList),
+            created_at: new Date().toISOString()
+          }, { onConflict: 'key' });
+      } catch (remErr) {
+        console.warn("Notice: failed to record removed member in system_settings:", remErr);
+      }
+
       // Auto-adjust room capacity limit down upon member removal
       try {
         const { data: remMembers } = await supabase
@@ -5952,8 +6057,33 @@ export default function App() {
         } catch(e) {}
       }
 
-      // In Quota Mode, ALL new joins REQUIRE Host Approval & Budget Allocation (regardless of capacity)
-      const requiresApproval = !isAlreadyMember && (roomMode === 'quota' || currentCount >= maxLimit);
+      // Check if user was previously removed from this room
+      let isRemovedMember = false;
+      try {
+        const { data: remSetting } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `removed_members_${cleanId}`)
+          .maybeSingle();
+
+        if (remSetting?.value) {
+          let remList = typeof remSetting.value === 'string' ? JSON.parse(remSetting.value) : remSetting.value;
+          if (Array.isArray(remList)) {
+            const currentEmail = user?.email?.toLowerCase().trim();
+            const currentNick = userNickname?.toLowerCase().trim();
+            isRemovedMember = remList.some(r => 
+              (currentUid && r.uid === currentUid) ||
+              (currentEmail && r.email && r.email.toLowerCase().trim() === currentEmail) ||
+              (currentNick && currentNick !== 'you' && r.nickname && r.nickname.toLowerCase().trim() === currentNick)
+            );
+          }
+        }
+      } catch (e) {
+        console.warn("Notice: failed to check removed members list:", e);
+      }
+
+      // Rejoining after removal ALWAYS requires Host Approval, regardless of capacity or room mode
+      const requiresApproval = !isAlreadyMember && (isRemovedMember || roomMode === 'quota' || currentCount >= maxLimit);
 
       if (requiresApproval) {
         const hostUid = room.created_by;
@@ -5974,6 +6104,10 @@ export default function App() {
           }
         }
 
+        if (isRemovedMember) {
+          triggerToast(`🔒 You were previously removed from this room. Host approval is required to rejoin.`);
+        }
+
         setJoinRequestModalInfo({
           roomId: cleanId,
           roomName: room.name || 'Tallyin Room',
@@ -5981,7 +6115,8 @@ export default function App() {
           hostEmail,
           currentCount,
           maxLimit,
-          isQuotaMode: roomMode === 'quota'
+          isQuotaMode: roomMode === 'quota',
+          isRemovedRejoin: isRemovedMember
         });
         return;
       }
@@ -16125,11 +16260,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     );
   }
 
-  // Join Request Modal when room is full / locked
+  // Join Request Modal when room is full / locked / rejoining removed room
   function renderJoinRequestModal() {
     if (!joinRequestModalInfo) return null;
-    const { roomId, roomName, hostNickname, currentCount, maxLimit } = joinRequestModalInfo;
+    const { roomId, roomName, hostNickname, currentCount, maxLimit, isRemovedRejoin, isQuotaMode } = joinRequestModalInfo;
     const displayName = roomName && roomName !== 'Tallyin' ? `${roomName} (${roomId})` : roomId;
+
+    const modalTitle = isRemovedRejoin ? 'Rejoin Approval Required' : (isQuotaMode ? 'Approval Required' : 'Room is Locked');
+    const badgeLabel = isRemovedRejoin ? 'Host Approval' : (isQuotaMode ? 'Quota Mode' : 'Full');
+    const badgeBg = isRemovedRejoin 
+      ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300' 
+      : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300';
+    const descriptionText = isRemovedRejoin
+      ? `You were previously removed from room "${displayName}". Direct entry is restricted. You must request approval from the room host to rejoin.`
+      : `Room ${displayName} has reached its capacity limit of ${maxLimit} members (${currentCount}/${maxLimit}).`;
+    const promptText = isRemovedRejoin
+      ? `Send an in-app join request to ${hostNickname || 'the Admin'} to review and approve your readmission to the room.`
+      : `Send an in-app join request to ${hostNickname || 'the Admin'} to expand capacity (+1) and enter the room.`;
+    const buttonLabel = isRemovedRejoin ? 'Send Rejoin Request' : 'Send Join Request';
 
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
@@ -16139,11 +16287,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100">Room is Locked</h3>
-              <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/60 px-2 py-0.5 rounded-full uppercase">Full</span>
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100">{modalTitle}</h3>
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${badgeBg}`}>{badgeLabel}</span>
             </div>
-            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1">
-              Room <strong className="text-[#1A3827] dark:text-slate-200">{displayName}</strong> has reached its capacity limit of <strong>{maxLimit}</strong> members ({currentCount}/{maxLimit}).
+            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-1 leading-relaxed">
+              {descriptionText}
             </p>
           </div>
           
@@ -16157,7 +16305,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-            Send an in-app join request to <strong>{hostNickname || 'the Admin'}</strong> to expand capacity (+1) and enter the room.
+            {promptText}
           </p>
 
           <div className="flex gap-2.5 pt-1">
@@ -16172,7 +16320,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               className="flex-1 px-4 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs hover:opacity-90 flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
             >
               <UserPlus className="w-3.5 h-3.5" />
-              <span>Send Join Request</span>
+              <span>{buttonLabel}</span>
             </button>
           </div>
         </div>
