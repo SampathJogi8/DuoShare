@@ -2462,17 +2462,24 @@ export default function AdminDashboard({
             </html>
           `;
 
-          await fetch(mailRelayUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              recipients: emailList,
-              subject: `[Tallyin Alert] Room "${room.name}" has been closed & decommissioned`,
-              htmlBody: emailHtml,
-              senderName: 'Tallyin System Administration'
-            })
-          });
+          await Promise.allSettled(
+            emailList.map(email =>
+              fetch(mailRelayUrl, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                  action: 'send_email',
+                  to: email,
+                  subject: `[Tallyin Alert] Room "${room.name}" has been closed & decommissioned`,
+                  body: `Room "${room.name}" has been closed and decommissioned by Tallyin System Administration. Past ledgers are archived.`,
+                  htmlBody: emailHtml,
+                  name: 'Tallyin System Administration',
+                  senderName: 'Tallyin System Administration'
+                })
+              })
+            )
+          );
         } catch (mailErr) {
           console.warn("Decommission email dispatch warning:", mailErr);
         }
