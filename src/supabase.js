@@ -51,6 +51,15 @@ class D1QueryBuilder {
 
   insert(data) {
     this.action = 'insert';
+    if (this.table === 'rooms' && data) {
+      const rows = Array.isArray(data) ? data : [data];
+      for (const row of rows) {
+        const rid = String(row?.id || '').toUpperCase().trim();
+        if (rid === 'ABCD-1234' || rid === 'TL-ABCD-1234' || rid === 'DUO-ABCD-1234' || rid.includes('ABCD-1234')) {
+          throw new Error('CRITICAL SECURITY: Room ID ABCD-1234 is permanently blocked and can NEVER be created.');
+        }
+      }
+    }
     if (['transactions', 'receipts', 'members', 'rooms', 'users'].includes(this.table)) {
       const rows = Array.isArray(data) ? data : [data];
       rows.forEach(row => {
@@ -80,6 +89,15 @@ class D1QueryBuilder {
 
   upsert(data, options = {}) {
     this.action = 'upsert';
+    if (this.table === 'rooms' && data) {
+      const rows = Array.isArray(data) ? data : [data];
+      for (const row of rows) {
+        const rid = String(row?.id || '').toUpperCase().trim();
+        if (rid === 'ABCD-1234' || rid === 'TL-ABCD-1234' || rid === 'DUO-ABCD-1234' || rid.includes('ABCD-1234')) {
+          throw new Error('CRITICAL SECURITY: Room ID ABCD-1234 is permanently blocked and can NEVER be created.');
+        }
+      }
+    }
     if (['transactions', 'receipts', 'members', 'rooms', 'users'].includes(this.table)) {
       const rows = Array.isArray(data) ? data : [data];
       rows.forEach(row => {
@@ -300,6 +318,15 @@ export const supabase = new Proxy(realSupabase, {
         queryBuilder.insert = (...args) => {
           mutationAction = 'insert';
           let data = args[0];
+          if (table === 'rooms' && data) {
+            const rows = Array.isArray(data) ? data : [data];
+            for (const row of rows) {
+              const rid = String(row?.id || '').toUpperCase().trim();
+              if (rid === 'ABCD-1234' || rid === 'TL-ABCD-1234' || rid === 'DUO-ABCD-1234' || rid.includes('ABCD-1234')) {
+                throw new Error('CRITICAL SECURITY: Room ID ABCD-1234 is permanently blocked and can NEVER be created.');
+              }
+            }
+          }
           if (table === 'users' && data) {
             const rows = Array.isArray(data) ? data : [data];
             rows.forEach(row => {
@@ -316,6 +343,15 @@ export const supabase = new Proxy(realSupabase, {
           mutationAction = 'upsert';
           let data = args[0];
           let options = args[1] || {};
+          if (table === 'rooms' && data) {
+            const rows = Array.isArray(data) ? data : [data];
+            for (const row of rows) {
+              const rid = String(row?.id || '').toUpperCase().trim();
+              if (rid === 'ABCD-1234' || rid === 'TL-ABCD-1234' || rid === 'DUO-ABCD-1234' || rid.includes('ABCD-1234')) {
+                throw new Error('CRITICAL SECURITY: Room ID ABCD-1234 is permanently blocked and can NEVER be created.');
+              }
+            }
+          }
           if (table === 'users' && data) {
             const rows = Array.isArray(data) ? data : [data];
             rows.forEach(row => {

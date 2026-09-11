@@ -204,6 +204,13 @@ export default {
           const insertResults = [];
 
           for (const row of rows) {
+            if (table === "rooms" && row.id) {
+              const rid = String(row.id).toUpperCase().trim();
+              if (rid === 'ABCD-1234' || rid === 'TL-ABCD-1234' || rid === 'DUO-ABCD-1234' || rid.includes('ABCD-1234')) {
+                return Response.json({ error: "Restricted Room ID: ABCD-1234 is permanently prohibited and can NEVER be created." }, { status: 403, headers: corsHeaders });
+              }
+            }
+
             if (!row.id && ["transactions", "receipts", "members", "rooms", "users"].includes(table)) {
               row.id = crypto.randomUUID();
             }
@@ -313,6 +320,13 @@ export default {
           const upsertResults = [];
 
           for (const row of rows) {
+            if (table === "rooms" && row.id) {
+              const rid = String(row.id).toUpperCase().trim();
+              if (rid === 'ABCD-1234' || rid === 'TL-ABCD-1234' || rid === 'DUO-ABCD-1234' || rid.includes('ABCD-1234')) {
+                return Response.json({ error: "Restricted Room ID: ABCD-1234 is permanently prohibited and can NEVER be created." }, { status: 403, headers: corsHeaders });
+              }
+            }
+
             if (table === "receipts" && row.image_url) {
               const id = row.id || crypto.randomUUID();
               row.id = id;

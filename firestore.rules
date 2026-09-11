@@ -7,7 +7,7 @@ service cloud.firestore {
     }
     // Rules for rooms
     match /rooms/{roomId}/{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null && roomId != 'ABCD-1234' && roomId != 'TL-ABCD-1234' && !roomId.matches('.*ABCD-1234.*');
     }
   }
 }

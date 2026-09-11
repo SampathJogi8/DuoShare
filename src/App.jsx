@@ -4076,7 +4076,18 @@ export default function App() {
         setUserRoomId(null);
         localStorage.removeItem('userRoomId');
         setHasConfirmedRoom(false);
-        triggerToast("You have been removed from this room.");
+        setOnboardingStep('selection');
+        const removalMsg = `⚠️ You have been removed from room "${roomName || roomId}".`;
+        triggerToast(removalMsg);
+        if (Notification.permission === 'granted' && localStorage.getItem('pushNotificationsEnabled') === 'true') {
+          try {
+            new Notification("Room Access Removed", {
+              body: `You have been removed from room "${roomName || roomId}".`,
+              icon: faviconLogo || logoIcon || '/favicon.ico'
+            });
+          } catch (e) {}
+        }
+        if (user) fetchUserRooms();
         return;
       }
 
@@ -4308,6 +4319,61 @@ export default function App() {
           setOnboardingStep('selection');
           triggerToast(`⚠️ Room "${payload?.payload?.roomName || userRoomId}" was permanently closed.`);
           if (user) fetchUserRooms();
+        }
+      })
+      .on('broadcast', { event: 'MEMBER_REMOVED' }, (payload) => {
+        const data = payload?.payload || {};
+        if (data.roomId && data.roomId !== userRoomId) return;
+
+        const currentUid = user?.id;
+        const currentEmail = user?.email?.toLowerCase().trim();
+        const currentNick = userNickname?.toLowerCase().trim();
+
+        const isCurrentRemoved = (data.removedUid && currentUid && data.removedUid === currentUid) ||
+          (data.removedEmail && currentEmail && data.removedEmail === currentEmail) ||
+          (data.removedNickname && currentNick && currentNick !== 'you' && data.removedNickname.toLowerCase().trim() === currentNick);
+
+        if (isCurrentRemoved) {
+          // The removed roommate
+          setUserRoomId(null);
+          setHasConfirmedRoom(false);
+          setTransactions([]);
+          setReceipts([]);
+          setMembers([]);
+          setActivityLogs([]);
+          setRoomCreatedBy(null);
+          localStorage.removeItem('userRoomId');
+          setOnboardingStep('selection');
+
+          const alertMsg = `You have been removed from room "${data.roomName || userRoomId}" by ${data.hostNickname || 'the host'}.`;
+          triggerToast(`⚠️ ${alertMsg}`);
+
+          if (Notification.permission === 'granted' && localStorage.getItem('pushNotificationsEnabled') === 'true') {
+            try {
+              new Notification("Room Access Removed", {
+                body: alertMsg,
+                icon: faviconLogo || logoIcon || '/favicon.ico'
+              });
+            } catch (e) {}
+          }
+          if (user) fetchUserRooms();
+        } else {
+          // The other person / remaining roommates
+          const infoMsg = `${data.removedNickname || 'A roommate'} was removed from the room by ${data.hostNickname || 'the host'}.`;
+          triggerToast(`ℹ️ ${infoMsg}`);
+
+          if (Notification.permission === 'granted' && localStorage.getItem('pushNotificationsEnabled') === 'true') {
+            try {
+              new Notification("Roommate Removed", {
+                body: `${data.removedNickname || 'A roommate'} has been removed from "${data.roomName || userRoomId}".`,
+                icon: faviconLogo || logoIcon || '/favicon.ico'
+              });
+            } catch (e) {}
+          }
+
+          fetchMembers(userRoomId);
+          fetchRoomSettings(userRoomId);
+          fetchActivityLogs(userRoomId);
         }
       })
       .subscribe((status) => {
@@ -5095,6 +5161,224 @@ export default function App() {
     }
   };
 
+  // Dispatches email notifications to both the removed roommate and remaining roommates
+  const sendMemberRemovalNotifications = async ({
+    removedMember,
+    roomId,
+    roomDisplayName,
+    hostNickname,
+    hostEmail,
+    remainingMembers = []
+  }) => {
+    if (notificationMethod === 'none') return;
+
+    const isGenesisRoom = roomId === 'DUO-KLIZ-2508';
+    const senderTitle = isGenesisRoom ? '👑 Tallyin Genesis Duo' : 'Tallyin';
+
+    const isValidNotificationEmail = (e) => {
+      if (!e || typeof e !== 'string') return false;
+      const clean = e.trim().toLowerCase();
+      return clean.includes('@') && clean.includes('.') && !clean.endsWith('@tallyin.app') && clean !== 'null' && clean !== 'undefined';
+    };
+
+    // 1. Resolve removed member verified email
+    let removedEmail = removedMember?.email;
+    if (!isValidNotificationEmail(removedEmail)) {
+      try {
+        const { data: uData } = await supabase
+          .from('users')
+          .select('email')
+          .eq('uid', removedMember.uid)
+          .maybeSingle();
+        if (uData?.email && isValidNotificationEmail(uData.email)) {
+          removedEmail = uData.email;
+        }
+      } catch (e) {}
+    }
+
+    // A. Dispatch Email to REMOVED PERSON
+    if (isValidNotificationEmail(removedEmail)) {
+      const subject = `Tallyin: You have been removed from room "${roomDisplayName || roomId}"`;
+      const adminContactLine = hostEmail
+        ? `Room Admin: <strong>${hostNickname || 'Host'}</strong> (<a href="mailto:${hostEmail}" style="color: #0284C7; text-decoration: underline;">${hostEmail}</a>)`
+        : `Room Admin: <strong>${hostNickname || 'Host'}</strong>`;
+
+      const htmlBody = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #F6F8F6; border-radius: 24px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <h2 style="color: #1A3827; margin: 0; font-size: 20px; font-weight: 800;">Tallyin Room Update</h2>
+            <p style="color: #5C6E5C; font-size: 12px; margin-top: 4px;">YouthFirst DuoShare Expense Manager</p>
+          </div>
+
+          <div style="background-color: #ffffff; padding: 24px; border-radius: 20px; border: 1px solid #E3E8E3; text-align: center;">
+            <div style="font-size: 40px; margin-bottom: 12px;">🚫</div>
+            <h3 style="color: #DC2626; margin: 0 0 8px 0; font-size: 18px; font-weight: 800;">Room Access Removed</h3>
+            <p style="color: #475569; font-size: 13px; line-height: 1.5; margin: 0 0 20px 0;">
+              Hello <strong>${removedMember.nickname || 'Roommate'}</strong>,<br>
+              You have been removed from the shared space <strong>"${roomDisplayName || roomId}"</strong> by the room host.
+            </p>
+
+            <div style="background-color: #FEF2F2; padding: 14px; border-radius: 14px; text-align: left; border: 1px solid #FECACA; margin-bottom: 20px;">
+              <div style="font-size: 11px; color: #991B1B; font-weight: 700; text-transform: uppercase;">Room Information</div>
+              <div style="font-size: 14px; font-weight: 800; color: #1E293B; margin-top: 4px;">${roomDisplayName || 'Shared Room'}</div>
+              <div style="font-size: 12px; font-family: monospace; color: #475569; margin-top: 2px;">Code: <strong>${roomId}</strong></div>
+              <div style="font-size: 12px; color: #334155; margin-top: 6px; font-weight: 600;">
+                ${adminContactLine}
+              </div>
+            </div>
+
+            <p style="font-size: 12px; color: #64748B; line-height: 1.5; margin: 0 0 20px 0; text-align: left;">
+              You will no longer have access to this room's active expenses, funds, or ledger records. If you have questions or believe this was done in error, please contact the room host.
+            </p>
+
+            <a href="https://tallyin.vercel.app/" style="display: inline-block; background-color: #1A3827; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-weight: 800; font-size: 13px; box-shadow: 0 4px 12px rgba(26,56,39,0.2);">
+              Open Tallyin App
+            </a>
+          </div>
+        </div>
+      `;
+
+      const textBody = `Hello ${removedMember.nickname || 'Roommate'},\n\nYou have been removed from room "${roomDisplayName || roomId}" on Tallyin by the room host (${hostNickname || 'Host'}${hostEmail ? ` - ${hostEmail}` : ''}).\n\nYou no longer have access to this room's shared expenses. If you believe this was done in error, please contact the room host.`;
+
+      fetch(CENTRAL_EMAIL_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          to: removedEmail.trim(),
+          subject: subject,
+          htmlBody: htmlBody,
+          textBody: textBody,
+          name: senderTitle,
+          senderName: senderTitle
+        })
+      }).then(() => {
+        console.log(`[Removal Notification] Email dispatched to removed member: ${removedEmail}`);
+      }).catch(e => {
+        console.warn("Failed to send removal email to removed member:", e);
+      });
+    }
+
+    // B. Dispatch Email to OTHER PERSON / REMAINING ROOMMATES
+    let remainingDbMembers = [];
+    try {
+      const { data: dbM } = await supabase
+        .from('members')
+        .select('uid, nickname, email')
+        .eq('room_id', roomId)
+        .neq('uid', removedMember.uid);
+      if (dbM) remainingDbMembers = dbM;
+    } catch (e) {}
+
+    const combinedRemaining = [...remainingMembers, ...remainingDbMembers];
+    const missingEmailUids = combinedRemaining
+      .filter(m => m.uid && m.uid !== removedMember.uid && !isValidNotificationEmail(m.email))
+      .map(m => m.uid);
+
+    let userEmailMap = {};
+    if (missingEmailUids.length > 0) {
+      try {
+        const { data: uList } = await supabase
+          .from('users')
+          .select('uid, email')
+          .in('uid', missingEmailUids);
+        if (uList) {
+          uList.forEach(u => {
+            if (u.email && isValidNotificationEmail(u.email)) {
+              userEmailMap[u.uid] = u.email;
+            }
+          });
+        }
+      } catch (e) {}
+    }
+
+    const otherRecipients = [];
+    const seenEmails = new Set();
+    if (removedEmail) seenEmails.add(removedEmail.trim().toLowerCase());
+
+    combinedRemaining.forEach(m => {
+      if (!m || m.uid === removedMember.uid) return;
+      let email = m.email;
+      if (!isValidNotificationEmail(email) && userEmailMap[m.uid]) {
+        email = userEmailMap[m.uid];
+      }
+      if (isValidNotificationEmail(email)) {
+        const clean = email.trim().toLowerCase();
+        if (!seenEmails.has(clean)) {
+          seenEmails.add(clean);
+          otherRecipients.push({
+            email: clean,
+            nickname: m.nickname || 'Roommate'
+          });
+        }
+      }
+    });
+
+    if (otherRecipients.length > 0) {
+      const otherSubject = `Tallyin: ${removedMember.nickname} was removed from room "${roomDisplayName || roomId}"`;
+
+      const otherPromises = otherRecipients.map(r => {
+        const recipientGreeting = r.nickname && r.nickname !== 'Roommate' ? `Hello <strong>${r.nickname}</strong>,` : 'Hello <strong>Roommate</strong>,';
+        const otherHtmlBody = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #F6F8F6; border-radius: 24px;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h2 style="color: #1A3827; margin: 0; font-size: 20px; font-weight: 800;">Tallyin Room Update</h2>
+              <p style="color: #5C6E5C; font-size: 12px; margin-top: 4px;">YouthFirst DuoShare Expense Manager</p>
+            </div>
+
+            <div style="background-color: #ffffff; padding: 24px; border-radius: 20px; border: 1px solid #E3E8E3; text-align: center;">
+              <div style="font-size: 40px; margin-bottom: 12px;">ℹ️</div>
+              <h3 style="color: #1A3827; margin: 0 0 8px 0; font-size: 18px; font-weight: 800;">Roommate Removed</h3>
+              <p style="color: #475569; font-size: 13px; line-height: 1.5; margin: 0 0 20px 0;">
+                ${recipientGreeting}<br>
+                <strong>${removedMember.nickname}</strong> has been removed from room <strong>"${roomDisplayName || roomId}"</strong> by the room host (<strong>${hostNickname || 'Host'}</strong>).
+              </p>
+
+              <div style="background-color: #F8FAFC; padding: 14px; border-radius: 14px; text-align: left; border: 1px solid #E2E8F0; margin-bottom: 20px;">
+                <div style="font-size: 11px; color: #64748B; font-weight: 700; text-transform: uppercase;">Updated Roster Details</div>
+                <div style="font-size: 14px; font-weight: 800; color: #1E293B; margin-top: 4px;">${roomDisplayName || 'Shared Room'} (Code: ${roomId})</div>
+                <div style="font-size: 12px; color: #334155; margin-top: 6px; font-weight: 600;">
+                  Removed Member: <span style="color: #DC2626;">${removedMember.nickname}</span>
+                </div>
+                <p style="font-size: 11px; color: #64748B; margin-top: 6px; margin-bottom: 0;">
+                  Room capacity and split shares have been automatically updated. Past logged expenses remain in the ledger for transparency.
+                </p>
+              </div>
+
+              <a href="https://tallyin.vercel.app/?room=${roomId}" style="display: inline-block; background-color: #1A3827; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-weight: 800; font-size: 13px; box-shadow: 0 4px 12px rgba(26,56,39,0.2);">
+                View Room Ledger
+              </a>
+            </div>
+          </div>
+        `;
+
+        const otherTextBody = `Hello ${r.nickname},\n\n${removedMember.nickname} was removed from room "${roomDisplayName || roomId}" by the room host (${hostNickname || 'Host'}).\n\nRoom balances and roster have been updated.\nView room: https://tallyin.vercel.app/?room=${roomId}`;
+
+        return fetch(CENTRAL_EMAIL_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            to: r.email,
+            subject: otherSubject,
+            htmlBody: otherHtmlBody,
+            textBody: otherTextBody,
+            name: senderTitle,
+            senderName: senderTitle
+          })
+        }).catch(err => console.warn(`Failed to dispatch email to ${r.email}:`, err));
+      });
+
+      Promise.all(otherPromises)
+        .then(() => {
+          console.log(`[Removal Notification] Email dispatched to ${otherRecipients.length} remaining member(s):`, otherRecipients.map(r => r.email));
+        })
+        .catch(e => {
+          console.warn("Failed to send removal emails to other roommates:", e);
+        });
+    }
+  };
+
   // Remove member from room — HOST ONLY
   const handleRemoveMember = async (memberUid) => {
     if (!userRoomId) return;
@@ -5108,20 +5392,53 @@ export default function App() {
     const confirmed = window.confirm(`Remove ${member.nickname} from this room?`);
     if (!confirmed) return;
     try {
+      const activeRoomId = userRoomId;
+      const activeRoomName = roomName || userRoomId;
+      const currentHostNickname = userNickname || 'Host';
+      const currentHostEmail = user?.email || '';
+      const remainingMembersList = members.filter(m => m.uid !== memberUid);
+
+      // Resolve removed member verified email before deleting
+      let removedMemberEmail = member.email;
+      if (!removedMemberEmail || !removedMemberEmail.includes('@') || removedMemberEmail.endsWith('@tallyin.app')) {
+        try {
+          const { data: uData } = await supabase
+            .from('users')
+            .select('email')
+            .eq('uid', memberUid)
+            .maybeSingle();
+          if (uData?.email) removedMemberEmail = uData.email;
+        } catch (e) {}
+      }
+
       const { error: deleteError } = await supabase
         .from('members')
         .delete()
-        .eq('room_id', userRoomId)
+        .eq('room_id', activeRoomId)
         .eq('uid', memberUid);
 
       if (deleteError) throw deleteError;
+
+      // Clear removed user's room_id in users table so they don't auto-rejoin upon next login/reload
+      try {
+        await supabase
+          .from('users')
+          .update({
+            room_id: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('uid', memberUid)
+          .eq('room_id', activeRoomId);
+      } catch (uErr) {
+        console.warn("Notice: failed to clear removed user's room binding:", uErr);
+      }
 
       // Auto-adjust room capacity limit down upon member removal
       try {
         const { data: remMembers } = await supabase
           .from('members')
           .select('uid')
-          .eq('room_id', userRoomId);
+          .eq('room_id', activeRoomId);
 
         const remainingCount = remMembers ? remMembers.length : 0;
         const currentMax = roomMaxMembers ? Number(roomMaxMembers) : 6;
@@ -5130,12 +5447,38 @@ export default function App() {
         await supabase
           .from('rooms')
           .update({ max_members: adjustedCapacity })
-          .eq('id', userRoomId);
+          .eq('id', activeRoomId);
 
         setRoomMaxMembers(adjustedCapacity);
         setSettingsMaxMembersInput(adjustedCapacity);
       } catch (capErr) {
         console.warn("Notice: failed to auto-adjust room capacity on member removal:", capErr);
+      }
+
+      // Broadcast instant realtime notification to all clients in the room (both removed user and remaining roommates)
+      try {
+        const roomChan = supabase.channel(`room:${activeRoomId}`);
+        await roomChan.send({
+          type: 'broadcast',
+          event: 'MEMBER_REMOVED',
+          payload: {
+            roomId: activeRoomId,
+            roomName: activeRoomName,
+            removedUid: memberUid,
+            removedNickname: member.nickname,
+            removedEmail: removedMemberEmail || member.email || '',
+            hostUid: user?.id,
+            hostNickname: currentHostNickname,
+            timestamp: new Date().toISOString()
+          }
+        });
+        await roomChan.send({
+          type: 'broadcast',
+          event: 'ROOM_DATA_SYNC',
+          payload: { roomId: activeRoomId }
+        });
+      } catch (bcErr) {
+        console.warn("Notice: failed to broadcast member removal:", bcErr);
       }
 
       // If the removed member is the current user, clear their active room
@@ -5148,6 +5491,7 @@ export default function App() {
         setActivityLogs([]);
         setRoomCreatedBy(null);
         localStorage.removeItem('userRoomId');
+        setOnboardingStep('selection');
         try {
           await supabase
             .from('users')
@@ -5157,11 +5501,27 @@ export default function App() {
             })
             .eq('uid', user.id);
         } catch(e) { console.error(e); }
+        if (user) fetchUserRooms();
       }
 
-      await logActivity('remove', `${userNickname} removed ${member.nickname} from the room.`);
-      fetchMembers(userRoomId);
-      triggerToast(`Removed ${member.nickname} from room.`);
+      await logActivity('remove', `${currentHostNickname} removed ${member.nickname} from the room.`);
+      
+      // Dispatch email notifications to removed person AND other roommates
+      sendMemberRemovalNotifications({
+        removedMember: {
+          uid: memberUid,
+          nickname: member.nickname,
+          email: removedMemberEmail || member.email
+        },
+        roomId: activeRoomId,
+        roomDisplayName: activeRoomName,
+        hostNickname: currentHostNickname,
+        hostEmail: currentHostEmail,
+        remainingMembers: remainingMembersList
+      }).catch(err => console.warn("Notice: removal email dispatch warning:", err));
+
+      fetchMembers(activeRoomId);
+      triggerToast(`Removed ${member.nickname} from room. Roommates notified.`);
     } catch (err) {
       console.error('Remove member error:', err);
       triggerToast('Failed to remove member.');
@@ -5322,13 +5682,19 @@ export default function App() {
   // Helper to generate a room code with high entropy (4.1 Billion combinations)
   const generateUniqueRoomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    let letters = '';
-    for (let i = 0; i < 4; i++) {
-      letters += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    let digits = Math.floor(1000 + Math.random() * 9000);
-    if (digits === 8888) digits = 8889; // Guarantee never 8888
-    return `TL-${letters}-${digits}`;
+    let code = '';
+    do {
+      let letters = '';
+      for (let i = 0; i < 4; i++) {
+        letters += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      let digits = Math.floor(1000 + Math.random() * 9000);
+      if (digits === 8888) digits = 8889; // Guarantee never 8888
+      // Strict guarantee: Never allow ABCD-1234 to be generated
+      if (letters === 'ABCD' && digits === 1234) continue;
+      code = `TL-${letters}-${digits}`;
+    } while (!code || code === 'TL-ABCD-1234' || code === 'ABCD-1234' || code.includes('ABCD-1234'));
+    return code;
   };
 
   // Create Room handler with instant optimistic UI transition & robust background DB sync
@@ -5342,6 +5708,12 @@ export default function App() {
 
     try {
       const uniqueCode = generateUniqueRoomCode();
+      // Absolute guard: Never allow ABCD-1234 room creation under any circumstance
+      if (!uniqueCode || uniqueCode === 'ABCD-1234' || uniqueCode === 'TL-ABCD-1234' || uniqueCode === 'DUO-ABCD-1234' || uniqueCode.toUpperCase().includes('ABCD-1234')) {
+        console.error('Prohibited Room ID: ABCD-1234 cannot be created.');
+        triggerToast('⚠️ Prohibited Room ID: ABCD-1234 cannot be created.');
+        return;
+      }
       const initialMaxMembers = Number(newRoomMaxMembersInput) || Number(roomMaxMembersInput) || 2;
       const isQuota = selectedRoomMode === 'quota';
       const finalMonthlyBudget = isQuota ? (Number(newRoomBudgetInput) || 3000) : (Number(monthlyBudgetInput) || 3000);
@@ -5489,6 +5861,11 @@ export default function App() {
 
     if ((cleanId === 'DUO-KLIZ-2508' || rawInput.includes('KLIZ-2508')) && !isDuoAllowedUser) {
       triggerToast('🔒 DUO-KLIZ-2508 is an exclusive Founding Space restricted to Sampath & Anirudh.');
+      return;
+    }
+
+    if (cleanId === 'ABCD-1234' || cleanId === 'TL-ABCD-1234' || cleanId === 'DUO-ABCD-1234' || rawInput.includes('ABCD-1234') || cleanId.includes('ABCD-1234')) {
+      triggerToast('⚠️ Prohibited Room ID: ABCD-1234 is restricted and does not exist.');
       return;
     }
     
@@ -11572,7 +11949,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                     )}
                     <input
                       type="text"
-                      placeholder="e.g. ABCD-1234"
+                      placeholder="e.g. WXYZ-7890"
                       value={joinInput}
                       onChange={(e) => {
                         let val = e.target.value.toUpperCase();
@@ -11604,8 +11981,8 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                 </div>
                 <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
                   {isDuoAllowedUser && roomPrefix === 'DUO-'
-                    ? 'DUO- prefix active for 2-member spaces (e.g. DUO-ABCD-1234).'
-                    : 'Default prefix TL- is active. Just type the remaining code (e.g. ABCD-1234).'}
+                    ? 'DUO- prefix active for 2-member spaces (e.g. DUO-WXYZ-7890).'
+                    : 'Default prefix TL- is active. Just type the remaining code (e.g. WXYZ-7890).'}
                 </p>
               </div>
               
@@ -15522,9 +15899,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // SETTLE UP MODAL (Role-Based Math & Pairwise Settlement Engine)
   // ==========================================
   function renderSettleModal() {
-    const currentUid = auth.currentUser?.uid || 'anonymous';
+    const currentUid = user?.id || auth.currentUser?.uid || 'anonymous';
     const myBalance = computedStats.currentUserBalance || 0;
-    const isHostOrCoHost = (roomCreatedBy && user && roomCreatedBy === user.id) || (roomCoHostUid && user && roomCoHostUid === user.id);
+    const isHostOrCoHost = (roomCreatedBy && user && roomCreatedBy === user.id) || (coHostUid && user && coHostUid === user.id);
     const totalGroupSpend = computedStats.totalSpend || 0;
     const fairSharePerMember = members.length > 0 ? Math.round(totalGroupSpend / members.length) : 0;
 
