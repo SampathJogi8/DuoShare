@@ -601,6 +601,42 @@ export default function App() {
     } catch (e) {}
     return [];
   });
+
+  // Derived strictly-deduplicated members list (guarantees no duplicate roommate cards anywhere)
+  const uniqueMembers = useMemo(() => {
+    const list = [];
+    const seenUids = new Set();
+    const seenEmails = new Set();
+    const seenNicks = new Set();
+
+    for (const m of (members || [])) {
+      const emailNorm = m.email ? m.email.trim().toLowerCase() : '';
+      const nickNorm = (m.nickname && m.nickname.toLowerCase() !== 'roommate' && m.nickname.toLowerCase() !== 'you') ? m.nickname.trim().toLowerCase() : '';
+
+      if (
+        (m.uid && seenUids.has(m.uid)) ||
+        (emailNorm && seenEmails.has(emailNorm)) ||
+        (nickNorm && seenNicks.has(nickNorm))
+      ) {
+        // If an existing entry was already recorded, ensure host role is maintained
+        const idx = list.findIndex(ex => 
+          (m.uid && ex.uid === m.uid) ||
+          (emailNorm && ex.email && ex.email.trim().toLowerCase() === emailNorm) ||
+          (nickNorm && ex.nickname && ex.nickname.trim().toLowerCase() === nickNorm)
+        );
+        if (idx !== -1 && m.role === 'host') {
+          list[idx] = { ...list[idx], role: 'host' };
+        }
+        continue;
+      }
+
+      if (m.uid) seenUids.add(m.uid);
+      if (emailNorm) seenEmails.add(emailNorm);
+      if (nickNorm) seenNicks.add(nickNorm);
+      list.push(m);
+    }
+    return list;
+  }, [members]);
   const [monthlyBudget, setMonthlyBudget] = useState(() => Number(localStorage.getItem('monthlyBudget')) || 22000);
   const [monthlyBudgetInput, setMonthlyBudgetInput] = useState(() => String(localStorage.getItem('monthlyBudget') || 22000));
   const [personalCap, setPersonalCap] = useState(() => Number(localStorage.getItem('personalCap')) || 2500);
@@ -2691,15 +2727,34 @@ export default function App() {
     const activeUser = currentUserObj || user;
     if (!activeUser || !roomId) return { success: false, reason: 'no_user_or_room' };
     try {
-      // 1. Check if user is ALREADY a member of this room
+      // 1. Check if user is ALREADY a member of this room (by UID, Email, or Nickname)
       const { data: existingMembers, error: membersErr } = await supabase
         .from('members')
-        .select('uid')
+        .select('*')
         .eq('room_id', roomId);
 
       if (membersErr) console.warn("Members check notice:", membersErr);
 
-      const isAlreadyMember = (existingMembers || []).some(m => m.uid === activeUser.id);
+      const activeEmail = activeUser.email ? activeUser.email.toLowerCase().trim() : '';
+      const activeNick = (nickname || '').toLowerCase().trim();
+      const existingMember = (existingMembers || []).find(m => 
+        (m.uid && m.uid === activeUser.id) ||
+        (activeEmail && m.email && m.email.toLowerCase().trim() === activeEmail) ||
+        (activeNick && activeNick !== 'you' && m.nickname && m.nickname.toLowerCase().trim() === activeNick)
+      );
+      const isAlreadyMember = Boolean(existingMember);
+
+      if (isAlreadyMember) {
+        // If UID or email needs updating on the existing member record, update in place
+        if (existingMember.uid !== activeUser.id || (activeEmail && !existingMember.email)) {
+          await supabase.from('members').update({
+            uid: activeUser.id,
+            email: activeUser.email || existingMember.email,
+            nickname: (nickname && nickname !== 'You') ? nickname : existingMember.nickname
+          }).eq('id', existingMember.id);
+        }
+        return { success: true };
+      }
 
       // 2. If NOT already a member, check room capacity limit (max_members)
       if (!isAlreadyMember) {
@@ -2791,6 +2846,7 @@ export default function App() {
       // 3. Upsert member with individual_budget
       const avatarUrl = activeUser.user_metadata?.avatar_url || activeUser.user_metadata?.picture || '';
       const memberPayload = {
+        id: `${roomId}_${activeUser.id}`,
         room_id: roomId,
         uid: activeUser.id,
         nickname: nickname,
@@ -4160,10 +4216,44 @@ export default function App() {
         return;
       }
 
-      setMembers(mappedMembers);
+      // Deduplicate members per room: preserve host role and prefer matching active user UID
+      const deduplicatedMembers = [];
+      for (const m of mappedMembers) {
+        const normEmail = m.email ? m.email.trim().toLowerCase() : '';
+        const normNick = (m.nickname && m.nickname.toLowerCase() !== 'roommate' && m.nickname.toLowerCase() !== 'you') ? m.nickname.trim().toLowerCase() : '';
+        const existingIdx = deduplicatedMembers.findIndex(ex => {
+          const exEmail = ex.email ? ex.email.trim().toLowerCase() : '';
+          const exNick = (ex.nickname && ex.nickname.toLowerCase() !== 'roommate' && ex.nickname.toLowerCase() !== 'you') ? ex.nickname.trim().toLowerCase() : '';
+          return (m.uid && ex.uid === m.uid) ||
+                 (normEmail && exEmail && normEmail === exEmail) ||
+                 (normNick && exNick && normNick === exNick);
+        });
+
+        if (existingIdx !== -1) {
+          const existing = deduplicatedMembers[existingIdx];
+          const isHost = existing.role === 'host' || m.role === 'host';
+          const preferredUid = (user?.id && (existing.uid === user.id || m.uid === user.id))
+            ? user.id
+            : (isHost ? (existing.role === 'host' ? existing.uid : m.uid) : (existing.uid || m.uid));
+
+          deduplicatedMembers[existingIdx] = {
+            ...existing,
+            ...m,
+            uid: preferredUid,
+            role: isHost ? 'host' : (existing.role || m.role || 'member'),
+            photoURL: existing.photoURL || m.photoURL || '',
+            email: existing.email || m.email || '',
+            nickname: (existing.nickname && existing.nickname !== 'Roommate' && existing.nickname !== 'You') ? existing.nickname : (m.nickname || 'Roommate')
+          };
+        } else {
+          deduplicatedMembers.push(m);
+        }
+      }
+
+      setMembers(deduplicatedMembers);
       try {
-        localStorage.setItem(`tallyin_cache_members_${roomId}`, JSON.stringify(mappedMembers));
-        localStorage.setItem('tallyin_cache_members_latest', JSON.stringify(mappedMembers));
+        localStorage.setItem(`tallyin_cache_members_${roomId}`, JSON.stringify(deduplicatedMembers));
+        localStorage.setItem('tallyin_cache_members_latest', JSON.stringify(deduplicatedMembers));
       } catch (e) {}
     } catch (err) {
       console.warn("Members fetch error, using offline cache:", err);
@@ -4636,12 +4726,27 @@ export default function App() {
         throw new Error('Invalid access code. Please verify and try again.');
       }
       
-      const { data: memberData, error: memberError } = await supabase
-        .from('members')
-        .select('*')
-        .eq('uid', userProfile.uid);
-        
-      if (memberError) console.warn("Member fetch warning for code user:", memberError);
+      let memberData = [];
+      try {
+        const { data: mByUid } = await supabase.from('members').select('*').eq('uid', userProfile.uid);
+        if (mByUid && Array.isArray(mByUid)) memberData.push(...mByUid);
+        if (userProfile.email && userProfile.email.includes('@') && !userProfile.email.endsWith('@tallyin.app')) {
+          const { data: mByEmail } = await supabase.from('members').select('*').eq('email', userProfile.email.trim().toLowerCase());
+          if (mByEmail && Array.isArray(mByEmail)) {
+            for (const em of mByEmail) {
+              if (!memberData.some(m => m.id === em.id)) {
+                memberData.push(em);
+                // Keep member record UID aligned with the active profile UID
+                if (em.uid !== userProfile.uid) {
+                  supabase.from('members').update({ uid: userProfile.uid }).eq('id', em.id).then(null, () => {});
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Member fetch warning for code user:", e);
+      }
       const memberWithEmail = (memberData || []).find(m => m.email && m.email.includes('@') && !m.email.endsWith('@tallyin.app'));
       const member = memberWithEmail || memberData?.[0];
       
@@ -11610,17 +11715,36 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                               setIsManageRoomOpen(false);
                               triggerToast(`Entering room: ${r.roomName}...`);
 
-                              // Ensure member row is established in Supabase
+                              // Ensure member row is established in Supabase without duplicates
                               if (user) {
                                 try {
-                                  await supabase.from('members').upsert({
-                                    room_id: r.roomId,
-                                    uid: user.id,
-                                    nickname: userNickname && userNickname !== 'You' ? userNickname : (nicknameInput || 'Roommate'),
-                                    photo_url: user.user_metadata?.avatar_url || '',
-                                    email: user.email || '',
-                                    joined_at: new Date().toISOString()
-                                  }, { onConflict: 'room_id,uid' });
+                                  const { data: existingMems } = await supabase.from('members').select('*').eq('room_id', r.roomId);
+                                  const userEmail = user.email ? user.email.toLowerCase().trim() : '';
+                                  const userNick = (userNickname || nicknameInput || '').toLowerCase().trim();
+                                  const foundMem = (existingMems || []).find(m => 
+                                    (m.uid && m.uid === user.id) ||
+                                    (userEmail && m.email && m.email.toLowerCase().trim() === userEmail) ||
+                                    (userNick && userNick !== 'you' && m.nickname && m.nickname.toLowerCase().trim() === userNick)
+                                  );
+
+                                  if (foundMem) {
+                                    if (foundMem.uid !== user.id || (userEmail && !foundMem.email)) {
+                                      await supabase.from('members').update({
+                                        uid: user.id,
+                                        email: user.email || foundMem.email
+                                      }).eq('id', foundMem.id);
+                                    }
+                                  } else {
+                                    await supabase.from('members').upsert({
+                                      id: `${r.roomId}_${user.id}`,
+                                      room_id: r.roomId,
+                                      uid: user.id,
+                                      nickname: userNickname && userNickname !== 'You' ? userNickname : (nicknameInput || 'Roommate'),
+                                      photo_url: user.user_metadata?.avatar_url || '',
+                                      email: user.email || '',
+                                      joined_at: new Date().toISOString()
+                                    }, { onConflict: 'room_id,uid' });
+                                  }
 
                                   await supabase.from('users').update({
                                     room_id: r.roomId,
@@ -13399,11 +13523,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </button>
           </div>
           <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-            {members.length === 0 ? (
+            {uniqueMembers.length === 0 ? (
               <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 italic px-1">No members yet. Invite roommates!</p>
             ) : (
-              members.map(m => {
-                const isSelf = auth.currentUser && m.uid === auth.currentUser.uid;
+              uniqueMembers.map(m => {
+                const isSelf = (auth.currentUser && m.uid === auth.currentUser.uid) || (user && m.uid === user.id);
                 return (
                   <div key={m.uid} className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-800/40">
                     {m.photoURL ? (
@@ -16816,19 +16940,19 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             <div>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-black text-[#1A3827] dark:text-slate-200">
-                  Members ({members.length} / {roomMaxMembers})
+                  Members ({uniqueMembers.length} / {roomMaxMembers})
                 </p>
-                {members.length >= roomMaxMembers && (
+                {uniqueMembers.length >= roomMaxMembers && (
                   <span className="text-[9px] font-black text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-900 px-2 py-0.5 rounded-full uppercase tracking-wider">
                     🔒 Room Locked (Capacity Full)
                   </span>
                 )}
               </div>
               <div className="space-y-2">
-                {members.length === 0 ? (
+                {uniqueMembers.length === 0 ? (
                   <p className="text-xs text-[#5C6E5C] dark:text-slate-400 italic text-center py-4">No members yet.</p>
                 ) : (
-                  members.map(m => {
+                  uniqueMembers.map(m => {
                     const isSelf = m.uid === currentUid;
                     const isThisHost = m.uid === roomCreatedBy;
                     return (
@@ -16926,15 +17050,15 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
               <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Restrict total members in this room. Room locks automatically when limit is reached.</p>
               
-              {members.length > roomMaxMembers && (
+              {uniqueMembers.length > roomMaxMembers && (
                 <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 flex items-center justify-between text-xs font-bold text-amber-800 dark:text-amber-300">
-                  <span>⚠️ Active members ({members.length}) exceed limit ({roomMaxMembers}).</span>
+                  <span>⚠️ Active members ({uniqueMembers.length}) exceed limit ({roomMaxMembers}).</span>
                   {isHost && (
                     <button
-                      onClick={() => setSettingsMaxMembersInput(members.length)}
+                      onClick={() => setSettingsMaxMembersInput(uniqueMembers.length)}
                       className="px-2 py-1 bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 rounded-lg text-[10px] font-black hover:underline"
                     >
-                      Set to {members.length}
+                      Set to {uniqueMembers.length}
                     </button>
                   )}
                 </div>
@@ -16943,11 +17067,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  min={Math.max(2, members.length)}
+                  min={Math.max(2, uniqueMembers.length)}
                   max="50"
                   value={settingsMaxMembersInput}
                   onChange={e => setSettingsMaxMembersInput(e.target.value)}
-                  onBlur={() => setSettingsMaxMembersInput(String(Math.max(members.length || 2, Number(settingsMaxMembersInput) || 2)))}
+                  onBlur={() => setSettingsMaxMembersInput(String(Math.max(uniqueMembers.length || 2, Number(settingsMaxMembersInput) || 2)))}
                   disabled={!isHost}
                   className={`flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 ${!isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
                 />
@@ -16958,8 +17082,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       if (userRoomId) {
                         try {
                           const newLimit = Number(settingsMaxMembersInput) || 6;
-                          if (newLimit < members.length) {
-                            triggerToast(`Cannot set limit to ${newLimit}. Room currently has ${members.length} members. Set limit to at least ${members.length} or remove a member.`);
+                          if (newLimit < uniqueMembers.length) {
+                            triggerToast(`Cannot set limit to ${newLimit}. Room currently has ${uniqueMembers.length} members. Set limit to at least ${uniqueMembers.length} or remove a member.`);
                             return;
                           }
                           const { error: updateError } = await supabase

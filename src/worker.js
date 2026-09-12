@@ -55,6 +55,27 @@ export default {
           try { await env.DB.prepare("ALTER TABLE rooms ADD COLUMN room_mode TEXT DEFAULT 'split'").run(); } catch (e) {}
           try { await env.DB.prepare("ALTER TABLE rooms ADD COLUMN co_host_uid TEXT").run(); } catch (e) {}
           try { await env.DB.prepare("ALTER TABLE members ADD COLUMN individual_budget REAL DEFAULT 2000").run(); } catch (e) {}
+
+          // Self-healing: Deduplicate any duplicate members per room (preserving host)
+          try {
+            const allMems = await env.DB.prepare("SELECT * FROM members ORDER BY CASE WHEN role = 'host' THEN 0 ELSE 1 END, joined_at ASC").all();
+            if (allMems && allMems.results) {
+              const seenKeys = new Set();
+              for (const m of allMems.results) {
+                const normEmail = m.email ? m.email.trim().toLowerCase() : '';
+                const uidKey = m.uid ? `${m.room_id}_uid_${m.uid}` : null;
+                const emailKey = normEmail ? `${m.room_id}_email_${normEmail}` : null;
+                if ((uidKey && seenKeys.has(uidKey)) || (emailKey && seenKeys.has(emailKey))) {
+                  await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(m.id).run();
+                } else {
+                  if (uidKey) seenKeys.add(uidKey);
+                  if (emailKey) seenKeys.add(emailKey);
+                }
+              }
+            }
+          } catch (e) {}
+
+          try { await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_members_room_uid ON members(room_id, uid)").run(); } catch (e) {}
           return Response.json({ status: "ok", message: "Schema migration complete." }, { headers: corsHeaders });
         } catch (err) {
           return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
@@ -152,8 +173,9 @@ export default {
 
           const { results } = await env.DB.prepare(sql).bind(...params).all();
 
-          // Resolve rooms join on members table
+          // Resolve rooms join on members table & deduplicate per room (preserving host status)
           if (table === "members") {
+            const deduplicated = [];
             for (const row of results) {
               if (row.room_id) {
                 const room = await env.DB.prepare("SELECT name, monthly_budget FROM rooms WHERE id = ?").bind(row.room_id).first();
@@ -161,7 +183,36 @@ export default {
               } else {
                 row.rooms = null;
               }
+
+              const normEmail = row.email ? row.email.trim().toLowerCase() : null;
+              const normUid = row.uid || null;
+              const normNick = (row.nickname && row.nickname.toLowerCase() !== 'roommate' && row.nickname.toLowerCase() !== 'you') ? row.nickname.trim().toLowerCase() : null;
+
+              const existingIdx = deduplicated.findIndex(d => 
+                d.room_id === row.room_id && (
+                  (normUid && d.uid === normUid) ||
+                  (normEmail && d.email && d.email.trim().toLowerCase() === normEmail) ||
+                  (normNick && d.nickname && d.nickname.trim().toLowerCase() === normNick)
+                )
+              );
+
+              if (existingIdx !== -1) {
+                // Merge duplicates: preserve host role and populated metadata
+                if (row.role === 'host') {
+                  deduplicated[existingIdx] = { ...deduplicated[existingIdx], ...row, role: 'host' };
+                } else {
+                  deduplicated[existingIdx] = {
+                    ...row,
+                    ...deduplicated[existingIdx],
+                    photo_url: deduplicated[existingIdx].photo_url || row.photo_url,
+                    email: deduplicated[existingIdx].email || row.email
+                  };
+                }
+              } else {
+                deduplicated.push(row);
+              }
             }
+            return Response.json({ data: deduplicated }, { headers: corsHeaders });
           }
 
           // Parse JSON fields
@@ -213,6 +264,33 @@ export default {
 
             if (!row.id && ["transactions", "receipts", "members", "rooms", "users"].includes(table)) {
               row.id = crypto.randomUUID();
+            }
+
+            if (table === "members" && row.room_id) {
+              const normEmail = row.email ? row.email.trim().toLowerCase() : '';
+              let existingMember = null;
+              if (normEmail) {
+                existingMember = await env.DB.prepare(
+                  "SELECT * FROM members WHERE room_id = ? AND (uid = ? OR LOWER(email) = ?)"
+                ).bind(row.room_id, row.uid || '', normEmail).first();
+              } else {
+                existingMember = await env.DB.prepare(
+                  "SELECT * FROM members WHERE room_id = ? AND uid = ?"
+                ).bind(row.room_id, row.uid || '').first();
+              }
+
+              if (existingMember) {
+                // Update existing record instead of inserting duplicate
+                const merged = { ...existingMember, ...row };
+                if (existingMember.role === 'host') merged.role = 'host';
+                merged.id = existingMember.id;
+                const keys = Object.keys(merged).filter(k => k !== "id" && k !== "room_id").filter(isValidCol);
+                const setClause = keys.map(k => `${k} = ?`).join(", ");
+                const values = keys.map(k => typeof merged[k] === "object" ? JSON.stringify(merged[k]) : merged[k]);
+                await env.DB.prepare(`UPDATE members SET ${setClause} WHERE id = ?`).bind(...values, existingMember.id).run();
+                insertResults.push(merged);
+                continue;
+              }
             }
 
             if (table === "receipts" && row.image_url) {
@@ -346,7 +424,16 @@ export default {
 
             let existing = null;
             if (table === "members") {
-              existing = await env.DB.prepare("SELECT * FROM members WHERE room_id = ? AND uid = ?").bind(row.room_id, row.uid).first();
+              const normEmail = row.email ? row.email.trim().toLowerCase() : '';
+              if (normEmail) {
+                existing = await env.DB.prepare(
+                  "SELECT * FROM members WHERE room_id = ? AND (uid = ? OR LOWER(email) = ?)"
+                ).bind(row.room_id, row.uid || '', normEmail).first();
+              } else {
+                existing = await env.DB.prepare(
+                  "SELECT * FROM members WHERE room_id = ? AND uid = ?"
+                ).bind(row.room_id, row.uid || '').first();
+              }
             } else if (row.id) {
               existing = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(row.id).first();
             } else if (row.uid) {
@@ -357,7 +444,10 @@ export default {
 
             if (existing) {
               // Update
-              const keys = Object.keys(row).filter(k => k !== "id" && k !== "uid" && k !== "room_id" && k !== "key").filter(isValidCol);
+              if (table === "members" && existing.role === "host") {
+                row.role = "host";
+              }
+              const keys = Object.keys(row).filter(k => k !== "id" && k !== "room_id" && k !== "key").filter(isValidCol);
               if (keys.length > 0) {
                 const setClause = keys.map(k => `${k} = ?`).join(", ");
                 const values = keys.map(k => typeof row[k] === "object" ? JSON.stringify(row[k]) : row[k]);
@@ -365,8 +455,8 @@ export default {
                 let updateParams = [...values];
 
                 if (table === "members") {
-                  sql += ` WHERE room_id = ? AND uid = ?`;
-                  updateParams.push(row.room_id, row.uid);
+                  sql += ` WHERE id = ?`;
+                  updateParams.push(existing.id);
                 } else if (row.id) {
                   sql += ` WHERE id = ?`;
                   updateParams.push(row.id);
