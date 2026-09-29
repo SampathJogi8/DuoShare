@@ -729,6 +729,10 @@ export default function App() {
     return localStorage.getItem('enableMemberBudgets') !== 'false';
   });
   const [isQuotaMode, setIsQuotaMode] = useState(false);
+  const [roomOperatingMode, setRoomOperatingMode] = useState(() => {
+    return typeof window !== 'undefined' ? (localStorage.getItem('tallyin_room_mode') || 'split') : 'split';
+  });
+  const isTripRoomMode = (roomOperatingMode === 'trip' || userRoomId === 'TL-WFHP-5508');
   const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
   const [activeReceiptZoom, setActiveReceiptZoom] = useState(null);
   const [activeReceiptImageIndex, setActiveReceiptImageIndex] = useState(0);
@@ -846,6 +850,13 @@ export default function App() {
     window.addEventListener('popstate', handleUrlCheck);
     return () => window.removeEventListener('popstate', handleUrlCheck);
   }, []);
+
+  // Auto-switch to Trip Splitter when entering a room exclusively dedicated to trips
+  useEffect(() => {
+    if (isTripRoomMode && (currentView === 'home' || currentView === 'overview')) {
+      setCurrentView('trips');
+    }
+  }, [userRoomId, isTripRoomMode]);
 
   const [isSystemMaintenanceActive, setIsSystemMaintenanceActive] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -3546,9 +3557,11 @@ export default function App() {
       }
 
       // Pre-existing rooms default to 'split' mode cleanly
-      const activeMode = dbMode || localStorage.getItem(`roomMode_${roomId}`) || 'split';
+      const activeMode = dbMode || localStorage.getItem(`roomMode_${roomId}`) || (roomId === 'TL-WFHP-5508' ? 'trip' : 'split');
       setIsQuotaMode(activeMode === 'quota');
+      setRoomOperatingMode(activeMode);
       localStorage.setItem('isQuotaMode', activeMode === 'quota' ? 'true' : 'false');
+      localStorage.setItem('tallyin_room_mode', activeMode);
       localStorage.setItem(`roomMode_${roomId}`, activeMode);
 
       // Do not overwrite draft editing inputs if Manage Room modal is currently open or user is editing room name
@@ -14181,6 +14194,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <h2 className="font-black text-xs sm:text-sm text-[#0F172A] dark:text-slate-100 leading-tight tracking-tight">
                     {roomName}
                   </h2>
+                  {isTripRoomMode && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/30 shadow-xs select-none">
+                      <Compass className="w-2.5 h-2.5 text-emerald-600 dark:text-[#A3E635]" />
+                      <span>Trip Splitter Space</span>
+                    </span>
+                  )}
                   {isGenesisRoom && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-emerald-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-xs select-none">
                       <Crown className="w-2.5 h-2.5 text-amber-500 fill-amber-500/30" />
@@ -17437,22 +17456,31 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-1.5">
-                    <span>{isQuotaMode ? '⚡' : '⚖️'}</span>
+                    <span>{roomOperatingMode === 'trip' ? '🌴' : isQuotaMode ? '⚡' : '⚖️'}</span>
                     <span>Room Operating Mode</span>
                   </p>
                   <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
-                    {isQuotaMode 
-                      ? 'Quota & Excess Pool Mode: Track individual monthly budgets & excess pool' 
-                      : 'Classic Equal Split Mode: Standard bill splitting with 1-tap net settlements'}
+                    {roomOperatingMode === 'trip'
+                      ? 'Trip Splitter Exclusive: Tailored exclusively for vacation expenses, debt settlements & trip budgets'
+                      : isQuotaMode 
+                        ? 'Quota & Excess Pool Mode: Track individual monthly budgets & excess pool' 
+                        : 'Classic Equal Split Mode: Standard bill splitting with 1-tap net settlements'}
                   </p>
                 </div>
                 {isHost && (
                   <button
                     type="button"
                     onClick={async () => {
-                      const newMode = isQuotaMode ? 'split' : 'quota';
+                      const currentMode = roomOperatingMode || (isQuotaMode ? 'quota' : 'split');
+                      let newMode = 'split';
+                      if (currentMode === 'split') newMode = 'quota';
+                      else if (currentMode === 'quota') newMode = 'trip';
+                      else newMode = 'split';
+
                       setIsQuotaMode(newMode === 'quota');
+                      setRoomOperatingMode(newMode);
                       localStorage.setItem('isQuotaMode', newMode === 'quota' ? 'true' : 'false');
+                      localStorage.setItem('tallyin_room_mode', newMode);
                       localStorage.setItem(`roomMode_${userRoomId}`, newMode);
                       if (userRoomId) {
                         try {
@@ -17462,20 +17490,23 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             value: JSON.stringify({ mode: newMode }),
                             created_at: new Date().toISOString()
                           }, { onConflict: 'key' });
-                          await logActivity('settings', `${userNickname} switched room mode to ${newMode === 'quota' ? 'Quota & Excess Pool Mode' : 'Classic Equal Split Mode'}`);
-                          triggerToast(`Switched to ${newMode === 'quota' ? 'Quota & Excess Pool Mode ⚡' : 'Classic Equal Split Mode ⚖️'}`);
+                          const label = newMode === 'trip' ? 'Trip Splitter Exclusive 🌴' : newMode === 'quota' ? 'Quota & Excess Pool Mode ⚡' : 'Classic Equal Split Mode ⚖️';
+                          await logActivity('settings', `${userNickname} switched room mode to ${label}`);
+                          triggerToast(`Switched to ${label}`);
                         } catch (e) {
                           console.warn("Error updating room mode:", e);
                         }
                       }
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ${
-                      isQuotaMode
-                        ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
-                        : 'bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 hover:opacity-90'
+                      roomOperatingMode === 'trip'
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                        : isQuotaMode
+                          ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                          : 'bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 hover:opacity-90'
                     }`}
                   >
-                    <span>{isQuotaMode ? '⚡ Quota Mode ON' : '⚖️ Split Mode (Quota OFF)'}</span>
+                    <span>{roomOperatingMode === 'trip' ? '🌴 Trip Mode' : isQuotaMode ? '⚡ Quota Mode' : '⚖️ Split Mode'}</span>
                   </button>
                 )}
               </div>

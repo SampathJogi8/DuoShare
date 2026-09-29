@@ -174,8 +174,60 @@ export default function TripExpenseManager({
   }, [trips]);
 
   // Selected Trip View
-  const [selectedTripId, setSelectedTripId] = useState(null);
+  const [selectedTripId, setSelectedTripId] = useState(() => {
+    if (typeof window !== 'undefined' && userRoomId === 'TL-WFHP-5508') {
+      return `trip-room-${userRoomId}`;
+    }
+    return null;
+  });
   const [tripTab, setTripTab] = useState('expenses'); // 'expenses' | 'settlement' | 'planner' | 'companions'
+
+  // Auto-provision and select room trip if room is exclusively for trip splitter (TL-WFHP-5508)
+  useEffect(() => {
+    if (userRoomId === 'TL-WFHP-5508') {
+      const roomTripId = `trip-room-${userRoomId}`;
+      setTrips(prev => {
+        const exists = prev.find(t => t.id === roomTripId || t.roomId === userRoomId);
+        if (!exists) {
+          const companions = [
+            { id: 'c-host', name: userNickname || 'You', isHost: true }
+          ];
+          (members || []).forEach((m, idx) => {
+            const name = m.nickname || m.name;
+            if (name && name.toLowerCase() !== (userNickname || 'You').toLowerCase()) {
+              companions.push({ id: `c-rm-${idx}`, name, isHost: false });
+            }
+          });
+
+          const newRoomTrip = {
+            id: roomTripId,
+            roomId: userRoomId,
+            title: 'Yarcaud Vacation Trip',
+            destination: 'Yercaud, Tamil Nadu',
+            startDate: '',
+            endDate: '',
+            status: 'Ongoing',
+            budget: 10000,
+            currency: '₹',
+            companions,
+            planner: {
+              stay: 4000,
+              travel: 2500,
+              food: 2000,
+              activities: 1000,
+              fuel: 500
+            },
+            expenses: [],
+            settlements: []
+          };
+          return [newRoomTrip, ...prev];
+        }
+        return prev;
+      });
+
+      setSelectedTripId(roomTripId);
+    }
+  }, [userRoomId, userNickname, members]);
 
   // Filter & Search states
   const [tripStatusFilter, setTripStatusFilter] = useState('all'); // 'all' | 'Ongoing' | 'Planning' | 'Completed'
