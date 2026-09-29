@@ -4611,22 +4611,31 @@ export default function App() {
       fetchActivityLogs(userRoomId);
     }
 
-    const triggerInstantRoomSync = () => {
+    let isRoomSyncInFlight = false;
+    const triggerInstantRoomSync = async () => {
       if (typeof window !== 'undefined' && navigator.onLine && userRoomId) {
-        fetchTransactions(userRoomId);
-        fetchReceipts(userRoomId);
-        fetchRoomSettings(userRoomId);
-        fetchMembers(userRoomId);
-        fetchActivityLogs(userRoomId);
+        if (isRoomSyncInFlight) return;
+        isRoomSyncInFlight = true;
+        try {
+          await Promise.allSettled([
+            fetchTransactions(userRoomId),
+            fetchReceipts(userRoomId),
+            fetchRoomSettings(userRoomId),
+            fetchMembers(userRoomId),
+            fetchActivityLogs(userRoomId)
+          ]);
+        } finally {
+          isRoomSyncInFlight = false;
+        }
       }
     };
 
-    // Continuous Realtime Heartbeat Loop across devices (2.5s interval for rock-solid sync)
+    // Ultra-low latency Realtime Heartbeat Loop (sub-second 850ms interval for near-instant device-to-device sync)
     const syncInterval = setInterval(() => {
       if (typeof window !== 'undefined' && navigator.onLine && document.visibilityState === 'visible' && userRoomId) {
         triggerInstantRoomSync();
       }
-    }, 2500);
+    }, 850);
 
     const handleWindowFocusRoomSync = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
