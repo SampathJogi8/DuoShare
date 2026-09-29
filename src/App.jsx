@@ -742,7 +742,9 @@ export default function App() {
     tripSplitterMode: 'scheduled', // 'scheduled' | 'enabled' | 'beta_only' | 'disabled'
     aiOcrMode: 'enabled',
     quotaMode: 'enabled',
-    inviteCampaignActive: true,
+    inviteCampaignActive: false, // Default off until explicitly enabled by Admin
+    inviteAudience: 'all', // 'all' | 'specific' | 'disabled'
+    inviteTargetEmails: [],
     inviteMessage: 'Are you willing to participate in feature testing of the new build?',
     betaUsers: ['tallyin.alerts@gmail.com'],
     betaRooms: ['TL-WFHP-5508']
@@ -971,8 +973,27 @@ export default function App() {
   useEffect(() => {
     if (!currentCleanUserEmail) return;
     if (!isFeatureInBetaPhase) return;
-    if (isBetaAuthorizedByAdmin) return;
-    if (systemBetaSettings.inviteCampaignActive === false) return;
+    if (isBetaAuthorizedByAdmin) {
+      setShowBetaInvitePrompt(false);
+      return;
+    }
+
+    // Check if campaign is disabled or paused
+    if (systemBetaSettings.inviteCampaignActive === false || systemBetaSettings.inviteAudience === 'disabled') {
+      setShowBetaInvitePrompt(false);
+      return;
+    }
+
+    // Check audience targeting: if 'specific', user email MUST be in inviteTargetEmails
+    if (systemBetaSettings.inviteAudience === 'specific') {
+      const targets = Array.isArray(systemBetaSettings.inviteTargetEmails)
+        ? systemBetaSettings.inviteTargetEmails.map(e => String(e).trim().toLowerCase())
+        : [];
+      if (!targets.includes(currentCleanUserEmail)) {
+        setShowBetaInvitePrompt(false);
+        return;
+      }
+    }
 
     try {
       const declined = sessionStorage.getItem('tallyin_beta_invite_declined');
@@ -989,7 +1010,7 @@ export default function App() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [currentCleanUserEmail, isFeatureInBetaPhase, isBetaAuthorizedByAdmin, systemBetaSettings.inviteCampaignActive, betaApplications]);
+  }, [currentCleanUserEmail, isFeatureInBetaPhase, isBetaAuthorizedByAdmin, systemBetaSettings.inviteCampaignActive, systemBetaSettings.inviteAudience, systemBetaSettings.inviteTargetEmails, betaApplications]);
 
   // Navigation & Admin Portal States
   const [currentView, setCurrentView] = useState(() => {

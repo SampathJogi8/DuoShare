@@ -432,6 +432,7 @@ export default function AdminDashboard({
   });
   const [newBetaEmailInput, setNewBetaEmailInput] = useState('');
   const [newBetaRoomInput, setNewBetaRoomInput] = useState('');
+  const [newInviteTargetInput, setNewInviteTargetInput] = useState('');
   const [isSavingBetaSettings, setIsSavingBetaSettings] = useState(false);
   const [isProcessingAppId, setIsProcessingAppId] = useState(null);
 
@@ -442,20 +443,28 @@ export default function AdminDashboard({
   }, [systemBetaSettings]);
 
   const handleSaveBetaSettings = async (updatedSettings = betaSettings) => {
+    // 1. Optimistic instant local update
+    setBetaSettings(updatedSettings);
+    if (setSystemBetaSettings) setSystemBetaSettings(updatedSettings);
+    try {
+      localStorage.setItem('tallyin_beta_feature_settings', JSON.stringify(updatedSettings));
+    } catch (e) {}
+
     setIsSavingBetaSettings(true);
     try {
-      // 1. Persist to system_settings in Supabase
-      const { error } = await supabase
-        .from('system_settings')
-        .upsert({
-          key: 'system_feature_flags_and_beta',
-          value: JSON.stringify(updatedSettings),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'key' });
+      // 2. Persist to system_settings in Supabase AND Cloudflare D1
+      const payload = {
+        key: 'system_feature_flags_and_beta',
+        value: JSON.stringify(updatedSettings),
+        updated_at: new Date().toISOString()
+      };
 
-      if (error) throw error;
+      await Promise.allSettled([
+        supabase.from('system_settings').upsert(payload, { onConflict: 'key' }),
+        realSupabase.from('system_settings').upsert(payload, { onConflict: 'key' })
+      ]);
 
-      // 2. Broadcast live to all connected devices via system_admin_channel
+      // 3. Broadcast live to all connected devices via system_admin_channel
       const sysChan = supabase.channel('system_admin_channel');
       sysChan.send({
         type: 'broadcast',
@@ -463,19 +472,43 @@ export default function AdminDashboard({
         payload: { settings: updatedSettings }
       }).catch(() => {});
 
-      // 3. Update local state
-      setBetaSettings(updatedSettings);
-      if (setSystemBetaSettings) setSystemBetaSettings(updatedSettings);
-      localStorage.setItem('tallyin_beta_feature_settings', JSON.stringify(updatedSettings));
-
-      if (triggerToast) triggerToast('✓ Beta & Feature Flags saved and broadcasted live to all users!');
-      logAuditAction('BETA_UPDATE', `Updated feature flags: TripSplitter=${updatedSettings.tripSplitterMode}, GlobalBeta=${updatedSettings.globalBetaMode}, Testers=${updatedSettings.betaUsers?.length}`);
+      if (triggerToast) triggerToast('✓ Beta & Feature Flags updated live!');
+      logAuditAction('BETA_UPDATE', `Updated feature flags: TripSplitter=${updatedSettings.tripSplitterMode}, Campaign=${updatedSettings.inviteCampaignActive !== false}, Testers=${updatedSettings.betaUsers?.length}`);
     } catch (err) {
       console.error('Failed to save beta settings:', err);
-      if (triggerToast) triggerToast(`⚠️ Failed to save feature flags: ${err.message}`);
+      if (triggerToast) triggerToast(`⚠️ Notice: Saved locally. Sync notice: ${err.message}`);
     } finally {
       setIsSavingBetaSettings(false);
     }
+  };
+
+  const handleRemoveBetaUser = (emailToRemove) => {
+    if (!emailToRemove) return;
+    const cleanEmail = emailToRemove.trim().toLowerCase();
+    const currentUsers = Array.isArray(betaSettings.betaUsers) ? betaSettings.betaUsers : [];
+    const updatedUsers = currentUsers.filter(e => String(e).trim().toLowerCase() !== cleanEmail);
+    const next = { ...betaSettings, betaUsers: updatedUsers };
+
+    // If this user has an application, mark it as REJECTED
+    if (Array.isArray(betaApplications) && betaApplications.length > 0) {
+      const updatedApps = betaApplications.map(a => 
+        String(a.email || '').trim().toLowerCase() === cleanEmail ? { ...a, status: 'REJECTED' } : a
+      );
+      handleUpdateBetaApplications(updatedApps);
+    }
+
+    handleSaveBetaSettings(next);
+    if (triggerToast) triggerToast(`Removed ${cleanEmail} from Beta`);
+  };
+
+  const handleRemoveBetaRoom = (roomToRemove) => {
+    if (!roomToRemove) return;
+    const cleanRoom = roomToRemove.trim().toUpperCase();
+    const currentRooms = Array.isArray(betaSettings.betaRooms) ? betaSettings.betaRooms : [];
+    const updatedRooms = currentRooms.filter(r => String(r).trim().toUpperCase() !== cleanRoom);
+    const next = { ...betaSettings, betaRooms: updatedRooms };
+    handleSaveBetaSettings(next);
+    if (triggerToast) triggerToast(`Removed room ${cleanRoom} from Beta`);
   };
 
   const handleUpdateBetaApplications = async (updatedApps) => {
@@ -9638,29 +9671,217 @@ NOTIFY pgrst, 'reload schema';`;
             
             {/* Card A: Invite Campaign Broadcast Configuration */}
             <div className="lg:col-span-5 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-4 shadow-sm flex flex-col justify-between">
-              <div className="space-y-3">
+              <div className="space-y-3.5">
+                {/* Header & Status Indicator */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635]">
+                    <span className={`p-1.5 rounded-lg ${
+                      betaSettings.inviteCampaignActive === false
+                        ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                        : betaSettings.inviteAudience === 'specific'
+                        ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                        : 'bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635]'
+                    }`}>
                       <Radio className="w-4 h-4" />
                     </span>
                     <h5 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">
                       User Invite Campaign
                     </h5>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                    betaSettings.inviteCampaignActive !== false
-                      ? 'bg-emerald-500/20 text-emerald-800 dark:text-[#A3E635]'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                  }`}>
-                    {betaSettings.inviteCampaignActive !== false ? 'Active' : 'Paused'}
-                  </span>
+
+                  {/* Prominent ON / OFF Switch */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const isCurrentlyOff = betaSettings.inviteCampaignActive === false;
+                        const next = { 
+                          ...betaSettings, 
+                          inviteCampaignActive: isCurrentlyOff,
+                          inviteAudience: isCurrentlyOff ? (betaSettings.inviteAudience || 'all') : 'disabled'
+                        };
+                        handleSaveBetaSettings(next);
+                      }}
+                      className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
+                        betaSettings.inviteCampaignActive !== false
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-500/30'
+                      }`}
+                      title="Click to toggle Invite Campaign On / Off"
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${betaSettings.inviteCampaignActive !== false ? 'bg-white animate-ping' : 'bg-rose-500'}`} />
+                      <span>{betaSettings.inviteCampaignActive !== false ? 'BROADCAST ON' : 'DISABLED (OFF)'}</span>
+                    </button>
+                  </div>
                 </div>
 
                 <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                  When active, non-beta users receive an interactive prompt asking if they want to participate in feature testing. Submitted requests arrive in the review queue below for admin authorization.
+                  Control whether non-beta users receive the interactive testing invitation prompt. Turn it off to disable completely, or target specific users only.
                 </p>
 
+                {/* Audience Selector: All Users vs Specific Users */}
+                <div className="space-y-2 pt-1">
+                  <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider flex items-center justify-between">
+                    <span>Invite Audience Target:</span>
+                    <span className="font-semibold lowercase text-slate-400">
+                      {betaSettings.inviteCampaignActive === false 
+                        ? 'disabled' 
+                        : betaSettings.inviteAudience === 'specific' 
+                        ? `${betaSettings.inviteTargetEmails?.length || 0} targeted` 
+                        : 'all active users'}
+                    </span>
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = { ...betaSettings, inviteCampaignActive: true, inviteAudience: 'all' };
+                        handleSaveBetaSettings(next);
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        betaSettings.inviteCampaignActive !== false && (betaSettings.inviteAudience === 'all' || !betaSettings.inviteAudience)
+                          ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-500 ring-1 ring-emerald-500/30 text-emerald-900 dark:text-emerald-200'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black">🌐 All Users</span>
+                        {betaSettings.inviteCampaignActive !== false && (betaSettings.inviteAudience === 'all' || !betaSettings.inviteAudience) && (
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Broadcast to everyone who is not yet enrolled in Beta.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = { ...betaSettings, inviteCampaignActive: true, inviteAudience: 'specific' };
+                        handleSaveBetaSettings(next);
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        betaSettings.inviteCampaignActive !== false && betaSettings.inviteAudience === 'specific'
+                          ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-500 ring-1 ring-amber-500/30 text-amber-900 dark:text-amber-200'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black">🎯 Specific Users</span>
+                        {betaSettings.inviteCampaignActive !== false && betaSettings.inviteAudience === 'specific' && (
+                          <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Only designated email addresses will receive the invite.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* If Specific Users is selected, show target emails manager */}
+                {betaSettings.inviteAudience === 'specific' && betaSettings.inviteCampaignActive !== false && (
+                  <div className="p-3.5 rounded-xl bg-[#F8FAF9] dark:bg-slate-800/60 border border-[#E3E8E3] dark:border-slate-700 space-y-2.5 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
+                        Targeted Invitees ({betaSettings.inviteTargetEmails?.length || 0})
+                      </span>
+                      <span className="text-[10px] text-slate-400">Only these users will see invite</span>
+                    </div>
+
+                    {/* Input to add target email */}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const clean = (newInviteTargetInput || '').trim().toLowerCase();
+                        if (!clean || !clean.includes('@')) return;
+                        const currentTargets = Array.isArray(betaSettings.inviteTargetEmails) ? betaSettings.inviteTargetEmails : [];
+                        if (currentTargets.map(e => e.toLowerCase()).includes(clean)) return;
+                        const next = { ...betaSettings, inviteTargetEmails: [...currentTargets, clean] };
+                        setNewInviteTargetInput('');
+                        handleSaveBetaSettings(next);
+                      }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <input
+                        type="email"
+                        value={newInviteTargetInput}
+                        onChange={(e) => setNewInviteTargetInput(e.target.value)}
+                        placeholder="Invite user email (e.g. user@example.com)..."
+                        className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
+                      />
+                      <button
+                        type="submit"
+                        className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition-all shrink-0 cursor-pointer"
+                      >
+                        Add
+                      </button>
+                    </form>
+
+                    {/* Quick add suggestions */}
+                    {allRegisteredUsers?.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                        <span className="text-[9px] text-slate-400 font-bold">Quick Target:</span>
+                        {allRegisteredUsers.slice(0, 5).map(u => {
+                          const emailClean = (u.email || '').toLowerCase();
+                          if (!emailClean) return null;
+                          const isAlready = (betaSettings.inviteTargetEmails || []).map(e => e.toLowerCase()).includes(emailClean);
+                          if (isAlready) return null;
+                          return (
+                            <button
+                              key={emailClean}
+                              type="button"
+                              onClick={() => {
+                                const currentTargets = Array.isArray(betaSettings.inviteTargetEmails) ? betaSettings.inviteTargetEmails : [];
+                                const next = { ...betaSettings, inviteTargetEmails: [...currentTargets, emailClean] };
+                                handleSaveBetaSettings(next);
+                              }}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:border-amber-400 transition-all cursor-pointer"
+                            >
+                              + {u.name || emailClean.split('@')[0]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Chips list of target emails */}
+                    <div className="flex items-center gap-1.5 flex-wrap max-h-28 overflow-y-auto pt-1">
+                      {(betaSettings.inviteTargetEmails || []).length === 0 ? (
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400/80 italic">
+                          ⚠️ No specific users targeted yet. Add emails above to send invitations.
+                        </p>
+                      ) : (
+                        (betaSettings.inviteTargetEmails || []).map((targetEmail) => (
+                          <span
+                            key={targetEmail}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                          >
+                            <span>{targetEmail}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = {
+                                  ...betaSettings,
+                                  inviteTargetEmails: (betaSettings.inviteTargetEmails || []).filter(e => e.toLowerCase() !== targetEmail.toLowerCase())
+                                };
+                                handleSaveBetaSettings(next);
+                              }}
+                              className="text-slate-400 hover:text-rose-500 p-0.5 transition-colors cursor-pointer"
+                              title="Remove target"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Prompt Question Input */}
                 <div className="space-y-1.5 pt-1">
                   <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider">
                     Invite Prompt Question:
@@ -9677,20 +9898,26 @@ NOTIFY pgrst, 'reload schema';`;
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-3 pt-3 border-t border-[#E3E8E3] dark:border-slate-800">
+              {/* Footer Controls */}
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-[#E3E8E3] dark:border-slate-800 mt-2">
                 <button
                   type="button"
                   onClick={() => {
-                    const next = { ...betaSettings, inviteCampaignActive: betaSettings.inviteCampaignActive === false ? true : false };
+                    const next = { 
+                      ...betaSettings, 
+                      inviteCampaignActive: betaSettings.inviteCampaignActive === false ? true : false,
+                      inviteAudience: betaSettings.inviteCampaignActive === false ? (betaSettings.inviteAudience || 'all') : 'disabled'
+                    };
                     handleSaveBetaSettings(next);
                   }}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                     betaSettings.inviteCampaignActive !== false
                       ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20'
                       : 'bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635] hover:bg-emerald-500/25'
                   }`}
                 >
-                  {betaSettings.inviteCampaignActive !== false ? 'Pause Broadcast' : 'Resume Broadcast'}
+                  <Power className="w-3.5 h-3.5" />
+                  <span>{betaSettings.inviteCampaignActive !== false ? 'Disable Campaign' : 'Enable Campaign'}</span>
                 </button>
 
                 <button
@@ -9700,7 +9927,7 @@ NOTIFY pgrst, 'reload schema';`;
                   className="px-4 py-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:opacity-90 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  <span>Update Prompt</span>
+                  <span>Save Settings</span>
                 </button>
               </div>
             </div>
@@ -9941,14 +10168,16 @@ NOTIFY pgrst, 'reload schema';`;
                         <span className="truncate font-semibold text-slate-700 dark:text-slate-200">{email}</span>
                       </div>
                       <button
-                        onClick={() => {
-                          const next = { ...betaSettings, betaUsers: betaSettings.betaUsers.filter(e => e.toLowerCase() !== email.toLowerCase()) };
-                          handleSaveBetaSettings(next);
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveBetaUser(email);
                         }}
-                        className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer shrink-0"
+                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer shrink-0"
                         title="Remove from Beta"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                       </button>
                     </div>
                   ))}
@@ -10016,14 +10245,16 @@ NOTIFY pgrst, 'reload schema';`;
                     </span>
                   )}
                   <button
-                    onClick={() => {
-                      const next = { ...betaSettings, betaRooms: betaSettings.betaRooms.filter(r => r.toUpperCase() !== roomId.toUpperCase()) };
-                      handleSaveBetaSettings(next);
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleRemoveBetaRoom(roomId);
                     }}
-                    className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors cursor-pointer"
+                    className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
                     title="Remove Room from Beta"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-3 h-3 text-rose-500" />
                   </button>
                 </div>
               ))}
