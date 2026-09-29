@@ -215,13 +215,25 @@ export default function AdminDashboard({
   allowedMaintenanceAccounts = [SUPER_ADMIN_EMAIL],
   setAllowedMaintenanceAccounts,
   coAdmins = [],
-  setCoAdmins
+  setCoAdmins,
+  systemBetaSettings,
+  setSystemBetaSettings,
+  isAdminPasskeyUnlocked,
+  setIsAdminPasskeyUnlocked
 }) {
-  const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency'
+  const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency' | 'beta_releases'
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const currentEmailClean = (user?.email || '').trim().toLowerCase();
   const currentUidClean = (user?.id || user?.uid || '').trim().toLowerCase();
-  const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
+
+  const [isAdminSessionUnlocked, setIsAdminSessionUnlocked] = useState(() => {
+    return Boolean(isAdminPasskeyUnlocked) || (typeof window !== 'undefined' ? sessionStorage.getItem('tallyin_admin_session_unlocked') === 'true' : false);
+  });
+  const [adminPasscodeInput, setAdminPasscodeInput] = useState('');
+  const [adminPasscodeError, setAdminPasscodeError] = useState('');
+  const [showPasscode, setShowPasscode] = useState(false);
+
+  const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase() || isAdminSessionUnlocked;
 
   // Sync activeTab if initialTab prop changes
   useEffect(() => {
@@ -380,6 +392,7 @@ export default function AdminDashboard({
         database_studio: true,
         system_triggers: true,
         email_hub: true,
+        beta_releases: true,
       };
     }
     return {
@@ -397,8 +410,67 @@ export default function AdminDashboard({
       database_studio: false,     // Root Super Admin only
       system_triggers: false,     // Root Super Admin only
       email_hub: Boolean(currentCoAdminObj?.permissions?.email_hub ?? currentCoAdminObj?.permissions?.broadcasts),
+      beta_releases: Boolean(currentCoAdminObj?.permissions?.beta_releases ?? true),
     };
   }, [isSuperAdmin, currentCoAdminObj]);
+
+  // System Feature Flags & Beta Mode States
+  const [betaSettings, setBetaSettings] = useState(() => {
+    return systemBetaSettings || {
+      globalBetaMode: false,
+      tripSplitterMode: 'scheduled',
+      aiOcrMode: 'enabled',
+      quotaMode: 'enabled',
+      betaUsers: ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'],
+      betaRooms: ['TL-WFHP-5508']
+    };
+  });
+  const [newBetaEmailInput, setNewBetaEmailInput] = useState('');
+  const [newBetaRoomInput, setNewBetaRoomInput] = useState('');
+  const [isSavingBetaSettings, setIsSavingBetaSettings] = useState(false);
+
+  useEffect(() => {
+    if (systemBetaSettings) {
+      setBetaSettings(systemBetaSettings);
+    }
+  }, [systemBetaSettings]);
+
+  const handleSaveBetaSettings = async (updatedSettings = betaSettings) => {
+    setIsSavingBetaSettings(true);
+    try {
+      // 1. Persist to system_settings in Supabase
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert({
+          key: 'system_feature_flags_and_beta',
+          value: JSON.stringify(updatedSettings),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+
+      if (error) throw error;
+
+      // 2. Broadcast live to all connected devices via system_admin_channel
+      const sysChan = supabase.channel('system_admin_channel');
+      sysChan.send({
+        type: 'broadcast',
+        event: 'BETA_FEATURES_UPDATE',
+        payload: { settings: updatedSettings }
+      }).catch(() => {});
+
+      // 3. Update local state
+      setBetaSettings(updatedSettings);
+      if (setSystemBetaSettings) setSystemBetaSettings(updatedSettings);
+      localStorage.setItem('tallyin_beta_feature_settings', JSON.stringify(updatedSettings));
+
+      if (triggerToast) triggerToast('✓ Beta & Feature Flags saved and broadcasted live to all users!');
+      logAuditAction('BETA_UPDATE', `Updated feature flags: TripSplitter=${updatedSettings.tripSplitterMode}, GlobalBeta=${updatedSettings.globalBetaMode}, Testers=${updatedSettings.betaUsers?.length}`);
+    } catch (err) {
+      console.error('Failed to save beta settings:', err);
+      if (triggerToast) triggerToast(`⚠️ Failed to save feature flags: ${err.message}`);
+    } finally {
+      setIsSavingBetaSettings(false);
+    }
+  };
 
   // Co-Admin Management states
   const [newCoAdminEmail, setNewCoAdminEmail] = useState('');
@@ -4158,38 +4230,100 @@ export default function AdminDashboard({
     if (triggerToast) triggerToast(`Pin removed from room ${roomId}`);
   };
 
-  // Lock Screen if unauthenticated or expired
+  // Admin Passkey Login Screen if unauthenticated
   if (!isAuthorizedAdmin) {
+    const handleAdminPasscodeLogin = (e) => {
+      e?.preventDefault();
+      setAdminPasscodeError('');
+      const cleanInput = (adminPasscodeInput || '').trim();
+      if (!cleanInput) {
+        setAdminPasscodeError('Please enter the administrative master passkey.');
+        return;
+      }
+      // Master Passkey check (Case-insensitive)
+      if (cleanInput.toUpperCase() === 'TALLYIN-HQ-8888') {
+        sessionStorage.setItem('tallyin_admin_session_unlocked', 'true');
+        setIsAdminSessionUnlocked(true);
+        if (setIsAdminPasskeyUnlocked) setIsAdminPasskeyUnlocked(true);
+        if (triggerToast) triggerToast('🛡️ Admin Command Center Unlocked (Master Session)');
+      } else {
+        setAdminPasscodeError('Invalid administrative passkey. Please verify and try again.');
+      }
+    };
+
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-[#F0F4F1] dark:bg-slate-950 text-left font-sans animate-fade-in relative overflow-hidden">
-        <div className="w-full max-w-md hud-card rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative border border-rose-500/30 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto shadow-md">
-            <ShieldAlert className="w-7 h-7" />
+        <div className="w-full max-w-md hud-card rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative border border-[#1A3827]/20 dark:border-slate-800 text-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#1A3827] to-[#25573e] dark:from-[#A3E635] dark:to-emerald-500 text-white dark:text-slate-950 flex items-center justify-center mx-auto shadow-xl ring-4 ring-[#1A3827]/10 dark:ring-[#A3E635]/20">
+            <Shield className="w-8 h-8" />
           </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
-              {expiredCoAdminObj ? 'Co-Admin Clearance Expired' : 'Access Restricted'}
+
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/20">
+              <Key className="w-3 h-3" />
+              <span>Admin Authentication Required</span>
+            </div>
+            <h2 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
+              Tallyin HQ Command Center
             </h2>
-            {expiredCoAdminObj ? (
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                Your time-based Co-Admin clearance for <strong className="text-rose-600 dark:text-rose-400">{expiredCoAdminObj.email}</strong> expired on{' '}
-                <span className="font-bold text-slate-800 dark:text-slate-200">
-                  {new Date(expiredCoAdminObj.expiresAt).toLocaleString()}
-                </span>. Please contact the Super Administrator (<span className="font-bold text-slate-700 dark:text-slate-300">tallyin.alerts@gmail.com</span>) to request a time extension.
-              </p>
-            ) : (
-              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
-                The Admin Command Portal is restricted exclusively to authorized administrators (<span className="font-bold text-rose-600 dark:text-rose-400">tallyin.alerts@gmail.com</span>) and actively assigned Co-Admins.
-              </p>
-            )}
+            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
+              Sign in with your administrator master passkey or authorized root credentials to access system controls.
+            </p>
           </div>
-          <button
-            onClick={onExitAdmin}
-            className="w-full py-3 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hover:bg-[#255038] dark:hover:bg-[#b7f34c] font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Home className="w-4 h-4" />
-            <span>Return to App Dashboard</span>
-          </button>
+
+          {/* Admin Passcode Form */}
+          <form onSubmit={handleAdminPasscodeLogin} className="space-y-3.5 text-left pt-2">
+            <div>
+              <label className="block text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Master Administrative Passkey
+              </label>
+              <div className="relative">
+                <input
+                  type={showPasscode ? "text" : "password"}
+                  value={adminPasscodeInput}
+                  onChange={(e) => {
+                    setAdminPasscodeInput(e.target.value);
+                    if (adminPasscodeError) setAdminPasscodeError('');
+                  }}
+                  placeholder="Enter Master Passkey..."
+                  autoFocus
+                  className="w-full px-4 py-3 bg-[#F8FAF9] dark:bg-slate-800/80 border border-[#E3E8E3] dark:border-slate-700 rounded-xl text-sm font-mono text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#1A3827] dark:focus:border-[#A3E635] focus:ring-2 focus:ring-[#1A3827]/10 dark:focus:ring-[#A3E635]/20 transition-all pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasscode(!showPasscode)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+              </div>
+              {adminPasscodeError && (
+                <p className="text-xs font-bold text-rose-600 dark:text-rose-400 mt-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>{adminPasscodeError}</span>
+                </p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 bg-[#1A3827] hover:bg-[#255038] dark:bg-[#A3E635] dark:hover:bg-[#b7f34c] text-white dark:text-slate-950 font-black text-xs rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+            >
+              <Lock className="w-4 h-4" />
+              <span>Unlock Admin Console</span>
+            </button>
+          </form>
+
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={onExitAdmin}
+              className="w-full py-2.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <Home className="w-4 h-4" />
+              <span>Return to App Dashboard</span>
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -4404,6 +4538,13 @@ export default function AdminDashboard({
             {userPermissions.system_triggers && navItem('system_triggers', 'System Triggers', <Zap className="w-4 h-4 text-orange-500" />)}
             {(isSuperAdmin || userPermissions.maintenance_control) && navItem('security_audit', 'Security Audit', <ShieldCheck className="w-4 h-4 text-emerald-500" />)}
             {userPermissions.maintenance_control && navItem('maintenance', 'Maintenance Mode', <Power className="w-4 h-4 text-rose-500" />, isSystemMaintenanceActive ? 'ACTIVE' : null, 'bg-rose-500 text-white animate-pulse')}
+            {userPermissions.beta_releases && navItem(
+              'beta_releases',
+              'Beta & Feature Flags',
+              <Sparkles className="w-4 h-4 text-emerald-500" />,
+              betaSettings?.betaUsers?.length ? `${betaSettings.betaUsers.length} Testers` : (betaSettings?.globalBetaMode ? 'ALL' : 'BETA'),
+              'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-[#A3E635]'
+            )}
             {userPermissions.broadcasts && navItem('broadcast', 'Broadcast Center', <Radio className="w-4 h-4 text-purple-500" />)}
             {userPermissions.broadcasts && navItem('email', 'Email Hub', <Mail className="w-4 h-4 text-blue-500" />)}
             {userPermissions.room_pinning && navItem('pinning', 'Room Pinning', <Pin className="w-4 h-4 text-amber-500" />)}
@@ -4414,7 +4555,7 @@ export default function AdminDashboard({
           {isSuperAdmin && (
             <div className="space-y-1">
               <p className="text-[9px] font-black uppercase tracking-[0.14em] text-rose-500/70 px-3 pb-1">Danger Zone</p>
-              {navItem('chaos_tester', 'Chaos & Feature Flags', <Terminal className="w-4 h-4 text-rose-500" />)}
+              {navItem('chaos_tester', 'Chaos & Testing', <Terminal className="w-4 h-4 text-rose-500" />)}
             </div>
           )}
         </nav>
@@ -4436,6 +4577,22 @@ export default function AdminDashboard({
               <RefreshCw className={`w-3 h-3 ${isPinging ? 'animate-spin' : ''}`} />
             </button>
           </div>
+
+          {isAdminSessionUnlocked && (
+            <button
+              onClick={() => {
+                sessionStorage.removeItem('tallyin_admin_session_unlocked');
+                setIsAdminSessionUnlocked(false);
+                if (setIsAdminPasskeyUnlocked) setIsAdminPasskeyUnlocked(false);
+                if (triggerToast) triggerToast('Admin Console locked.');
+                onExitAdmin();
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-extrabold text-xs transition-all cursor-pointer border border-rose-500/20"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Lock Admin Session</span>
+            </button>
+          )}
 
           <button
             onClick={onExitAdmin}
@@ -9164,6 +9321,411 @@ NOTIFY pgrst, 'reload schema';`;
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {/* Tab: Beta Features & Feature Flags */}
+      {activeTab === 'beta_releases' && (
+        <div className="hud-card rounded-3xl p-6 sm:p-8 space-y-8 animate-fade-in text-left">
+          
+          {/* Header Banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E3E8E3] dark:border-slate-800 pb-5">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635]">
+                  <Sparkles className="w-5 h-5" />
+                </span>
+                <h3 className="text-xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
+                  Beta Program & Feature Flags
+                </h3>
+              </div>
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 max-w-xl leading-relaxed">
+                Control rollout stages, bypass scheduled launch dates, enroll specific users or rooms into Beta Mode, and broadcast updates to devices in real time.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                onClick={() => handleSaveBetaSettings(betaSettings)}
+                disabled={isSavingBetaSettings}
+                className="px-5 py-2.5 rounded-xl bg-[#1A3827] hover:bg-[#255038] dark:bg-[#A3E635] dark:hover:bg-[#b7f34c] text-white dark:text-slate-950 font-black text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSavingBetaSettings ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Syncing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save & Broadcast Live</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Section 1: Trip Splitter Launch Mode */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                  <Compass className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>Trip Splitter & Vacation Expense Manager Rollout</span>
+                </h4>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                  Scheduled Launch: <strong>October 2nd, 2026 at 08:08 AM IST</strong>. Current Mode: <strong className="text-emerald-700 dark:text-[#A3E635] uppercase">{betaSettings.tripSplitterMode}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+              {/* Option 1: Scheduled Launch */}
+              <div 
+                onClick={() => {
+                  const next = { ...betaSettings, tripSplitterMode: 'scheduled' };
+                  handleSaveBetaSettings(next);
+                }}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 relative ${
+                  betaSettings.tripSplitterMode === 'scheduled'
+                    ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+                    : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-[#1A3827] dark:text-slate-100">📅 Scheduled Gate</span>
+                  {betaSettings.tripSplitterMode === 'scheduled' && <Check className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />}
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  Locked until <strong>Oct 2, 8:08 AM IST</strong>. Room <code className="text-emerald-700 dark:text-[#A3E635] font-bold">TL-WFHP-5508</code> & Beta Users bypass lock.
+                </p>
+                <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  Default Rule
+                </span>
+              </div>
+
+              {/* Option 2: Beta Testers Only */}
+              <div 
+                onClick={() => {
+                  const next = { ...betaSettings, tripSplitterMode: 'beta_only' };
+                  handleSaveBetaSettings(next);
+                }}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 relative ${
+                  betaSettings.tripSplitterMode === 'beta_only'
+                    ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-500 ring-2 ring-amber-500/20 shadow-md'
+                    : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-[#1A3827] dark:text-slate-100">🧪 Beta Testers Only</span>
+                  {betaSettings.tripSplitterMode === 'beta_only' && <Check className="w-4 h-4 text-amber-600 dark:text-amber-400" />}
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  Only enrolled beta tester emails and rooms can access Trip Splitter. Everyone else sees Coming Soon.
+                </p>
+                <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300">
+                  Early Testing
+                </span>
+              </div>
+
+              {/* Option 3: Enable for All Users */}
+              <div 
+                onClick={() => {
+                  const next = { ...betaSettings, tripSplitterMode: 'enabled' };
+                  handleSaveBetaSettings(next);
+                }}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 relative ${
+                  betaSettings.tripSplitterMode === 'enabled'
+                    ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+                    : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-[#1A3827] dark:text-slate-100">🌐 Unlocked for ALL</span>
+                  {betaSettings.tripSplitterMode === 'enabled' && <Check className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />}
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  Force launch immediately! Bypasses Oct 2nd gate so all rooms and all users see Trip Splitter right now.
+                </p>
+                <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635]">
+                  Instant Global Launch
+                </span>
+              </div>
+
+              {/* Option 4: Force Disabled */}
+              <div 
+                onClick={() => {
+                  const next = { ...betaSettings, tripSplitterMode: 'disabled' };
+                  handleSaveBetaSettings(next);
+                }}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 relative ${
+                  betaSettings.tripSplitterMode === 'disabled'
+                    ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-500 ring-2 ring-rose-500/20 shadow-md'
+                    : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-[#1A3827] dark:text-slate-100">⛔ Disabled Globally</span>
+                  {betaSettings.tripSplitterMode === 'disabled' && <Check className="w-4 h-4 text-rose-600 dark:text-rose-400" />}
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  Emergency override kill-switch. Hides the Trip Splitter module completely across the entire app.
+                </p>
+                <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-rose-500/15 text-rose-800 dark:text-rose-300">
+                  Kill Switch
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Global Beta Mode & Other Flags */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            {/* Global Beta Mode Card */}
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-start justify-between gap-4 shadow-sm">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <h5 className="text-xs font-extrabold text-[#1A3827] dark:text-slate-100">Global Beta Mode (All Users)</h5>
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                  When enabled, 100% of all registered users automatically gain Beta Tester privileges and access to all preview features without needing individual email whitelisting.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const next = { ...betaSettings, globalBetaMode: !betaSettings.globalBetaMode };
+                  handleSaveBetaSettings(next);
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer ${
+                  betaSettings.globalBetaMode
+                    ? 'bg-emerald-500 text-white shadow-md'
+                    : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                }`}
+              >
+                {betaSettings.globalBetaMode ? 'ENABLED (100%)' : 'DISABLED'}
+              </button>
+            </div>
+
+            {/* AI OCR Engine Mode Card */}
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-start justify-between gap-4 shadow-sm">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-indigo-500" />
+                  <h5 className="text-xs font-extrabold text-[#1A3827] dark:text-slate-100">AI Receipt Scanner & OCR</h5>
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                  Controls availability of the smart AI itemization tool in the Add Expense modal.
+                </p>
+              </div>
+              <select
+                value={betaSettings.aiOcrMode || 'enabled'}
+                onChange={(e) => {
+                  const next = { ...betaSettings, aiOcrMode: e.target.value };
+                  handleSaveBetaSettings(next);
+                }}
+                className="px-3 py-2 rounded-xl text-xs font-bold bg-[#F8FAF9] dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 text-[#1A3827] dark:text-white shrink-0 cursor-pointer"
+              >
+                <option value="enabled">Enabled for All</option>
+                <option value="beta_only">Beta Testers Only</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+
+          </div>
+
+          {/* Section 3: Whitelisted Beta Users (Emails) */}
+          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-4 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h5 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>Enrolled Beta Tester Accounts ({betaSettings.betaUsers?.length || 0})</span>
+                </h5>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                  Users matching these emails receive the Beta Tester badge and access to unreleased features.
+                </p>
+              </div>
+            </div>
+
+            {/* Add User Input Form */}
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                const emailClean = (newBetaEmailInput || '').trim().toLowerCase();
+                if (!emailClean || !emailClean.includes('@')) {
+                  if (triggerToast) triggerToast('⚠️ Please enter a valid email address');
+                  return;
+                }
+                const currentUsers = Array.isArray(betaSettings.betaUsers) ? betaSettings.betaUsers : [];
+                if (currentUsers.map(e => e.toLowerCase()).includes(emailClean)) {
+                  if (triggerToast) triggerToast('ℹ️ User is already enrolled in Beta');
+                  return;
+                }
+                const next = { ...betaSettings, betaUsers: [...currentUsers, emailClean] };
+                setNewBetaEmailInput('');
+                handleSaveBetaSettings(next);
+              }}
+              className="flex items-center gap-2"
+            >
+              <div className="relative flex-1">
+                <input
+                  type="email"
+                  placeholder="Enter user email (e.g. user@example.com)..."
+                  value={newBetaEmailInput}
+                  onChange={(e) => setNewBetaEmailInput(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-[#F8FAF9] dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-4 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:opacity-90 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Tester</span>
+              </button>
+            </form>
+
+            {/* Quick add suggestions from registered users */}
+            {allRegisteredUsers?.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-[10px] text-slate-400 font-bold">Quick Add:</span>
+                {allRegisteredUsers.slice(0, 6).map(u => {
+                  const isAlready = (betaSettings.betaUsers || []).map(e => e.toLowerCase()).includes((u.email || '').toLowerCase());
+                  if (isAlready) return null;
+                  return (
+                    <button
+                      key={u.email}
+                      type="button"
+                      onClick={() => {
+                        const next = { ...betaSettings, betaUsers: [...(betaSettings.betaUsers || []), u.email.toLowerCase()] };
+                        handleSaveBetaSettings(next);
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded-md bg-[#F0F4F1] dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-100 hover:text-emerald-800 transition-all cursor-pointer"
+                    >
+                      + {u.name || u.email.split('@')[0]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* List of enrolled beta emails */}
+            <div className="space-y-1.5 pt-2">
+              {(betaSettings.betaUsers || []).length === 0 ? (
+                <p className="text-xs text-slate-400 italic">No individual beta users whitelisted yet.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {betaSettings.betaUsers.map((email) => (
+                    <div
+                      key={email}
+                      className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#F8FAF9] dark:bg-slate-800/60 border border-[#E3E8E3] dark:border-slate-800 text-xs"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        <span className="truncate font-semibold text-slate-700 dark:text-slate-200">{email}</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const next = { ...betaSettings, betaUsers: betaSettings.betaUsers.filter(e => e.toLowerCase() !== email.toLowerCase()) };
+                          handleSaveBetaSettings(next);
+                        }}
+                        className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer shrink-0"
+                        title="Remove from Beta"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Section 4: Whitelisted Beta Rooms */}
+          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-4 shadow-sm">
+            <div>
+              <h5 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                <span>Enrolled Beta Rooms ({betaSettings.betaRooms?.length || 0})</span>
+              </h5>
+              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                All members active inside these Room IDs will receive full access to unreleased beta features.
+              </p>
+            </div>
+
+            {/* Add Room Form */}
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                const roomClean = (newBetaRoomInput || '').trim().toUpperCase();
+                if (!roomClean) return;
+                const currentRooms = Array.isArray(betaSettings.betaRooms) ? betaSettings.betaRooms : [];
+                if (currentRooms.map(r => r.toUpperCase()).includes(roomClean)) {
+                  if (triggerToast) triggerToast('ℹ️ Room is already enrolled in Beta');
+                  return;
+                }
+                const next = { ...betaSettings, betaRooms: [...currentRooms, roomClean] };
+                setNewBetaRoomInput('');
+                handleSaveBetaSettings(next);
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                type="text"
+                placeholder="Enter Room ID (e.g. TL-WFHP-5508)..."
+                value={newBetaRoomInput}
+                onChange={(e) => setNewBetaRoomInput(e.target.value)}
+                className="w-full px-4 py-2.5 bg-[#F8FAF9] dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-xl text-xs font-mono uppercase text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-600"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:opacity-90 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Room</span>
+              </button>
+            </form>
+
+            {/* List of enrolled rooms */}
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              {(betaSettings.betaRooms || []).map((roomId) => (
+                <div
+                  key={roomId}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F8FAF9] dark:bg-slate-800/60 border border-[#E3E8E3] dark:border-slate-800 text-xs font-mono font-bold text-slate-800 dark:text-slate-200"
+                >
+                  <span>{roomId}</span>
+                  {roomId === 'TL-WFHP-5508' && (
+                    <span className="text-[9px] font-black uppercase px-1.5 py-0.2 bg-emerald-500/20 text-emerald-800 dark:text-[#A3E635] rounded">
+                      Yarcaud
+                    </span>
+                  )}
+                  <button
+                    onClick={() => {
+                      const next = { ...betaSettings, betaRooms: betaSettings.betaRooms.filter(r => r.toUpperCase() !== roomId.toUpperCase()) };
+                      handleSaveBetaSettings(next);
+                    }}
+                    className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors cursor-pointer"
+                    title="Remove Room from Beta"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 5: Architecture & Realtime Note */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 space-y-1">
+            <p className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Realtime Dual-Sync Active</span>
+            </p>
+            <p className="text-[11px] leading-relaxed">
+              Feature flag mutations are persisted to both Cloudflare D1 and Supabase <code className="font-mono text-slate-700 dark:text-slate-300">system_settings</code> and transmitted over WebSockets (<code className="font-mono text-slate-700 dark:text-slate-300">BETA_FEATURES_UPDATE</code>). Changes apply across all user devices in sub-second latency without browser refreshes.
+            </p>
+          </div>
+
         </div>
       )}
 

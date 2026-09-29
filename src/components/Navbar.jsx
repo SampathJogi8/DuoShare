@@ -11,7 +11,8 @@ import {
   ChevronDown, 
   LogOut, 
   Menu,
-  Compass
+  Compass,
+  Shield
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 
@@ -212,6 +213,17 @@ export default function Navbar({
                     >
                       <QrCode className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                       <span>Room Invite Code</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsProfileDropdownOpen(false);
+                        setCurrentView('admin');
+                      }}
+                      className="w-full px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-[#F0F4F1] dark:hover:bg-slate-800 rounded-xl flex items-center gap-2 transition-colors"
+                    >
+                      <Shield className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span>Admin Console</span>
                     </button>
 
                     <button

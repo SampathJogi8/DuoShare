@@ -733,10 +733,55 @@ export default function App() {
     return typeof window !== 'undefined' ? (localStorage.getItem('tallyin_room_mode') || 'split') : 'split';
   });
   const isTripRoomMode = (roomOperatingMode === 'trip' || userRoomId === 'TL-WFHP-5508');
+
+  // System Feature Flags & Beta Mode Configuration
+  const DEFAULT_BETA_SETTINGS = {
+    globalBetaMode: false,
+    tripSplitterMode: 'scheduled', // 'scheduled' | 'enabled' | 'beta_only' | 'disabled'
+    aiOcrMode: 'enabled',
+    quotaMode: 'enabled',
+    betaUsers: ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'],
+    betaRooms: ['TL-WFHP-5508']
+  };
+
+  const [systemBetaSettings, setSystemBetaSettings] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('tallyin_beta_feature_settings');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return DEFAULT_BETA_SETTINGS;
+  });
+
+  const [isAdminPasskeyUnlocked, setIsAdminPasskeyUnlocked] = useState(() => {
+    return typeof window !== 'undefined' ? sessionStorage.getItem('tallyin_admin_session_unlocked') === 'true' : false;
+  });
+
+  // Calculate if the current user or active room is enrolled in the Beta Program
+  const currentCleanUserEmail = (user?.email || auth?.currentUser?.email || '').trim().toLowerCase();
+  const isBetaUser = useMemo(() => {
+    if (systemBetaSettings.globalBetaMode) return true;
+    if (currentCleanUserEmail && Array.isArray(systemBetaSettings.betaUsers)) {
+      if (systemBetaSettings.betaUsers.map(e => String(e).toLowerCase().trim()).includes(currentCleanUserEmail)) return true;
+    }
+    if (userRoomId && Array.isArray(systemBetaSettings.betaRooms)) {
+      if (systemBetaSettings.betaRooms.map(r => String(r).toUpperCase().trim()).includes(userRoomId.toUpperCase().trim())) return true;
+    }
+    return false;
+  }, [systemBetaSettings, currentCleanUserEmail, userRoomId]);
+
   // Global Launch Date & Time: October 2nd, 2026 at 08:08 AM IST (1790908680000)
-  // TL-WFHP-5508 is explicitly excluded from restrictions (always active)
+  // Dynamic Launch Gate: respects Admin Beta Mode & global admin overrides
   const TRIP_SPLITTER_GLOBAL_LAUNCH_TIME = 1790908680000; // 2026-10-02T08:08:00+05:30
-  const isTripSplitterUnlocked = userRoomId === 'TL-WFHP-5508' || Date.now() >= TRIP_SPLITTER_GLOBAL_LAUNCH_TIME;
+
+  const isTripSplitterUnlocked = useMemo(() => {
+    if (systemBetaSettings.tripSplitterMode === 'enabled') return true;
+    if (systemBetaSettings.tripSplitterMode === 'disabled') return false;
+    if (systemBetaSettings.tripSplitterMode === 'beta_only') return isBetaUser;
+    // 'scheduled' (default): Unlocked for Beta Users/Rooms, Room TL-WFHP-5508, or after Oct 2 8:08 AM IST
+    return isBetaUser || userRoomId === 'TL-WFHP-5508' || Date.now() >= TRIP_SPLITTER_GLOBAL_LAUNCH_TIME;
+  }, [systemBetaSettings, isBetaUser, userRoomId]);
   const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
   const [activeReceiptZoom, setActiveReceiptZoom] = useState(null);
   const [activeReceiptImageIndex, setActiveReceiptImageIndex] = useState(0);
@@ -960,10 +1005,19 @@ export default function App() {
         const { data } = await supabase
           .from('system_settings')
           .select('key, value')
-          .in('key', ['system_maintenance_active', 'system_maintenance_message', 'maintenance_allowed_accounts', 'maintenance_features', 'co_admins', 'frozen_room_ids', 'system_maintenance_countdown']);
+          .in('key', ['system_maintenance_active', 'system_maintenance_message', 'maintenance_allowed_accounts', 'maintenance_features', 'co_admins', 'frozen_room_ids', 'system_maintenance_countdown', 'system_feature_flags_and_beta']);
 
         if (data && Array.isArray(data)) {
           data.forEach(item => {
+            if (item.key === 'system_feature_flags_and_beta') {
+              try {
+                const parsed = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
+                if (parsed && typeof parsed === 'object') {
+                  setSystemBetaSettings(prev => ({ ...prev, ...parsed }));
+                  localStorage.setItem('tallyin_beta_feature_settings', JSON.stringify(parsed));
+                }
+              } catch (e) {}
+            }
             if (item.key === 'system_maintenance_active') {
               const isActive = item.value === 'true' || item.value === true || (typeof item.value === 'string' && item.value.toLowerCase() === 'true');
               setIsSystemMaintenanceActive(isActive);
@@ -1202,6 +1256,13 @@ export default function App() {
         if (payload?.payload?.coAdmins) {
           setCoAdmins(payload.payload.coAdmins);
           localStorage.setItem('tallyin_co_admins', JSON.stringify(payload.payload.coAdmins));
+        }
+      })
+      .on('broadcast', { event: 'BETA_FEATURES_UPDATE' }, (payload) => {
+        if (payload?.payload?.settings) {
+          setSystemBetaSettings(payload.payload.settings);
+          localStorage.setItem('tallyin_beta_feature_settings', JSON.stringify(payload.payload.settings));
+          if (triggerToast) triggerToast('✨ System feature flags & beta settings updated live.');
         }
       })
       .on('broadcast', { event: 'MAINTENANCE_FEATURES' }, (payload) => {
@@ -11743,7 +11804,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
     return Boolean(currentCoAdminObj?.permissions && currentCoAdminObj.permissions.maintenance_control === true);
   }, [currentCoAdminObj]);
 
-  const isUserAdminOrCoAdmin = ADMIN_EMAILS.includes(currentEmailClean) || isUserCoAdmin;
+  const isUserAdminOrCoAdmin = ADMIN_EMAILS.includes(currentEmailClean) || isUserCoAdmin || isAdminPasskeyUnlocked;
 
   const adminPendingDisputes = useMemo(() => {
     return (adminAllDisputes || []).filter(d => 
@@ -11936,6 +11997,10 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           setSimulatedLatency={setSimulatedLatency}
           allowedMaintenanceAccounts={allowedMaintenanceAccounts}
           setAllowedMaintenanceAccounts={setAllowedMaintenanceAccounts}
+          systemBetaSettings={systemBetaSettings}
+          setSystemBetaSettings={setSystemBetaSettings}
+          isAdminPasskeyUnlocked={isAdminPasskeyUnlocked}
+          setIsAdminPasskeyUnlocked={setIsAdminPasskeyUnlocked}
         />
       </div>
     );
@@ -14040,8 +14105,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <Compass className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
                   <span className="whitespace-nowrap">Trip Splitter</span>
                 </div>
-                <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635] rounded-full">
-                  New
+                <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-full ${
+                  isBetaUser && Date.now() < TRIP_SPLITTER_GLOBAL_LAUNCH_TIME
+                    ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                    : 'bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635]'
+                }`}>
+                  {isBetaUser && Date.now() < TRIP_SPLITTER_GLOBAL_LAUNCH_TIME ? 'Beta' : 'New'}
                 </span>
               </button>
             )}
@@ -14349,10 +14418,18 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <Scale className="w-4 h-4" />
             </button>
 
+            {/* Beta Mode Active Badge */}
+            {isBetaUser && (
+              <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/30 shadow-xs" title="You are enrolled in the Tallyin Beta Program">
+                <Sparkles className="w-3 h-3 text-emerald-600 dark:text-[#A3E635]" />
+                <span>Beta Mode</span>
+              </div>
+            )}
+
             {/* Direct Admin Portal Button for Super Admin & Co-Admins */}
             {(() => {
               const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
-              const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
+              const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase() || isAdminPasskeyUnlocked;
               if (isSuperAdmin) {
                 return (
                   <button 
@@ -14478,33 +14555,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <Scale className="w-3.5 h-3.5" />
                   <span>Disputes &amp; Help Hub</span>
                 </button>
-                {(() => {
-                  const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
-                  const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
-                  if (!isSuperAdmin && !isUserCoAdmin) return null;
-                  return (
-                    <button 
-                      onClick={() => {
-                        setAdminInitialTab(adminPendingDisputesCount > 0 ? 'dispute_resolver' : 'overview');
-                        setCurrentView('admin'); 
-                        setIsProfileDropdownOpen(false); 
-                      }}
-                      className={`w-full text-left px-4 py-2.5 flex items-center gap-2 font-black ${
-                        isSuperAdmin 
-                          ? 'hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-700 dark:text-rose-400' 
-                          : 'hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
-                      }`}
-                    >
-                      {isSuperAdmin ? <ShieldAlert className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
-                      <span>{isSuperAdmin ? 'Admin Console' : 'Co-Admin Console'}</span>
-                      {adminPendingDisputesCount > 0 && (
-                        <span className="ml-auto px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black">
-                          {adminPendingDisputesCount}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })()}
+                <button 
+                  onClick={() => {
+                    setAdminInitialTab(adminPendingDisputesCount > 0 ? 'dispute_resolver' : 'overview');
+                    setCurrentView('admin'); 
+                    setIsProfileDropdownOpen(false); 
+                  }}
+                  className={`w-full text-left px-4 py-2.5 flex items-center gap-2 font-bold ${
+                    isUserAdminOrCoAdmin 
+                      ? 'hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-700 dark:text-rose-400' 
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <ShieldAlert className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>{isUserAdminOrCoAdmin ? 'Admin Console' : 'Admin Login (Passkey)'}</span>
+                  {adminPendingDisputesCount > 0 && isUserAdminOrCoAdmin && (
+                    <span className="ml-auto px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black">
+                      {adminPendingDisputesCount}
+                    </span>
+                  )}
+                </button>
                 <button 
                   onClick={() => { handleSignOut(); setIsProfileDropdownOpen(false); }}
                   className="w-full text-left px-4 py-2.5 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 flex items-center gap-2 border-t border-[#F6F8F6] dark:border-slate-800"
@@ -14895,6 +14965,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 setPinnedMessages={setPinnedMessages}
                 simulatedLatency={simulatedLatency}
                 setSimulatedLatency={setSimulatedLatency}
+                systemBetaSettings={systemBetaSettings}
+                setSystemBetaSettings={setSystemBetaSettings}
+                isAdminPasskeyUnlocked={isAdminPasskeyUnlocked}
+                setIsAdminPasskeyUnlocked={setIsAdminPasskeyUnlocked}
               />
             )}
           </ErrorBoundary>
