@@ -149,95 +149,17 @@ export default function TripExpenseManager({
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('tallyin_trips_data');
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // Purge demo seed if present
+          const cleaned = Array.isArray(parsed) ? parsed.filter(t => t.id !== 'trip-seed-goa') : [];
+          return cleaned;
+        }
       } catch (e) {
         console.error('Error loading trips data:', e);
       }
     }
-
-    // Default Seed Trip for new users
-    const defaultCompanions = [
-      { id: 'c1', name: userNickname || 'You', isHost: true },
-      { id: 'c2', name: members[0]?.nickname || 'Aman', isHost: false },
-      { id: 'c3', name: members[1]?.nickname || 'Priya', isHost: false },
-      { id: 'c4', name: 'Rahul', isHost: false }
-    ];
-
-    return [
-      {
-        id: 'trip-seed-goa',
-        title: 'Goa Coastal Roadtrip & Beach Retreat',
-        destination: 'Goa, India',
-        startDate: '2026-10-15',
-        endDate: '2026-10-19',
-        status: 'Ongoing', // 'Planning' | 'Ongoing' | 'Completed'
-        budget: 45000,
-        currency: '₹',
-        companions: defaultCompanions,
-        planner: {
-          stay: 18000,
-          travel: 12000,
-          food: 9000,
-          activities: 4000,
-          fuel: 2000,
-          shopping: 0,
-          buffer: 2000
-        },
-        expenses: [
-          {
-            id: 'exp-1',
-            title: 'Sea Breeze Luxury Villa Booking',
-            amount: 18500,
-            category: 'stay',
-            paidBy: defaultCompanions[0].id,
-            splitType: 'equal',
-            date: '2026-10-15',
-            notes: 'Advance paid for 4 nights pool villa'
-          },
-          {
-            id: 'exp-2',
-            title: 'Highway Fuel & Fastag Tolls',
-            amount: 2800,
-            category: 'fuel',
-            paidBy: defaultCompanions[1].id,
-            splitType: 'equal',
-            date: '2026-10-15',
-            notes: 'SUV tank top-up'
-          },
-          {
-            id: 'exp-3',
-            title: 'Sunset Seafood Dinner at Thalassa',
-            amount: 5400,
-            category: 'food',
-            paidBy: defaultCompanions[2].id,
-            splitType: 'equal',
-            date: '2026-10-16',
-            notes: 'Appetizers & mocktails'
-          },
-          {
-            id: 'exp-4',
-            title: 'Scuba Diving & Watersports Package',
-            amount: 7200,
-            category: 'activities',
-            paidBy: defaultCompanions[0].id,
-            splitType: 'equal',
-            includedMembers: [defaultCompanions[0].id, defaultCompanions[1].id, defaultCompanions[2].id],
-            date: '2026-10-17',
-            notes: 'Grand Island Scuba Dive (3 people)'
-          }
-        ],
-        settlements: [
-          {
-            id: 'st-1',
-            payerId: defaultCompanions[1].id,
-            receiverId: defaultCompanions[0].id,
-            amount: 3000,
-            date: '2026-10-17',
-            note: 'UPI Payment via Google Pay'
-          }
-        ]
-      }
-    ];
+    return [];
   });
 
   // Persist trips to localStorage
