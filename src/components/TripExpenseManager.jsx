@@ -1348,8 +1348,11 @@ export default function TripExpenseManager({
         {/* MODAL: RECORD SETTLEMENT */}
         {/* ======================================================== */}
         {isSettleModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left">
-            <div className="w-full max-w-md hud-card rounded-3xl p-6 space-y-5">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
+            onClick={(e) => { if (e.target === e.currentTarget) setIsSettleModalOpen(false); }}
+          >
+            <div className="w-full max-w-md bg-white dark:bg-[#0E1317] border border-[#E2EAE3] dark:border-[#1F2830] shadow-2xl rounded-3xl p-6 space-y-5">
               <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
@@ -1448,8 +1451,11 @@ export default function TripExpenseManager({
         {/* MODAL: SHARE / EXPORT SUMMARY */}
         {/* ======================================================== */}
         {isShareModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left">
-            <div className="w-full max-w-lg hud-card rounded-3xl p-6 space-y-5">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
+            onClick={(e) => { if (e.target === e.currentTarget) setIsShareModalOpen(false); }}
+          >
+            <div className="w-full max-w-lg bg-white dark:bg-[#0E1317] border border-[#E2EAE3] dark:border-[#1F2830] shadow-2xl rounded-3xl p-6 space-y-5">
               <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <Share2 className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
@@ -1863,8 +1869,11 @@ function TripModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left">
-      <div className="w-full max-w-lg hud-card rounded-3xl p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-lg bg-white dark:bg-[#0E1317] border border-[#E2EAE3] dark:border-[#1F2830] shadow-2xl rounded-3xl p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <Compass className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
@@ -2122,8 +2131,11 @@ function ExpenseModal({
   const exactDifference = (Number(amount) || 0) - totalExactShares;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left">
-      <div className="w-full max-w-lg hud-card rounded-3xl p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-lg bg-white dark:bg-[#0E1317] border border-[#E2EAE3] dark:border-[#1F2830] shadow-2xl rounded-3xl p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <DollarSign className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
