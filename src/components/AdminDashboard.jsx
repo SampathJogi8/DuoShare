@@ -75,9 +75,10 @@ import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
 import { supabase, realSupabase, getActiveDatabaseEngine, setActiveDatabaseEngine } from '../supabase';
 
-const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
+const SUPER_ADMIN_EMAIL = 'sampathjogipusala123@gmail.com';
 const ADMIN_EMAILS = [
-  SUPER_ADMIN_EMAIL
+  'sampathjogipusala123@gmail.com',
+  'tallyin.alerts@gmail.com'
 ];
 
 export const DEFAULT_EMAIL_MATRIX = {
@@ -233,7 +234,7 @@ export default function AdminDashboard({
   const [adminPasscodeError, setAdminPasscodeError] = useState('');
   const [showPasscode, setShowPasscode] = useState(false);
 
-  const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase() || isAdminSessionUnlocked;
+  const isSuperAdmin = ADMIN_EMAILS.some(e => e.toLowerCase() === currentEmailClean.toLowerCase()) || currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase() || isAdminSessionUnlocked;
 
   // Sync activeTab if initialTab prop changes
   useEffect(() => {

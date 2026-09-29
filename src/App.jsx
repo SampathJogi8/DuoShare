@@ -80,8 +80,11 @@ import BannedUserView from './components/BannedUserView';
 import QuickBillModal from './components/QuickBillModal';
 import TripExpenseManager from './components/TripExpenseManager';
 
-const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
-const ADMIN_EMAILS = [SUPER_ADMIN_EMAIL];
+const SUPER_ADMIN_EMAIL = 'sampathjogipusala123@gmail.com';
+const ADMIN_EMAILS = [
+  'sampathjogipusala123@gmail.com',
+  'tallyin.alerts@gmail.com'
+];
 const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.0.0';
 
@@ -14429,7 +14432,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {/* Direct Admin Portal Button for Super Admin & Co-Admins */}
             {(() => {
               const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
-              const isSuperAdmin = currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase() || isAdminPasskeyUnlocked;
+              const isSuperAdmin = ADMIN_EMAILS.some(e => e.toLowerCase() === currentEmailClean.toLowerCase()) || currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase() || isAdminPasskeyUnlocked;
               if (isSuperAdmin) {
                 return (
                   <button 
