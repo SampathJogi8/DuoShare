@@ -733,6 +733,10 @@ export default function App() {
     return typeof window !== 'undefined' ? (localStorage.getItem('tallyin_room_mode') || 'split') : 'split';
   });
   const isTripRoomMode = (roomOperatingMode === 'trip' || userRoomId === 'TL-WFHP-5508');
+  // Global Launch Date & Time: October 2nd, 2026 at 08:08 AM IST (1790908680000)
+  // TL-WFHP-5508 is explicitly excluded from restrictions (always active)
+  const TRIP_SPLITTER_GLOBAL_LAUNCH_TIME = 1790908680000; // 2026-10-02T08:08:00+05:30
+  const isTripSplitterUnlocked = userRoomId === 'TL-WFHP-5508' || Date.now() >= TRIP_SPLITTER_GLOBAL_LAUNCH_TIME;
   const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
   const [activeReceiptZoom, setActiveReceiptZoom] = useState(null);
   const [activeReceiptImageIndex, setActiveReceiptImageIndex] = useState(0);
@@ -14014,22 +14018,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </span>
             </button>
 
-            <button 
-              onClick={() => navigateTo('trips')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-xs sm:text-[13px] ${
-                currentView === 'trips' 
-                  ? 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 font-bold' 
-                  : 'text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Compass className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
-                <span className="whitespace-nowrap">Trip Splitter</span>
-              </div>
-              <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635] rounded-full">
-                New
-              </span>
-            </button>
+            {isTripSplitterUnlocked && (
+              <button 
+                onClick={() => navigateTo('trips')}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-xs sm:text-[13px] ${
+                  currentView === 'trips' 
+                    ? 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 font-bold' 
+                    : 'text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Compass className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                  <span className="whitespace-nowrap">Trip Splitter</span>
+                </div>
+                <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635] rounded-full">
+                  New
+                </span>
+              </button>
+            )}
 
             <button 
               onClick={() => navigateTo('insights')}
@@ -14820,7 +14826,34 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {currentView === 'ledger' && <ViewRenderer render={renderLedger} />}
             {currentView === 'personal-expenses' && <ViewRenderer render={renderPersonalExpenses} />}
             {currentView === 'fund-tracker' && <ViewRenderer render={renderFundTracker} />}
-            {currentView === 'trips' && <ViewRenderer render={renderTrips} />}
+            {currentView === 'trips' && (
+              isTripSplitterUnlocked ? (
+                <ViewRenderer render={renderTrips} />
+              ) : (
+                <div className="hud-card rounded-3xl p-8 sm:p-12 text-center space-y-5 max-w-lg mx-auto my-12 border border-[#E2EAE3] dark:border-slate-800 shadow-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 flex items-center justify-center mx-auto text-emerald-600 dark:text-[#A3E635] shadow-inner">
+                    <Compass className="w-8 h-8 animate-pulse" />
+                  </div>
+                  <div className="inline-block px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/20">
+                    Launching Oct 2, 2026 • 8:08 AM IST
+                  </div>
+                  <h3 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
+                    Trip Splitter Arriving Soon
+                  </h3>
+                  <p className="text-sm text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                    Vacation budgeting, multi-payer expense splits, and 1-click debt settlement unlock globally on <strong>October 2nd, 2026 at 8:08 AM IST</strong>.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => navigateTo('home')}
+                      className="px-6 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-extrabold text-xs hover:opacity-90 transition-all shadow-md"
+                    >
+                      Return to Dashboard
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
             {currentView === 'insights' && <ViewRenderer render={renderInsights} />}
             {currentView === 'settlement-records' && <ViewRenderer render={renderSettlementRecords} />}
             {currentView === 'receipts' && <ViewRenderer render={renderReceipts} />}

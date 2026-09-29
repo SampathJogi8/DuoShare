@@ -37,7 +37,7 @@ function getOfficialEmailHtml(userName, targetEmail) {
                   </td>
                   <td align="right" valign="middle">
                     <span style="background-color: rgba(163, 230, 53, 0.15); border: 1px solid rgba(163, 230, 53, 0.35); color: #A3E635; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 5px 12px; border-radius: 20px; letter-spacing: 0.5px; white-space: nowrap;">
-                      Oct 2, 2026 Release
+                      Oct 2, 2026 • 8:08 AM IST
                     </span>
                   </td>
                 </tr>
@@ -200,6 +200,15 @@ tallyin.alerts@gmail.com`;
 
 async function run() {
   const isDryRun = process.argv.includes('--dry-run');
+  const isForced = process.argv.includes('--force');
+  const LAUNCH_TIMESTAMP = 1790908680000; // October 2nd, 2026 at 08:08 AM IST
+
+  if (!isDryRun && !isForced && Date.now() < LAUNCH_TIMESTAMP) {
+    const launchDateStr = new Date(LAUNCH_TIMESTAMP).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    console.log(`⛔ [Gate Active] Notifications are scheduled for release on ${launchDateStr} IST.`);
+    console.log(`Current time is earlier than the launch time. To preview, use --dry-run. To force dispatch immediately, use --force.`);
+    return;
+  }
 
   console.log(`[Notification Engine] Fetching all registered users from database...`);
   const [{ data: memberData, error: mErr }, { data: userData, error: uErr }] = await Promise.all([

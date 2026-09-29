@@ -129,17 +129,19 @@ export default function Navbar({
               <span>Funds</span>
             </button>
 
-            <button
-              onClick={() => setCurrentView('trips')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
-                currentView === 'trips'
-                  ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shadow-sm'
-                  : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
-              }`}
-            >
-              <Compass className="w-3.5 h-3.5" />
-              <span>Trips</span>
-            </button>
+            {(userRoomId === 'TL-WFHP-5508' || Date.now() >= 1790908680000) && (
+              <button
+                onClick={() => setCurrentView('trips')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
+                  currentView === 'trips'
+                    ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shadow-sm'
+                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
+                }`}
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>Trips</span>
+              </button>
+            )}
           </nav>
 
           {/* Right Action Icons & Profile Drawer */}
