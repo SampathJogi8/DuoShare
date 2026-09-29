@@ -55,6 +55,8 @@ export default {
           try { await env.DB.prepare("ALTER TABLE rooms ADD COLUMN room_mode TEXT DEFAULT 'split'").run(); } catch (e) {}
           try { await env.DB.prepare("ALTER TABLE rooms ADD COLUMN co_host_uid TEXT").run(); } catch (e) {}
           try { await env.DB.prepare("ALTER TABLE members ADD COLUMN individual_budget REAL DEFAULT 2000").run(); } catch (e) {}
+          try { await env.DB.prepare("ALTER TABLE members ADD COLUMN phone TEXT").run(); } catch (e) {}
+          try { await env.DB.prepare("ALTER TABLE users ADD COLUMN phone TEXT").run(); } catch (e) {}
 
           // Self-healing: Deduplicate any duplicate members per room (preserving host)
           try {
@@ -101,6 +103,168 @@ export default {
             return Response.json({ error: errors[0], errors }, { status: 503, headers: corsHeaders });
           }
           return Response.json({ status: "ok", exportedAt: new Date().toISOString(), data: snapshot }, { headers: corsHeaders });
+        } catch (err) {
+          return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
+        }
+      }
+
+      // Centralized WhatsApp Notification Dispatch Relay Endpoint
+      if (url.pathname === "/api/whatsapp-dispatch" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const { room_id, recipients, message, actionType, title, amount, paidBy, app_url } = body;
+
+          // 1. Audit dispatch in activity_logs
+          try {
+            await env.DB.prepare(
+              "INSERT INTO activity_logs (room_id, user_name, action, details) VALUES (?, ?, ?, ?)"
+            ).bind(
+              room_id || "GLOBAL",
+              paidBy || "WhatsApp Dispatcher",
+              "whatsapp_notification",
+              JSON.stringify({
+                actionType: actionType || "alert",
+                recipientsCount: (recipients || []).length,
+                recipients: (recipients || []).map(p => typeof p === 'string' && p.length > 4 ? p.slice(-4).padStart(p.length, "*") : p),
+                title: title || "WhatsApp Alert",
+                amount: amount || 0,
+                timestamp: new Date().toISOString()
+              })
+            ).run();
+          } catch (logErr) {
+            console.warn("[Worker WhatsApp] Activity log warning:", logErr);
+          }
+
+          // 2. Automated Dispatch via Gateway (CallMeBot, Meta Cloud API, Twilio, UltraMsg, GreenAPI, or Webhook)
+          const dispatchResults = [];
+          try {
+            // Load gateway config from body or from system_settings
+            let gateway = body.gateway || null;
+            if (!gateway) {
+              const gatewayRow = await env.DB.prepare(
+                "SELECT value FROM system_settings WHERE key = 'whatsapp_gateway_config'"
+              ).first();
+              if (gatewayRow && gatewayRow.value) {
+                try { gateway = JSON.parse(gatewayRow.value); } catch(e) {}
+              }
+            }
+
+            // Load user-specific CallMeBot keys if any
+            let userKeys = {};
+            try {
+              const keysRow = await env.DB.prepare(
+                "SELECT value FROM system_settings WHERE key = 'whatsapp_callmebot_keys'"
+              ).first();
+              if (keysRow && keysRow.value) {
+                userKeys = JSON.parse(keysRow.value);
+              }
+            } catch(e) {}
+
+            for (const rawPhone of (recipients || [])) {
+              const cleanPhone = String(rawPhone).replace(/\D/g, '');
+              const normPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+              const userApiKey = body.apiKey || userKeys[normPhone] || userKeys[`+${normPhone}`] || (gateway && gateway.apikey);
+
+              let deliveredBy = null;
+
+              // A. CallMeBot Automated Dispatch (Free Personal Gateway)
+              if (userApiKey) {
+                try {
+                  const cmbUrl = `https://api.callmebot.com/whatsapp.php?phone=+${normPhone}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(userApiKey)}`;
+                  const cmbRes = await fetch(cmbUrl);
+                  const cmbText = await cmbRes.text();
+                  deliveredBy = 'callmebot';
+                  dispatchResults.push({ phone: normPhone, provider: 'callmebot', status: cmbRes.status, success: cmbRes.ok });
+                } catch (cmbErr) {
+                  console.warn("[Worker WhatsApp] CallMeBot error:", cmbErr);
+                  dispatchResults.push({ phone: normPhone, provider: 'callmebot', error: cmbErr.message });
+                }
+              }
+
+              // B. Meta WhatsApp Cloud API (Official Business API)
+              if (!deliveredBy && gateway && (gateway.provider === 'meta' || gateway.phoneId) && gateway.phoneId && gateway.token) {
+                try {
+                  const metaRes = await fetch(`https://graph.facebook.com/v18.0/${gateway.phoneId}/messages`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${gateway.token}`
+                    },
+                    body: JSON.stringify({
+                      messaging_product: "whatsapp",
+                      to: normPhone,
+                      type: "text",
+                      text: { body: message }
+                    })
+                  });
+                  const metaData = await metaRes.json();
+                  deliveredBy = 'meta';
+                  dispatchResults.push({ phone: normPhone, provider: 'meta', status: metaRes.status, success: metaRes.ok, data: metaData });
+                } catch (metaErr) {
+                  console.warn("[Worker WhatsApp] Meta error:", metaErr);
+                  dispatchResults.push({ phone: normPhone, provider: 'meta', error: metaErr.message });
+                }
+              }
+
+              // C. UltraMsg Automated Gateway
+              if (!deliveredBy && gateway && gateway.provider === 'ultramsg' && gateway.instanceId && gateway.token) {
+                try {
+                  const umRes = await fetch(`https://api.ultramsg.com/${gateway.instanceId}/messages/chat`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      token: gateway.token,
+                      to: `+${normPhone}`,
+                      body: message
+                    })
+                  });
+                  deliveredBy = 'ultramsg';
+                  dispatchResults.push({ phone: normPhone, provider: 'ultramsg', status: umRes.status, success: umRes.ok });
+                } catch (umErr) {
+                  dispatchResults.push({ phone: normPhone, provider: 'ultramsg', error: umErr.message });
+                }
+              }
+
+              // D. Generic Webhook Gateway
+              if (!deliveredBy && gateway && gateway.apiUrl) {
+                try {
+                  const hookRes = await fetch(gateway.apiUrl, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      ...(gateway.token ? { "Authorization": `Bearer ${gateway.token}` } : {})
+                    },
+                    body: JSON.stringify({
+                      to: normPhone,
+                      phone: normPhone,
+                      message,
+                      title: title || "WhatsApp Alert",
+                      amount: amount || 0,
+                      paidBy: paidBy || "Roommate",
+                      room_id: room_id || "GLOBAL",
+                      actionType: actionType || "alert",
+                      timestamp: new Date().toISOString()
+                    })
+                  });
+                  dispatchResults.push({ phone: normPhone, provider: 'webhook', status: hookRes.status, success: hookRes.ok });
+                } catch (gwErr) {
+                  console.warn("[Worker WhatsApp] Gateway error:", gwErr);
+                  dispatchResults.push({ phone: normPhone, provider: 'webhook', error: gwErr.message });
+                }
+              }
+            }
+          } catch (gwErr) {
+            console.warn("[Worker WhatsApp] Gateway dispatch warning:", gwErr);
+          }
+
+          return Response.json({
+            status: "success",
+            delivered: true,
+            recipientsCount: (recipients || []).length,
+            actionType: actionType || "alert",
+            automatedDispatch: dispatchResults,
+            timestamp: new Date().toISOString()
+          }, { headers: corsHeaders });
         } catch (err) {
           return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
         }

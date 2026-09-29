@@ -64,7 +64,8 @@ import {
   XCircle,
   Users,
   Eye,
-  Crown
+  Crown,
+  Compass
 } from 'lucide-react';
 
 import { supabase } from './supabase';
@@ -77,6 +78,7 @@ import MaintenanceView from './components/MaintenanceView';
 import AdminDashboard from './components/AdminDashboard';
 import BannedUserView from './components/BannedUserView';
 import QuickBillModal from './components/QuickBillModal';
+import TripExpenseManager from './components/TripExpenseManager';
 
 const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
 const ADMIN_EMAILS = [SUPER_ADMIN_EMAIL];
@@ -1637,6 +1639,10 @@ export default function App() {
   // Notification Config States
   const [notificationMethod, setNotificationMethod] = useState(() => localStorage.getItem('notificationMethod') || 'tallyin');
   const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(() => localStorage.getItem('pushNotificationsEnabled') === 'true');
+  const [whatsappNotificationMethod, setWhatsappNotificationMethod] = useState(() => localStorage.getItem('whatsappNotificationMethod') || 'tallyin');
+  const [whatsappPhoneNumber, setWhatsappPhoneNumber] = useState(() => localStorage.getItem('tallyin_user_phone') || localStorage.getItem('whatsappPhoneNumber') || '+91 6301762370');
+  const [whatsappApiKey, setWhatsappApiKey] = useState(() => localStorage.getItem('tallyin_whatsapp_api_key') || localStorage.getItem('whatsappCallmebotKey') || '');
+  const [roomWhatsAppMap, setRoomWhatsAppMap] = useState({});
   
   // Settlement Record States
   const [settlementSearchQuery, setSettlementSearchQuery] = useState('');
@@ -1778,6 +1784,35 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [isUserBanned]);
+
+  // Load and sync room WhatsApp phone numbers from system_settings
+  useEffect(() => {
+    const activeRoom = userRoomId || localStorage.getItem('userRoomId');
+    if (!activeRoom || activeRoom === 'TL-ROOM') return;
+
+    let isMounted = true;
+    const fetchRoomPhones = async () => {
+      try {
+        const { data } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `room_phones_${activeRoom}`)
+          .maybeSingle();
+
+        if (data?.value && isMounted) {
+          try {
+            const parsed = JSON.parse(data.value);
+            setRoomWhatsAppMap(prev => ({ ...prev, ...parsed }));
+          } catch (e) {}
+        }
+      } catch (err) {
+        console.warn('Failed to load room WhatsApp numbers:', err);
+      }
+    };
+
+    fetchRoomPhones();
+    return () => { isMounted = false; };
+  }, [userRoomId]);
   // Feature D: Expense Comments
   const [expenseComments, setExpenseComments] = useState(() => {
     try {
@@ -3874,6 +3909,17 @@ export default function App() {
         }, 'new_member');
       } catch (e) { console.warn("Failed to notify roommates of new member:", e); }
 
+      // Notify roommates via centralized WhatsApp dispatch
+      try {
+        await sendWhatsAppNotification({
+          title: `🎉 ${req.nickname} joined room ${roomName || userRoomId}!`,
+          amount: 0,
+          paidBy: req.nickname,
+          category: 'General',
+          date: getLocalDateStr()
+        }, 'new_member');
+      } catch (e) { console.warn("Failed to WhatsApp notify roommates of new member:", e); }
+
       // 7. Send Email Notification to Approved User with direct join link
       await sendApprovalEmail(req, userRoomId, roomName);
 
@@ -5585,6 +5631,19 @@ export default function App() {
       } catch (e) {
         console.warn("Failed to send removal emails to other roommates:", e);
       }
+    }
+
+    // Centralized WhatsApp notification on roommate removal
+    try {
+      await sendWhatsAppNotification({
+        title: `Roommate ${removedMember.nickname || 'Member'} Removed`,
+        paidBy: removedMember.nickname || 'Roommate',
+        amount: 0,
+        category: 'General',
+        date: getLocalDateStr()
+      }, 'member_removed');
+    } catch (waErr) {
+      console.warn('[Removal Notification] WhatsApp alert warning:', waErr);
     }
   };
 
@@ -7878,6 +7937,437 @@ export default function App() {
     }
   };
 
+  // 💬 Centralized WhatsApp Notification Dispatcher (Mirroring Central Email Engine)
+  const sendWhatsAppNotification = async (transaction, actionType = 'add') => {
+    if (whatsappNotificationMethod === 'none') return;
+
+    const rawAmt = Number(transaction?.amount ?? 0);
+    const amountVal = isNaN(rawAmt) ? 0 : rawAmt;
+    const formattedAmount = `₹${amountVal.toLocaleString("en-IN")}`;
+    const activeRoomId = userRoomId || localStorage.getItem('userRoomId') || 'TL-ROOM';
+    const isGenesisRoom = activeRoomId === 'DUO-KLIZ-2508';
+    const roomDisplayName = isGenesisRoom ? '👑 DUO-KLIZ-2508 (Genesis Duo)' : activeRoomId;
+    const txTitle = transaction?.title || 'Expense';
+    const txPaidBy = transaction?.paidBy || transaction?.paid_by || userNickname || 'Roommate';
+    const txCategory = transaction?.category || 'General';
+    const txDate = transaction?.date || getLocalDateStr();
+    const rawTime = transaction?.time || '';
+    const parsedTimeObj = parseTimeAndHistory(rawTime);
+    const txTime = parsedTimeObj.time || (rawTime ? String(rawTime).split('|')[0] : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
+    const txDateTime = `${txDate} • ${txTime}`;
+    const isSettlement = actionType === 'settle' || txCategory === 'Payment' || (txTitle && txTitle.startsWith('Payment:'));
+    const txSplit = isSettlement
+      ? 'Direct Settlement Transfer'
+      : (transaction?.split || (transaction?.isShared ? 'Split equally' : 'Personal'));
+
+    // 1. Build Header & Body based on actionType
+    let headerText = '🧾 *Tallyin Expense Alert: New Expense Added*';
+    if (actionType === 'update' || actionType === 'edit') {
+      headerText = '✏️ *Tallyin Expense Alert: Expense Updated*';
+    } else if (actionType === 'settle') {
+      headerText = '🤝 *Tallyin Settlement Recorded*';
+    } else if (actionType === 'bill_due_today') {
+      headerText = '🔔 *Tallyin Flat Bill Alert: Due TODAY!*';
+    } else if (actionType === 'bill_due_2days') {
+      headerText = '⏳ *Tallyin Bill Reminder: Due in 2 Days*';
+    } else if (actionType === 'new_member') {
+      headerText = '🎉 *Tallyin Room Update: New Roommate Joined!*';
+    } else if (actionType === 'member_removed') {
+      headerText = '🚫 *Tallyin Room Update: Room Access Removed*';
+    } else if (actionType === 'test') {
+      headerText = '🔔 *Tallyin Central WhatsApp Test Alert*';
+    }
+
+    if (isGenesisRoom) {
+      headerText = `👑 *[Genesis Duo Founding Space]*\n${headerText}`;
+    }
+
+    let messageLines = [];
+    if (isSettlement) {
+      const splitsArr = Array.isArray(transaction?.splits) ? transaction.splits : [];
+      const receiverMember = splitsArr.find(s => s.uid !== transaction?.paidByUid || (s.amount ?? 0) > 0);
+      const receiverName = receiverMember?.nickname || (txTitle.includes(' to ') ? txTitle.split(' to ')[1]?.trim() : 'Roommate');
+
+      messageLines = [
+        headerText,
+        '',
+        `💸 *Settlement Amount:* ${formattedAmount}`,
+        `👤 *Paid by (Sender):* ${txPaidBy}`,
+        `🎯 *Paid to (Receiver):* ${receiverName}`,
+        `🏠 *Room:* ${roomDisplayName}`,
+        `📅 *Date & Time:* ${txDateTime}`,
+        `✅ *Status:* Fully Settled`
+      ];
+    } else if (actionType === 'bill_due_today' || actionType === 'bill_due_2days') {
+      const isToday = actionType === 'bill_due_today';
+      messageLines = [
+        headerText,
+        '',
+        `📌 *Bill:* ${txTitle}`,
+        `💰 *Amount:* ${formattedAmount}`,
+        `📅 *Due Date:* ${txDate} ${isToday ? '(TODAY)' : '(in 2 days)'}`,
+        `👤 *Responsible / Payer:* ${txPaidBy}`,
+        `🏠 *Room:* ${roomDisplayName}`,
+        isToday ? `⚠️ *Action:* Please pay and log on DuoShare today!` : `ℹ️ *Reminder:* Due in 48 hours.`
+      ];
+    } else if (actionType === 'new_member') {
+      messageLines = [
+        headerText,
+        '',
+        `👋 *New Roommate:* ${txPaidBy}`,
+        `🏠 *Room:* ${roomName || roomDisplayName}`,
+        `📅 *Joined:* ${txDateTime}`,
+        `✨ Warmly welcome your new roommate to the shared space!`
+      ];
+    } else if (actionType === 'member_removed') {
+      messageLines = [
+        headerText,
+        '',
+        `👤 *Roommate:* ${txPaidBy}`,
+        `🏠 *Room:* ${roomDisplayName}`,
+        `📅 *Updated:* ${txDateTime}`,
+        `ℹ️ Room membership access has been revoked by host.`
+      ];
+    } else if (actionType === 'test') {
+      messageLines = [
+        headerText,
+        '',
+        `✨ Centralized automated WhatsApp delivery is active and verified!`,
+        `🏠 *Room:* ${roomDisplayName}`,
+        `👤 *User:* ${txPaidBy}`,
+        `📅 *Dispatched:* ${txDateTime}`,
+        `💰 *Sample Test Expense:* ${formattedAmount}`
+      ];
+    } else {
+      // General expense add / update
+      messageLines = [
+        headerText,
+        '',
+        `💰 *Amount:* ${formattedAmount}`,
+        `📌 *Item / Title:* ${txTitle}`,
+        `👤 *Paid by:* ${txPaidBy}`,
+        `🏷️ *Category:* ${txCategory}`,
+        `👥 *Split:* ${txSplit}`,
+        `🏠 *Room:* ${roomDisplayName}`,
+        `📅 *Date & Time:* ${txDateTime}`
+      ];
+
+      // Roommate share breakdown if available
+      const splitsArr = Array.isArray(transaction?.splits) ? transaction.splits : [];
+      if (splitsArr.length > 0) {
+        messageLines.push('');
+        messageLines.push('👥 *Roommate Breakdown:*');
+        splitsArr.forEach(s => {
+          const sAmt = Number(s.amount ?? 0);
+          const sName = s.nickname || s.name || 'Roommate';
+          messageLines.push(`• ${sName}: ₹${sAmt.toLocaleString('en-IN')}`);
+        });
+      }
+    }
+
+    messageLines.push('');
+    messageLines.push('👉 *Open Tallyin Ledger:* https://tallyin.vercel.app');
+
+    const fullMessage = messageLines.join('\n');
+
+    // 2. Discover target WhatsApp phone numbers
+    let targetMembers = members;
+    let payerUid = transaction?.paidByUid || transaction?.paid_by_uid;
+    let payerName = transaction?.paidBy || transaction?.paid_by;
+    let receiverUid = '';
+    let receiverName = '';
+
+    if (isSettlement) {
+      const splitsArr = Array.isArray(transaction?.splits) ? transaction.splits : [];
+      const receiverMember = splitsArr.find(s => (s.uid && s.uid !== payerUid) || (s.nickname && s.nickname !== payerName) || (s.amount ?? 0) > 0);
+      receiverUid = receiverMember?.uid || '';
+      receiverName = receiverMember?.nickname || (txTitle.includes(' to ') ? txTitle.split(' to ')[1]?.trim() : '');
+
+      const filtered = members.filter(m => {
+        const isPayer = (payerUid && m.uid === payerUid) || (payerName && m.nickname === payerName);
+        const isReceiver = (receiverUid && m.uid === receiverUid) || (receiverName && m.nickname === receiverName);
+        return isPayer || isReceiver;
+      });
+
+      if (filtered.length > 0) {
+        targetMembers = filtered;
+      }
+    }
+
+    const rawPhones = [];
+    
+    // A. From state members
+    targetMembers.forEach(m => {
+      if (m.phone) rawPhones.push(m.phone);
+      if (m.mobileNumber) rawPhones.push(m.mobileNumber);
+      if (m.whatsapp) rawPhones.push(m.whatsapp);
+      if (m.uid && roomWhatsAppMap[m.uid]) rawPhones.push(roomWhatsAppMap[m.uid]);
+      if (m.nickname && roomWhatsAppMap[m.nickname]) rawPhones.push(roomWhatsAppMap[m.nickname]);
+    });
+
+    // B. From local current user
+    const localPhone = whatsappPhoneNumber || localStorage.getItem('tallyin_user_phone') || localStorage.getItem('whatsappPhoneNumber');
+    if (localPhone) rawPhones.push(localPhone);
+
+    // C. Clean & normalize numbers (digits only, e.g. 10-digit => 91XXXXXXXXXX)
+    const phoneList = Array.from(new Set(
+      rawPhones
+        .map(p => typeof p === 'string' ? p.trim().replace(/\D/g, '') : '')
+        .filter(p => p.length >= 10)
+        .map(p => p.length === 10 ? `91${p}` : p)
+    ));
+
+    if (phoneList.length === 0) {
+      console.log('[Tallyin Central WhatsApp] No valid mobile numbers registered for automated dispatch.');
+      return;
+    }
+
+    console.log('[Tallyin Central WhatsApp] Dispatching automated alert to:', phoneList);
+
+    // 3. Dispatch to Cloudflare Worker central dispatch relay & Google Apps Script
+    try {
+      const workerUrl = 'https://duoshare-backend.sampathjogipusala123.workers.dev/api/whatsapp-dispatch';
+      fetch(workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: activeRoomId,
+          actionType,
+          recipients: phoneList,
+          message: fullMessage,
+          title: txTitle,
+          amount: amountVal,
+          paidBy: txPaidBy,
+          apiKey: whatsappApiKey || localStorage.getItem('tallyin_whatsapp_api_key') || localStorage.getItem('whatsappCallmebotKey') || '',
+          app_url: window.location.origin || 'https://tallyin.vercel.app'
+        })
+      }).catch(err => console.warn('[Tallyin Central WhatsApp] Worker relay fetch warning:', err));
+
+      fetch(CENTRAL_EMAIL_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'whatsapp_alert',
+          room_id: activeRoomId,
+          recipients: phoneList,
+          message: fullMessage,
+          subject: isGenesisRoom ? '👑 [Genesis Duo WhatsApp Alert]' : '[Tallyin WhatsApp Alert]',
+          body: fullMessage,
+          textBody: fullMessage,
+          title: txTitle,
+          amount: amountVal,
+          payer: txPaidBy
+        })
+      }).catch(err => console.warn('[Tallyin Central WhatsApp] Script relay fetch warning:', err));
+
+      console.log(`[Tallyin Central WhatsApp] Automated background message (${actionType}) dispatched successfully to ${phoneList.length} recipient(s).`);
+    } catch (err) {
+      console.warn('[Tallyin Central WhatsApp] Dispatch warning:', err);
+    }
+  };
+
+  // 💬 WhatsApp Alert & Share Dispatcher Helper (1-Click Interactive Companion)
+  const sendWhatsAppAlert = (options = {}) => {
+    const { type, bill, transaction, roomId, phone } = options;
+    const activeRoomId = roomId || userRoomId || localStorage.getItem('userRoomId') || 'DUOSHARE';
+    const baseUrl = window.location.origin || 'https://tallyin.vercel.app';
+
+    let text = '';
+
+    if (type === 'bill_due' || type === 'bill_due_today') {
+      const bTitle = bill?.title || 'Flat Bill';
+      const bAmt = formatINR(Number(bill?.amount) || 0);
+      const bDate = bill?.date || getLocalDateStr();
+      const payer = bill?.paidBy || userNickname || 'Roommate';
+
+      text = `🔔 *Tallyin Flat Bill Alert*\n\n` +
+             `📌 *Bill:* ${bTitle}\n` +
+             `💰 *Amount:* ${bAmt}\n` +
+             `📅 *Due Date:* ${bDate} (TODAY)\n` +
+             `👤 *Responsible/Payer:* ${payer}\n` +
+             `🏠 *Room:* ${activeRoomId}\n\n` +
+             `👉 Pay & log on Tallyin: ${baseUrl}`;
+    } else if (type === 'bill_2days' || type === 'bill_due_2days') {
+      const bTitle = bill?.title || 'Flat Bill';
+      const bAmt = formatINR(Number(bill?.amount) || 0);
+      const bDate = bill?.date || getLocalDateStr();
+
+      text = `⏳ *Tallyin Bill Reminder*\n\n` +
+             `📌 *Bill:* ${bTitle}\n` +
+             `💰 *Amount:* ${bAmt}\n` +
+             `📅 *Due Date:* ${bDate} (in 2 days)\n` +
+             `🏠 *Room:* ${activeRoomId}\n\n` +
+             `👉 View bill status on Tallyin: ${baseUrl}`;
+    } else if (type === 'invite') {
+      const inviteUrl = `${baseUrl}?join=${activeRoomId}`;
+      text = `👋 Hey roommate! Join our shared expense space on Tallyin:\n\n` +
+             `🏠 *Room Code:* ${activeRoomId}\n` +
+             `🔗 *Direct Join Link:* ${inviteUrl}\n\n` +
+             `Open the link to instantly sync bills, track funds & settle balances!`;
+    } else if (transaction) {
+      const txAmt = formatINR(Number(transaction?.amount) || 0);
+      const txTitle = transaction?.title || 'Expense';
+      const txPayer = transaction?.paidBy || userNickname || 'Roommate';
+      text = `🧾 *Tallyin Expense Shared*\n\n` +
+             `💰 *Amount:* ${txAmt}\n` +
+             `📌 *Item:* ${txTitle}\n` +
+             `👤 *Paid by:* ${txPayer}\n` +
+             `🏠 *Room:* ${activeRoomId}\n\n` +
+             `👉 Open Ledger: ${baseUrl}`;
+    }
+
+    if (!text) return;
+
+    const cleanTargetPhone = phone ? String(phone).replace(/\D/g, '') : '';
+    const waUrl = cleanTargetPhone && cleanTargetPhone.length >= 10
+      ? `https://api.whatsapp.com/send?phone=${cleanTargetPhone.length === 10 ? '91' + cleanTargetPhone : cleanTargetPhone}&text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+
+    window.open(waUrl, '_blank');
+  };
+
+  const getMemberWhatsAppPhone = (m, isMe) => {
+    let p = '';
+    if (isMe) {
+      p = whatsappPhoneNumber || localStorage.getItem('tallyin_user_phone') || localStorage.getItem('whatsappPhoneNumber') || '';
+    }
+    if (!p) {
+      p = m?.phone || m?.mobileNumber || m?.whatsapp || (m?.uid && roomWhatsAppMap[m.uid]) || (m?.nickname && roomWhatsAppMap[m.nickname]) || '';
+    }
+    if (!p) return '';
+    const clean = String(p).trim().replace(/\D/g, '');
+    if (clean.length === 10) {
+      return `+91 ${clean.slice(0, 5)} ${clean.slice(5)}`;
+    }
+    if (clean.length > 10) {
+      return `+${clean}`;
+    }
+    return p;
+  };
+
+  const handleSaveWhatsAppNumber = async () => {
+    const raw = (whatsappPhoneNumber || '').trim();
+    const cleanDigits = raw.replace(/\D/g, '');
+    if (!cleanDigits || cleanDigits.length < 10) {
+      triggerToast('Please enter a valid 10-digit WhatsApp phone number');
+      return;
+    }
+    const finalPhone = cleanDigits.length === 10 ? `+91${cleanDigits}` : `+${cleanDigits}`;
+    const normPhone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
+    setWhatsappPhoneNumber(finalPhone);
+    localStorage.setItem('tallyin_user_phone', finalPhone);
+    localStorage.setItem('whatsappPhoneNumber', finalPhone);
+
+    const cleanKey = (whatsappApiKey || '').trim();
+    if (cleanKey) {
+      localStorage.setItem('tallyin_whatsapp_api_key', cleanKey);
+      localStorage.setItem('whatsappCallmebotKey', cleanKey);
+    }
+
+    const activeRoom = userRoomId || localStorage.getItem('userRoomId') || 'TL-ROOM';
+    const myUid = user?.id || auth.currentUser?.uid || 'user';
+    const myNick = userNickname || 'You';
+
+    const updatedMap = {
+      ...roomWhatsAppMap,
+      [myUid]: finalPhone,
+      [myNick]: finalPhone
+    };
+    setRoomWhatsAppMap(updatedMap);
+
+    if (activeRoom && activeRoom !== 'TL-ROOM') {
+      try {
+        await supabase.from('system_settings').upsert({
+          key: `room_phones_${activeRoom}`,
+          value: JSON.stringify(updatedMap)
+        });
+      } catch (e) {
+        console.warn('Failed to save room phones to system_settings:', e);
+      }
+    }
+
+    if (cleanKey) {
+      try {
+        const { data: keysRow } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'whatsapp_callmebot_keys')
+          .maybeSingle();
+        let existingKeys = {};
+        if (keysRow?.value) {
+          try { existingKeys = typeof keysRow.value === 'string' ? JSON.parse(keysRow.value) : keysRow.value; } catch(e) {}
+        }
+        existingKeys[normPhone] = cleanKey;
+        existingKeys[`+${normPhone}`] = cleanKey;
+        await supabase.from('system_settings').upsert({
+          key: 'whatsapp_callmebot_keys',
+          value: JSON.stringify(existingKeys)
+        });
+      } catch (keyErr) {
+        console.warn('Failed to save CallMeBot key to system_settings:', keyErr);
+      }
+    }
+
+    if (myUid) {
+      try {
+        await supabase.from('members').update({ phone: finalPhone }).eq('uid', myUid);
+        await supabase.from('users').update({ phone: finalPhone }).eq('uid', myUid);
+      } catch(e) {}
+    }
+
+    triggerToast(cleanKey ? 'WhatsApp number & automated gateway key saved! Background dispatch active.' : 'WhatsApp alert number saved! Roommate notifications will be sent here.');
+  };
+
+  const handleSendTestWhatsApp = async () => {
+    const activeRoom = userRoomId || localStorage.getItem('userRoomId') || 'TL-ROOM';
+    const myPhone = whatsappPhoneNumber || localStorage.getItem('tallyin_user_phone') || localStorage.getItem('whatsappPhoneNumber') || '+91 6301762370';
+    const cleanDigits = myPhone.replace(/\D/g, '');
+    if (!cleanDigits || cleanDigits.length < 10) {
+      triggerToast('Please enter and save a valid 10-digit WhatsApp number above.');
+      return;
+    }
+    const formattedPhone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
+    const isGenesisRoom = activeRoom === 'DUO-KLIZ-2508';
+    const roomDisplayName = isGenesisRoom ? '👑 DUO-KLIZ-2508 (Genesis Duo)' : activeRoom;
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    const testMsg = `🔔 *Tallyin Central WhatsApp Test Alert*\n\n` +
+      (isGenesisRoom ? `👑 *[Genesis Duo Founding Space]*\n` : '') +
+      `✨ Centralized automated WhatsApp delivery is active and verified!\n` +
+      `🏠 *Room:* ${roomDisplayName}\n` +
+      `👤 *User:* ${userNickname || 'You'}\n` +
+      `📅 *Dispatched:* ${getLocalDateStr()} • ${nowTime}\n` +
+      `💰 *Sample Test Expense:* ₹250\n\n` +
+      `👉 *Open Tallyin Ledger:* ${window.location.origin || 'https://tallyin.vercel.app'}`;
+
+    const activeApiKey = whatsappApiKey || localStorage.getItem('tallyin_whatsapp_api_key') || localStorage.getItem('whatsappCallmebotKey');
+
+    triggerToast('Dispatching automated WhatsApp notification...');
+    try {
+      await sendWhatsAppNotification({
+        id: 'test-wa-' + Date.now(),
+        title: 'Centralized WhatsApp Alert Test',
+        amount: 250,
+        category: 'Food',
+        paidBy: userNickname || 'You',
+        date: getLocalDateStr(),
+        time: nowTime,
+        isShared: true,
+        split: 'Split equally'
+      }, 'test');
+
+      if (activeApiKey) {
+        triggerToast(`🚀 Automated WhatsApp message dispatched directly to +${formattedPhone}! Check your WhatsApp.`);
+      } else {
+        const waUrl = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(testMsg)}`;
+        window.open(waUrl, '_blank');
+        triggerToast(`Test alert dispatched! Opening chat. (Tip: Enter CallMeBot key above for 100% background auto-dispatch)`);
+      }
+    } catch (e) {
+      triggerToast('Test alert failed: ' + (e.message || 'Unknown error'));
+    }
+  };
+
   const handleMergeFundSpend = async (existingFundSpend) => {
     if (!fundSpendFormAmount) {
       triggerToast('Please enter an amount.');
@@ -7969,6 +8459,9 @@ export default function App() {
       if (notificationMethod !== 'none') {
         sendEmailNotification({ ...t, split: newSplit }, 'update').catch(err => console.warn('Paid back email failed:', err));
       }
+      if (whatsappNotificationMethod !== 'none') {
+        sendWhatsAppNotification({ ...t, split: newSplit }, 'update').catch(err => console.warn('Paid back WhatsApp failed:', err));
+      }
 
       fetchTransactions(userRoomId);
     } catch (err) {
@@ -8049,6 +8542,9 @@ export default function App() {
 
       if (notificationMethod !== 'none') {
         sendEmailNotification({ ...existingTx, amount: newAmount }, 'update').catch(err => console.warn('Merge expense email failed:', err));
+      }
+      if (whatsappNotificationMethod !== 'none') {
+        sendWhatsAppNotification({ ...existingTx, amount: newAmount }, 'update').catch(err => console.warn('Merge expense WhatsApp failed:', err));
       }
 
       fetchTransactions(userRoomId);
@@ -8342,6 +8838,11 @@ export default function App() {
           console.warn('Update email notification failed silently:', err);
         });
       }
+      if (whatsappNotificationMethod !== 'none') {
+        sendWhatsAppNotification({ ...newPayload, id: editingTransaction.id }, 'update').catch(err => {
+          console.warn('Update WhatsApp notification failed silently:', err);
+        });
+      }
 
       // 4. Update the DB asynchronously in the background
       (async () => {
@@ -8561,12 +9062,20 @@ export default function App() {
             console.warn('Email notification failed silently:', err);
           });
         }
+        if (whatsappNotificationMethod !== 'none') {
+          sendWhatsAppNotification(txForEmail, 'add').catch(err => {
+            console.warn('WhatsApp notification failed silently:', err);
+          });
+        }
       } catch (error) {
         console.error(error);
         triggerToast(`Saved locally (DB sync failed: ${error.message || 'database error'}).`);
         // Still attempt email even if DB had issues
         if (notificationMethod !== 'none') {
           sendEmailNotification({ ...newPayload, id: optimisticId, receiptImages: activeReceiptImages }, 'add').catch(err => console.warn('Email failed:', err));
+        }
+        if (whatsappNotificationMethod !== 'none') {
+          sendWhatsAppNotification({ ...newPayload, id: optimisticId }, 'add').catch(err => console.warn('WhatsApp failed:', err));
         }
       }
     }
@@ -8725,6 +9234,15 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             receiptImages: [base64Data]
           }, 'add').catch(err => console.warn('Standalone receipt email failed:', err));
         }
+        if (whatsappNotificationMethod !== 'none') {
+          sendWhatsAppNotification({
+            title: newReceipt.title,
+            amount: newReceipt.amount,
+            category: newReceipt.category,
+            date: newReceipt.date,
+            paidBy: userNickname
+          }, 'add').catch(err => console.warn('Standalone receipt WhatsApp failed:', err));
+        }
       } catch (err) {
         console.error(err);
         triggerToast(`Failed to upload: ${err.message || 'database error'}`);
@@ -8815,6 +9333,15 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             paidBy: userNickname,
             receiptImages: loadedImages
           }, 'update').catch(err => console.warn('Attach receipt email failed:', err));
+        }
+        if (whatsappNotificationMethod !== 'none' && targetReceipt) {
+          sendWhatsAppNotification({
+            title: targetReceipt.title,
+            amount: targetReceipt.amount,
+            category: targetReceipt.category,
+            date: targetReceipt.date,
+            paidBy: userNickname
+          }, 'update').catch(err => console.warn('Attach receipt WhatsApp failed:', err));
         }
       } catch (err) {
         console.error("Error attaching receipt:", err);
@@ -9084,6 +9611,11 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           console.warn('Settle email notification failed silently:', err);
         });
       }
+      if (whatsappNotificationMethod !== 'none') {
+        sendWhatsAppNotification(txForEmail, 'settle').catch(err => {
+          console.warn('Settle WhatsApp notification failed silently:', err);
+        });
+      }
 
       await logActivity('settle', `${payer.nickname} recorded payment of ${formatINR(amountNum)} to ${receiver.nickname}`);
       triggerToast(`Recorded payment of ${formatINR(amountNum)} from ${payer.nickname} to ${receiver.nickname}!`);
@@ -9093,6 +9625,9 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
       // Retry email notification if DB had issues
       if (notificationMethod !== 'none') {
         sendEmailNotification({ ...newPayload, id: optimisticId }, 'settle').catch(err => console.warn('Settle email retry failed:', err));
+      }
+      if (whatsappNotificationMethod !== 'none') {
+        sendWhatsAppNotification({ ...newPayload, id: optimisticId }, 'settle').catch(err => console.warn('Settle WhatsApp retry failed:', err));
       }
     }
   };
@@ -10833,14 +11368,51 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           }
 
           if (notificationMethod !== 'none') {
+            sendEmailNotification(bill, 'bill_due_today').catch(err => {
+              console.warn("Failed to send bill due today email:", err);
+            });
+          }
+
+          if (whatsappNotificationMethod !== 'none') {
+            sendWhatsAppNotification(bill, 'bill_due_today').catch(err => {
+              console.warn("Failed to send bill due today WhatsApp alert:", err);
+            });
+          }
+        }
+      }
+
+      // 2. Bill Due in 2 DAYS Notification
+      if (dueStr === dueIn2DaysStr) {
+        const notifKey2Days = `bill_notif_2days_${billId}_${dueStr}`;
+        if (!localStorage.getItem(notifKey2Days)) {
+          localStorage.setItem(notifKey2Days, 'true');
+
+          if (Notification.permission === 'granted' && localStorage.getItem('pushNotificationsEnabled') === 'true') {
+            try {
+              new Notification("⏳ Bill Due in 2 Days", {
+                body: `Reminder: "${bill.title}" (${formattedAmt}) is due on ${dueStr} (in 2 days).`,
+                icon: logoIcon || '/favicon.ico'
+              });
+            } catch (e) {
+              console.warn("Failed browser notification:", e);
+            }
+          }
+
+          if (notificationMethod !== 'none') {
             sendEmailNotification(bill, 'bill_due_2days').catch(err => {
               console.warn("Failed to send bill due in 2 days email:", err);
+            });
+          }
+
+          if (whatsappNotificationMethod !== 'none') {
+            sendWhatsAppNotification(bill, 'bill_due_2days').catch(err => {
+              console.warn("Failed to send bill due in 2 days WhatsApp alert:", err);
             });
           }
         }
       }
     });
-  }, [billsList, notificationMethod, pushNotificationsEnabled]);
+  }, [billsList, notificationMethod, pushNotificationsEnabled, whatsappNotificationMethod]);
 
   const filteredPersonalExpenses = useMemo(() => {
     return activeBasePersonalList.filter(t => {
@@ -13430,6 +14002,23 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </button>
 
             <button 
+              onClick={() => navigateTo('trips')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-xs sm:text-[13px] ${
+                currentView === 'trips' 
+                  ? 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-100 font-bold' 
+                  : 'text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 hover:text-[#1A3827] dark:hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Compass className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                <span className="whitespace-nowrap">Trip Splitter</span>
+              </div>
+              <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635] rounded-full">
+                New
+              </span>
+            </button>
+
+            <button 
               onClick={() => navigateTo('insights')}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm ${
                 currentView === 'insights' 
@@ -14212,6 +14801,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {currentView === 'ledger' && <ViewRenderer render={renderLedger} />}
             {currentView === 'personal-expenses' && <ViewRenderer render={renderPersonalExpenses} />}
             {currentView === 'fund-tracker' && <ViewRenderer render={renderFundTracker} />}
+            {currentView === 'trips' && <ViewRenderer render={renderTrips} />}
             {currentView === 'insights' && <ViewRenderer render={renderInsights} />}
             {currentView === 'settlement-records' && <ViewRenderer render={renderSettlementRecords} />}
             {currentView === 'receipts' && <ViewRenderer render={renderReceipts} />}
@@ -17581,6 +18171,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         if (notificationMethod !== 'none') {
           sendEmailNotification({ title: payload.title, amount: payload.amount, paidBy: nickname }, 'update').catch(err => console.warn('Fund update email failed:', err));
         }
+        if (whatsappNotificationMethod !== 'none') {
+          sendWhatsAppNotification({ title: payload.title, amount: payload.amount, paidBy: nickname }, 'update').catch(err => console.warn('Fund update WhatsApp failed:', err));
+        }
       } else {
         // Create new fund spend
         const { data, error } = await supabase
@@ -17615,6 +18208,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         if (notificationMethod !== 'none') {
           sendEmailNotification({ title: payload.title, amount: payload.amount, paidBy: nickname, isShared: false, split: selectedFundId }, 'add').catch(err => console.warn('Fund spend email failed:', err));
+        }
+        if (whatsappNotificationMethod !== 'none') {
+          sendWhatsAppNotification({ title: payload.title, amount: payload.amount, paidBy: nickname, isShared: false, split: selectedFundId }, 'add').catch(err => console.warn('Fund spend WhatsApp failed:', err));
         }
       }
       closeAddFundExpenseModal();
@@ -17907,6 +18503,19 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       console.error(err);
       triggerToast('Failed to generate PDF statement.');
     }
+  }
+
+  function renderTrips() {
+    return (
+      <TripExpenseManager
+        members={members}
+        userNickname={userNickname}
+        userRoomId={userRoomId}
+        triggerToast={triggerToast}
+        isDarkMode={isDarkMode}
+        onNavigate={navigateTo}
+      />
+    );
   }
 
   function renderFundTracker() {
@@ -20976,6 +21585,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
+                          onClick={() => sendWhatsAppAlert({ type: 'bill_due', bill })}
+                          className="p-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl active:scale-95 transition-all shadow-sm cursor-pointer"
+                          title="Share bill reminder on WhatsApp"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => handlePayAndLogBill(bill)}
                           className="px-2.5 py-1.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 rounded-xl hover:opacity-90 active:scale-95 transition-all text-[10px] font-extrabold flex items-center gap-1 shadow-sm"
                           title="Pay and log expense directly to Room Ledger"
@@ -21840,6 +22456,150 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             )}
           </div>
 
+          {/* WhatsApp Notifications */}
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-[#25D366]" />
+                  <span>WhatsApp Notifications</span>
+                </h3>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 font-medium">
+                  Send automated real-time background alerts to roommate WhatsApp numbers when expenses are added, updated, or settled.
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  const newMethod = whatsappNotificationMethod === 'tallyin' ? 'none' : 'tallyin';
+                  setWhatsappNotificationMethod(newMethod);
+                  localStorage.setItem('whatsappNotificationMethod', newMethod);
+                  triggerToast(newMethod === 'tallyin' ? 'WhatsApp alerts enabled!' : 'WhatsApp alerts disabled.');
+                }}
+                className={`w-12 h-6 rounded-full p-1 transition-all duration-200 cursor-pointer shrink-0 ${
+                  whatsappNotificationMethod === 'tallyin' ? 'bg-[#25D366]' : 'bg-[#E3E8E3] dark:bg-slate-800'
+                }`}
+              >
+                <div 
+                  className={`w-4 h-4 rounded-full bg-white transition-all duration-200 ${
+                    whatsappNotificationMethod === 'tallyin' ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {whatsappNotificationMethod === 'tallyin' && (
+              <div className="space-y-4 pt-4 border-t border-[#F6F8F6] dark:border-slate-800 animate-fade-in">
+                <div className="bg-emerald-50/50 dark:bg-[#1e2d24] border border-emerald-100 dark:border-[#2f4638] rounded-2xl p-3 text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold space-y-1">
+                  <p className="flex items-center gap-1.5 font-bold">
+                    <span>✨ Centralized WhatsApp Active</span>
+                  </p>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+                    Zero setup required! Alerts are sent automatically in the background to all roommates whenever an expense is logged, updated, settled, or bills are due.
+                  </p>
+                </div>
+
+                {/* Personal alert WhatsApp number configuration */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                    Your Expense Alert WhatsApp Number
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="tel"
+                      placeholder="e.g. 9876543210 or +91 98765 43210"
+                      value={whatsappPhoneNumber}
+                      onChange={(e) => setWhatsappPhoneNumber(e.target.value)}
+                      className="flex-1 px-3 py-2 text-xs border border-[#E3E8E3] dark:border-slate-800 rounded-xl bg-[#F6F8F6] dark:bg-slate-800/50 text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#25D366] font-mono font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveWhatsAppNumber}
+                      className="px-4 py-2 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs rounded-xl cursor-pointer shadow-sm shrink-0 transition-all"
+                    >
+                      Save Number
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+                    Enter your mobile number. Roommates will receive alerts when you log shared expenses.
+                  </p>
+                </div>
+
+                {/* Automated Background Dispatch Gateway (CallMeBot / Gateway Key) */}
+                <div className="space-y-2 pt-2 border-t border-[#F6F8F6] dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                      🚀 Automated Background Dispatch Key (CallMeBot / Gateway)
+                    </label>
+                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      Free & Instant
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter your CallMeBot API Key (e.g. 123456)"
+                      value={whatsappApiKey}
+                      onChange={(e) => setWhatsappApiKey(e.target.value)}
+                      className="flex-1 px-3 py-2 text-xs border border-[#E3E8E3] dark:border-slate-800 rounded-xl bg-[#F6F8F6] dark:bg-slate-800/50 text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#25D366] font-mono font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveWhatsAppNumber}
+                      className="px-4 py-2 bg-[#1A3827] hover:bg-[#142d1f] text-white font-bold text-xs rounded-xl cursor-pointer shadow-sm shrink-0 transition-all"
+                    >
+                      Save Key
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                    <strong>Get your free instant API Key in 30 seconds:</strong> Send WhatsApp message <code className="bg-emerald-50 dark:bg-slate-800 px-1 py-0.5 rounded text-emerald-700 dark:text-emerald-300">I allow callmebot to send me messages</code> to <a href="https://api.whatsapp.com/send?phone=34644105584&text=I%20allow%20callmebot%20to%20send%20me%20messages" target="_blank" rel="noopener noreferrer" className="text-[#25D366] underline font-bold">+34 644 10 55 84</a>. Save it above to receive 100% automated background WhatsApp notifications!
+                  </p>
+                </div>
+
+                {/* Room alert recipients status */}
+                <div className="pt-2">
+                  <p className="text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400 mb-2 uppercase tracking-wider">
+                    Room WhatsApp Recipients ({members.length})
+                  </p>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                    {members.map(m => {
+                      const isMe = m.uid === (user?.id || auth.currentUser?.uid);
+                      const memberPhone = getMemberWhatsAppPhone(m, isMe);
+                      const hasPhone = Boolean(memberPhone);
+
+                      return (
+                        <div key={m.uid} className="flex items-center justify-between text-xs py-1 px-2.5 rounded-lg bg-[#F6F8F6] dark:bg-slate-800/40">
+                          <span className="font-semibold text-[#1A3827] dark:text-slate-200">
+                            {m.nickname || m.name || 'Roommate'}{isMe ? ' (You)' : ''}
+                          </span>
+                          {hasPhone ? (
+                            <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-semibold">
+                              ✓ {memberPhone}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                              ⚠️ No WhatsApp registered
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Send Test WhatsApp Button */}
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSendTestWhatsApp}
+                    className="text-xs text-[#25D366] hover:underline font-bold cursor-pointer flex items-center gap-1.5"
+                  >
+                    💬 Send test notification to my WhatsApp
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Browser Push Notifications */}
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
             <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
@@ -22262,6 +23022,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => sendWhatsAppAlert({ type: 'invite' })}
+                    className="w-full py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    Share via WhatsApp
+                  </button>
                   <button
                     onClick={() => { navigator.clipboard.writeText(inviteLink); triggerToast('Invite link copied!'); }}
                     className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2"
