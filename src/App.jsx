@@ -743,6 +743,8 @@ export default function App() {
     tripSplitterMode: 'scheduled', // 'scheduled' | 'enabled' | 'beta_only' | 'disabled'
     aiOcrMode: 'enabled',
     quotaMode: 'enabled',
+    inviteCampaignActive: true,
+    inviteMessage: 'Are you willing to participate in feature testing of the new build?',
     betaUsers: ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'],
     betaRooms: ['TL-WFHP-5508']
   };
@@ -757,13 +759,37 @@ export default function App() {
     return DEFAULT_BETA_SETTINGS;
   });
 
+  const [betaApplications, setBetaApplications] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('tallyin_beta_applications');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  const [showBetaInvitePrompt, setShowBetaInvitePrompt] = useState(false);
+  const [isSubmittingBetaApp, setIsSubmittingBetaApp] = useState(false);
+
   const [isAdminPasskeyUnlocked, setIsAdminPasskeyUnlocked] = useState(() => {
     return typeof window !== 'undefined' ? sessionStorage.getItem('tallyin_admin_session_unlocked') === 'true' : false;
   });
 
-  // Calculate if the current user or active room is enrolled in the Beta Program
+  // Global Launch Date & Time: October 2nd, 2026 at 08:08 AM IST (1790908680000)
+  const TRIP_SPLITTER_GLOBAL_LAUNCH_TIME = 1790908680000; // 2026-10-02T08:08:00+05:30
+
+  // Has the feature reached general public release or been enabled for all?
+  // When stable or features are released to all, the app automatically converts from Beta Mode to Normal Mode!
+  const isFeatureInBetaPhase = useMemo(() => {
+    if (systemBetaSettings.tripSplitterMode === 'enabled') return false; // Released to all!
+    if (systemBetaSettings.tripSplitterMode === 'disabled') return false;
+    return Date.now() < TRIP_SPLITTER_GLOBAL_LAUNCH_TIME;
+  }, [systemBetaSettings]);
+
+  // Calculate if the current user or active room is explicitly authorized by the admin for the Beta Program
   const currentCleanUserEmail = (user?.email || auth?.currentUser?.email || '').trim().toLowerCase();
-  const isBetaUser = useMemo(() => {
+  const isBetaAuthorizedByAdmin = useMemo(() => {
     if (systemBetaSettings.globalBetaMode) return true;
     if (currentCleanUserEmail && Array.isArray(systemBetaSettings.betaUsers)) {
       if (systemBetaSettings.betaUsers.map(e => String(e).toLowerCase().trim()).includes(currentCleanUserEmail)) return true;
@@ -774,17 +800,17 @@ export default function App() {
     return false;
   }, [systemBetaSettings, currentCleanUserEmail, userRoomId]);
 
-  // Global Launch Date & Time: October 2nd, 2026 at 08:08 AM IST (1790908680000)
-  // Dynamic Launch Gate: respects Admin Beta Mode & global admin overrides
-  const TRIP_SPLITTER_GLOBAL_LAUNCH_TIME = 1790908680000; // 2026-10-02T08:08:00+05:30
+  // Beta Mode Pill should show ONLY when user has been authorized by the admin AND the feature is in pre-release beta phase
+  const showBetaPill = isBetaAuthorizedByAdmin && isFeatureInBetaPhase;
 
+  // Dynamic Launch Gate: respects Admin Beta Mode & global admin overrides
   const isTripSplitterUnlocked = useMemo(() => {
     if (systemBetaSettings.tripSplitterMode === 'enabled') return true;
     if (systemBetaSettings.tripSplitterMode === 'disabled') return false;
-    if (systemBetaSettings.tripSplitterMode === 'beta_only') return isBetaUser;
-    // 'scheduled' (default): Unlocked for Beta Users/Rooms, Room TL-WFHP-5508, or after Oct 2 8:08 AM IST
-    return isBetaUser || userRoomId === 'TL-WFHP-5508' || Date.now() >= TRIP_SPLITTER_GLOBAL_LAUNCH_TIME;
-  }, [systemBetaSettings, isBetaUser, userRoomId]);
+    if (systemBetaSettings.tripSplitterMode === 'beta_only') return isBetaAuthorizedByAdmin;
+    // 'scheduled' (default): Unlocked for Admin-Authorized Beta Users/Rooms, Room TL-WFHP-5508, or after Oct 2 8:08 AM IST
+    return isBetaAuthorizedByAdmin || userRoomId === 'TL-WFHP-5508' || Date.now() >= TRIP_SPLITTER_GLOBAL_LAUNCH_TIME;
+  }, [systemBetaSettings, isBetaAuthorizedByAdmin, userRoomId]);
   const [isDiamondModalOpen, setIsDiamondModalOpen] = useState(false);
   const [activeReceiptZoom, setActiveReceiptZoom] = useState(null);
   const [activeReceiptImageIndex, setActiveReceiptImageIndex] = useState(0);
@@ -873,6 +899,98 @@ export default function App() {
       });
     } catch (e) {}
   };
+
+  // Beta Testing Application Handler (Accept / Decline)
+  const handleApplyForBeta = async (accepted = true) => {
+    if (!accepted) {
+      setShowBetaInvitePrompt(false);
+      try {
+        sessionStorage.setItem('tallyin_beta_invite_declined', 'true');
+      } catch (e) {}
+      if (triggerToast) triggerToast('ℹ️ Beta testing invitation dismissed.');
+      return;
+    }
+
+    setIsSubmittingBetaApp(true);
+    try {
+      const applicantEmail = currentCleanUserEmail || (user?.email || '').trim().toLowerCase();
+      const applicantName = userNickname || user?.displayName || (applicantEmail ? applicantEmail.split('@')[0] : 'User');
+      
+      const newApp = {
+        id: `beta_app_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        email: applicantEmail,
+        name: applicantName,
+        roomId: userRoomId || '',
+        status: 'PENDING',
+        appliedAt: new Date().toISOString()
+      };
+
+      let currentApps = [];
+      try {
+        const { data } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'beta_tester_applications')
+          .maybeSingle();
+        if (data && data.value) {
+          currentApps = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+        }
+      } catch (e) {}
+
+      const filtered = (Array.isArray(currentApps) ? currentApps : []).filter(
+        a => a.email?.toLowerCase() !== applicantEmail.toLowerCase()
+      );
+      const updatedApps = [newApp, ...filtered];
+
+      await supabase.from('system_settings').upsert({
+        key: 'beta_tester_applications',
+        value: JSON.stringify(updatedApps),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'key' });
+
+      setBetaApplications(updatedApps);
+      localStorage.setItem('tallyin_beta_applications', JSON.stringify(updatedApps));
+      setShowBetaInvitePrompt(false);
+
+      const sysChan = supabase.channel('system_admin_channel');
+      sysChan.send({
+        type: 'broadcast',
+        event: 'BETA_APPLICATION_SUBMITTED',
+        payload: { application: newApp }
+      }).catch(() => {});
+
+      if (triggerToast) triggerToast('🚀 Application submitted! Admin will review and authorize your Beta access.');
+    } catch (err) {
+      console.error('Failed to submit beta application:', err);
+      if (triggerToast) triggerToast('⚠️ Could not submit request. Please try again.');
+    } finally {
+      setIsSubmittingBetaApp(false);
+    }
+  };
+
+  // Trigger Beta Invite Prompt for eligible users
+  useEffect(() => {
+    if (!currentCleanUserEmail) return;
+    if (!isFeatureInBetaPhase) return;
+    if (isBetaAuthorizedByAdmin) return;
+    if (systemBetaSettings.inviteCampaignActive === false) return;
+
+    try {
+      const declined = sessionStorage.getItem('tallyin_beta_invite_declined');
+      if (declined === 'true') return;
+    } catch (e) {}
+
+    const existing = (betaApplications || []).find(
+      a => a.email?.toLowerCase() === currentCleanUserEmail.toLowerCase()
+    );
+    if (existing) return;
+
+    const timer = setTimeout(() => {
+      setShowBetaInvitePrompt(true);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [currentCleanUserEmail, isFeatureInBetaPhase, isBetaAuthorizedByAdmin, systemBetaSettings.inviteCampaignActive, betaApplications]);
 
   // Navigation & Admin Portal States
   const [currentView, setCurrentView] = useState(() => {
@@ -1008,10 +1126,19 @@ export default function App() {
         const { data } = await supabase
           .from('system_settings')
           .select('key, value')
-          .in('key', ['system_maintenance_active', 'system_maintenance_message', 'maintenance_allowed_accounts', 'maintenance_features', 'co_admins', 'frozen_room_ids', 'system_maintenance_countdown', 'system_feature_flags_and_beta']);
+          .in('key', ['system_maintenance_active', 'system_maintenance_message', 'maintenance_allowed_accounts', 'maintenance_features', 'co_admins', 'frozen_room_ids', 'system_maintenance_countdown', 'system_feature_flags_and_beta', 'beta_tester_applications']);
 
         if (data && Array.isArray(data)) {
           data.forEach(item => {
+            if (item.key === 'beta_tester_applications') {
+              try {
+                const parsed = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
+                if (Array.isArray(parsed)) {
+                  setBetaApplications(parsed);
+                  localStorage.setItem('tallyin_beta_applications', JSON.stringify(parsed));
+                }
+              } catch (e) {}
+            }
             if (item.key === 'system_feature_flags_and_beta') {
               try {
                 const parsed = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
@@ -1266,6 +1393,40 @@ export default function App() {
           setSystemBetaSettings(payload.payload.settings);
           localStorage.setItem('tallyin_beta_feature_settings', JSON.stringify(payload.payload.settings));
           if (triggerToast) triggerToast('✨ System feature flags & beta settings updated live.');
+        }
+      })
+      .on('broadcast', { event: 'BETA_APPLICATION_SUBMITTED' }, (payload) => {
+        if (payload?.payload?.application) {
+          const newApp = payload.payload.application;
+          setBetaApplications(prev => {
+            const filtered = (prev || []).filter(a => a.id !== newApp.id && a.email?.toLowerCase() !== newApp.email?.toLowerCase());
+            const next = [newApp, ...filtered];
+            localStorage.setItem('tallyin_beta_applications', JSON.stringify(next));
+            return next;
+          });
+          const currentEmail = (localStorage.getItem('tallyin_current_user_email') || '').trim().toLowerCase();
+          if (ADMIN_EMAILS.some(e => e.toLowerCase() === currentEmail)) {
+            if (triggerToast) triggerToast(`🧪 New Beta Testing Application from ${newApp.name || newApp.email}! Review in Admin Dashboard.`);
+          }
+        }
+      })
+      .on('broadcast', { event: 'BETA_APPLICATION_STATUS_UPDATE' }, (payload) => {
+        if (payload?.payload?.application) {
+          const updatedApp = payload.payload.application;
+          setBetaApplications(prev => {
+            const filtered = (prev || []).filter(a => a.id !== updatedApp.id && a.email?.toLowerCase() !== updatedApp.email?.toLowerCase());
+            const next = [updatedApp, ...filtered];
+            localStorage.setItem('tallyin_beta_applications', JSON.stringify(next));
+            return next;
+          });
+          const currentUserEmail = (auth?.currentUser?.email || localStorage.getItem('tallyin_current_user_email') || '').trim().toLowerCase();
+          if (updatedApp.email && updatedApp.email.toLowerCase() === currentUserEmail) {
+            if (updatedApp.status === 'APPROVED') {
+              if (triggerToast) triggerToast('🎉 Your Beta Testing application has been approved by the Admin! Welcome to the new build.');
+            } else if (updatedApp.status === 'REJECTED') {
+              if (triggerToast) triggerToast('ℹ️ Your beta testing request was declined.');
+            }
+          }
         }
       })
       .on('broadcast', { event: 'MAINTENANCE_FEATURES' }, (payload) => {
@@ -12002,6 +12163,8 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
           setAllowedMaintenanceAccounts={setAllowedMaintenanceAccounts}
           systemBetaSettings={systemBetaSettings}
           setSystemBetaSettings={setSystemBetaSettings}
+          betaApplications={betaApplications}
+          setBetaApplications={setBetaApplications}
           isAdminPasskeyUnlocked={isAdminPasskeyUnlocked}
           setIsAdminPasskeyUnlocked={setIsAdminPasskeyUnlocked}
         />
@@ -14109,11 +14272,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <span className="whitespace-nowrap">Trip Splitter</span>
                 </div>
                 <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-full ${
-                  isBetaUser && Date.now() < TRIP_SPLITTER_GLOBAL_LAUNCH_TIME
+                  showBetaPill
                     ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30'
                     : 'bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635]'
                 }`}>
-                  {isBetaUser && Date.now() < TRIP_SPLITTER_GLOBAL_LAUNCH_TIME ? 'Beta' : 'New'}
+                  {showBetaPill ? 'Beta' : 'New'}
                 </span>
               </button>
             )}
@@ -14421,8 +14584,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <Scale className="w-4 h-4" />
             </button>
 
-            {/* Beta Mode Active Badge */}
-            {isBetaUser && (
+            {/* Beta Mode Active Badge - Only shows when user has been authorized by Admin AND feature is in beta phase */}
+            {showBetaPill && (
               <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/30 shadow-xs" title="You are enrolled in the Tallyin Beta Program">
                 <Sparkles className="w-3 h-3 text-emerald-600 dark:text-[#A3E635]" />
                 <span>Beta Mode</span>
@@ -14903,6 +15066,86 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             );
           })()}
 
+          {/* Admin Beta Testing Invitation Banner */}
+          {showBetaInvitePrompt && isFeatureInBetaPhase && !isBetaAuthorizedByAdmin && (
+            <div className="w-full mb-4 rounded-3xl p-4 sm:p-5 bg-gradient-to-r from-emerald-950 via-[#0d2a1c] to-[#123824] border-2 border-emerald-500/50 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in ring-1 ring-emerald-400/20">
+              <div className="flex items-start gap-3.5 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-[#A3E635] border border-emerald-400/30 flex items-center justify-center shrink-0 shadow-inner mt-0.5 md:mt-0">
+                  <Sparkles className="w-5 h-5 text-[#A3E635] animate-pulse" />
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#A3E635] text-slate-950 shadow-sm">
+                      Admin Invitation
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-300">
+                      🧪 New Build Preview Program
+                    </span>
+                  </div>
+                  <h4 className="font-extrabold text-sm sm:text-base text-white tracking-tight">
+                    {systemBetaSettings.inviteMessage || 'Are you willing to participate in feature testing of the new build?'}
+                  </h4>
+                  <p className="text-xs text-emerald-100/80 leading-relaxed max-w-2xl">
+                    Get preview access to upcoming features including the all-in-one <strong>Trip Splitter</strong>, AI receipt scanner, and fast sync engine before public release. Testing access requires Admin approval.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 shrink-0 self-end md:self-center">
+                <button
+                  onClick={() => handleApplyForBeta(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  Decline
+                </button>
+                <button
+                  onClick={() => handleApplyForBeta(true)}
+                  disabled={isSubmittingBetaApp}
+                  className="px-4 py-2 rounded-xl bg-[#A3E635] hover:bg-[#b5f545] text-slate-950 font-black text-xs shadow-md hover:shadow-emerald-500/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
+                >
+                  {isSubmittingBetaApp ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Submitting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Yes, Request Beta Access</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* User's Beta Application Status Notice (Pending Approval) */}
+          {(() => {
+            if (!currentCleanUserEmail || isBetaAuthorizedByAdmin || !isFeatureInBetaPhase) return null;
+            const myApp = (betaApplications || []).find(a => a.email?.toLowerCase() === currentCleanUserEmail.toLowerCase());
+            if (!myApp || myApp.status !== 'PENDING') return null;
+
+            return (
+              <div className="w-full mb-4 rounded-2xl p-3.5 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-sm flex items-center justify-between gap-3 animate-fade-in">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <Clock className="w-4 h-4 animate-spin" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                        Pending Admin Approval
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-800 dark:text-amber-200/90 font-medium mt-0.5">
+                      Your application to test the new build has been submitted to the Admin. Beta features will unlock immediately once approved!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           <ErrorBoundary>
             {currentView === 'home' && <ViewRenderer render={renderHome} />}
             {currentView === 'ledger' && <ViewRenderer render={renderLedger} />}
@@ -14970,6 +15213,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 setSimulatedLatency={setSimulatedLatency}
                 systemBetaSettings={systemBetaSettings}
                 setSystemBetaSettings={setSystemBetaSettings}
+                betaApplications={betaApplications}
+                setBetaApplications={setBetaApplications}
                 isAdminPasskeyUnlocked={isAdminPasskeyUnlocked}
                 setIsAdminPasskeyUnlocked={setIsAdminPasskeyUnlocked}
               />

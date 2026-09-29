@@ -69,7 +69,8 @@ import {
   Bell,
   ArrowUpRight,
   MessageSquare,
-  XCircle
+  XCircle,
+  Compass
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
@@ -219,6 +220,8 @@ export default function AdminDashboard({
   setCoAdmins,
   systemBetaSettings,
   setSystemBetaSettings,
+  betaApplications = [],
+  setBetaApplications,
   isAdminPasskeyUnlocked,
   setIsAdminPasskeyUnlocked
 }) {
@@ -422,6 +425,8 @@ export default function AdminDashboard({
       tripSplitterMode: 'scheduled',
       aiOcrMode: 'enabled',
       quotaMode: 'enabled',
+      inviteCampaignActive: true,
+      inviteMessage: 'Are you willing to participate in feature testing of the new build?',
       betaUsers: ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'],
       betaRooms: ['TL-WFHP-5508']
     };
@@ -429,6 +434,7 @@ export default function AdminDashboard({
   const [newBetaEmailInput, setNewBetaEmailInput] = useState('');
   const [newBetaRoomInput, setNewBetaRoomInput] = useState('');
   const [isSavingBetaSettings, setIsSavingBetaSettings] = useState(false);
+  const [isProcessingAppId, setIsProcessingAppId] = useState(null);
 
   useEffect(() => {
     if (systemBetaSettings) {
@@ -470,6 +476,99 @@ export default function AdminDashboard({
       if (triggerToast) triggerToast(`⚠️ Failed to save feature flags: ${err.message}`);
     } finally {
       setIsSavingBetaSettings(false);
+    }
+  };
+
+  const handleUpdateBetaApplications = async (updatedApps) => {
+    try {
+      await supabase
+        .from('system_settings')
+        .upsert({
+          key: 'beta_tester_applications',
+          value: JSON.stringify(updatedApps),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+
+      if (setBetaApplications) setBetaApplications(updatedApps);
+      localStorage.setItem('tallyin_beta_applications', JSON.stringify(updatedApps));
+    } catch (err) {
+      console.error('Failed to persist beta applications:', err);
+    }
+  };
+
+  const handleApproveBetaApplication = async (app) => {
+    const userEmailClean = (app.email || '').trim().toLowerCase();
+    if (!userEmailClean) return;
+
+    setIsProcessingAppId(app.id);
+    try {
+      // 1. Add to betaUsers in settings
+      const currentUsers = Array.isArray(betaSettings.betaUsers) ? betaSettings.betaUsers : [];
+      const updatedUsers = currentUsers.map(e => e.toLowerCase()).includes(userEmailClean)
+        ? currentUsers
+        : [...currentUsers, userEmailClean];
+      const updatedSettings = { ...betaSettings, betaUsers: updatedUsers };
+
+      // 2. Update application status
+      const updatedApp = { ...app, status: 'APPROVED', approvedAt: new Date().toISOString() };
+      const updatedApps = (betaApplications || []).map(a => (a.id === app.id ? updatedApp : a));
+
+      // 3. Save settings & applications
+      await handleSaveBetaSettings(updatedSettings);
+      await handleUpdateBetaApplications(updatedApps);
+
+      // 4. Broadcast application status update
+      try {
+        const sysChan = supabase.channel('system_admin_channel');
+        sysChan.send({
+          type: 'broadcast',
+          event: 'BETA_APPLICATION_STATUS_UPDATE',
+          payload: { application: updatedApp }
+        }).catch(() => {});
+      } catch (e) {}
+
+      if (triggerToast) triggerToast(`✓ Authorized ${app.name || userEmailClean} for Beta testing!`);
+      logAuditAction('BETA_APPROVE', `Approved beta tester application for ${userEmailClean}`);
+    } catch (err) {
+      console.error('Failed to approve beta application:', err);
+      if (triggerToast) triggerToast(`⚠️ Could not approve user: ${err.message}`);
+    } finally {
+      setIsProcessingAppId(null);
+    }
+  };
+
+  const handleRejectBetaApplication = async (app) => {
+    const userEmailClean = (app.email || '').trim().toLowerCase();
+    setIsProcessingAppId(app.id);
+    try {
+      // 1. Remove from betaUsers if present
+      const currentUsers = Array.isArray(betaSettings.betaUsers) ? betaSettings.betaUsers : [];
+      const updatedUsers = currentUsers.filter(e => e.toLowerCase() !== userEmailClean);
+      const updatedSettings = { ...betaSettings, betaUsers: updatedUsers };
+
+      // 2. Update application status
+      const updatedApp = { ...app, status: 'REJECTED', rejectedAt: new Date().toISOString() };
+      const updatedApps = (betaApplications || []).map(a => (a.id === app.id ? updatedApp : a));
+
+      await handleSaveBetaSettings(updatedSettings);
+      await handleUpdateBetaApplications(updatedApps);
+
+      try {
+        const sysChan = supabase.channel('system_admin_channel');
+        sysChan.send({
+          type: 'broadcast',
+          event: 'BETA_APPLICATION_STATUS_UPDATE',
+          payload: { application: updatedApp }
+        }).catch(() => {});
+      } catch (e) {}
+
+      if (triggerToast) triggerToast(`ℹ️ Declined Beta request for ${app.name || userEmailClean}`);
+      logAuditAction('BETA_REJECT', `Rejected beta tester application for ${userEmailClean}`);
+    } catch (err) {
+      console.error('Failed to decline beta application:', err);
+      if (triggerToast) triggerToast(`⚠️ Could not decline application: ${err.message}`);
+    } finally {
+      setIsProcessingAppId(null);
     }
   };
 
@@ -9531,6 +9630,222 @@ NOTIFY pgrst, 'reload schema';`;
                 <option value="beta_only">Beta Testers Only</option>
                 <option value="disabled">Disabled</option>
               </select>
+            </div>
+
+          </div>
+
+          {/* Section 2.5: User Beta Invitation Campaign & Application Approvals */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            
+            {/* Card A: Invite Campaign Broadcast Configuration */}
+            <div className="lg:col-span-5 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-4 shadow-sm flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635]">
+                      <Radio className="w-4 h-4" />
+                    </span>
+                    <h5 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">
+                      User Invite Campaign
+                    </h5>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                    betaSettings.inviteCampaignActive !== false
+                      ? 'bg-emerald-500/20 text-emerald-800 dark:text-[#A3E635]'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}>
+                    {betaSettings.inviteCampaignActive !== false ? 'Active' : 'Paused'}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                  When active, non-beta users receive an interactive prompt asking if they want to participate in feature testing. Submitted requests arrive in the review queue below for admin authorization.
+                </p>
+
+                <div className="space-y-1.5 pt-1">
+                  <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                    Invite Prompt Question:
+                  </label>
+                  <input
+                    type="text"
+                    value={betaSettings.inviteMessage || 'Are you willing to participate in feature testing of the new build?'}
+                    onChange={(e) => {
+                      setBetaSettings(prev => ({ ...prev, inviteMessage: e.target.value }));
+                    }}
+                    placeholder="Are you willing to participate in feature testing of the new build?"
+                    className="w-full px-3.5 py-2.5 bg-[#F8FAF9] dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-[#E3E8E3] dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = { ...betaSettings, inviteCampaignActive: betaSettings.inviteCampaignActive === false ? true : false };
+                    handleSaveBetaSettings(next);
+                  }}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    betaSettings.inviteCampaignActive !== false
+                      ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20'
+                      : 'bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635] hover:bg-emerald-500/25'
+                  }`}
+                >
+                  {betaSettings.inviteCampaignActive !== false ? 'Pause Broadcast' : 'Resume Broadcast'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSaveBetaSettings(betaSettings)}
+                  disabled={isSavingBetaSettings}
+                  className="px-4 py-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:opacity-90 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Update Prompt</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Card B: User Applications & Admin Approval Queue */}
+            <div className="lg:col-span-7 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-4 shadow-sm flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                      <Clock className="w-4 h-4" />
+                    </span>
+                    <h5 className="text-xs font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider">
+                      Applicant Review Queue ({betaApplications?.length || 0})
+                    </h5>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase">
+                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                      {(betaApplications || []).filter(a => a.status === 'PENDING').length} Pending
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-800 dark:text-[#A3E635]">
+                      {(betaApplications || []).filter(a => a.status === 'APPROVED').length} Approved
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                  Users who responded "Yes" to test the build. Approving an applicant immediately grants them beta authorization and unlocks preview features.
+                </p>
+
+                {/* Applications List */}
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {(betaApplications || []).length === 0 ? (
+                    <div className="p-6 rounded-xl border border-dashed border-[#E3E8E3] dark:border-slate-800 text-center space-y-1">
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                        No tester applications received yet.
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        When users accept the testing invite, their applications will show up here for your review and approval.
+                      </p>
+                    </div>
+                  ) : (
+                    (betaApplications || []).map((app) => {
+                      const isPending = app.status === 'PENDING';
+                      const isApproved = app.status === 'APPROVED';
+                      const isRejected = app.status === 'REJECTED';
+                      const isBusy = isProcessingAppId === app.id;
+
+                      return (
+                        <div
+                          key={app.id || app.email}
+                          className={`p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+                            isPending
+                              ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-500/40'
+                              : isApproved
+                              ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-500/30'
+                              : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 opacity-75'
+                          }`}
+                        >
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-[#1A3827] dark:text-white truncate">
+                                {app.name || app.email.split('@')[0]}
+                              </span>
+                              <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                isPending
+                                  ? 'bg-amber-500 text-white'
+                                  : isApproved
+                                  ? 'bg-[#A3E635] text-slate-950'
+                                  : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                              }`}>
+                                {app.status || 'PENDING'}
+                              </span>
+                              {app.appliedAt && (
+                                <span className="text-[10px] text-slate-400">
+                                  • {new Date(app.appliedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                              {app.email}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                            {isPending && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectBetaApplication(app)}
+                                  disabled={isBusy}
+                                  className="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                                >
+                                  Decline
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveBetaApplication(app)}
+                                  disabled={isBusy}
+                                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black shadow-sm transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 active:scale-95"
+                                >
+                                  {isBusy ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Check className="w-3 h-3" />
+                                  )}
+                                  <span>Approve &amp; Authorize</span>
+                                </button>
+                              </>
+                            )}
+
+                            {isApproved && (
+                              <button
+                                type="button"
+                                onClick={() => handleRejectBetaApplication(app)}
+                                disabled={isBusy}
+                                className="px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                              >
+                                Revoke Beta
+                              </button>
+                            )}
+
+                            {isRejected && (
+                              <button
+                                type="button"
+                                onClick={() => handleApproveBetaApplication(app)}
+                                disabled={isBusy}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-100 hover:text-emerald-800 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                              >
+                                Re-approve
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-2 text-[10px] text-slate-400 italic">
+                Authorized testers immediately see the <strong>🧪 Beta Mode</strong> badge and gain full access to pre-release modules.
+              </div>
             </div>
 
           </div>
