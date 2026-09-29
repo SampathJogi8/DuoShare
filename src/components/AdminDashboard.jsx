@@ -76,9 +76,8 @@ import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
 import { supabase, realSupabase, getActiveDatabaseEngine, setActiveDatabaseEngine } from '../supabase';
 
-const SUPER_ADMIN_EMAIL = 'sampathjogipusala123@gmail.com';
+const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
 const ADMIN_EMAILS = [
-  'sampathjogipusala123@gmail.com',
   'tallyin.alerts@gmail.com'
 ];
 
@@ -427,7 +426,7 @@ export default function AdminDashboard({
       quotaMode: 'enabled',
       inviteCampaignActive: true,
       inviteMessage: 'Are you willing to participate in feature testing of the new build?',
-      betaUsers: ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'],
+      betaUsers: ['tallyin.alerts@gmail.com'],
       betaRooms: ['TL-WFHP-5508']
     };
   });

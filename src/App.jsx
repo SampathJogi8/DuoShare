@@ -80,9 +80,8 @@ import BannedUserView from './components/BannedUserView';
 import QuickBillModal from './components/QuickBillModal';
 import TripExpenseManager from './components/TripExpenseManager';
 
-const SUPER_ADMIN_EMAIL = 'sampathjogipusala123@gmail.com';
+const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
 const ADMIN_EMAILS = [
-  'sampathjogipusala123@gmail.com',
   'tallyin.alerts@gmail.com'
 ];
 const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
@@ -745,7 +744,7 @@ export default function App() {
     quotaMode: 'enabled',
     inviteCampaignActive: true,
     inviteMessage: 'Are you willing to participate in feature testing of the new build?',
-    betaUsers: ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'],
+    betaUsers: ['tallyin.alerts@gmail.com'],
     betaRooms: ['TL-WFHP-5508']
   };
 
