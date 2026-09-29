@@ -167,6 +167,13 @@ export const EMAIL_TEMPLATE_PRESETS = [
     body: `Hi {{userName}},\n\nThis is a friendly reminder to review and settle any pending balances in {{roomName}} on Tallyin.\n\nClear all dues easily using 1-tap UPI or mark offline payments directly within your room.\n\nHappy sharing!\nTeam Tallyin`
   },
   {
+    id: 'trip_splitter_release',
+    name: '🌴 Oct 2nd Release: Trip Splitter & Vacation Manager',
+    category: 'Official Releases',
+    subject: '🌴 New in Tallyin: Trip Splitter, Vacation Budgets & Who Owes Whom!',
+    body: `Hello {{userName}},\n\nWe are excited to announce a major new release now live in Tallyin:\n🌴 The All-in-One Trip Splitter & Vacation Expense Manager!\n\nHIGHLIGHTS:\n• 🌴 Dedicated Trips Hub: Plan trips with destinations, dates, and budget targets. Include room flatmates or invite external friends without flat room restrictions.\n• 💸 Live Group Expense Splitter: Track stay, flights, dining, activities, fuel, and shopping. Split equally, selectively choose participants, or enter exact custom shares.\n• ⚖️ Automated Debt Simplification: Computes "Who Owes Whom" with minimal transfers so settling balances is instant.\n• 📊 Pre-Trip Budget Estimator: Estimate category costs before leaving and compare planned vs actual spend in real time.\n• 📤 1-Click WhatsApp Share: Share itemized settlements directly to your trip's WhatsApp group.\n\nOpen Tallyin now and try the new "Trip Splitter" in your navigation menu:\n{{appUrl}}\n\nBest regards,\nThe Tallyin Team\ntallyin.alerts@gmail.com`
+  },
+  {
     id: 'feature_release',
     name: '🚀 New Feature Announcement',
     category: 'Broadcasts',

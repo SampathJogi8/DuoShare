@@ -1074,13 +1074,13 @@ export default function App() {
 
   const [globalBroadcast, setGlobalBroadcast] = useState(() => {
     const defaultBroadcast = {
-      id: `release_${APP_VERSION || 'v3.30.2'}_itemized_bills`,
-      text: `✨ New Feature (${APP_VERSION || 'v3.30.2'}): Itemized Bill & PDF Receipt Generator now live in Bills (b9lls).`,
+      id: `release_${APP_VERSION || 'v4.6.1'}_trip_splitter`,
+      text: `🌴 Official Release (${APP_VERSION || 'v4.6.1'}): All-in-One Trip Splitter & Vacation Expense Manager now live! Track travel costs, split with flatmates or guests, and settle debts instantly.`,
       type: 'feature',
       active: true,
-      createdAt: '2026-08-06T12:50:00.000Z',
-      expiresAt: new Date(new Date('2026-08-06T12:50:00.000Z').getTime() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-      validDays: 2
+      createdAt: '2026-10-02T00:00:00.000Z',
+      expiresAt: '2026-10-10T23:59:59.000Z',
+      validDays: 8
     };
 
     if (typeof window !== 'undefined') {
