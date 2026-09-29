@@ -4034,6 +4034,7 @@ export default function AdminDashboard({
             htmlBody: `
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0;">
                 <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #10b981;">
+                  <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin" width="48" height="48" style="display: inline-block; border-radius: 12px; margin-bottom: 8px; box-shadow: 0 4px 10px rgba(16,185,129,0.15);" />
                   <h2 style="color: #1a3827; margin: 0; font-size: 20px;">Tallyin Official Notification</h2>
                   <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Verified System Dispatch • tallyin.alerts@gmail.com</p>
                 </div>

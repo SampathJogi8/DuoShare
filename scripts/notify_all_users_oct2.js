@@ -25,15 +25,18 @@ function getOfficialEmailHtml(userName, targetEmail) {
           
           <!-- Header Bar -->
           <tr>
-            <td style="padding: 28px 32px 20px 32px; background: linear-gradient(135deg, #1A3827 0%, #0F2318 100%); text-align: left;">
+            <td style="padding: 24px 32px; background: linear-gradient(135deg, #1A3827 0%, #0F2318 100%); text-align: left;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
-                  <td>
-                    <span style="font-size: 22px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px;">Tallyin</span>
-                    <span style="display: block; font-size: 10px; font-weight: 800; color: #A3E635; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">Smart Roommate & Travel Sync</span>
+                  <td width="52" valign="middle">
+                    <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="44" height="44" style="display: block; border-radius: 12px; border: 2px solid rgba(163, 230, 53, 0.5); box-shadow: 0 4px 12px rgba(0,0,0,0.35);" />
                   </td>
-                  <td align="right">
-                    <span style="background-color: rgba(163, 230, 53, 0.15); border: 1px solid rgba(163, 230, 53, 0.3); color: #A3E635; font-size: 9px; font-weight: 800; text-transform: uppercase; padding: 4px 10px; rounded: 12px; border-radius: 20px; letter-spacing: 0.5px;">
+                  <td style="padding-left: 14px;" valign="middle">
+                    <span style="font-size: 22px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; line-height: 1;">Tallyin</span>
+                    <span style="display: block; font-size: 10px; font-weight: 800; color: #A3E635; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 3px;">Smart Roommate & Travel Sync</span>
+                  </td>
+                  <td align="right" valign="middle">
+                    <span style="background-color: rgba(163, 230, 53, 0.15); border: 1px solid rgba(163, 230, 53, 0.35); color: #A3E635; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 5px 12px; border-radius: 20px; letter-spacing: 0.5px; white-space: nowrap;">
                       Oct 2, 2026 Release
                     </span>
                   </td>
