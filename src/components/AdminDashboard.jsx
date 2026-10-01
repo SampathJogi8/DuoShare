@@ -482,10 +482,25 @@ export default function AdminDashboard({
 
     // If this user has an application, mark it as REJECTED
     if (Array.isArray(betaApplications) && betaApplications.length > 0) {
-      const updatedApps = betaApplications.map(a => 
-        String(a.email || '').trim().toLowerCase() === cleanEmail ? { ...a, status: 'REJECTED' } : a
-      );
+      let rejectedApp = null;
+      const updatedApps = betaApplications.map(a => {
+        if (String(a.email || '').trim().toLowerCase() === cleanEmail) {
+          rejectedApp = { ...a, status: 'REJECTED', rejectedAt: new Date().toISOString() };
+          return rejectedApp;
+        }
+        return a;
+      });
       handleUpdateBetaApplications(updatedApps);
+      if (rejectedApp) {
+        try {
+          const sysChan = supabase.channel('system_admin_channel');
+          sysChan.send({
+            type: 'broadcast',
+            event: 'BETA_APPLICATION_STATUS_UPDATE',
+            payload: { application: rejectedApp }
+          }).catch(() => {});
+        } catch (e) {}
+      }
     }
 
     handleSaveBetaSettings(next);
@@ -508,9 +523,17 @@ export default function AdminDashboard({
         .from('system_settings')
         .upsert({
           key: 'beta_tester_applications',
-          value: JSON.stringify(updatedApps),
-          updated_at: new Date().toISOString()
+          value: JSON.stringify(updatedApps)
         }, { onConflict: 'key' });
+
+      try {
+        if (typeof realSupabase !== 'undefined' && realSupabase?.from) {
+          await realSupabase.from('system_settings').upsert({
+            key: 'beta_tester_applications',
+            value: JSON.stringify(updatedApps)
+          }, { onConflict: 'key' });
+        }
+      } catch (sbErr) {}
 
       if (setBetaApplications) setBetaApplications(updatedApps);
       localStorage.setItem('tallyin_beta_applications', JSON.stringify(updatedApps));
@@ -534,7 +557,11 @@ export default function AdminDashboard({
 
       // 2. Update application status
       const updatedApp = { ...app, status: 'APPROVED', approvedAt: new Date().toISOString() };
-      const updatedApps = (betaApplications || []).map(a => (a.id === app.id ? updatedApp : a));
+      const updatedApps = (betaApplications || []).map(a => 
+        (a.id === app.id || (userEmailClean && String(a.email || '').trim().toLowerCase() === userEmailClean))
+          ? { ...a, status: 'APPROVED', approvedAt: new Date().toISOString() }
+          : a
+      );
 
       // 3. Save settings & applications
       await handleSaveBetaSettings(updatedSettings);
@@ -571,7 +598,11 @@ export default function AdminDashboard({
 
       // 2. Update application status
       const updatedApp = { ...app, status: 'REJECTED', rejectedAt: new Date().toISOString() };
-      const updatedApps = (betaApplications || []).map(a => (a.id === app.id ? updatedApp : a));
+      const updatedApps = (betaApplications || []).map(a => 
+        (a.id === app.id || (userEmailClean && String(a.email || '').trim().toLowerCase() === userEmailClean))
+          ? { ...a, status: 'REJECTED', rejectedAt: new Date().toISOString() } 
+          : a
+      );
 
       await handleSaveBetaSettings(updatedSettings);
       await handleUpdateBetaApplications(updatedApps);

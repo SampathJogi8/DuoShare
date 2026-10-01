@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Compass,
   Plus,
@@ -1717,9 +1718,9 @@ export default function TripExpenseManager({
         {/* ======================================================== */}
         {/* MODAL: RECORD SETTLEMENT */}
         {/* ======================================================== */}
-        {isSettleModalOpen && (
+        {isSettleModalOpen && typeof document !== 'undefined' && createPortal(
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
             onClick={(e) => { if (e.target === e.currentTarget) setIsSettleModalOpen(false); }}
           >
             <div className="w-full max-w-md bg-white dark:bg-[#0E1317] border border-[#E2EAE3] dark:border-[#1F2830] shadow-2xl rounded-3xl p-6 space-y-5">
@@ -1814,15 +1815,16 @@ export default function TripExpenseManager({
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* ======================================================== */}
         {/* MODAL: SHARE / EXPORT SUMMARY */}
         {/* ======================================================== */}
-        {isShareModalOpen && (
+        {isShareModalOpen && typeof document !== 'undefined' && createPortal(
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
             onClick={(e) => { if (e.target === e.currentTarget) setIsShareModalOpen(false); }}
           >
             <div className="w-full max-w-lg bg-white dark:bg-[#0E1317] border border-[#E2EAE3] dark:border-[#1F2830] shadow-2xl rounded-3xl p-6 space-y-5">
@@ -1877,7 +1879,55 @@ export default function TripExpenseManager({
                 </div>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
+        )}
+
+        {/* ======================================================== */}
+        {/* MODAL: EDIT ACTIVE TRIP */}
+        {/* ======================================================== */}
+        {isTripModalOpen && (
+          <TripModal
+            isOpen={isTripModalOpen}
+            onClose={() => {
+              setIsTripModalOpen(false);
+              setEditingTrip(null);
+            }}
+            initialData={editingTrip || activeTrip}
+            defaultHostName={userNickname}
+            roomMembers={members}
+            onSave={handleSaveTrip}
+          />
+        )}
+
+        {/* ======================================================== */}
+        {/* MODAL: COMPLETE TRIP & EMAIL LEDGER */}
+        {/* ======================================================== */}
+        {isCompleteTripModalOpen && (
+          <CompleteTripModal
+            isOpen={isCompleteTripModalOpen}
+            onClose={() => {
+              setIsCompleteTripModalOpen(false);
+              setTripToComplete(null);
+            }}
+            trip={tripToComplete || activeTrip}
+            tripStats={
+              (tripToComplete && tripToComplete.id !== activeTrip?.id)
+                ? {
+                    ...calculateTripSettlements(
+                      tripToComplete.companions || [],
+                      tripToComplete.expenses || [],
+                      tripToComplete.settlements || []
+                    ),
+                    totalSpent: (tripToComplete.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0)
+                  }
+                : tripStats
+            }
+            roomMembers={members}
+            user={user}
+            onConfirm={handleCompleteTrip}
+            isSending={isSendingTripEmails}
+          />
         )}
 
       </div>
@@ -2291,9 +2341,9 @@ function TripModal({
     });
   };
 
-  return (
+  const modalContent = (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="w-full max-w-lg bg-white dark:bg-[#0E1317] border border-[#E2EAE3] dark:border-[#1F2830] shadow-2xl rounded-3xl p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto">
@@ -2468,6 +2518,8 @@ function TripModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }
 
 // =========================================================================
@@ -2553,9 +2605,9 @@ function ExpenseModal({
   const totalExactShares = Object.values(exactShares).reduce((sum, v) => sum + (Number(v) || 0), 0);
   const exactDifference = (Number(amount) || 0) - totalExactShares;
 
-  return (
+  const modalContent = (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="w-full max-w-lg bg-white dark:bg-[#0E1317] border border-[#E2EAE3] dark:border-[#1F2830] shadow-2xl rounded-3xl p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto">
@@ -2772,6 +2824,8 @@ function ExpenseModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }
 
 // =========================================================================
@@ -2819,9 +2873,9 @@ function CompleteTripModal({
   const compMap = {};
   (trip.companions || []).forEach(c => { compMap[c.id] = c.name; });
 
-  return (
+  const modalContent = (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in text-left"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
       onClick={(e) => { if (e.target === e.currentTarget && !isSending) onClose(); }}
     >
       <div className="w-full max-w-lg bg-white dark:bg-[#0E1317] border border-[#E2EAE3] dark:border-[#1F2830] shadow-2xl rounded-3xl p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto">
@@ -2948,4 +3002,6 @@ function CompleteTripModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

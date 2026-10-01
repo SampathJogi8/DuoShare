@@ -772,6 +772,12 @@ export default function App() {
 
   const [showBetaInvitePrompt, setShowBetaInvitePrompt] = useState(false);
   const [isSubmittingBetaApp, setIsSubmittingBetaApp] = useState(false);
+  const [dismissedBetaBannerKey, setDismissedBetaBannerKey] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('tallyin_dismissed_beta_banner') || null;
+    }
+    return null;
+  });
 
   // Global Launch Date & Time: October 2nd, 2026 at 08:08 AM IST (1790908680000)
   const TRIP_SPLITTER_GLOBAL_LAUNCH_TIME = 1790908680000; // 2026-10-02T08:08:00+05:30
@@ -937,13 +943,19 @@ export default function App() {
       const filtered = (Array.isArray(currentApps) ? currentApps : []).filter(
         a => a.email?.toLowerCase() !== applicantEmail.toLowerCase()
       );
-      const updatedApps = [newApp, ...filtered];
-
       await supabase.from('system_settings').upsert({
         key: 'beta_tester_applications',
-        value: JSON.stringify(updatedApps),
-        updated_at: new Date().toISOString()
+        value: JSON.stringify(updatedApps)
       }, { onConflict: 'key' });
+
+      try {
+        if (typeof realSupabase !== 'undefined' && realSupabase?.from) {
+          await realSupabase.from('system_settings').upsert({
+            key: 'beta_tester_applications',
+            value: JSON.stringify(updatedApps)
+          }, { onConflict: 'key' });
+        }
+      } catch (sbErr) {}
 
       setBetaApplications(updatedApps);
       localStorage.setItem('tallyin_beta_applications', JSON.stringify(updatedApps));
@@ -15144,31 +15156,91 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </div>
           )}
 
-          {/* User's Beta Application Status Notice (Pending Approval) */}
+          {/* User's Beta Application Status Notice (Pending Approval / Declined) */}
           {(() => {
             if (!currentCleanUserEmail || isBetaAuthorizedByAdmin || !isFeatureInBetaPhase) return null;
             const myApp = (betaApplications || []).find(a => a.email?.toLowerCase() === currentCleanUserEmail.toLowerCase());
-            if (!myApp || myApp.status !== 'PENDING') return null;
+            if (!myApp) return null;
 
-            return (
-              <div className="w-full mb-4 rounded-2xl p-3.5 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-sm flex items-center justify-between gap-3 animate-fade-in">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                    <Clock className="w-4 h-4 animate-spin" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300">
-                        Pending Admin Approval
-                      </span>
+            if (myApp.status === 'PENDING') {
+              const pKey = `pending_${myApp.id || myApp.appliedAt || 'current'}`;
+              if (dismissedBetaBannerKey === pKey) return null;
+
+              return (
+                <div className="w-full mb-4 rounded-2xl p-3.5 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-sm flex items-center justify-between gap-3 animate-fade-in">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                      <Clock className="w-4 h-4 animate-spin" />
                     </div>
-                    <p className="text-xs text-amber-800 dark:text-amber-200/90 font-medium mt-0.5">
-                      Your application to test the new build has been submitted to the Admin. Beta features will unlock immediately once approved!
-                    </p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                          Pending Admin Approval
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-800 dark:text-amber-200/90 font-medium mt-0.5">
+                        Your application to test the new build has been submitted to the Admin. Beta features will unlock immediately once approved!
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setDismissedBetaBannerKey(pKey);
+                      localStorage.setItem('tallyin_dismissed_beta_banner', pKey);
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 transition-colors shrink-0 cursor-pointer"
+                    title="Dismiss notice"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            }
+
+            if (myApp.status === 'REJECTED') {
+              const rKey = `rejected_${myApp.id || myApp.rejectedAt || 'current'}`;
+              if (dismissedBetaBannerKey === rKey) return null;
+
+              return (
+                <div className="w-full mb-4 rounded-2xl p-3.5 bg-slate-500/10 dark:bg-slate-800/40 border border-slate-300 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 shadow-sm flex items-center justify-between gap-3 animate-fade-in">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-7 h-7 rounded-xl bg-slate-500/15 text-slate-600 dark:text-slate-400 flex items-center justify-center shrink-0">
+                      <AlertCircle className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-700 dark:text-slate-300 font-bold">
+                          Beta Request Declined
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-0.5">
+                        Your beta testing request was not approved at this time. Standard features remain fully active.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => handleApplyForBeta(true)}
+                      className="text-xs font-bold text-emerald-600 dark:text-[#A3E635] hover:underline cursor-pointer"
+                    >
+                      Re-apply
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDismissedBetaBannerKey(rKey);
+                        localStorage.setItem('tallyin_dismissed_beta_banner', rKey);
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                      title="Dismiss notification"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-              </div>
-            );
+              );
+            }
+
+            return null;
           })()}
 
           <ErrorBoundary>

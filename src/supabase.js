@@ -71,12 +71,28 @@ class D1QueryBuilder {
         }
       });
     }
+    if (this.table === 'system_settings' && data) {
+      const cleanRow = (row) => {
+        if (!row || typeof row !== 'object') return row;
+        const { updated_at, ...rest } = row;
+        return rest;
+      };
+      data = Array.isArray(data) ? data.map(cleanRow) : cleanRow(data);
+    }
     this.payload = data;
     return this;
   }
 
   update(data) {
     this.action = 'update';
+    if (this.table === 'system_settings' && data) {
+      const cleanRow = (row) => {
+        if (!row || typeof row !== 'object') return row;
+        const { updated_at, ...rest } = row;
+        return rest;
+      };
+      data = Array.isArray(data) ? data.map(cleanRow) : cleanRow(data);
+    }
     this.payload = data;
     return this;
   }
@@ -108,6 +124,14 @@ class D1QueryBuilder {
           row.id = crypto.randomUUID();
         }
       });
+    }
+    if (this.table === 'system_settings' && data) {
+      const cleanRow = (row) => {
+        if (!row || typeof row !== 'object') return row;
+        const { updated_at, ...rest } = row;
+        return rest;
+      };
+      data = Array.isArray(data) ? data.map(cleanRow) : cleanRow(data);
     }
     const safeOptions = { ...options };
     if (this.table === 'users' && safeOptions.onConflict === 'uid') {
