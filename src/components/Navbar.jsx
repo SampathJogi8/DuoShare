@@ -11,8 +11,7 @@ import {
   ChevronDown, 
   LogOut, 
   Menu,
-  Compass,
-  Shield
+  Compass
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 
@@ -130,19 +129,17 @@ export default function Navbar({
               <span>Funds</span>
             </button>
 
-            {(userRoomId === 'TL-WFHP-5508' || Date.now() >= 1790908680000) && (
-              <button
-                onClick={() => setCurrentView('trips')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
-                  currentView === 'trips'
-                    ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shadow-sm'
-                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
-                }`}
-              >
-                <Compass className="w-3.5 h-3.5" />
-                <span>Trips</span>
-              </button>
-            )}
+            <button
+              onClick={() => setCurrentView('trips')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
+                currentView === 'trips'
+                  ? 'bg-white dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shadow-sm'
+                  : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200'
+              }`}
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>Trips</span>
+            </button>
           </nav>
 
           {/* Right Action Icons & Profile Drawer */}
@@ -215,16 +212,6 @@ export default function Navbar({
                       <span>Room Invite Code</span>
                     </button>
 
-                    <button
-                      onClick={() => {
-                        setIsProfileDropdownOpen(false);
-                        setCurrentView('admin');
-                      }}
-                      className="w-full px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-[#F0F4F1] dark:hover:bg-slate-800 rounded-xl flex items-center gap-2 transition-colors"
-                    >
-                      <Shield className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                      <span>Admin Console</span>
-                    </button>
 
                     <button
                       onClick={() => {

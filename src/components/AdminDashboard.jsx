@@ -220,23 +220,14 @@ export default function AdminDashboard({
   systemBetaSettings,
   setSystemBetaSettings,
   betaApplications = [],
-  setBetaApplications,
-  isAdminPasskeyUnlocked,
-  setIsAdminPasskeyUnlocked
+  setBetaApplications
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency' | 'beta_releases'
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const currentEmailClean = (user?.email || '').trim().toLowerCase();
   const currentUidClean = (user?.id || user?.uid || '').trim().toLowerCase();
 
-  const [isAdminSessionUnlocked, setIsAdminSessionUnlocked] = useState(() => {
-    return Boolean(isAdminPasskeyUnlocked) || (typeof window !== 'undefined' ? sessionStorage.getItem('tallyin_admin_session_unlocked') === 'true' : false);
-  });
-  const [adminPasscodeInput, setAdminPasscodeInput] = useState('');
-  const [adminPasscodeError, setAdminPasscodeError] = useState('');
-  const [showPasscode, setShowPasscode] = useState(false);
-
-  const isSuperAdmin = ADMIN_EMAILS.some(e => e.toLowerCase() === currentEmailClean.toLowerCase()) || currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase() || isAdminSessionUnlocked;
+  const isSuperAdmin = ADMIN_EMAILS.some(e => e.toLowerCase() === currentEmailClean.toLowerCase()) || currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
 
   // Sync activeTab if initialTab prop changes
   useEffect(() => {
@@ -427,7 +418,7 @@ export default function AdminDashboard({
       inviteCampaignActive: true,
       inviteMessage: 'Are you willing to participate in feature testing of the new build?',
       betaUsers: ['tallyin.alerts@gmail.com'],
-      betaRooms: ['TL-WFHP-5508']
+      betaRooms: []
     };
   });
   const [newBetaEmailInput, setNewBetaEmailInput] = useState('');
@@ -4362,100 +4353,38 @@ export default function AdminDashboard({
     if (triggerToast) triggerToast(`Pin removed from room ${roomId}`);
   };
 
-  // Admin Passkey Login Screen if unauthenticated
+  // Lock Screen if unauthenticated or expired
   if (!isAuthorizedAdmin) {
-    const handleAdminPasscodeLogin = (e) => {
-      e?.preventDefault();
-      setAdminPasscodeError('');
-      const cleanInput = (adminPasscodeInput || '').trim();
-      if (!cleanInput) {
-        setAdminPasscodeError('Please enter the administrative master passkey.');
-        return;
-      }
-      // Master Passkey check (Case-insensitive)
-      if (cleanInput.toUpperCase() === 'TALLYIN-HQ-8888') {
-        sessionStorage.setItem('tallyin_admin_session_unlocked', 'true');
-        setIsAdminSessionUnlocked(true);
-        if (setIsAdminPasskeyUnlocked) setIsAdminPasskeyUnlocked(true);
-        if (triggerToast) triggerToast('🛡️ Admin Command Center Unlocked (Master Session)');
-      } else {
-        setAdminPasscodeError('Invalid administrative passkey. Please verify and try again.');
-      }
-    };
-
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-[#F0F4F1] dark:bg-slate-950 text-left font-sans animate-fade-in relative overflow-hidden">
-        <div className="w-full max-w-md hud-card rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative border border-[#1A3827]/20 dark:border-slate-800 text-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#1A3827] to-[#25573e] dark:from-[#A3E635] dark:to-emerald-500 text-white dark:text-slate-950 flex items-center justify-center mx-auto shadow-xl ring-4 ring-[#1A3827]/10 dark:ring-[#A3E635]/20">
-            <Shield className="w-8 h-8" />
+        <div className="w-full max-w-md hud-card rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative border border-rose-500/30 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto shadow-md">
+            <ShieldAlert className="w-7 h-7" />
           </div>
-
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/20">
-              <Key className="w-3 h-3" />
-              <span>Admin Authentication Required</span>
-            </div>
-            <h2 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
-              Tallyin HQ Command Center
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
+              {expiredCoAdminObj ? 'Co-Admin Clearance Expired' : 'Access Restricted'}
             </h2>
-            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
-              Sign in with your administrator master passkey or authorized root credentials to access system controls.
-            </p>
+            {expiredCoAdminObj ? (
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                Your time-based Co-Admin clearance for <strong className="text-rose-600 dark:text-rose-400">{expiredCoAdminObj.email}</strong> expired on{' '}
+                <span className="font-bold text-slate-800 dark:text-slate-200">
+                  {new Date(expiredCoAdminObj.expiresAt).toLocaleString()}
+                </span>. Please contact the Super Administrator (<span className="font-bold text-slate-700 dark:text-slate-300">tallyin.alerts@gmail.com</span>) to request a time extension.
+              </p>
+            ) : (
+              <p className="text-xs text-[#5C6E5C] dark:text-slate-400 leading-relaxed">
+                The Admin Command Portal is restricted exclusively to authorized administrators (<span className="font-bold text-rose-600 dark:text-rose-400">tallyin.alerts@gmail.com</span>) and actively assigned Co-Admins.
+              </p>
+            )}
           </div>
-
-          {/* Admin Passcode Form */}
-          <form onSubmit={handleAdminPasscodeLogin} className="space-y-3.5 text-left pt-2">
-            <div>
-              <label className="block text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Master Administrative Passkey
-              </label>
-              <div className="relative">
-                <input
-                  type={showPasscode ? "text" : "password"}
-                  value={adminPasscodeInput}
-                  onChange={(e) => {
-                    setAdminPasscodeInput(e.target.value);
-                    if (adminPasscodeError) setAdminPasscodeError('');
-                  }}
-                  placeholder="Enter Master Passkey..."
-                  autoFocus
-                  className="w-full px-4 py-3 bg-[#F8FAF9] dark:bg-slate-800/80 border border-[#E3E8E3] dark:border-slate-700 rounded-xl text-sm font-mono text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#1A3827] dark:focus:border-[#A3E635] focus:ring-2 focus:ring-[#1A3827]/10 dark:focus:ring-[#A3E635]/20 transition-all pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPasscode(!showPasscode)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-              </div>
-              {adminPasscodeError && (
-                <p className="text-xs font-bold text-rose-600 dark:text-rose-400 mt-1.5 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  <span>{adminPasscodeError}</span>
-                </p>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3 bg-[#1A3827] hover:bg-[#255038] dark:bg-[#A3E635] dark:hover:bg-[#b7f34c] text-white dark:text-slate-950 font-black text-xs rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-            >
-              <Lock className="w-4 h-4" />
-              <span>Unlock Admin Console</span>
-            </button>
-          </form>
-
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={onExitAdmin}
-              className="w-full py-2.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <Home className="w-4 h-4" />
-              <span>Return to App Dashboard</span>
-            </button>
-          </div>
+          <button
+            onClick={onExitAdmin}
+            className="w-full py-3 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hover:bg-[#255038] dark:hover:bg-[#b7f34c] font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Home className="w-4 h-4" />
+            <span>Return to App Dashboard</span>
+          </button>
         </div>
       </div>
     );
@@ -4709,22 +4638,6 @@ export default function AdminDashboard({
               <RefreshCw className={`w-3 h-3 ${isPinging ? 'animate-spin' : ''}`} />
             </button>
           </div>
-
-          {isAdminSessionUnlocked && (
-            <button
-              onClick={() => {
-                sessionStorage.removeItem('tallyin_admin_session_unlocked');
-                setIsAdminSessionUnlocked(false);
-                if (setIsAdminPasskeyUnlocked) setIsAdminPasskeyUnlocked(false);
-                if (triggerToast) triggerToast('Admin Console locked.');
-                onExitAdmin();
-              }}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-extrabold text-xs transition-all cursor-pointer border border-rose-500/20"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Lock Admin Session</span>
-            </button>
-          )}
 
           <button
             onClick={onExitAdmin}
@@ -9529,7 +9442,7 @@ NOTIFY pgrst, 'reload schema';`;
                   {betaSettings.tripSplitterMode === 'scheduled' && <Check className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />}
                 </div>
                 <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
-                  Locked until <strong>Oct 2, 8:08 AM IST</strong>. Room <code className="text-emerald-700 dark:text-[#A3E635] font-bold">TL-WFHP-5508</code> & Beta Users bypass lock.
+                  Locked until <strong>Oct 2, 8:08 AM IST</strong>. Beta Users bypass lock.
                 </p>
                 <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                   Default Rule
@@ -10217,7 +10130,7 @@ NOTIFY pgrst, 'reload schema';`;
             >
               <input
                 type="text"
-                placeholder="Enter Room ID (e.g. TL-WFHP-5508)..."
+                placeholder="Enter Room ID (e.g. TL-ABCD-1234)..."
                 value={newBetaRoomInput}
                 onChange={(e) => setNewBetaRoomInput(e.target.value)}
                 className="w-full px-4 py-2.5 bg-[#F8FAF9] dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 rounded-xl text-xs font-mono uppercase text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-600"
@@ -10239,11 +10152,6 @@ NOTIFY pgrst, 'reload schema';`;
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F8FAF9] dark:bg-slate-800/60 border border-[#E3E8E3] dark:border-slate-800 text-xs font-mono font-bold text-slate-800 dark:text-slate-200"
                 >
                   <span>{roomId}</span>
-                  {roomId === 'TL-WFHP-5508' && (
-                    <span className="text-[9px] font-black uppercase px-1.5 py-0.2 bg-emerald-500/20 text-emerald-800 dark:text-[#A3E635] rounded">
-                      Yarcaud
-                    </span>
-                  )}
                   <button
                     type="button"
                     onClick={(e) => {

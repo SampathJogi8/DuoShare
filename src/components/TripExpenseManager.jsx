@@ -140,6 +140,8 @@ export default function TripExpenseManager({
   members = [],
   userNickname = 'You',
   userRoomId = null,
+  user = null,
+  supabase = null,
   triggerToast = () => {},
   isDarkMode = false,
   onNavigate
@@ -162,7 +164,47 @@ export default function TripExpenseManager({
     return [];
   });
 
-  // Persist trips to localStorage
+  // Fetch and sync user trips from database (system_settings)
+  useEffect(() => {
+    const currentUid = user?.id || user?.uid;
+    if (!currentUid || !supabase) return;
+
+    let isMounted = true;
+    async function syncCloudTrips() {
+      try {
+        const { data } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', `user_trips_${currentUid}`)
+          .maybeSingle();
+
+        if (data?.value && isMounted) {
+          const cloudTrips = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+          if (Array.isArray(cloudTrips) && cloudTrips.length > 0) {
+            setTrips(prev => {
+              const merged = [...prev];
+              cloudTrips.forEach(ct => {
+                const idx = merged.findIndex(m => m.id === ct.id);
+                if (idx >= 0) {
+                  merged[idx] = { ...ct, ...merged[idx] };
+                } else {
+                  merged.push(ct);
+                }
+              });
+              return merged;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Notice: user trips cloud sync:', err);
+      }
+    }
+
+    syncCloudTrips();
+    return () => { isMounted = false; };
+  }, [user?.id, user?.uid, supabase]);
+
+  // Persist trips to localStorage and cloud
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -171,63 +213,19 @@ export default function TripExpenseManager({
         console.error('Error saving trips:', e);
       }
     }
-  }, [trips]);
+    const currentUid = user?.id || user?.uid;
+    if (currentUid && supabase && trips.length > 0) {
+      supabase.from('system_settings').upsert({
+        key: `user_trips_${currentUid}`,
+        value: JSON.stringify(trips),
+        created_at: new Date().toISOString()
+      }, { onConflict: 'key' }).catch(() => {});
+    }
+  }, [trips, user?.id, user?.uid, supabase]);
 
   // Selected Trip View
-  const [selectedTripId, setSelectedTripId] = useState(() => {
-    if (typeof window !== 'undefined' && userRoomId === 'TL-WFHP-5508') {
-      return `trip-room-${userRoomId}`;
-    }
-    return null;
-  });
+  const [selectedTripId, setSelectedTripId] = useState(null);
   const [tripTab, setTripTab] = useState('expenses'); // 'expenses' | 'settlement' | 'planner' | 'companions'
-
-  // Auto-provision and select room trip if room is exclusively for trip splitter (TL-WFHP-5508)
-  useEffect(() => {
-    if (userRoomId === 'TL-WFHP-5508') {
-      const roomTripId = `trip-room-${userRoomId}`;
-      setTrips(prev => {
-        const exists = prev.find(t => t.id === roomTripId || t.roomId === userRoomId);
-        if (!exists) {
-          const companions = [
-            { id: 'c-host', name: userNickname || 'You', isHost: true }
-          ];
-          (members || []).forEach((m, idx) => {
-            const name = m.nickname || m.name;
-            if (name && name.toLowerCase() !== (userNickname || 'You').toLowerCase()) {
-              companions.push({ id: `c-rm-${idx}`, name, isHost: false });
-            }
-          });
-
-          const newRoomTrip = {
-            id: roomTripId,
-            roomId: userRoomId,
-            title: 'Yarcaud Vacation Trip',
-            destination: 'Yercaud, Tamil Nadu',
-            startDate: '',
-            endDate: '',
-            status: 'Ongoing',
-            budget: 10000,
-            currency: '₹',
-            companions,
-            planner: {
-              stay: 4000,
-              travel: 2500,
-              food: 2000,
-              activities: 1000,
-              fuel: 500
-            },
-            expenses: [],
-            settlements: []
-          };
-          return [newRoomTrip, ...prev];
-        }
-        return prev;
-      });
-
-      setSelectedTripId(roomTripId);
-    }
-  }, [userRoomId, userNickname, members]);
 
   // Filter & Search states
   const [tripStatusFilter, setTripStatusFilter] = useState('all'); // 'all' | 'Ongoing' | 'Planning' | 'Completed'

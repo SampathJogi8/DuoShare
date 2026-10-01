@@ -1,0 +1,453 @@
+{
+  "exportedAt": "2026-10-01T05:21:08.594Z",
+  "room": {
+    "id": "TL-WFHP-5508",
+    "name": "Yarcaud",
+    "pin": null,
+    "created_by": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+    "monthly_budget": 10000,
+    "created_at": "2026-09-28T20:39:14.975Z",
+    "max_members": 2,
+    "room_mode": "split",
+    "co_host_uid": null
+  },
+  "members": [
+    {
+      "id": "b1d8f9a0-ee7c-4710-b318-c4701d03cac7",
+      "room_id": "TL-WFHP-5508",
+      "uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "nickname": "Sampath Jogi Pusala",
+      "photo_url": "https://lh3.googleusercontent.com/a/ACg8ocLv4B6nBUn0pP8pxyyRKI4Mtld7Z5y259n3mAqCxZJcFYcBRtFjvg=s96-c",
+      "email": "sampathjogipusala123@gmail.com",
+      "role": "member",
+      "joined_at": "2026-09-28T20:39:16.089Z",
+      "individual_budget": 10000,
+      "phone": null,
+      "rooms": {
+        "name": "Yarcaud",
+        "monthly_budget": 10000
+      }
+    },
+    {
+      "id": "TL-WFHP-5508_z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+      "room_id": "TL-WFHP-5508",
+      "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+      "nickname": "Eniya",
+      "photo_url": "https://lh3.googleusercontent.com/a/ACg8ocIUcXGK97IXFNZNkjrgsNl59dIhSLWZoZHzLsIoP5Qju_wWPg=s96-c",
+      "email": "eniya2238@gmail.com",
+      "role": "member",
+      "joined_at": "2026-09-28T20:40:44.822Z",
+      "individual_budget": 2000,
+      "phone": null,
+      "rooms": {
+        "name": "Yarcaud",
+        "monthly_budget": 10000
+      }
+    }
+  ],
+  "transactions": [
+    {
+      "id": "9bb6a285-36f1-4408-8435-10e2e2f5db6b",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 3650,
+      "title": "Bike ",
+      "category": "Transport",
+      "date": "2026-09-29",
+      "time": "02:11 AM|[{\"changes\":\"Category: 'Food' → 'Transport' | Added receipt files: 1 file(s) | Removed from split: Sampath Jogi Pusala, Eniya\",\"editedBy\":\"Sampath Jogi Pusala\",\"editedAt\":\"09:30 am 29/09/2026\"}]",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "is_shared": 1,
+      "is_edited": 1,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 1825
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 1825
+        }
+      ],
+      "created_by": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "image_url": "[\"null\"]",
+      "created_at": "2026-09-28 20:41:01"
+    },
+    {
+      "id": "0da2a0f6-8567-4f1c-9b3a-a8f7ad76ee23",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 800,
+      "title": "Petrol ",
+      "category": "Fuel",
+      "date": "2026-09-29",
+      "time": "02:11 AM",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 400
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 400
+        }
+      ],
+      "created_by": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "image_url": "null",
+      "created_at": "2026-09-28 20:41:13"
+    },
+    {
+      "id": "9b7c7c77-323a-4863-8c70-3e5bedea497c",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 800,
+      "title": "petrol",
+      "category": "Fuel",
+      "date": "2026-09-29",
+      "time": "09:27 am",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 400
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 400
+        }
+      ],
+      "created_by": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "image_url": "null",
+      "created_at": "2026-09-29 03:57:31"
+    },
+    {
+      "id": "dfac51d8-f960-4cae-b0e7-b0863ad76580",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 2500,
+      "title": "hotel",
+      "category": "Food",
+      "date": "2026-09-29",
+      "time": "09:27 am",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 1250
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 1250
+        }
+      ],
+      "created_by": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "image_url": "null",
+      "created_at": "2026-09-29 03:57:47"
+    },
+    {
+      "id": "9dcfa8fb-c460-4dc0-a1cd-74ebef8e65f6",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 1800,
+      "title": "random expenses",
+      "category": "Food",
+      "date": "2026-09-30",
+      "time": "07:18 am|[{\"changes\":\"Total Amount: ₹2000 → ₹1800 | Removed from split: Sampath Jogi Pusala, Eniya\",\"editedBy\":\"Sampath Jogi Pusala\",\"editedAt\":\"07:45 am 30/09/2026\"}]",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "is_shared": 1,
+      "is_edited": 1,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 900
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 900
+        }
+      ],
+      "created_by": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "image_url": "null",
+      "created_at": "2026-09-30 01:48:41"
+    },
+    {
+      "id": "9c0a7917-08d0-45e7-9bf4-6a6ae888d357",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 2400,
+      "title": "food",
+      "category": "Food",
+      "date": "2026-09-30",
+      "time": "07:18 am",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 1200
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 1200
+        }
+      ],
+      "created_by": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "image_url": "null",
+      "created_at": "2026-09-30 01:48:53"
+    },
+    {
+      "id": "26e60bc0-8920-43ae-aa76-7958056d13a5",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 1000,
+      "title": "playzone",
+      "category": "Food",
+      "date": "2026-09-30",
+      "time": "07:19 am",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 500
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 500
+        }
+      ],
+      "created_by": "t8tECIWsjbW01Hm2e4B93bXVTuU2",
+      "image_url": "null",
+      "created_at": "2026-09-30 01:49:08"
+    },
+    {
+      "id": "f29c0eac-c6df-4f54-94dc-64c259a704c7",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 900,
+      "title": "Breakfast ",
+      "category": "Food",
+      "date": "2026-09-30",
+      "time": "03:08 pm",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 450
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 450
+        }
+      ],
+      "created_by": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "image_url": "null",
+      "created_at": "2026-09-30 09:38:17"
+    },
+    {
+      "id": "c3da2b5f-9343-4374-9d0b-2e0073a8cadf",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 2000,
+      "title": "Sky park",
+      "category": "Food",
+      "date": "2026-09-30",
+      "time": "03:08 pm",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 1000
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 1000
+        }
+      ],
+      "created_by": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "image_url": "null",
+      "created_at": "2026-09-30 09:38:24"
+    },
+    {
+      "id": "96b26ad7-58d8-43e8-a220-5de4d281b3e6",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 500,
+      "title": "Police fine",
+      "category": "Food",
+      "date": "2026-09-30",
+      "time": "03:08 pm",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 250
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 250
+        }
+      ],
+      "created_by": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "image_url": "null",
+      "created_at": "2026-09-30 09:38:36"
+    },
+    {
+      "id": "dba22a7b-a233-4cd2-bf3c-47862e31e764",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 900,
+      "title": "Dominos",
+      "category": "Food",
+      "date": "2026-09-30",
+      "time": "03:09 pm",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 450
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 450
+        }
+      ],
+      "created_by": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "image_url": "null",
+      "created_at": "2026-09-30 09:39:13"
+    },
+    {
+      "id": "6056ad54-5012-4138-b921-2bbc0b8774d1",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 300,
+      "title": "Moodys",
+      "category": "Food",
+      "date": "2026-09-30",
+      "time": "06:49 pm",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 150
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 150
+        }
+      ],
+      "created_by": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "image_url": "null",
+      "created_at": "2026-09-30 13:19:36"
+    },
+    {
+      "id": "94f579a1-a869-42aa-8183-cb517e1f1c3a",
+      "room_id": "TL-WFHP-5508",
+      "payer_id": null,
+      "amount": 150,
+      "title": "Juice ",
+      "category": "Food",
+      "date": "2026-09-30",
+      "time": "06:50 pm",
+      "paid_by": "Sampath Jogi Pusala",
+      "paid_by_uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "is_shared": 1,
+      "is_edited": 0,
+      "split_type": "equal",
+      "split": "Shared (Equal)",
+      "splits": [
+        {
+          "uid": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+          "nickname": "Sampath Jogi Pusala",
+          "amount": 75
+        },
+        {
+          "uid": "z4MY8EgEPZU5Rme5ojwPIxMAEKE2",
+          "nickname": "Eniya",
+          "amount": 75
+        }
+      ],
+      "created_by": "d0b4cb3b-e0bd-44df-b876-f284e542dc0f",
+      "image_url": "null",
+      "created_at": "2026-09-30 13:20:15"
+    }
+  ]
+}
