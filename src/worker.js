@@ -450,7 +450,7 @@ export default {
                 merged.id = existingMember.id;
                 const keys = Object.keys(merged).filter(k => k !== "id" && k !== "room_id").filter(isValidCol);
                 const setClause = keys.map(k => `${k} = ?`).join(", ");
-                const values = keys.map(k => typeof merged[k] === "object" ? JSON.stringify(merged[k]) : merged[k]);
+                const values = keys.map(k => (merged[k] !== null && typeof merged[k] === "object") ? JSON.stringify(merged[k]) : (merged[k] === undefined ? null : merged[k]));
                 await env.DB.prepare(`UPDATE members SET ${setClause} WHERE id = ?`).bind(...values, existingMember.id).run();
                 insertResults.push(merged);
                 continue;
@@ -475,7 +475,7 @@ export default {
 
             const keys = Object.keys(row).filter(isValidCol);
             const placeholders = keys.map(() => "?").join(", ");
-            const values = Object.values(row).map(val => typeof val === "object" ? JSON.stringify(val) : val);
+            const values = keys.map(k => (row[k] !== null && typeof row[k] === "object") ? JSON.stringify(row[k]) : (row[k] === undefined ? null : row[k]));
 
             const sql = `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${placeholders})`;
             await env.DB.prepare(sql).bind(...values).run();
@@ -511,7 +511,7 @@ export default {
 
           const keys = Object.keys(data).filter(isValidCol);
           const setClause = keys.map(k => `${k} = ?`).join(", ");
-          const values = keys.map(k => typeof data[k] === "object" ? JSON.stringify(data[k]) : data[k]);
+          const values = keys.map(k => (data[k] !== null && typeof data[k] === "object") ? JSON.stringify(data[k]) : (data[k] === undefined ? null : data[k]));
 
           let sql = `UPDATE ${table} SET ${setClause}`;
           let params = [...values];
@@ -614,7 +614,7 @@ export default {
               const keys = Object.keys(row).filter(k => k !== "id" && k !== "room_id" && k !== "key").filter(isValidCol);
               if (keys.length > 0) {
                 const setClause = keys.map(k => `${k} = ?`).join(", ");
-                const values = keys.map(k => typeof row[k] === "object" ? JSON.stringify(row[k]) : row[k]);
+                const values = keys.map(k => (row[k] !== null && typeof row[k] === "object") ? JSON.stringify(row[k]) : (row[k] === undefined ? null : row[k]));
                 let sql = `UPDATE ${table} SET ${setClause}`;
                 let updateParams = [...values];
 
@@ -644,7 +644,7 @@ export default {
               }
               const keys = Object.keys(row).filter(isValidCol);
               const placeholders = keys.map(() => "?").join(", ");
-              const values = Object.values(row).map(val => typeof val === "object" ? JSON.stringify(val) : val);
+              const values = keys.map(k => (row[k] !== null && typeof row[k] === "object") ? JSON.stringify(row[k]) : (row[k] === undefined ? null : row[k]));
 
               const sql = `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${placeholders})`;
               await env.DB.prepare(sql).bind(...values).run();

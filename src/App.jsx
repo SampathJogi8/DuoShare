@@ -315,15 +315,26 @@ const getPreviousMonthStr = (d = new Date()) => {
 
 const getImages = (imageUrl) => {
   if (!imageUrl) return [];
-  if (typeof imageUrl === 'string' && imageUrl.startsWith('[') && imageUrl.endsWith(']')) {
-    try {
-      const parsed = JSON.parse(imageUrl);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {
-      // fallback
+  if (typeof imageUrl === 'string') {
+    const trimmed = imageUrl.trim();
+    if (trimmed === 'null' || trimmed === 'undefined' || trimmed === '["null"]' || trimmed === '[]' || trimmed === '""') return [];
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(item => typeof item === 'string' && item && item !== 'null' && item !== 'undefined' && item !== '["null"]');
+        }
+      } catch {
+        // fallback
+      }
     }
+    if (trimmed === 'null' || trimmed === 'undefined') return [];
+    return [trimmed];
   }
-  return [imageUrl];
+  if (Array.isArray(imageUrl)) {
+    return imageUrl.filter(item => typeof item === 'string' && item && item !== 'null' && item !== 'undefined' && item !== '["null"]');
+  }
+  return [];
 };
 
 const formatLogTime = (dateStr) => {
@@ -335,6 +346,16 @@ const formatLogTime = (dateStr) => {
   } catch (e) {
     return 'Just now';
   }
+};
+
+const cleanDbImageUrl = (img) => {
+  if (!img) return null;
+  if (typeof img === 'string') {
+    const trimmed = img.trim();
+    if (trimmed === 'null' || trimmed === 'undefined' || trimmed === '["null"]' || trimmed === '[]' || trimmed === '""') return null;
+    return trimmed;
+  }
+  return null;
 };
 
 const mapDbTransaction = (t) => ({
@@ -353,7 +374,7 @@ const mapDbTransaction = (t) => ({
   split: t.split,
   splits: t.splits,
   createdBy: t.created_by,
-  imageUrl: t.image_url
+  imageUrl: cleanDbImageUrl(t.image_url)
 });
 
 const mapDbReceipt = (r) => ({
@@ -364,34 +385,41 @@ const mapDbReceipt = (r) => ({
   date: r.date,
   bgClass: r.bg_class,
   rotation: r.rotation,
-  imageUrl: r.image_url
+  imageUrl: cleanDbImageUrl(r.image_url)
 });
 
-// Returns true when the data URL represents an image
+// Returns true when the data URL or link represents an image
 const isImageDataUrl = (dataUrl) => {
-  if (!dataUrl) return false;
-  return dataUrl.startsWith('data:image/');
+  if (!dataUrl || typeof dataUrl !== 'string') return false;
+  return (
+    dataUrl.startsWith('data:image/') ||
+    dataUrl.startsWith('http://') ||
+    dataUrl.startsWith('https://') ||
+    dataUrl.startsWith('/api/images/') ||
+    /\.(png|jpe?g|gif|webp|svg|heic|bmp)(\?.*)?$/i.test(dataUrl)
+  );
 };
 
 // Returns true when the data URL represents a PDF
 const isPdfDataUrl = (dataUrl) => {
-  if (!dataUrl) return false;
-  return dataUrl.startsWith('data:application/pdf');
+  if (!dataUrl || typeof dataUrl !== 'string') return false;
+  return dataUrl.startsWith('data:application/pdf') || /\.pdf(\?.*)?$/i.test(dataUrl);
 };
 
 // Returns true when the data URL represents an Excel spreadsheet
 const isExcelDataUrl = (dataUrl) => {
-  if (!dataUrl) return false;
+  if (!dataUrl || typeof dataUrl !== 'string') return false;
   return (
     dataUrl.startsWith('data:application/vnd.ms-excel') ||
     dataUrl.startsWith('data:application/vnd.openxmlformats-officedocument.spreadsheetml') ||
-    dataUrl.startsWith('data:application/octet-stream')
+    /\.(xlsx|xls|csv)(\?.*)?$/i.test(dataUrl)
   );
 };
 
 // Returns a short human-readable label for a data-URL's file type
 const getFileLabel = (dataUrl) => {
   if (!dataUrl) return 'File';
+  if (isImageDataUrl(dataUrl)) return 'Image';
   if (isPdfDataUrl(dataUrl)) return 'PDF';
   if (isExcelDataUrl(dataUrl)) return 'Excel';
   return 'File';
@@ -16358,12 +16386,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
                       <div className="flex items-center gap-1 border-l border-slate-150 dark:border-slate-800 pl-2">
                         {(() => {
-                          const receiptData = t.imageUrl || (receipts.find(r => 
+                          const rawImages = getImages(t.imageUrl || (receipts.find(r => 
                             r.title === t.title && 
                             Number(r.amount) === Number(t.amount) && 
                             r.category === t.category
-                          )?.imageUrl);
-                          if (!receiptData) return null;
+                          )?.imageUrl));
+                          if (!rawImages || rawImages.length === 0) return null;
                           return (
                             <button
                               onClick={(e) => {
@@ -16373,7 +16401,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                                   amount: t.amount,
                                   category: t.category,
                                   date: t.date,
-                                  imageUrl: receiptData
+                                  imageUrl: JSON.stringify(rawImages)
                                 });
                                 setActiveReceiptImageIndex(0);
                               }}
@@ -17064,7 +17092,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                               <X className="w-3 h-3" />
                             </button>
                           </div>
-                        ) : (
+                        ) : isExcelDataUrl(fileData) ? (
                           // Excel: icon card
                           <div className="relative w-16 h-16 rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 overflow-hidden flex flex-col items-center justify-center gap-0.5 shadow-sm">
                             <FileSpreadsheet className="w-6 h-6 text-emerald-600" />
@@ -17078,7 +17106,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                               <X className="w-3 h-3" />
                             </button>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -20873,10 +20901,15 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                                 <FileText className="w-8 h-8 text-red-500" />
                                 <span className="text-[8px] font-black text-red-500 uppercase tracking-wider">PDF</span>
                               </div>
-                            ) : (
+                            ) : isExcelDataUrl(firstFile) ? (
                               <div className="flex flex-col items-center justify-center gap-1 w-full h-full bg-emerald-50">
                                 <FileSpreadsheet className="w-8 h-8 text-emerald-600" />
                                 <span className="text-[8px] font-black text-emerald-600 uppercase tracking-wider">Excel</span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center gap-1 w-full h-full bg-slate-100 dark:bg-slate-800">
+                                <FileText className="w-8 h-8 text-slate-400" />
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">File</span>
                               </div>
                             )}
                             {images.length > 1 && (
@@ -21001,6 +21034,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               const currentFile = images[activeReceiptImageIndex] || images[0];
               const isImg = isImageDataUrl(currentFile);
               const isPdf = isPdfDataUrl(currentFile);
+              const isExcel = isExcelDataUrl(currentFile);
               return (
                 <div className="space-y-3">
                   <div className="w-full relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-center group" style={{minHeight: '45vh'}}>
@@ -21033,7 +21067,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           </a>
                         </div>
                       </div>
-                    ) : (
+                    ) : isExcel ? (
                       <div className="w-full flex flex-col items-center justify-center gap-4 py-10 px-4">
                         <div className="w-20 h-20 rounded-2xl bg-emerald-100 dark:bg-emerald-950/30 flex flex-col items-center justify-center gap-1 shadow-sm">
                           <FileSpreadsheet className="w-9 h-9 text-emerald-600" />
@@ -21051,6 +21085,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           <Download className="w-3.5 h-3.5" />
                           Download Excel File
                         </a>
+                      </div>
+                    ) : (
+                      <div className="w-full flex flex-col items-center justify-center gap-2 py-12 px-4 text-slate-400">
+                        <FileText className="w-10 h-10 opacity-40" />
+                        <p className="text-xs font-semibold">No preview available for this file.</p>
                       </div>
                     )}
                     
