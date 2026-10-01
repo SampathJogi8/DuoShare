@@ -2624,6 +2624,10 @@ export default function AdminDashboard({
             <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0F172A; margin: 0; padding: 32px 16px;">
               <div style="max-width: 560px; margin: 0 auto; background-color: #1E293B; border-radius: 20px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
                 <div style="background: linear-gradient(135deg, #1A3827 0%, #0F172A 100%); padding: 32px 24px; text-align: center; border-bottom: 1px solid #334155;">
+                  <div style="margin-bottom: 16px;">
+                    <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="48" height="48" style="display: inline-block; border-radius: 12px; border: 2px solid #EF4444; box-shadow: 0 4px 12px rgba(0,0,0,0.4);" />
+                    <div style="font-size: 20px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; margin-top: 6px;">Tallyin</div>
+                  </div>
                   <div style="display: inline-block; background-color: #EF4444; color: #FFFFFF; font-size: 11px; font-weight: 800; padding: 4px 12px; rounded: 9999px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 12px; margin-bottom: 12px;">
                     Room Closed & Decommissioned
                   </div>
