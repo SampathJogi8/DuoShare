@@ -7186,12 +7186,51 @@ export default function App() {
 
   // Helper to format activity log details nicely
   const formatLogDetails = (log) => {
-    const details = log.details || '';
+    if (!log) return '';
+    const details = log.details || log.action || '';
+
+    // Handle WhatsApp notification or raw JSON stored in details
+    if (log.action === 'whatsapp_notification' || (typeof details === 'string' && details.trim().startsWith('{'))) {
+      try {
+        const parsed = typeof details === 'string' ? JSON.parse(details) : details;
+        const actionType = parsed.actionType || 'alert';
+        const actionLabel = (actionType === 'update' || actionType === 'edit')
+          ? 'update alert'
+          : actionType === 'settle'
+          ? 'settlement alert'
+          : actionType === 'delete'
+          ? 'deletion alert'
+          : 'alert';
+        const titleText = parsed.title ? `"${parsed.title}"` : 'expense';
+        const amountText = (parsed.amount !== undefined && parsed.amount !== null && Number(parsed.amount) > 0)
+          ? ` (${formatINR(parsed.amount)})`
+          : '';
+        const recCount = parsed.recipientsCount || (parsed.recipients ? parsed.recipients.length : 0);
+        const recText = recCount > 0 ? ` to ${recCount} roommate${recCount > 1 ? 's' : ''}` : '';
+        const sender = log.user_name && log.user_name !== 'WhatsApp Dispatcher' ? log.user_name : 'System';
+        return (
+          <>
+            {sender} dispatched <span className="text-emerald-600 dark:text-[#25D366] font-bold">WhatsApp {actionLabel}</span> for {titleText}{amountText}{recText}
+          </>
+        );
+      } catch (e) {
+        // Fall back if parse fails
+      }
+    }
+
     if (log.action === 'edit' && details.includes(' edited ')) {
       const parts = details.split(' edited ');
       return (
         <>
           {parts[0]} <span className="text-amber-600 dark:text-amber-400 font-bold">edited</span> {parts[1]}
+        </>
+      );
+    }
+    if (details.includes(' added receipt file(s) to ')) {
+      const parts = details.split(' added receipt file(s) to ');
+      return (
+        <>
+          {parts[0]} <span className="text-amber-600 dark:text-amber-400 font-bold">added receipt</span> to {parts[1]}
         </>
       );
     }
@@ -16052,22 +16091,33 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
             {/* Room Activity Feed (Hidden in Quota Mode) */}
             {!isQuotaMode && activityLogs.length > 0 && (
-              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
+              <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3 overflow-hidden">
                 <h3 className="text-[9px] font-black uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400">Room Activity</h3>
                 <div className="space-y-2.5">
                   {activityLogs.slice(0, 5).map(log => {
-                    const isCreate = log.action === 'create', isEdit = log.action === 'edit', isSettle = log.action === 'settle', isDelete = log.action === 'delete';
+                    const isCreate = log.action === 'create';
+                    const isEdit = log.action === 'edit';
+                    const isSettle = log.action === 'settle' || log.action === 'settled_payment';
+                    const isDelete = log.action === 'delete';
+                    const isWhatsApp = log.action === 'whatsapp_notification' || (typeof log.details === 'string' && log.details.trim().startsWith('{'));
+                    const isReceipt = typeof log.details === 'string' && log.details.includes('receipt file');
+
                     let col = 'text-slate-400', bg = 'bg-slate-50 dark:bg-slate-800', icon = <Clock className="w-3 h-3" />;
-                    if (isCreate) { col = 'text-emerald-600 dark:text-[#A3E635]'; bg = 'bg-emerald-50 dark:bg-emerald-950/30'; icon = <Plus className="w-3 h-3" />; }
+                    if (isReceipt) { col = 'text-amber-600 dark:text-amber-400'; bg = 'bg-amber-50 dark:bg-amber-950/20'; icon = <Pencil className="w-3 h-3" />; }
+                    else if (isWhatsApp) { col = 'text-emerald-600 dark:text-[#25D366]'; bg = 'bg-emerald-50 dark:bg-emerald-950/30'; icon = <Bell className="w-3 h-3" />; }
+                    else if (isCreate) { col = 'text-emerald-600 dark:text-[#A3E635]'; bg = 'bg-emerald-50 dark:bg-emerald-950/30'; icon = <Plus className="w-3 h-3" />; }
                     else if (isEdit) { col = 'text-amber-600'; bg = 'bg-amber-50 dark:bg-amber-950/20'; icon = <Pencil className="w-3 h-3" />; }
                     else if (isSettle) { col = 'text-blue-600'; bg = 'bg-blue-50 dark:bg-blue-950/20'; icon = <Check className="w-3 h-3" />; }
                     else if (isDelete) { col = 'text-rose-600'; bg = 'bg-rose-50 dark:bg-rose-950/20'; icon = <Trash2 className="w-3 h-3" />; }
+
                     return (
-                      <div key={log.id} className="flex items-start gap-2.5">
+                      <div key={log.id} className="flex items-start gap-2.5 min-w-0">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${bg} ${col}`}>{icon}</div>
-                        <div>
-                          <p className="text-xs font-semibold text-[#1A3827] dark:text-slate-200 leading-snug">{log.details || log.action}</p>
-                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">{formatLogTime(log.created_at || log.timestamp)}</p>
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <p className="text-xs font-semibold text-[#1A3827] dark:text-slate-200 leading-snug break-words">
+                            {formatLogDetails(log)}
+                          </p>
+                          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 truncate">{formatLogTime(log.created_at || log.timestamp)}</p>
                         </div>
                       </div>
                     );
@@ -16454,8 +16504,11 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   }
 
   function openAddPersonalExpense() {
-    setEditingTransaction(null);
-    setIsAddExpenseOpen(true);
+    if (userRoomId && frozenRoomIds.includes(userRoomId)) {
+      triggerToast('❄️ This room is FROZEN by Administration. Expense actions are temporarily halted.');
+      return;
+    }
+    openAddExpenseModal();
     const currentUid = auth.currentUser?.uid || 'anonymous';
     setFormPaidBy(currentUid);
     const newSplits = {};
@@ -16463,6 +16516,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       newSplits[m.uid] = m.uid === currentUid;
     });
     setSelectedSplitMembers(newSplits);
+    setSplitType('equal');
+    setEnableQuotaSplit(true);
   }
 
   function renderPersonalExpenses() {
@@ -16477,17 +16532,70 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
         
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Personal expenses</h1>
-            <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Your private ledger, separate from room bills.</p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Personal expenses</h1>
+              <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-0.5">Your private ledger, separate from room bills.</p>
+            </div>
+            
+            <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
+              {/* Export Dropdown */}
+              <div className="relative flex-1 sm:flex-none">
+                <button 
+                  onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                  className="w-full flex items-center justify-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm cursor-pointer whitespace-nowrap"
+                >
+                  <Download className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>Export</span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                </button>
+                
+                {isExportDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+                      <button 
+                        onClick={() => { exportToCSV(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileText className="w-4 h-4 text-emerald-700" />
+                        <span>Export to CSV</span>
+                      </button>
+                      <button 
+                        onClick={() => { exportToExcel(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Sliders className="w-4 h-4 text-blue-600" />
+                        <span>Export to Excel</span>
+                      </button>
+                      <button 
+                        onClick={() => { exportToPDF(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                        <span>Download PDF</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <button 
+                onClick={openAddPersonalExpense}
+                className="flex-1 sm:flex-none shrink-0 flex items-center justify-center gap-2 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 px-4 sm:px-5 py-2.5 rounded-xl font-bold hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 text-xs sm:text-sm shadow-md cursor-pointer whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Add personal expense</span>
+              </button>
+            </div>
           </div>
 
           {/* Section Segmented Control: All / Paid by You for You / Paid for Others by You / By Roommate */}
-          <div className="flex hud-card p-1.5 rounded-2xl self-start md:self-auto shadow-sm gap-1 overflow-x-auto max-w-full">
+          <div className="flex hud-card p-1.5 rounded-2xl self-start max-w-full shadow-sm gap-1 overflow-x-auto no-scrollbar">
             <button
               onClick={() => { setPersonalTabSection('all'); setSelectedRoommateFilter('all'); }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all duration-200 cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
                 personalTabSection === 'all'
                   ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-md'
                   : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#12291C] dark:hover:text-slate-200'
@@ -16497,7 +16605,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </button>
             <button
               onClick={() => setPersonalTabSection('my-self')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all duration-200 cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
                 personalTabSection === 'my-self'
                   ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-md'
                   : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#12291C] dark:hover:text-slate-200'
@@ -16507,7 +16615,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </button>
             <button
               onClick={() => setPersonalTabSection('paid-for-others')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all duration-200 cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
                 personalTabSection === 'paid-for-others'
                   ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-md'
                   : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#12291C] dark:hover:text-slate-200'
@@ -16517,64 +16625,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </button>
             <button
               onClick={() => setPersonalTabSection('by-roommate')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all duration-200 cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
                 personalTabSection === 'by-roommate'
                   ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-md'
                   : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#12291C] dark:hover:text-slate-200'
               }`}
             >
               By Roommate
-            </button>
-          </div>
-          
-          <div className="flex items-center gap-2.5 w-full md:w-auto">
-            {/* Export Dropdown */}
-            <div className="relative flex-1 md:flex-none">
-              <button 
-                onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                className="w-full flex items-center justify-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm cursor-pointer"
-              >
-                <Download className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
-                <span>Export</span>
-                <ChevronDown className="w-3.5 h-3.5 opacity-60" />
-              </button>
-              
-              {isExportDropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
-                    <button 
-                      onClick={() => { exportToCSV(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
-                    >
-                      <FileText className="w-4 h-4 text-emerald-700" />
-                      <span>Export to CSV</span>
-                    </button>
-                    <button 
-                      onClick={() => { exportToExcel(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
-                    >
-                      <Sliders className="w-4 h-4 text-blue-600" />
-                      <span>Export to Excel</span>
-                    </button>
-                    <button 
-                      onClick={() => { exportToPDF(filteredPersonalExpenses); setIsExportDropdownOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-500" />
-                      <span>Download PDF</span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <button 
-              onClick={openAddPersonalExpense}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-2.5 rounded-xl font-bold hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 text-xs sm:text-sm shadow-md cursor-pointer"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Add personal expense</span>
             </button>
           </div>
         </div>
@@ -16878,6 +16935,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // PAGE 3: ADD EXPENSE MODAL (OVERLAY)
   // ==========================================
   function renderAddExpenseModal() {
+    const checkedMemberCount = members.filter(m => selectedSplitMembers[m.uid] !== false).length;
+    const isPersonalModal = !editingTransaction?.isShared && (checkedMemberCount === 1 || members.length <= 1);
+
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4 animate-fade-in">
         <div className="bg-white/95 dark:bg-[#0E1317]/95 backdrop-blur-2xl w-full max-w-lg rounded-3xl shadow-2xl border border-[#E2EAE3] dark:border-[#1F2830] relative max-h-[90vh] flex flex-col transition-all duration-300">
@@ -16885,10 +16945,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           <div className="px-6 py-5 border-b border-[#E2EAE3]/60 dark:border-[#1F2830] flex justify-between items-center bg-[#F4F9F5]/40 dark:bg-[#161D22]/40 shrink-0">
             <div>
               <p className="text-[10px] tracking-widest font-black uppercase text-emerald-800 dark:text-[#A3E635]">
-                {editingTransaction ? 'EDIT TRANSACTION' : 'NEW TRANSACTION'}
+                {editingTransaction ? 'EDIT TRANSACTION' : (isPersonalModal ? 'NEW PERSONAL EXPENSE' : 'NEW TRANSACTION')}
               </p>
               <h2 className="font-extrabold text-lg sm:text-xl text-[#12291C] dark:text-slate-100 mt-0.5 tracking-tight">
-                {editingTransaction ? 'Edit expense' : 'Add an expense'}
+                {editingTransaction ? 'Edit expense' : (isPersonalModal ? 'Add personal expense' : 'Add an expense')}
               </h2>
             </div>
             <button 
@@ -16900,6 +16960,54 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           <form onSubmit={handleAddExpense} className="p-6 space-y-4 overflow-y-auto flex-1 text-slate-800 dark:text-slate-200">
+            
+            {/* Quick Mode Switcher: Room Shared vs Personal Expense */}
+            {members.length > 1 && (
+              <div className="flex bg-[#F4F9F5] dark:bg-slate-900 p-1 rounded-2xl border border-[#E2EAE3] dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allSplits = {};
+                    members.forEach(m => { allSplits[m.uid] = true; });
+                    setSelectedSplitMembers(allSplits);
+                    setSplitType('equal');
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    !isPersonalModal
+                      ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-sm'
+                      : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#0F291E] dark:hover:text-slate-200'
+                  }`}
+                >
+                  <span>Room Expense (Shared)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const singleSplit = {};
+                    const currentUid = auth.currentUser?.uid || 'anonymous';
+                    const targetPayer = formPaidBy || currentUid;
+                    members.forEach(m => { singleSplit[m.uid] = (m.uid === targetPayer); });
+                    setSelectedSplitMembers(singleSplit);
+                    setSplitType('equal');
+                    setEnableQuotaSplit(true);
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    isPersonalModal
+                      ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-sm'
+                      : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#0F291E] dark:hover:text-slate-200'
+                  }`}
+                >
+                  <span>Personal Expense (Private)</span>
+                </button>
+              </div>
+            )}
+
+            {isPersonalModal && (
+              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-emerald-50/80 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/30 rounded-2xl text-[11px] font-medium text-emerald-800 dark:text-emerald-300">
+                <span className="shrink-0 text-sm">🔒</span>
+                <span>Tracked in private personal ledger. Excluded from roommate settlements and shared balance.</span>
+              </div>
+            )}
             
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">What was it for?</label>
@@ -18285,9 +18393,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 italic">No activity yet.</p>
                 ) : (
                   activityLogs.map(log => (
-                    <div key={log.id} className="flex justify-between items-start gap-2 text-xs pb-2 border-b border-[#F6F8F6] dark:border-slate-800/50 last:border-0 last:pb-0">
-                      <div className="space-y-0.5">
-                        <p className="font-semibold text-[#1A3827] dark:text-slate-200 text-[11px] leading-snug">
+                    <div key={log.id} className="flex justify-between items-start gap-2 text-xs pb-2 border-b border-[#F6F8F6] dark:border-slate-800/50 last:border-0 last:pb-0 min-w-0">
+                      <div className="space-y-0.5 min-w-0 flex-1 overflow-hidden">
+                        <p className="font-semibold text-[#1A3827] dark:text-slate-200 text-[11px] leading-snug break-words">
                           {formatLogDetails(log)}
                         </p>
                         <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400">by {log.user_name || 'System'}</p>
@@ -23398,14 +23506,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 italic">No activity logs recorded yet.</p>
               ) : (
                 activityLogs.map((log) => (
-                  <div key={log.id} className="flex justify-between items-start gap-2 text-xs border-b border-[#F6F8F6] dark:border-slate-800/50 pb-2 last:border-b-0 last:pb-0">
-                    <div className="space-y-0.5">
-                      <p className="font-semibold text-[#1A3827] dark:text-slate-200">
+                  <div key={log.id} className="flex justify-between items-start gap-2 text-xs border-b border-[#F6F8F6] dark:border-slate-800/50 pb-2 last:border-b-0 last:pb-0 min-w-0">
+                    <div className="space-y-0.5 min-w-0 flex-1 overflow-hidden">
+                      <p className="font-semibold text-[#1A3827] dark:text-slate-200 break-words">
                         {formatLogDetails(log)}
                       </p>
                       <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">By {log.user_name || 'System'}</p>
                     </div>
-                    <div className="flex items-center gap-1 text-[9px] text-[#5C6E5C] dark:text-slate-500 whitespace-nowrap">
+                    <div className="flex items-center gap-1 text-[9px] text-[#5C6E5C] dark:text-slate-500 whitespace-nowrap shrink-0">
                       <Clock className="w-2.5 h-2.5" />
                       <span>
                         {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
