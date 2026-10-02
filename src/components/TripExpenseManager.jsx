@@ -878,12 +878,12 @@ export default function TripExpenseManager({
               <ArrowRight className="w-3.5 h-3.5 rotate-180" />
               <span>All Trips</span>
             </button>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight">
+                <h2 className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight truncate">
                   {activeTrip.title}
                 </h2>
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${
                   activeTrip.status === 'Ongoing'
                     ? 'bg-emerald-500/15 text-emerald-700 dark:text-[#A3E635] border border-emerald-500/30'
                     : activeTrip.status === 'Completed'
@@ -893,18 +893,18 @@ export default function TripExpenseManager({
                   {activeTrip.status}
                 </span>
               </div>
-              <div className="flex items-center gap-3 text-xs text-[#5C6E5C] dark:text-slate-400 font-medium mt-0.5">
-                <span className="flex items-center gap-1">
+              <div className="flex items-center gap-3 text-xs text-[#5C6E5C] dark:text-slate-400 font-medium mt-0.5 flex-wrap">
+                <span className="flex items-center gap-1 shrink-0">
                   <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
                   {activeTrip.destination || 'Vacation'}
                 </span>
                 {activeTrip.startDate && (
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1 shrink-0">
                     <Calendar className="w-3.5 h-3.5" />
                     {activeTrip.startDate} {activeTrip.endDate ? `to ${activeTrip.endDate}` : ''}
                   </span>
                 )}
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1 shrink-0">
                   <Users className="w-3.5 h-3.5" />
                   {companions.length} Companions
                 </span>
@@ -913,13 +913,13 @@ export default function TripExpenseManager({
           </div>
 
           {/* Quick Header Actions */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             <button
               onClick={() => {
                 setEditingExpense(null);
                 setIsExpenseModalOpen(true);
               }}
-              className="px-4 py-2 rounded-xl bg-[#1A3827] text-white hover:bg-[#255038] dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs shadow-md flex items-center gap-1.5 transition-all active:scale-95"
+              className="px-4 py-2 rounded-xl bg-[#1A3827] text-white hover:bg-[#255038] dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs shadow-md flex items-center gap-1.5 transition-all active:scale-95 shrink-0 whitespace-nowrap cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
               <span>Add Expense</span>
@@ -931,7 +931,7 @@ export default function TripExpenseManager({
                   setTripToComplete(activeTrip);
                   setIsCompleteTripModalOpen(true);
                 }}
-                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500/20 text-white dark:text-[#A3E635] dark:hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-black flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500/20 text-white dark:text-[#A3E635] dark:hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-black flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
                 title="Mark trip as completed and trigger final statement emails"
               >
                 <CheckCircle2 className="w-4 h-4" />
@@ -944,7 +944,7 @@ export default function TripExpenseManager({
                     setTripToComplete(activeTrip);
                     setIsCompleteTripModalOpen(true);
                   }}
-                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
                   title="Resend trip completion statement emails"
                 >
                   <Mail className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
@@ -952,7 +952,7 @@ export default function TripExpenseManager({
                 </button>
                 <button
                   onClick={() => handleReopenTrip(activeTrip.id)}
-                  className="px-2.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-2.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 whitespace-nowrap"
                   title="Reopen trip back to Ongoing"
                 >
                   <Clock className="w-3.5 h-3.5" />
@@ -963,7 +963,7 @@ export default function TripExpenseManager({
 
             <button
               onClick={() => setIsShareModalOpen(true)}
-              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-slate-200 hover:bg-[#F6F8F6] text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-slate-200 hover:bg-[#F6F8F6] text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer"
               title="Share Settlement Summary"
             >
               <Share2 className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
@@ -974,7 +974,7 @@ export default function TripExpenseManager({
                 setEditingTrip(activeTrip);
                 setIsTripModalOpen(true);
               }}
-              className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] text-xs font-bold transition-all shadow-sm"
+              className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
               title="Edit Trip Settings"
             >
               <Sliders className="w-4 h-4" />
@@ -1953,10 +1953,10 @@ export default function TripExpenseManager({
       
       {/* Top Header & Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight flex items-center gap-2">
-            <Compass className="w-6 h-6 text-emerald-600 dark:text-[#A3E635]" />
-            Trips & Vacation Expense Splitter
+            <Compass className="w-6 h-6 text-emerald-600 dark:text-[#A3E635] shrink-0" />
+            <span className="truncate">Trips & Vacation Expense Splitter</span>
           </h2>
           <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-medium">
             Plan group budgets, track on-the-go travel expenses, split costs with companions & settle balances.
@@ -1968,7 +1968,7 @@ export default function TripExpenseManager({
             setEditingTrip(null);
             setIsTripModalOpen(true);
           }}
-          className="px-4 py-2.5 rounded-xl bg-[#1A3827] text-white hover:bg-[#255038] dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs shadow-md flex items-center gap-2 transition-all active:scale-95 shrink-0 self-start sm:self-auto"
+          className="px-4 py-2.5 rounded-xl bg-[#1A3827] text-white hover:bg-[#255038] dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs shadow-md flex items-center gap-2 transition-all active:scale-95 shrink-0 whitespace-nowrap self-start sm:self-auto cursor-pointer"
         >
           <Plus className="w-4 h-4 stroke-[3]" />
           <span>Plan New Trip</span>

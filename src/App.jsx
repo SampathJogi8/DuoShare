@@ -14536,33 +14536,33 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 alt="Tallyin Logo" 
                 className="w-8 h-8 object-cover rounded-xl hidden sm:block flex-shrink-0 shadow-sm border border-emerald-500/20"
               />
-              <div className="flex flex-col justify-center text-left">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h2 className="font-black text-xs sm:text-sm text-[#0F172A] dark:text-slate-100 leading-tight tracking-tight">
+              <div className="flex flex-col justify-center text-left min-w-0">
+                <div className="flex items-center gap-1.5 flex-nowrap min-w-0">
+                  <h2 className="font-black text-xs sm:text-sm text-[#0F172A] dark:text-slate-100 leading-tight tracking-tight truncate max-w-[130px] xs:max-w-[180px] sm:max-w-[260px] md:max-w-[320px]" title={roomName}>
                     {roomName}
                   </h2>
                   {isTripRoomMode && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/30 shadow-xs select-none">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/30 shadow-xs select-none shrink-0">
                       <Compass className="w-2.5 h-2.5 text-emerald-600 dark:text-[#A3E635]" />
                       <span>Trip Splitter Space</span>
                     </span>
                   )}
                   {isGenesisRoom && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-emerald-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-xs select-none">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-emerald-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-xs select-none shrink-0">
                       <Crown className="w-2.5 h-2.5 text-amber-500 fill-amber-500/30" />
                       <span>Genesis Duo</span>
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                   {isGenesisRoom && (
-                    <div className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/25 dark:border-amber-400/25 text-amber-800 dark:text-amber-300 text-[9px] font-black tracking-wider uppercase">
+                    <div className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/25 dark:border-amber-400/25 text-amber-800 dark:text-amber-300 text-[9px] font-black tracking-wider uppercase shrink-0">
                       <Sparkles className="w-2.5 h-2.5 text-amber-500" />
                       <span>Founding Space • Est. June 2026</span>
                     </div>
                   )}
                   {/* Live Sync Status Indicator */}
-                  <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-black tracking-wider uppercase transition-all ${
+                  <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-black tracking-wider uppercase transition-all shrink-0 ${
                     !navigator.onLine || offlineMode
                       ? 'bg-amber-500/10 dark:bg-amber-400/10 border-amber-500/20 dark:border-amber-400/20 text-amber-700 dark:text-amber-400'
                       : isDbSynced 
@@ -14590,7 +14590,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
 
           {/* Quick Actions (Right) */}
-          <div className="flex items-center gap-2 sm:gap-4 relative">
+          <div className="flex items-center gap-2 sm:gap-4 relative shrink-0">
             {/* Broadcast Re-open / Toggle Button */}
             {globalBroadcast?.active && (
               <button
@@ -14857,7 +14857,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
         </header>
 
-        <main className="flex-grow pt-16 sm:pt-20 px-3 sm:px-8 pb-24 overflow-y-auto">
+        <main className="flex-grow pt-16 sm:pt-20 px-3 sm:px-8 pb-24 overflow-y-auto overflow-x-hidden min-w-0">
           {/* Admin Pending Dispute & Ticket Realtime Alert Banner */}
           {isUserAdminOrCoAdmin && adminPendingDisputesCount > 0 && (
             <div className="w-full mb-4 p-4 rounded-3xl bg-gradient-to-r from-amber-950/90 via-rose-950 to-red-950 border-2 border-rose-500/60 text-white shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 animate-fade-in ring-1 ring-rose-400/30">
@@ -15616,12 +15616,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         </div>
 
         {/* ─── Greeting + CTA Button ─── */}
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-[#0F172A] dark:text-slate-100 tracking-tight">{getGreeting()}, {userNickname.split(' ')[0]} 👋</h1>
-            <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">Here's your room overview</p>
+        <div className="flex items-center justify-between mb-5 gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-[#0F172A] dark:text-slate-100 tracking-tight truncate">{getGreeting()}, {userNickname.split(' ')[0]} 👋</h1>
+            <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5 truncate">Here's your room overview</p>
           </div>
-          <button onClick={() => openAddExpenseModal()} className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm hover:bg-[#1A3827] dark:hover:bg-[#BEF264] active:scale-95 transition-all duration-150 shadow-md cursor-pointer flex items-center gap-2">
+          <button onClick={() => openAddExpenseModal()} className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm hover:bg-[#1A3827] dark:hover:bg-[#BEF264] active:scale-95 transition-all duration-150 shadow-md cursor-pointer flex items-center gap-2 shrink-0 whitespace-nowrap">
             <Plus className="w-4 h-4 stroke-[3]" />
             <span className="hidden sm:inline">Add Expense</span>
             <span className="sm:hidden">Add</span>
@@ -15970,14 +15970,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             {t.title}
                             {Boolean(t.isEdited) && <span onClick={e => { e.stopPropagation(); setActiveEditHistoryTx(t); }} className="ml-1.5 text-[9px] text-rose-500 italic font-bold cursor-pointer">(Edited)</span>}
                           </p>
-                          <p className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap truncate">
-                            <span>{getTransactionSubtitle(t)}</span>
+                          <div className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 flex items-center gap-1.5 min-w-0">
+                            <span className="truncate">{getTransactionSubtitle(t)}</span>
                             {isQuotaMode && t.category !== 'Payment' && (
-                              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-[#A3E635] border border-emerald-300/50">
+                              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-[#A3E635] border border-emerald-300/50 shrink-0">
                                 ⚡ Quota Entry
                               </span>
                             )}
-                          </p>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <div className="text-right">
@@ -16180,28 +16180,28 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">The ledger</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Every expense, transparently tracked and split in real time.</p>
           </div>
           
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
             {/* Primary Action */}
             <button 
               onClick={() => openAddExpenseModal()}
-              className="order-1 sm:order-3 w-full sm:w-auto flex items-center justify-center gap-2 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-3 rounded-2xl font-black hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 text-xs sm:text-sm shadow-lg shadow-emerald-950/10 cursor-pointer"
+              className="order-1 sm:order-3 w-full sm:w-auto flex items-center justify-center gap-2 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-3 rounded-2xl font-black hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 text-xs sm:text-sm shadow-lg shadow-emerald-950/10 cursor-pointer shrink-0 whitespace-nowrap"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
               <span>Add expense</span>
             </button>
 
             {/* Secondary Actions */}
-            <div className="order-2 flex items-center gap-2 w-full sm:w-auto">
+            <div className="order-2 flex items-center gap-2 w-full sm:w-auto shrink-0">
               {/* Export Dropdown */}
-              <div className="relative flex-1 sm:flex-none">
+              <div className="relative flex-1 sm:flex-none shrink-0">
                 <button 
                   onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                  className="w-full flex items-center justify-center gap-2 hud-card hover:border-[#A3E635]/60 text-[#12291C] dark:text-slate-200 px-4 py-2.5 rounded-2xl font-bold transition-all text-xs cursor-pointer shadow-sm"
+                  className="w-full flex items-center justify-center gap-2 hud-card hover:border-[#A3E635]/60 text-[#12291C] dark:text-slate-200 px-4 py-2.5 rounded-2xl font-bold transition-all text-xs cursor-pointer shadow-sm shrink-0 whitespace-nowrap"
                 >
                   <Download className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
                   <span>Export</span>
@@ -16241,7 +16241,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               {/* Settlement Records Button */}
               <button 
                 onClick={() => navigateTo('settlement-records')}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 hud-card hover:border-[#A3E635]/60 text-[#12291C] dark:text-[#A3E635] px-4 py-2.5 rounded-2xl font-bold transition-all text-xs cursor-pointer shadow-sm"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 hud-card hover:border-[#A3E635]/60 text-[#12291C] dark:text-[#A3E635] px-4 py-2.5 rounded-2xl font-bold transition-all text-xs cursor-pointer shadow-sm shrink-0 whitespace-nowrap"
                 title="View Settlement History"
               >
                 <HandCoins className="w-4 h-4 text-emerald-600 dark:text-[#A3E635] shrink-0" />
@@ -19207,24 +19207,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <button 
                 onClick={() => { setSelectedFundId(null); setFundSearchQuery(''); }}
-                className="flex items-center gap-1 text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200 font-bold text-xs sm:text-sm transition-all mb-2"
+                className="flex items-center gap-1 text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-slate-200 font-bold text-xs sm:text-sm transition-all mb-2 cursor-pointer"
               >
                 <span>← Back to funds</span>
               </button>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">{activeFund.title}</h1>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight truncate">{activeFund.title}</h1>
               <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">
                 Created on {new Date(activeFund.date).toLocaleDateString([], { day: '2-digit', month: 'long', year: 'numeric' })}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
               <button
                 onClick={() => {
                   exportFundToPDF(activeFund, activeFundSpends);
                 }}
-                className="flex items-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm"
+                className="flex items-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm shrink-0 whitespace-nowrap cursor-pointer"
               >
                 <FileText className="w-4 h-4 text-rose-500" />
                 <span>Download PDF</span>
@@ -19233,7 +19233,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 onClick={() => {
                   exportFundToCSV(activeFund, activeFundSpends);
                 }}
-                className="flex items-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm"
+                className="flex items-center gap-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 px-4 py-2.5 rounded-xl font-bold transition-all text-xs sm:text-sm shrink-0 whitespace-nowrap cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 <span>Export Excel</span>
@@ -19248,7 +19248,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   setFundSpendFormType('expense');
                   setIsAddFundExpenseModalOpen(true);
                 }}
-                className="flex items-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm"
+                className="flex items-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm shrink-0 whitespace-nowrap cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Record Payment</span>
@@ -19488,7 +19488,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-fade-in">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A3827] dark:text-slate-100 tracking-tight">Fund Tracker</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Create isolated budget pots to track specific projects, trips, or savings targets.</p>
           </div>
@@ -19501,7 +19501,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               setEditingFund(null);
               setIsAddFundModalOpen(true);
             }}
-            className="flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm w-full sm:w-auto"
+            className="flex items-center justify-center gap-2 bg-[#1A3827] dark:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#255038] dark:hover:bg-slate-700 transition-all duration-200 text-xs sm:text-sm shadow-sm w-full sm:w-auto shrink-0 whitespace-nowrap cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Create Custom Fund</span>
@@ -19893,16 +19893,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Spending insights</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">A clearer view of where your money goes — powered by real data.</p>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0 flex-wrap">
             {/* Segmented Control */}
-            <div className="flex hud-card p-1.5 rounded-2xl self-start sm:self-auto shadow-sm">
+            <div className="flex hud-card p-1.5 rounded-2xl self-start sm:self-auto shadow-sm shrink-0">
               <button
                 onClick={() => setInsightsTab('room')}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition-all duration-200 cursor-pointer ${
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all duration-200 cursor-pointer shrink-0 whitespace-nowrap ${
                   !isPersonalTab
                     ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-md'
                     : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#12291C] dark:hover:text-slate-200'
@@ -19912,7 +19912,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </button>
               <button
                 onClick={() => setInsightsTab('personal')}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition-all duration-200 cursor-pointer ${
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all duration-200 cursor-pointer shrink-0 whitespace-nowrap ${
                   isPersonalTab
                     ? 'bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 shadow-md'
                     : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#12291C] dark:hover:text-slate-200'
@@ -19922,15 +19922,15 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3]/50 dark:border-slate-800 px-3 py-1.5 rounded-xl">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3]/50 dark:border-slate-800 px-3 py-1.5 rounded-xl shrink-0 whitespace-nowrap">
                 {targetTransactions.length} transactions
               </span>
               
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3 py-1.5 text-[10px] font-bold focus:outline-none text-[#1A3827] dark:text-slate-200 cursor-pointer"
+                className="border border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6]/50 dark:bg-slate-900 rounded-xl px-3 py-1.5 text-[10px] font-bold focus:outline-none text-[#1A3827] dark:text-slate-200 cursor-pointer shrink-0 whitespace-nowrap"
               >
                 <option value="All">All Time</option>
                 {availableMonths.map((m) => {
@@ -20958,14 +20958,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Receipts gallery</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Every proof of purchase, securely archived & searchable.</p>
           </div>
 
           <button 
             onClick={handleTriggerUpload}
-            className="flex items-center justify-center gap-2 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-3 rounded-2xl font-black hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 text-xs sm:text-sm shadow-lg shadow-emerald-950/10 cursor-pointer"
+            className="flex items-center justify-center gap-2 bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 px-5 py-3 rounded-2xl font-black hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 text-xs sm:text-sm shadow-lg shadow-emerald-950/10 cursor-pointer shrink-0 whitespace-nowrap w-full sm:w-auto"
           >
             <Upload className="w-4 h-4 stroke-[2.5]" />
             <span>Upload receipt</span>
@@ -21844,13 +21844,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto animate-fade-in pb-12">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Shopping List</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">List items needed for the flat and split them in 1-click once bought.</p>
           </div>
           <button 
             onClick={() => setIsAddShoppingOpen(true)}
-            className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-5 py-3 rounded-2xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/10 cursor-pointer flex items-center justify-center gap-2"
+            className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-5 py-3 rounded-2xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/10 cursor-pointer flex items-center justify-center gap-2 shrink-0 whitespace-nowrap w-full sm:w-auto"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>Add Shopping Item</span>
@@ -22103,14 +22103,14 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto animate-fade-in pb-12">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Bills & Subscriptions</h1>
             <p className="text-xs sm:text-sm text-[#5C6E5C] dark:text-slate-400 mt-1">Track upcoming flat bills, OTT subscriptions, and log payments straight into room expenses.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 shrink-0">
             <button 
               onClick={() => setIsQuickBillOpen(true)}
-              className="bg-emerald-600 dark:bg-emerald-500 text-white font-black px-4 py-3 rounded-2xl text-xs hover:bg-emerald-700 dark:hover:bg-emerald-400 hover:scale-105 active:scale-95 transition-all duration-200 shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              className="bg-emerald-600 dark:bg-emerald-500 text-white font-black px-4 py-3 rounded-2xl text-xs hover:bg-emerald-700 dark:hover:bg-emerald-400 hover:scale-105 active:scale-95 transition-all duration-200 shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0 whitespace-nowrap"
             >
               <FileText className="w-4 h-4 stroke-[2.5]" />
               <span>Create Itemized Bill / Receipt</span>
@@ -22122,7 +22122,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 }
                 setIsAddBillOpen(true);
               }}
-              className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-5 py-3 rounded-2xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/10 cursor-pointer flex items-center justify-center gap-2"
+              className="bg-[#0F291E] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black px-5 py-3 rounded-2xl text-xs hover:bg-[#1A3827] dark:hover:bg-[#BEF264] hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-950/10 cursor-pointer flex items-center justify-center gap-2 shrink-0 whitespace-nowrap"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
               <span>Add Recurring Bill</span>
