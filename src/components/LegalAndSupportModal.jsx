@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   FileText, 
@@ -30,6 +30,12 @@ export default function LegalAndSupportModal({
   onNavigate = null
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'privacy');
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
   
   // Contact Form State
   const [contactName, setContactName] = useState(user?.displayName || '');
