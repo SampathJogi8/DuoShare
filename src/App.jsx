@@ -23941,14 +23941,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   setLegalModalTab('privacy');
                   setIsLegalModalOpen(true);
                 }}
-                className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border border-[#E3E8E3] dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700/60 transition-all text-left space-y-1 cursor-pointer group"
+                className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 hover:bg-[#EAF0EC] dark:hover:bg-slate-800/60 border border-[#E3E8E3] dark:border-slate-800 hover:border-[#1A3827]/30 dark:hover:border-[#A3E635]/30 transition-all text-left space-y-1 cursor-pointer group"
               >
                 <div className="flex items-center justify-between">
-                  <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span className="text-[10px] text-emerald-600 font-bold group-hover:translate-x-0.5 transition-transform">Read →</span>
+                  <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-900 text-[#1A3827] dark:text-[#A3E635]">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] text-[#1A3827] dark:text-[#A3E635] font-black group-hover:translate-x-0.5 transition-transform">Read →</span>
                 </div>
                 <h4 className="font-extrabold text-xs text-[#1A3827] dark:text-white">Privacy Policy</h4>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Zero data selling & private room data silos.</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Zero data selling &amp; private room data silos.</p>
               </button>
 
               <button
@@ -23957,14 +23959,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   setLegalModalTab('terms');
                   setIsLegalModalOpen(true);
                 }}
-                className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-[#E3E8E3] dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700/60 transition-all text-left space-y-1 cursor-pointer group"
+                className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 hover:bg-[#EAF0EC] dark:hover:bg-slate-800/60 border border-[#E3E8E3] dark:border-slate-800 hover:border-[#1A3827]/30 dark:hover:border-[#A3E635]/30 transition-all text-left space-y-1 cursor-pointer group"
               >
                 <div className="flex items-center justify-between">
-                  <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  <span className="text-[10px] text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform">Read →</span>
+                  <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-900 text-[#1A3827] dark:text-[#A3E635]">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] text-[#1A3827] dark:text-[#A3E635] font-black group-hover:translate-x-0.5 transition-transform">Read →</span>
                 </div>
-                <h4 className="font-extrabold text-xs text-[#1A3827] dark:text-white">Usage & Terms</h4>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Fair roommate rules & dispute resolution.</p>
+                <h4 className="font-extrabold text-xs text-[#1A3827] dark:text-white">Usage &amp; Terms</h4>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Fair roommate rules &amp; dispute resolution.</p>
               </button>
 
               <button
@@ -23973,14 +23977,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   setLegalModalTab('contact');
                   setIsLegalModalOpen(true);
                 }}
-                className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 hover:bg-purple-50 dark:hover:bg-purple-950/30 border border-[#E3E8E3] dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-700/60 transition-all text-left space-y-1 cursor-pointer group"
+                className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 hover:bg-[#EAF0EC] dark:hover:bg-slate-800/60 border border-[#E3E8E3] dark:border-slate-800 hover:border-[#1A3827]/30 dark:hover:border-[#A3E635]/30 transition-all text-left space-y-1 cursor-pointer group"
               >
                 <div className="flex items-center justify-between">
-                  <Mail className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  <span className="text-[10px] text-purple-600 font-bold group-hover:translate-x-0.5 transition-transform">Open →</span>
+                  <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-900 text-[#1A3827] dark:text-[#A3E635]">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] text-[#1A3827] dark:text-[#A3E635] font-black group-hover:translate-x-0.5 transition-transform">Open →</span>
                 </div>
-                <h4 className="font-extrabold text-xs text-[#1A3827] dark:text-white">Contact & Support</h4>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Direct message form & official helpdesk.</p>
+                <h4 className="font-extrabold text-xs text-[#1A3827] dark:text-white">Contact &amp; Support</h4>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Direct message form &amp; official helpdesk.</p>
               </button>
             </div>
           </div>

@@ -14,7 +14,13 @@ import {
   Eye, 
   HeartHandshake, 
   Sparkles,
-  ArrowLeft
+  ArrowLeft,
+  Copy,
+  Check,
+  Scale,
+  Users,
+  Clock,
+  ShieldAlert
 } from 'lucide-react';
 
 const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
@@ -30,6 +36,7 @@ export default function LegalAndSupportModal({
   onNavigate = null
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'privacy');
+  const [copiedEmail, setCopiedEmail] = useState(false);
 
   useEffect(() => {
     if (initialTab) {
@@ -38,15 +45,23 @@ export default function LegalAndSupportModal({
   }, [initialTab, isOpen]);
   
   // Contact Form State
-  const [contactName, setContactName] = useState(user?.displayName || '');
+  const [contactName, setContactName] = useState(user?.displayName || user?.name || '');
   const [contactEmail, setContactEmail] = useState(user?.email || '');
   const [contactCategory, setContactCategory] = useState('general');
   const [contactSubject, setContactSubject] = useState('');
   const [contactMessage, setContactMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isSent, setIsSent] = useState(false);
+  const [submittedTicketId, setSubmittedTicketId] = useState('');
 
   if (!isOpen) return null;
+
+  const handleCopyEmail = () => {
+    navigator.clipboard.writeText(SUPPORT_EMAIL);
+    setCopiedEmail(true);
+    if (triggerToast) triggerToast('Support email copied to clipboard!');
+    setTimeout(() => setCopiedEmail(false), 2000);
+  };
 
   const handleSendContactMessage = async (e) => {
     e.preventDefault();
@@ -56,8 +71,8 @@ export default function LegalAndSupportModal({
     }
 
     setIsSending(true);
+    const ticketId = `TY-${Date.now().toString(36).toUpperCase()}`;
     try {
-      const ticketId = `TKT-${Date.now().toString(36).toUpperCase()}`;
       const payload = {
         type: 'SUPPORT_INQUIRY',
         ticketId,
@@ -76,11 +91,12 @@ export default function LegalAndSupportModal({
         body: JSON.stringify(payload)
       });
 
+      setSubmittedTicketId(ticketId);
       setIsSent(true);
       if (triggerToast) triggerToast(`Message sent! Reference: ${ticketId}`);
     } catch (err) {
       console.error('Support dispatch error:', err);
-      // Fallback
+      setSubmittedTicketId(ticketId);
       setIsSent(true);
       if (triggerToast) triggerToast('Inquiry registered! Our team will respond shortly.');
     } finally {
@@ -89,259 +105,424 @@ export default function LegalAndSupportModal({
   };
 
   const content = (
-    <div className="flex flex-col h-full max-h-[88vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden text-left">
-      {/* Top Header */}
-      <div className="flex items-center justify-between px-6 py-4.5 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-slate-50/70 dark:bg-slate-950/40">
-        <div className="flex items-center gap-3">
-          {isFullPage && onNavigate && (
+    <div className="flex flex-col h-full max-h-[88vh] bg-white dark:bg-slate-950 rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-slate-800 overflow-hidden text-left font-sans">
+      
+      {/* ── TALLYIN BRANDED HEADER HERO ── */}
+      <div className="bg-gradient-to-r from-[#1A3827] via-[#214732] to-[#1A3827] text-white px-5 sm:px-7 py-4.5 shrink-0 border-b border-emerald-950/40 relative overflow-hidden">
+        {/* Subtle decorative background patterns */}
+        <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-[#A3E635]/10 blur-2xl pointer-events-none" />
+        <div className="absolute -bottom-8 left-1/3 w-28 h-28 rounded-full bg-[#BEF264]/5 blur-xl pointer-events-none" />
+
+        <div className="flex items-center justify-between relative z-10">
+          <div className="flex items-center gap-3">
+            {isFullPage && onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate('home')}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer active:scale-95"
+                title="Return to Dashboard"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#A3E635] text-slate-950 inline-flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>Tallyin Trust &amp; Standards</span>
+                </span>
+                <span className="text-[10px] text-emerald-200/80 font-medium">Official Reference</span>
+              </div>
+              <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                <span>Policies, Privacy &amp; Support Hub</span>
+              </h2>
+            </div>
+          </div>
+
+          {onClose && (
             <button
-              onClick={() => onNavigate('home')}
-              className="p-1.5 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
-              title="Return to Dashboard"
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-xl text-emerald-100/70 hover:text-white hover:bg-white/15 transition-all cursor-pointer shrink-0"
+              title="Close Modal"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <X className="w-5 h-5" />
             </button>
           )}
-          <div>
-            <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <span>Tallyin Trust, Policies & Support</span>
-            </h2>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Clear commitments on your privacy, room safety guidelines, and direct help.
-            </p>
-          </div>
         </div>
+      </div>
 
-        {onClose && (
+      {/* ── TALLYIN SEGMENTED NAVIGATION PILLS ── */}
+      <div className="px-5 sm:px-7 py-2.5 bg-[#F6F8F6] dark:bg-slate-900 border-b border-[#E3E8E3] dark:border-slate-800 shrink-0">
+        <div className="flex items-center gap-1.5 p-1 bg-[#EAF0EC] dark:bg-slate-950 rounded-2xl max-w-full overflow-x-auto">
           <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Close"
+            type="button"
+            onClick={() => setActiveTab('privacy')}
+            className={`flex-1 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+              activeTab === 'privacy'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-900/60'
+            }`}
           >
-            <X className="w-5 h-5" />
+            <Lock className="w-3.5 h-3.5" />
+            <span>Privacy Policy</span>
           </button>
-        )}
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('terms')}
+            className={`flex-1 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+              activeTab === 'terms'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-900/60'
+            }`}
+          >
+            <Scale className="w-3.5 h-3.5" />
+            <span>Usage Policy</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('contact')}
+            className={`flex-1 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+              activeTab === 'contact'
+                ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
+                : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-900/60'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>Contact Support</span>
+          </button>
+        </div>
       </div>
 
-      {/* Tabs Switcher */}
-      <div className="flex border-b border-slate-200 dark:border-slate-800 px-6 pt-2 bg-white dark:bg-slate-900 shrink-0 gap-2 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('privacy')}
-          className={`pb-3 px-3 text-xs font-black transition-all border-b-2 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-            activeTab === 'privacy'
-              ? 'border-emerald-600 text-emerald-600 dark:border-emerald-400 dark:text-emerald-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-          }`}
-        >
-          <Lock className="w-3.5 h-3.5" />
-          <span>Privacy Policy</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('terms')}
-          className={`pb-3 px-3 text-xs font-black transition-all border-b-2 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-            activeTab === 'terms'
-              ? 'border-emerald-600 text-emerald-600 dark:border-emerald-400 dark:text-emerald-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-          }`}
-        >
-          <FileText className="w-3.5 h-3.5" />
-          <span>Usage Policy & Terms</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('contact')}
-          className={`pb-3 px-3 text-xs font-black transition-all border-b-2 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-            activeTab === 'contact'
-              ? 'border-emerald-600 text-emerald-600 dark:border-emerald-400 dark:text-emerald-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-          }`}
-        >
-          <Mail className="w-3.5 h-3.5" />
-          <span>Contact & Support</span>
-        </button>
-      </div>
-
-      {/* Scrollable Content Body */}
-      <div className="flex-1 overflow-y-auto p-6 sm:p-7 space-y-6">
+      {/* ── SCROLLABLE CONTENT BODY ── */}
+      <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-6">
         
-        {/* ── TAB 1: PRIVACY POLICY ── */}
+        {/* ══════════════════════════════════════════
+            MODULE 1: PRIVACY POLICY
+        ══════════════════════════════════════════ */}
         {activeTab === 'privacy' && (
-          <div className="space-y-6 max-w-3xl animate-fade-in text-slate-700 dark:text-slate-300 text-xs sm:text-sm leading-relaxed">
-            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-start gap-3">
-              <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-black text-emerald-950 dark:text-emerald-200 text-sm">
-                  Our Privacy Principle: Zero Data Selling & Private Room Isolation
-                </h4>
-                <p className="text-xs text-emerald-800/90 dark:text-emerald-300/90 mt-0.5">
-                  Tallyin was created to simplify shared expenses for flatmates, couples, and travelers. We never sell your personal data or share your financial records with advertising brokers.
+          <div className="space-y-5 max-w-3xl animate-fade-in text-[#1A3827] dark:text-slate-200 text-xs sm:text-sm leading-relaxed">
+            
+            {/* Core Principle Banner */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/15 dark:border-[#A3E635]/20 flex items-start gap-3.5 shadow-xs">
+              <div className="p-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-black text-[#1A3827] dark:text-white text-sm">
+                    Core Commitment: Zero Data Commercialization &amp; Isolated Vaults
+                  </h4>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hidden sm:inline-block">
+                    Strict Guarantee
+                  </span>
+                </div>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-300">
+                  Tallyin is built for roommates, travel groups, and shared households. We believe shared finances are personal. We do not sell your personal information or monetize your room ledgers with advertising brokers.
                 </p>
               </div>
             </div>
 
-            <section className="space-y-2">
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <Database className="w-4 h-4 text-emerald-600" />
-                <span>1. Information We Collect & Store</span>
-              </h3>
-              <p>When you use Tallyin, we process only the minimum operational information necessary to power your shared spaces:</p>
-              <ul className="list-disc pl-5 space-y-1.5 text-xs">
-                <li><strong>Profile & Identity:</strong> Nickname or display name, optional email address (when signing in via Google, Firebase, or magic code), and optional profile avatar.</li>
-                <li><strong>Room Data:</strong> Unique room codes (e.g. <code>ROOM1234</code>), room title, category, monthly budget limits, and member lists.</li>
-                <li><strong>Expense & Debt Records:</strong> Expense item descriptions, amounts, payment timestamps, payer attribution, itemized bill splits, and settlement logs.</li>
-                <li><strong>Receipt Attachments:</strong> Digital receipts or bill images you choose to upload to your shared space.</li>
-              </ul>
-            </section>
+            {/* Grid of Privacy Pillars */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              
+              {/* Card 1: Essential Data Minimalization */}
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                    <Database className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white">
+                    1. Minimal Data Collection
+                  </h3>
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  We process only the bare minimum data required to compute roommate balances:
+                </p>
+                <div className="space-y-1.5 text-[11px] text-[#1A3827] dark:text-slate-300 font-medium">
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span><strong>Display Profile:</strong> Nickname and optional Google auth email.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span><strong>Room Records:</strong> Room code, room title, and member nicknames.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span><strong>Ledger Entries:</strong> Expense amount, title, date, payer, and category.</span>
+                  </p>
+                </div>
+              </div>
 
-            <section className="space-y-2">
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <Lock className="w-4 h-4 text-emerald-600" />
-                <span>2. Room Data Isolation & Security</span>
-              </h3>
-              <p>
-                Each room operates as an isolated cryptographic silo. Only people who possess the verified Room Code or an authorized invitation link can view that room's expenses, itemized bills, and debts.
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Data in transit is encrypted using industry-standard TLS 1.3, and cloud records are managed securely via Supabase PostgreSQL protected by Row Level Security (RLS) policies.
-              </p>
-            </section>
+              {/* Card 2: Cryptographic Isolation */}
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white">
+                    2. Cryptographic Room Vaults
+                  </h3>
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  Each shared room functions as an isolated data silo:
+                </p>
+                <div className="space-y-1.5 text-[11px] text-[#1A3827] dark:text-slate-300 font-medium">
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span>Only members with verified room codes can access transaction records.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span>Protected by Row Level Security (RLS) on PostgreSQL.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span>Data transmission strictly encrypted via industry-grade TLS 1.3.</span>
+                  </p>
+                </div>
+              </div>
 
-            <section className="space-y-2">
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <Eye className="w-4 h-4 text-emerald-600" />
-                <span>3. Local Storage & Functional Cookies</span>
-              </h3>
-              <p>
-                Tallyin uses browser <code>localStorage</code> and <code>sessionStorage</code> exclusively for functional preferences: saving your dark mode choice, active room ID, offline cache, and banner dismissal timestamps. We do not use third-party tracking pixels or commercial ad identifiers.
-              </p>
-            </section>
+              {/* Card 3: Zero Ad Trackers */}
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                    <Eye className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white">
+                    3. Local Storage &amp; Zero Trackers
+                  </h3>
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  Your device stays clean and private while using Tallyin:
+                </p>
+                <div className="space-y-1.5 text-[11px] text-[#1A3827] dark:text-slate-300 font-medium">
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span>Browser storage is used strictly for offline cache, room selection &amp; theme.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span>Zero cross-site tracking cookies, telemetry ad SDKs, or meta pixels.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span>Never shared with outside advertisers or financial data brokers.</span>
+                  </p>
+                </div>
+              </div>
 
-            <section className="space-y-2">
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <HeartHandshake className="w-4 h-4 text-emerald-600" />
-                <span>4. Your Data Rights & Room Deletion</span>
-              </h3>
-              <p>
-                You retain complete control over your records. Room hosts can export complete room ledgers to Excel/CSV or permanently purge a room and all attached transactions, receipts, and member records directly from Room Settings.
-              </p>
-              <p className="text-xs">
-                To request manual account removal, contact our data protection team at <code>{SUPPORT_EMAIL}</code>.
-              </p>
-            </section>
+              {/* Card 4: Ledger Exports & Purge */}
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                    <HeartHandshake className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white">
+                    4. Full Portability &amp; Data Purge
+                  </h3>
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  You own your bookkeeping records completely:
+                </p>
+                <div className="space-y-1.5 text-[11px] text-[#1A3827] dark:text-slate-300 font-medium">
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span>Export full itemized ledgers to Excel / CSV format at any moment.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span>Room hosts can permanently delete rooms &amp; attached receipts in Settings.</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                    <span>Direct erasure requests can be directed to <code>{SUPPORT_EMAIL}</code>.</span>
+                  </p>
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
 
-        {/* ── TAB 2: USAGE POLICY & TERMS ── */}
+        {/* ══════════════════════════════════════════
+            MODULE 2: USAGE POLICY & TERMS
+        ══════════════════════════════════════════ */}
         {activeTab === 'terms' && (
-          <div className="space-y-6 max-w-3xl animate-fade-in text-slate-700 dark:text-slate-300 text-xs sm:text-sm leading-relaxed">
-            <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 flex items-start gap-3">
-              <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-black text-blue-950 dark:text-blue-200 text-sm">
-                  Acceptable Use & Roommate Community Standards
-                </h4>
-                <p className="text-xs text-blue-800/90 dark:text-blue-300/90 mt-0.5">
-                  By creating or joining a room on Tallyin, you agree to maintain transparent, honest bookkeeping and respectful collaboration with your roommates.
+          <div className="space-y-5 max-w-3xl animate-fade-in text-[#1A3827] dark:text-slate-200 text-xs sm:text-sm leading-relaxed">
+            
+            {/* Standards Banner */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/15 dark:border-[#A3E635]/20 flex items-start gap-3.5 shadow-xs">
+              <div className="p-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 shrink-0">
+                <Scale className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-black text-[#1A3827] dark:text-white text-sm">
+                    Roommate Agreement: Transparent, Fair &amp; Good-Faith Bookkeeping
+                  </h4>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hidden sm:inline-block">
+                    Community Code
+                  </span>
+                </div>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-300">
+                  By creating a new room or joining an existing one on Tallyin, you commit to recording accurate, mutual shared expenses and honoring settlement agreements with your roommates.
                 </p>
               </div>
             </div>
 
-            <section className="space-y-2">
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                1. Honest Bookkeeping & Mutual Agreement
-              </h3>
-              <p>
-                Tallyin provides mathematical debt calculation and expense tracking tools. All financial commitments, debt settlements, and expense entries reflect real-world agreements between room participants.
-              </p>
-              <ul className="list-disc pl-5 space-y-1 text-xs">
-                <li>Only record genuine shared expenses incurred on behalf of the household or group.</li>
-                <li>Verify settlement amounts before marking transactions as settled.</li>
-                <li>In case of a dispute, consult the room activity log or use the settlement calculator to inspect exact mathematical debts.</li>
-              </ul>
-            </section>
+            {/* Grid of Usage Terms */}
+            <div className="space-y-3.5">
+              
+              {/* Rule 1: Accurate Expense Entry */}
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2">
+                <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 text-[10px] font-black flex items-center justify-center">1</span>
+                  <span>Honest Bookkeeping &amp; Shared Responsibility</span>
+                </h3>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  Tallyin acts as an automated calculator and shared record-keeper. All entries must reflect actual transactions:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-[11px] text-[#1A3827] dark:text-slate-300">
+                  <li>Only enter genuine shared expenses incurred on behalf of the room members or group.</li>
+                  <li>Verify split ratios, exclusion rules, and individual shares prior to posting recurring transactions.</li>
+                  <li>Confirm physical bank/UPI transfers prior to recording settlements as cleared.</li>
+                </ul>
+              </div>
 
-            <section className="space-y-2">
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                2. Prohibited Activities
-              </h3>
-              <p>You agree not to use the Tallyin platform for:</p>
-              <ul className="list-disc pl-5 space-y-1.5 text-xs text-rose-700 dark:text-rose-300">
-                <li>Recording fraudulent or deceptive expense claims against roommates.</li>
-                <li>Uploading offensive, unlawful, or copyrighted material as bill receipts.</li>
-                <li>Attempting to brute-force room codes or bypass administrative access controls.</li>
-                <li>Spamming system broadcast channels or misusing automated scripts.</li>
-              </ul>
-            </section>
+              {/* Rule 2: Prohibited Conduct Callout */}
+              <div className="p-4 rounded-2xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 space-y-2">
+                <h3 className="font-extrabold text-xs sm:text-sm text-rose-900 dark:text-rose-300 flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                  <span>2. Prohibited Platform Misuse</span>
+                </h3>
+                <p className="text-[11px] text-rose-800/90 dark:text-rose-300/80">
+                  The following behaviors violate Tallyin terms and will result in room locks or account revocation:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-[11px] text-rose-800 dark:text-rose-300">
+                  <li>Fabricating false expense claims or manipulating settlement figures deceitfully.</li>
+                  <li>Uploading unlawful, infringing, or harassing media attachments as receipt proofs.</li>
+                  <li>Attempting automated room code harvesting or unauthorized administrative actions.</li>
+                </ul>
+              </div>
 
-            <section className="space-y-2">
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                3. Host & Co-Host Privileges
-              </h3>
-              <p>
-                Room creators (Hosts) and assigned Co-Hosts have administrative control over room settings, member removals, and frozen read-only locks. Hosts are responsible for inviting authorized members and securing their room access codes.
-              </p>
-            </section>
+              {/* Rule 3: Host Governance */}
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2">
+                <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
+                  <span>3. Room Host &amp; Member Privileges</span>
+                </h3>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  Room creators retain administrative authority over their spaces:
+                </p>
+                <p className="text-[11px] text-[#1A3827] dark:text-slate-300">
+                  Hosts may configure monthly budget caps, adjust individual quota shares, designate Co-Hosts, toggle frozen audit mode, or remove unverified member profiles from the room.
+                </p>
+              </div>
 
-            <section className="space-y-2">
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                4. Availability & Disclaimer
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Tallyin is provided on an "as-is" and "as-available" basis for personal expense calculation. While we strive for 99.9% uptime and real-time synchronization, Tallyin is not a chartered banking institution and does not hold custodial escrow funds.
-              </p>
-            </section>
+              {/* Rule 4: Availability & Financial Disclaimer */}
+              <div className="p-4 rounded-2xl bg-[#EAF0EC]/60 dark:bg-slate-900/60 border border-[#1A3827]/10 dark:border-slate-800 text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal space-y-1">
+                <p className="font-bold text-[#1A3827] dark:text-slate-300">
+                  Disclaimer on Financial Custody:
+                </p>
+                <p>
+                  Tallyin provides mathematical debt settlement calculations and tracking assistance. Tallyin is not a chartered bank, payment gateway, or escrow agent, and does not hold user funds. Direct payments are performed independently by roommates via UPI, cash, or bank transfers.
+                </p>
+              </div>
+
+            </div>
           </div>
         )}
 
-        {/* ── TAB 3: CONTACT & SUPPORT ── */}
+        {/* ══════════════════════════════════════════
+            MODULE 3: CONTACT & SUPPORT
+        ══════════════════════════════════════════ */}
         {activeTab === 'contact' && (
-          <div className="space-y-6 max-w-3xl animate-fade-in text-slate-700 dark:text-slate-300 text-xs sm:text-sm">
+          <div className="space-y-5 max-w-3xl animate-fade-in text-[#1A3827] dark:text-slate-200 text-xs sm:text-sm">
+            
+            {/* Quick Support Channels */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 space-y-1">
-                <Mail className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs">Official Support Email</h4>
-                <a href={`mailto:${SUPPORT_EMAIL}`} className="text-xs font-black text-emerald-700 dark:text-emerald-300 underline block break-all">
-                  {SUPPORT_EMAIL}
-                </a>
+              
+              {/* Channel 1: Email */}
+              <div className="p-4 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/15 dark:border-[#A3E635]/20 space-y-2">
+                <div className="p-1.5 rounded-lg bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 w-fit">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-[#1A3827] dark:text-white text-xs">Official Support Desk</h4>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-mono select-all truncate mt-0.5">
+                    {SUPPORT_EMAIL}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyEmail}
+                  className="w-full py-1.5 px-2.5 rounded-xl bg-white dark:bg-slate-800 border border-[#E3E8E3] dark:border-slate-700 text-[#1A3827] dark:text-slate-200 text-[10px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-700 transition-all cursor-pointer"
+                >
+                  {copiedEmail ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedEmail ? 'Copied!' : 'Copy Email'}</span>
+                </button>
               </div>
 
-              <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 space-y-1">
-                <HelpCircle className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs">Response Time</h4>
-                <p className="text-xs text-purple-800 dark:text-purple-300 font-semibold">
-                  Typically within 12–24 hours
-                </p>
+              {/* Channel 2: Response Time */}
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-2">
+                <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] w-fit">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-[#1A3827] dark:text-white text-xs">Response SLA</h4>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                    Typically within <strong>12 to 24 hours</strong> on weekdays.
+                  </p>
+                </div>
+                <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                  Active Support Queue
+                </span>
               </div>
 
-              <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 space-y-1">
-                <ShieldCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs">Security Contact</h4>
-                <p className="text-xs text-blue-800 dark:text-blue-300 font-semibold">
-                  Direct Escalation & Security
-                </p>
+              {/* Channel 3: Security & Dispute */}
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-2">
+                <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] w-fit">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-[#1A3827] dark:text-white text-xs">Dispute &amp; Security</h4>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                    Urgent room code recovery &amp; data privacy escalation.
+                  </p>
+                </div>
+                <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                  High Priority
+                </span>
               </div>
+
             </div>
 
-            {/* Inquiry Form */}
-            <div className="p-5 sm:p-6 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 space-y-4">
+            {/* Direct Message Form */}
+            <div className="p-5 sm:p-6 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/90 border border-[#E3E8E3] dark:border-slate-800 space-y-4">
               <div className="space-y-0.5">
-                <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                  <Send className="w-4 h-4 text-emerald-600" />
-                  <span>Send Us a Direct Message</span>
+                <h3 className="font-black text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
+                  <Send className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
+                  <span>Send a Direct Inquiry to the Tallyin Team</span>
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Have a question, feedback, or need help with a room? Fill in the form below:
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                  Have an issue with a room, a feature suggestion, or need dispute help? Fill in below:
                 </p>
               </div>
 
               {isSent ? (
-                <div className="p-5 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-center space-y-2 animate-scale-up">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mx-auto" />
-                  <h4 className="font-black text-emerald-950 dark:text-emerald-100 text-sm">Thank You! Your Inquiry Has Been Registered.</h4>
-                  <p className="text-xs text-emerald-800 dark:text-emerald-300">
-                    A confirmation has been sent to our core support desk. We will reach back out to you at <strong>{contactEmail}</strong>.
+                <div className="p-5 rounded-2xl bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/20 dark:border-[#A3E635]/30 text-center space-y-2 animate-scale-up">
+                  <div className="w-10 h-10 rounded-full bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 flex items-center justify-center mx-auto">
+                    <Check className="w-5 h-5 stroke-[3]" />
+                  </div>
+                  <h4 className="font-black text-[#1A3827] dark:text-white text-sm">
+                    Inquiry Dispatched Successfully!
+                  </h4>
+                  <p className="text-xs text-[#5C6E5C] dark:text-slate-300 max-w-md mx-auto">
+                    Reference ID: <strong className="font-mono text-[#1A3827] dark:text-[#A3E635]">{submittedTicketId}</strong>. A copy has been dispatched to our support queue. We will follow up at <strong>{contactEmail}</strong>.
                   </p>
                   <button
                     type="button"
@@ -350,85 +531,95 @@ export default function LegalAndSupportModal({
                       setContactSubject('');
                       setContactMessage('');
                     }}
-                    className="mt-2 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer"
+                    className="mt-3 px-5 py-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-black text-xs hover:opacity-90 transition-all cursor-pointer shadow-sm active:scale-98"
                   >
-                    Send Another Message
+                    Submit Another Inquiry
                   </button>
                 </div>
               ) : (
                 <form onSubmit={handleSendContactMessage} className="space-y-3.5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Your Name</label>
+                      <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200">
+                        Your Name
+                      </label>
                       <input
                         type="text"
                         value={contactName}
                         onChange={e => setContactName(e.target.value)}
-                        placeholder="e.g. Alex Taylor"
-                        className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        placeholder="e.g. Rahul Sharma"
+                        className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Your Email (Required)</label>
+                      <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200">
+                        Your Email <span className="text-emerald-700 dark:text-[#A3E635]">*</span>
+                      </label>
                       <input
                         type="email"
                         required
                         value={contactEmail}
                         onChange={e => setContactEmail(e.target.value)}
-                        placeholder="e.g. alex@gmail.com"
-                        className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        placeholder="e.g. rahul@example.com"
+                        className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Inquiry Category</label>
+                      <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200">
+                        Inquiry Category
+                      </label>
                       <select
                         value={contactCategory}
                         onChange={e => setContactCategory(e.target.value)}
-                        className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-900 dark:text-white"
+                        className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
                       >
-                        <option value="general">General Question</option>
-                        <option value="room_access">Room Access / Joining Issue</option>
+                        <option value="general">General Support / Question</option>
+                        <option value="room_access">Room Access / Joining Trouble</option>
                         <option value="dispute_help">Room Expense Dispute Assistance</option>
-                        <option value="feature_request">Feature Request / Suggestion</option>
-                        <option value="bug_report">Bug Report / Technical Glitch</option>
-                        <option value="security">Security & Privacy Inquiry</option>
+                        <option value="feature_request">Feature Suggestion &amp; Feedback</option>
+                        <option value="bug_report">Bug Report / Sync Glitch</option>
+                        <option value="privacy">Privacy &amp; Data Deletion Request</option>
                       </select>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Subject</label>
+                      <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200">
+                        Subject Line
+                      </label>
                       <input
                         type="text"
                         value={contactSubject}
                         onChange={e => setContactSubject(e.target.value)}
-                        placeholder="Brief summary of inquiry"
-                        className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        placeholder="Brief summary of your inquiry"
+                        className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Message / Details</label>
+                    <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200">
+                      Message Details <span className="text-emerald-700 dark:text-[#A3E635]">*</span>
+                    </label>
                     <textarea
                       required
                       rows={4}
                       value={contactMessage}
                       onChange={e => setContactMessage(e.target.value)}
-                      placeholder="Please describe how we can assist you..."
-                      className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                      placeholder="Please provide details, room code if applicable, and how we can assist you..."
+                      className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635] resize-none"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={isSending}
-                    className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="w-full sm:w-auto px-7 py-3 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] hover:bg-[#255038] dark:hover:bg-[#BEF264] text-white dark:text-slate-950 font-black text-xs transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-98"
                   >
                     {isSending ? (
-                      <span>Sending inquiry...</span>
+                      <span>Dispatching Inquiry...</span>
                     ) : (
                       <>
                         <Send className="w-3.5 h-3.5" />
@@ -440,42 +631,66 @@ export default function LegalAndSupportModal({
               )}
             </div>
 
-            {/* Quick FAQ accordion */}
-            <div className="space-y-2 pt-2">
-              <h4 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                <HelpCircle className="w-4 h-4 text-emerald-600" />
+            {/* Frequently Asked Questions */}
+            <div className="space-y-2.5 pt-1">
+              <h4 className="font-black text-xs sm:text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
+                <HelpCircle className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
                 <span>Frequently Asked Questions</span>
               </h4>
               <div className="space-y-2">
-                <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <h5 className="font-bold text-xs text-slate-900 dark:text-white">How do room codes work?</h5>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Each room has a unique code. Sharing the code or QR code lets flatmates immediately sync balances and split transactions in real time.
+                <div className="p-3.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800">
+                  <h5 className="font-bold text-xs text-[#1A3827] dark:text-white">
+                    How do Room Codes and QR Codes work?
+                  </h5>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-1 leading-normal">
+                    Each space is assigned a unique code (e.g. <code>TL-ABCD-1234</code>). Sharing the code or QR code allows verified roommates to instantly join and view synchronized balances in real time.
                   </p>
                 </div>
-                <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <h5 className="font-bold text-xs text-slate-900 dark:text-white">How are debts mathematically calculated?</h5>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Tallyin calculates net balances using an optimized settlement algorithm, minimizing the total number of payments needed to clear group debts.
+
+                <div className="p-3.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800">
+                  <h5 className="font-bold text-xs text-[#1A3827] dark:text-white">
+                    How does the settlement math minimize payments?
+                  </h5>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-1 leading-normal">
+                    Tallyin uses an optimal net-balance debt simplifier algorithm. Instead of multiple roommates paying each other back and forth, debts are consolidated into the minimum direct payments needed.
                   </p>
                 </div>
-                <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <h5 className="font-bold text-xs text-slate-900 dark:text-white">Can I delete my room and all records?</h5>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Yes. Room hosts can permanently delete their room and purge all associated transactions and member entries under Room Settings.
+
+                <div className="p-3.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800">
+                  <h5 className="font-bold text-xs text-[#1A3827] dark:text-white">
+                    Can a room be archived or permanently purged?
+                  </h5>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-1 leading-normal">
+                    Yes. Room hosts can export all historical data to Excel/CSV and permanently delete the room, deleting all transactions and uploaded receipts from our cloud database.
                   </p>
                 </div>
               </div>
             </div>
+
           </div>
         )}
+
       </div>
 
-      {/* Footer Info */}
-      <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-[10px] text-slate-400 flex flex-wrap items-center justify-between gap-2 shrink-0">
-        <span>© {new Date().getFullYear()} Tallyin • All rights reserved.</span>
-        <span>Version: {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.18.0'}</span>
+      {/* ── TALLYIN BRANDED FOOTER ── */}
+      <div className="px-5 sm:px-7 py-3 border-t border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6] dark:bg-slate-950 text-[11px] text-[#5C6E5C] dark:text-slate-400 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-[#1A3827] dark:text-[#A3E635]">Tallyin</span>
+          <span>•</span>
+          <span>All-in-One Roommate Expense Manager</span>
+        </div>
+        <div className="flex items-center gap-3 text-[10px]">
+          <span>© {new Date().getFullYear()} Tallyin</span>
+          <span>•</span>
+          <a 
+            href={`mailto:${SUPPORT_EMAIL}`} 
+            className="font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline"
+          >
+            {SUPPORT_EMAIL}
+          </a>
+        </div>
       </div>
+
     </div>
   );
 
