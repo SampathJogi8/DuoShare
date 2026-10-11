@@ -301,6 +301,18 @@ export default function AnnouncementBanner({
     }
   };
 
+  // Keyboard shortcut listener: Press Escape to close modal dialog
+  useEffect(() => {
+    if (placement !== 'modal_dialog' || isPreview || !isClientVisible) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        handleDismissAction();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [placement, isPreview, isClientVisible]);
+
   const handleLinkClick = (e) => {
     if (onActionClick) {
       onActionClick(banner.actionUrl);
@@ -434,7 +446,7 @@ export default function AnnouncementBanner({
             </button>
           )}
 
-          {isDismissible && (
+          {(isDismissible || placement === 'modal_dialog') && (
             <button
               type="button"
               onClick={handleDismissAction}
@@ -473,6 +485,16 @@ export default function AnnouncementBanner({
 
   // Render according to chosen Placement
   if (placement === 'top_sticky') {
+    if (isPreview) {
+      return (
+        <div className="relative w-full rounded-2xl border-2 border-dashed border-emerald-500/40 p-2.5 bg-slate-900/40 my-2">
+          <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest text-center mb-1.5 flex items-center justify-center gap-1.5">
+            <span>✦ Top Sticky Bar (Preview Simulation) ✦</span>
+          </div>
+          {bannerInner}
+        </div>
+      );
+    }
     return (
       <>
         <aside aria-label="Announcement banner" className="fixed top-0 left-0 right-0 z-50 animate-fade-in shadow-xl">
@@ -487,6 +509,18 @@ export default function AnnouncementBanner({
   }
 
   if (placement === 'bottom_floating') {
+    if (isPreview) {
+      return (
+        <div className="relative w-full rounded-2xl border-2 border-dashed border-cyan-500/40 p-3 bg-slate-900/40 my-2 flex justify-center">
+          <div className="max-w-2xl w-full">
+            <div className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest text-center mb-1.5 flex items-center justify-center gap-1.5">
+              <span>✦ Bottom Floating Dock (Preview Simulation) ✦</span>
+            </div>
+            {bannerInner}
+          </div>
+        </div>
+      );
+    }
     return (
       <aside aria-label="Announcement banner" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-2xl w-[94%] animate-fade-in shadow-2xl">
         {bannerInner}
@@ -495,15 +529,43 @@ export default function AnnouncementBanner({
   }
 
   if (placement === 'modal_dialog') {
+    if (isPreview) {
+      return (
+        <div className="relative w-full rounded-2xl p-4 sm:p-6 bg-slate-950/85 backdrop-blur-sm border-2 border-dashed border-purple-500/40 flex flex-col items-center justify-center my-2 shadow-inner">
+          <div className="text-[10px] font-black text-purple-300 uppercase tracking-widest text-center mb-2.5 flex items-center justify-center gap-1.5">
+            <span>✦ Center Modal Dialog (Preview Simulation) ✦</span>
+          </div>
+          <div className="max-w-xl w-full shadow-2xl">
+            {bannerInner}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div 
         role="dialog"
         aria-modal="true"
         aria-label="Important Announcement"
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fade-in"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            handleDismissAction();
+          }
+        }}
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-fade-in"
       >
-        <div className="max-w-xl w-full shadow-2xl animate-scale-up">
+        <div className="max-w-xl w-full shadow-2xl animate-scale-up relative">
           {bannerInner}
+          <div className="text-center mt-3">
+            <button
+              type="button"
+              onClick={handleDismissAction}
+              className="px-4 py-1.5 rounded-full text-xs font-bold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/25 transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg active:scale-95"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Dismiss & Return to App</span>
+            </button>
+          </div>
         </div>
       </div>
     );

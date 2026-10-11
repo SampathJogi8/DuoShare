@@ -770,6 +770,8 @@ export default function AdminDashboard({
   const [broadcastActionText, setBroadcastActionText] = useState('Learn More');
   const [broadcastTargetAudience, setBroadcastTargetAudience] = useState('ALL'); // 'ALL' | 'AUTHENTICATED' | 'GUESTS' | 'HOSTS' | 'CO_HOSTS' | 'ADMINS' | 'SPECIFIC_USERS'
   const [broadcastTargetUsers, setBroadcastTargetUsers] = useState('');
+  const [broadcastTargetUserSearch, setBroadcastTargetUserSearch] = useState('');
+  const [broadcastCustomUserInput, setBroadcastCustomUserInput] = useState('');
   const [broadcastTargetDevice, setBroadcastTargetDevice] = useState('ALL'); // 'ALL' | 'MOBILE_ONLY' | 'DESKTOP_ONLY'
   const [broadcastIsDismissible, setBroadcastIsDismissible] = useState(true);
 
@@ -2339,21 +2341,22 @@ export default function AdminDashboard({
   const fetchUserDirectory = useCallback(async () => {
     try {
       const [{ data: memberList }, { data: userList }] = await Promise.all([
-        supabase.from('members').select('*').limit(100),
-        supabase.from('users').select('*').limit(100)
+        supabase.from('members').select('*').limit(1000),
+        supabase.from('users').select('*').limit(1000)
       ]);
 
       const combined = [];
       const seen = new Set();
 
       (memberList || []).forEach(m => {
-        const key = m.email || m.uid || m.nickname;
+        const email = (m.email || '').trim().toLowerCase();
+        const key = email || m.uid || m.id || m.nickname;
         if (key && !seen.has(key)) {
           seen.add(key);
           combined.push({
             id: m.uid || m.id,
-            name: m.nickname || m.name || 'Roommate',
-            email: m.email || 'N/A',
+            name: m.nickname || m.name || (email ? email.split('@')[0] : 'Roommate'),
+            email: email || 'N/A',
             roomId: m.room_id || 'Shared Space',
             photoURL: m.photoURL,
             role: 'Member'
@@ -2362,19 +2365,45 @@ export default function AdminDashboard({
       });
 
       (userList || []).forEach(u => {
-        const key = u.email || u.uid;
+        const email = (u.email || '').trim().toLowerCase();
+        const key = email || u.uid || u.id;
         if (key && !seen.has(key)) {
           seen.add(key);
           combined.push({
             id: u.uid || u.id,
-            name: u.nickname || u.name || 'User',
-            email: u.email || 'N/A',
+            name: u.nickname || u.name || (email ? email.split('@')[0] : 'User'),
+            email: email || 'N/A',
             roomId: u.room_id || 'Joined Space',
             photoURL: u.photoURL,
             role: 'User'
           });
+        } else if (email && seen.has(email)) {
+          const existing = combined.find(c => c.email === email);
+          if (existing && (!existing.name || existing.name === 'Roommate')) {
+            existing.name = u.nickname || u.name || email.split('@')[0];
+          }
         }
       });
+
+      // Also query transactions to discover active payer/member emails if any
+      try {
+        const { data: txEmails } = await supabase.from('transactions').select('paid_by, created_by').limit(200);
+        (txEmails || []).forEach(tx => {
+          if (tx.paid_by && tx.paid_by.includes('@')) {
+            const key = tx.paid_by.trim().toLowerCase();
+            if (!seen.has(key)) {
+              seen.add(key);
+              combined.push({
+                id: tx.created_by || key,
+                name: key.split('@')[0],
+                email: key,
+                roomId: 'Transaction Participant',
+                role: 'Participant'
+              });
+            }
+          }
+        });
+      } catch (e) {}
 
       setAllRegisteredUsers(combined);
     } catch (e) {
@@ -4052,6 +4081,111 @@ export default function AdminDashboard({
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  // Aggregated directory of all available system user emails
+  const availableSystemEmails = useMemo(() => {
+    const emailMap = new Map();
+
+    (allRegisteredUsers || []).forEach(u => {
+      const email = (u.email || '').trim().toLowerCase();
+      if (email && email.includes('@') && email !== 'n/a') {
+        if (!emailMap.has(email)) {
+          emailMap.set(email, {
+            email,
+            name: u.name || u.nickname || email.split('@')[0],
+            uid: u.id || u.uid,
+            role: u.role || 'Member'
+          });
+        }
+      }
+    });
+
+    (normalizedCoAdmins || []).forEach(ca => {
+      const email = (ca.email || '').trim().toLowerCase();
+      if (email && email.includes('@')) {
+        if (!emailMap.has(email)) {
+          emailMap.set(email, {
+            email,
+            name: ca.name || 'Co-Admin',
+            uid: null,
+            role: 'Co-Admin'
+          });
+        }
+      }
+    });
+
+    (betaApplications || []).forEach(ba => {
+      const email = (ba.email || '').trim().toLowerCase();
+      if (email && email.includes('@')) {
+        if (!emailMap.has(email)) {
+          emailMap.set(email, {
+            email,
+            name: ba.name || 'Beta Tester',
+            uid: ba.id,
+            role: 'Beta Tester'
+          });
+        }
+      }
+    });
+
+    (allowedMaintenanceAccounts || []).forEach(acc => {
+      const email = (typeof acc === 'string' ? acc : acc?.email || '').trim().toLowerCase();
+      if (email && email.includes('@')) {
+        if (!emailMap.has(email)) {
+          emailMap.set(email, {
+            email,
+            name: 'Allowed Account',
+            uid: null,
+            role: 'Maintenance'
+          });
+        }
+      }
+    });
+
+    if (SUPER_ADMIN_EMAIL && !emailMap.has(SUPER_ADMIN_EMAIL.toLowerCase())) {
+      emailMap.set(SUPER_ADMIN_EMAIL.toLowerCase(), {
+        email: SUPER_ADMIN_EMAIL.toLowerCase(),
+        name: 'Super Admin',
+        uid: null,
+        role: 'Admin'
+      });
+    }
+
+    return Array.from(emailMap.values());
+  }, [allRegisteredUsers, normalizedCoAdmins, betaApplications, allowedMaintenanceAccounts]);
+
+  const targetUsersList = useMemo(() => {
+    return broadcastTargetUsers
+      .split(/[\s,]+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }, [broadcastTargetUsers]);
+
+  const handleAddTargetUser = (val) => {
+    if (!val) return;
+    const clean = val.trim();
+    const existing = targetUsersList.map(u => u.toLowerCase());
+    if (!existing.includes(clean.toLowerCase())) {
+      const updated = [...targetUsersList, clean];
+      setBroadcastTargetUsers(updated.join(', '));
+    }
+  };
+
+  const handleRemoveTargetUser = (val) => {
+    const clean = val.trim().toLowerCase();
+    const updated = targetUsersList.filter(u => u.toLowerCase() !== clean);
+    setBroadcastTargetUsers(updated.join(', '));
+  };
+
+  const handleToggleTargetUser = (val) => {
+    const clean = val.trim().toLowerCase();
+    const existing = targetUsersList.map(u => u.toLowerCase());
+    if (existing.includes(clean)) {
+      handleRemoveTargetUser(clean);
+    } else {
+      handleAddTargetUser(val.trim());
+    }
   };
 
   // Load Active Banner into Editor
@@ -7316,6 +7450,11 @@ NOTIFY pgrst, 'reload schema';`;
                   <span className="font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
                     Audience: <strong>{BANNER_AUDIENCES[globalBroadcast.targetAudience]?.label || globalBroadcast.targetAudience || 'Everyone'}</strong>
                   </span>
+                  {globalBroadcast.targetAudience === 'SPECIFIC_USERS' && globalBroadcast.targetUsers && (
+                    <span className="font-bold px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-300">
+                      Targeted: <strong>{globalBroadcast.targetUsers.split(/[\s,]+/).filter(Boolean).length} Users ({globalBroadcast.targetUsers})</strong>
+                    </span>
+                  )}
                   {globalBroadcast.targetDevice && globalBroadcast.targetDevice !== 'ALL' && (
                     <span className="font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
                       Device: <strong>{BANNER_DEVICES[globalBroadcast.targetDevice]?.label || globalBroadcast.targetDevice}</strong>
@@ -7682,22 +7821,200 @@ NOTIFY pgrst, 'reload schema';`;
                   </div>
                 </div>
 
-                {/* Specific Users Input (if SPECIFIC_USERS selected) */}
+                {/* Specific Users Interactive Directory & Email Selector */}
                 {broadcastTargetAudience === 'SPECIFIC_USERS' && (
-                  <div className="p-3.5 rounded-2xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 space-y-1.5 animate-fade-in">
-                    <label className="text-xs font-black text-purple-900 dark:text-purple-300 block">
-                      Target User Emails or UIDs (Comma-separated)
-                    </label>
-                    <input
-                      type="text"
-                      value={broadcastTargetUsers}
-                      onChange={e => setBroadcastTargetUsers(e.target.value)}
-                      placeholder="e.g., alex@gmail.com, sampath@example.com, test_uid_1001"
-                      className="w-full p-2.5 bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                    <p className="text-[10px] text-purple-700/80 dark:text-purple-300/80">
-                      The banner will strictly only be presented to matching user emails or IDs.
-                    </p>
+                  <div className="p-4 sm:p-5 rounded-2xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/70 space-y-3.5 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-200/80 dark:border-purple-800/60 pb-2.5">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-black text-purple-900 dark:text-purple-200">
+                            Target User Emails or UIDs
+                          </label>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            targetUsersList.length > 0 
+                              ? 'bg-purple-600 text-white shadow-xs' 
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                          }`}>
+                            {targetUsersList.length > 0 ? `${targetUsersList.length} Selected` : 'None Selected'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-purple-700/80 dark:text-purple-300/80 mt-0.5">
+                          Click registered accounts below to toggle access, or type specific emails/UIDs manually.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {availableSystemEmails.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allEmails = availableSystemEmails.map(u => u.email);
+                              setBroadcastTargetUsers(allEmails.join(', '));
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-purple-200/80 hover:bg-purple-300 dark:bg-purple-900/60 dark:hover:bg-purple-800 text-purple-900 dark:text-purple-200 transition-colors cursor-pointer"
+                          >
+                            + Select All ({availableSystemEmails.length})
+                          </button>
+                        )}
+                        {targetUsersList.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setBroadcastTargetUsers('')}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/60 dark:hover:bg-rose-900 text-rose-800 dark:text-rose-300 transition-colors cursor-pointer"
+                          >
+                            Clear Selection
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={fetchUserDirectory}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 text-purple-800 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950 transition-colors cursor-pointer"
+                          title="Refresh user accounts from database"
+                        >
+                          ↻ Refresh Users
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Active Selected Badges / Chips */}
+                    {targetUsersList.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-purple-800 dark:text-purple-300 block">
+                          Currently Targeted Recipients:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-purple-200/70 dark:border-purple-800/50 max-h-32 overflow-y-auto">
+                          {targetUsersList.map((target, idx) => (
+                            <span 
+                              key={idx}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-100 dark:bg-purple-900/50 border border-purple-300 dark:border-purple-700/80 text-purple-900 dark:text-purple-200 text-xs font-semibold shadow-2xs"
+                            >
+                              <span className="truncate max-w-[200px]">{target}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTargetUser(target)}
+                                className="p-0.5 hover:bg-purple-200 dark:hover:bg-purple-800 rounded-md transition-colors cursor-pointer text-purple-700 dark:text-purple-300"
+                                title={`Remove ${target}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-center gap-2 text-[11px] text-amber-800 dark:text-amber-300">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>No users selected. Pick users below or type emails into the box to grant banner visibility.</span>
+                      </div>
+                    )}
+
+                    {/* Manual Custom Input + Add Button */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-purple-900 dark:text-purple-200 block">
+                        Add Custom Email or UID:
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={broadcastCustomUserInput}
+                          onChange={e => setBroadcastCustomUserInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (broadcastCustomUserInput.trim()) {
+                                const splitted = broadcastCustomUserInput.split(/[\s,]+/).filter(Boolean);
+                                splitted.forEach(email => handleAddTargetUser(email));
+                                setBroadcastCustomUserInput('');
+                              }
+                            }
+                          }}
+                          placeholder="Type email (e.g. user@gmail.com) and press Enter or click Add"
+                          className="flex-1 p-2 bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (broadcastCustomUserInput.trim()) {
+                              const splitted = broadcastCustomUserInput.split(/[\s,]+/).filter(Boolean);
+                              splitted.forEach(email => handleAddTargetUser(email));
+                              setBroadcastCustomUserInput('');
+                            }
+                          }}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer shrink-0"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Registered Users Directory & Quick Selector */}
+                    <div className="space-y-2 pt-1 border-t border-purple-200/60 dark:border-purple-800/50">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                        <label className="text-xs font-black text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                          <span>Registered Accounts in System ({availableSystemEmails.length})</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={broadcastTargetUserSearch}
+                          onChange={e => setBroadcastTargetUserSearch(e.target.value)}
+                          placeholder="Filter accounts by email or name..."
+                          className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-lg text-[11px] font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-500 max-w-xs"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-1">
+                        {availableSystemEmails
+                          .filter(u => {
+                            if (!broadcastTargetUserSearch.trim()) return true;
+                            const q = broadcastTargetUserSearch.toLowerCase();
+                            return u.email.includes(q) || (u.name && u.name.toLowerCase().includes(q));
+                          })
+                          .map(u => {
+                            const isSelected = targetUsersList.some(target => target.toLowerCase() === u.email.toLowerCase());
+                            return (
+                              <button
+                                key={u.email}
+                                type="button"
+                                onClick={() => handleToggleTargetUser(u.email)}
+                                className={`p-2 rounded-xl text-left transition-all border flex items-center justify-between gap-2 cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-purple-600 text-white border-purple-700 shadow-sm'
+                                    : 'bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/40 border-purple-200/80 dark:border-purple-800/60 text-slate-800 dark:text-slate-100'
+                                }`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold truncate">{u.name || u.email.split('@')[0]}</span>
+                                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 ${
+                                      isSelected
+                                        ? 'bg-white/20 text-white'
+                                        : 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300'
+                                    }`}>
+                                      {u.role || 'User'}
+                                    </span>
+                                  </div>
+                                  <p className={`text-[11px] truncate mt-0.5 ${
+                                    isSelected ? 'text-purple-100' : 'text-slate-500 dark:text-slate-400'
+                                  }`}>
+                                    {u.email}
+                                  </p>
+                                </div>
+                                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs font-black ${
+                                  isSelected ? 'bg-white text-purple-700' : 'border border-purple-300 dark:border-purple-700 text-purple-500'
+                                }`}>
+                                  {isSelected ? '✓' : '+'}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        {availableSystemEmails.length === 0 && (
+                          <div className="col-span-full py-4 text-center text-xs text-slate-400 italic">
+                            No registered user accounts found in cache. Type emails directly above or click 'Refresh Users'.
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
 
