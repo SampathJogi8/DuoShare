@@ -79,6 +79,7 @@ import AdminDashboard from './components/AdminDashboard';
 import BannedUserView from './components/BannedUserView';
 import QuickBillModal from './components/QuickBillModal';
 import TripExpenseManager from './components/TripExpenseManager';
+import AnnouncementBanner from './components/AnnouncementBanner';
 
 const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
 const ADMIN_EMAILS = [
@@ -1332,10 +1333,15 @@ export default function App() {
       id: `release_${APP_VERSION || 'v4.6.1'}_trip_splitter`,
       text: `🌴 Official Release (${APP_VERSION || 'v4.6.1'}): All-in-One Trip Splitter & Vacation Expense Manager now live! Track travel costs, split with flatmates or guests, and settle debts instantly.`,
       type: 'feature',
+      theme: 'emerald',
+      placement: 'top_inline',
+      frequency: 'until_dismissed',
+      targetAudience: 'ALL',
+      targetDevice: 'ALL',
       active: true,
-      createdAt: '2026-10-02T00:00:00.000Z',
-      expiresAt: '2026-10-10T23:59:59.000Z',
-      validDays: 8
+      createdAt: '2026-10-10T00:00:00.000Z',
+      expiresAt: '2026-10-25T23:59:59.000Z',
+      validDays: 15
     };
 
     if (typeof window !== 'undefined') {
@@ -1596,17 +1602,18 @@ export default function App() {
       })
       .subscribe();
 
-    // Expiration helper for broadcast messages (Default 2 Calendar Days validity)
+    // Expiration helper for broadcast messages (Supports indefinite, hours, and calendar days)
     const isBroadcastExpired = (bc) => {
       if (!bc) return true;
+      if (bc.validDays === 0 || bc.validDays === '0') return false; // Indefinite validity
       if (bc.expiresAt) {
         return new Date().getTime() > new Date(bc.expiresAt).getTime();
       }
       if (bc.createdAt) {
-        const validDays = bc.validDays || 2;
+        const validDays = parseFloat(bc.validDays) || 2;
         return (new Date().getTime() - new Date(bc.createdAt).getTime()) > (validDays * 24 * 60 * 60 * 1000);
       }
-      return true; // Legacy broadcasts without timestamps are expired
+      return false;
     };
 
     // Automatic Deployment Broadcast for New Feature Release (Valid for 2 Calendar Days)
@@ -1623,6 +1630,8 @@ export default function App() {
     // Fetch latest global broadcast & pinned messages from Supabase DB on startup & sync
     const fetchDBGlobalBroadcastAndPins = async () => {
       try {
+        let parsedBanner = null;
+
         const { data: bcData } = await supabase
           .from('rooms')
           .select('name')
@@ -1630,17 +1639,23 @@ export default function App() {
           .maybeSingle();
 
         if (bcData?.name && bcData.name.startsWith('{')) {
-          const parsed = JSON.parse(bcData.name);
-          if (parsed && parsed.active && !isBroadcastExpired(parsed)) {
-            setGlobalBroadcast(parsed);
-            localStorage.setItem('tallyin_global_broadcast', JSON.stringify(parsed));
-          } else if (!isBroadcastExpired(FEATURE_RELEASE_BROADCAST)) {
-            setGlobalBroadcast(FEATURE_RELEASE_BROADCAST);
-            localStorage.setItem('tallyin_global_broadcast', JSON.stringify(FEATURE_RELEASE_BROADCAST));
-          } else {
-            setGlobalBroadcast(null);
-            localStorage.removeItem('tallyin_global_broadcast');
+          try { parsedBanner = JSON.parse(bcData.name); } catch (e) {}
+        }
+
+        if (!parsedBanner) {
+          const { data: ssData } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'system_global_banner')
+            .maybeSingle();
+          if (ssData?.value && ssData.value.startsWith('{')) {
+            try { parsedBanner = JSON.parse(ssData.value); } catch (e) {}
           }
+        }
+
+        if (parsedBanner && parsedBanner.active && !isBroadcastExpired(parsedBanner)) {
+          setGlobalBroadcast(parsedBanner);
+          localStorage.setItem('tallyin_global_broadcast', JSON.stringify(parsedBanner));
         } else if (!isBroadcastExpired(FEATURE_RELEASE_BROADCAST)) {
           setGlobalBroadcast(FEATURE_RELEASE_BROADCAST);
           localStorage.setItem('tallyin_global_broadcast', JSON.stringify(FEATURE_RELEASE_BROADCAST));
@@ -14595,32 +14610,82 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           {/* Quick Actions (Right) */}
           <div className="flex items-center gap-2 sm:gap-4 relative shrink-0">
             {/* Broadcast Re-open / Toggle Button */}
-            {globalBroadcast?.active && (
-              <button
-                onClick={() => {
-                  const bKey = globalBroadcast.createdAt || globalBroadcast.text;
-                  const isCurrentlyClosed = dismissedBroadcastKey === bKey;
-                  if (isCurrentlyClosed) {
-                    setDismissedBroadcastKey(null);
-                    localStorage.removeItem('tallyin_dismissed_broadcast');
-                    if (triggerToast) triggerToast('Broadcast Banner restored');
-                  } else {
-                    setDismissedBroadcastKey(bKey);
-                    localStorage.setItem('tallyin_dismissed_broadcast', bKey);
-                    if (triggerToast) triggerToast('Broadcast Banner hidden');
-                  }
-                }}
-                className={`p-2 rounded-xl transition-all relative flex items-center gap-1.5 text-xs font-bold ${
-                  dismissedBroadcastKey === (globalBroadcast.createdAt || globalBroadcast.text)
-                    ? 'text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-slate-200/80 dark:border-slate-800'
-                    : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-500/30 shadow-sm'
-                }`}
-                title={dismissedBroadcastKey === (globalBroadcast.createdAt || globalBroadcast.text) ? 'Re-open System Broadcast Banner' : 'Hide System Broadcast Banner'}
-              >
-                <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
-                <span className="hidden sm:inline">Broadcast</span>
-              </button>
-            )}
+            {(() => {
+              if (!globalBroadcast?.active) return null;
+
+              const isExpired = globalBroadcast.expiresAt 
+                ? new Date().getTime() > new Date(globalBroadcast.expiresAt).getTime()
+                : globalBroadcast.createdAt
+                  ? (new Date().getTime() - new Date(globalBroadcast.createdAt).getTime() > ((globalBroadcast.validDays === 0 || globalBroadcast.validDays === '0' ? Infinity : (parseFloat(globalBroadcast.validDays) || 2)) * 24 * 60 * 60 * 1000))
+                  : false;
+              if (isExpired) return null;
+
+              if (globalBroadcast.targetRoom && globalBroadcast.targetRoom !== 'ALL' && globalBroadcast.targetRoom !== userRoomId) {
+                return null;
+              }
+
+              // Audience privilege check
+              const audience = globalBroadcast.targetAudience || 'ALL';
+              const isAuthenticated = Boolean(user && user.id && user.id !== 'anonymous' && !user.isAnonymous);
+              const isGuest = !isAuthenticated;
+              const isHost = Boolean(user && roomCreatedBy && user.id === roomCreatedBy);
+              const isCoHostUser = Boolean(user && ((roomCreatedBy && user.id === roomCreatedBy) || (coHostUid && user.id === coHostUid)));
+              const isAdmin = Boolean(
+                user?.email && ADMIN_EMAILS.some(e => e.toLowerCase() === user.email.toLowerCase())
+              );
+
+              if (audience === 'AUTHENTICATED' && !isAuthenticated) return null;
+              if (audience === 'GUESTS' && !isGuest) return null;
+              if (audience === 'HOSTS' && !isHost) return null;
+              if (audience === 'CO_HOSTS' && !isCoHostUser) return null;
+              if (audience === 'ADMINS' && !isAdmin) return null;
+              if (audience === 'SPECIFIC_USERS') {
+                const targetList = (globalBroadcast.targetUsers || '')
+                  .split(/[\s,]+/)
+                  .map(s => s.trim().toLowerCase())
+                  .filter(Boolean);
+                const userEmail = (user?.email || '').toLowerCase();
+                const userId = (user?.id || '').toLowerCase();
+                const isTargeted = targetList.length === 0 || targetList.includes(userEmail) || targetList.includes(userId);
+                if (!isTargeted) return null;
+              }
+
+              // Device check
+              const deviceTarget = globalBroadcast.targetDevice || 'ALL';
+              if (typeof window !== 'undefined' && deviceTarget !== 'ALL') {
+                const isMobile = window.innerWidth < 768;
+                if (deviceTarget === 'MOBILE_ONLY' && !isMobile) return null;
+                if (deviceTarget === 'DESKTOP_ONLY' && isMobile) return null;
+              }
+
+              const bKey = globalBroadcast.id || globalBroadcast.createdAt || globalBroadcast.text;
+              const isCurrentlyClosed = dismissedBroadcastKey === bKey;
+
+              return (
+                <button
+                  onClick={() => {
+                    if (isCurrentlyClosed) {
+                      setDismissedBroadcastKey(null);
+                      localStorage.removeItem('tallyin_dismissed_broadcast');
+                      if (triggerToast) triggerToast('Broadcast Banner restored');
+                    } else {
+                      setDismissedBroadcastKey(bKey);
+                      localStorage.setItem('tallyin_dismissed_broadcast', bKey);
+                      if (triggerToast) triggerToast('Broadcast Banner hidden');
+                    }
+                  }}
+                  className={`p-2 rounded-xl transition-all relative flex items-center gap-1.5 text-xs font-bold ${
+                    isCurrentlyClosed
+                      ? 'text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-slate-200/80 dark:border-slate-800'
+                      : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-500/30 shadow-sm'
+                  }`}
+                  title={isCurrentlyClosed ? 'Re-open System Broadcast Banner' : 'Hide System Broadcast Banner'}
+                >
+                  <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
+                  <span className="hidden sm:inline">Broadcast</span>
+                </button>
+              );
+            })()}
 
             {/* Pinned Announcement Re-open / Toggle Button */}
             {userRoomId && (pinnedMessages?.[userRoomId] || pinnedMessages?.['ALL']) && (
@@ -15018,7 +15083,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </div>
           )}
 
-          {/* Live Broadcast Banner Overlay (Completely Closeable) */}
+          {/* Live Dynamic Announcement Banner (Powered by AnnouncementBanner studio) */}
           {(() => {
             const activeBroadcastKey = globalBroadcast?.active
               ? (globalBroadcast.id || globalBroadcast.createdAt || globalBroadcast.text)
@@ -15027,100 +15092,75 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             const isExpired = globalBroadcast?.expiresAt 
               ? new Date().getTime() > new Date(globalBroadcast.expiresAt).getTime()
               : globalBroadcast?.createdAt
-                ? (new Date().getTime() - new Date(globalBroadcast.createdAt).getTime() > (globalBroadcast.validDays || 2) * 24 * 60 * 60 * 1000)
+                ? (new Date().getTime() - new Date(globalBroadcast.createdAt).getTime() > ((globalBroadcast.validDays === 0 || globalBroadcast.validDays === '0' ? Infinity : (parseFloat(globalBroadcast.validDays) || 2)) * 24 * 60 * 60 * 1000))
                 : false;
 
-            const isBroadcastVisible = globalBroadcast?.active && !isExpired && dismissedBroadcastKey !== activeBroadcastKey;
+            const matchesTargetRoom = !globalBroadcast?.targetRoom || globalBroadcast.targetRoom === 'ALL' || globalBroadcast.targetRoom === userRoomId;
+
+            // Audience privilege check
+            const audience = globalBroadcast?.targetAudience || 'ALL';
+            const isAuthenticated = Boolean(user && user.id && user.id !== 'anonymous' && !user.isAnonymous);
+            const isGuest = !isAuthenticated;
+            const isHost = Boolean(user && roomCreatedBy && user.id === roomCreatedBy);
+            const isCoHostUser = Boolean(user && ((roomCreatedBy && user.id === roomCreatedBy) || (coHostUid && user.id === coHostUid)));
+            const isAdmin = Boolean(
+              user?.email && ADMIN_EMAILS.some(e => e.toLowerCase() === user.email.toLowerCase())
+            );
+
+            let matchesAudience = true;
+            if (audience === 'AUTHENTICATED') {
+              matchesAudience = isAuthenticated;
+            } else if (audience === 'GUESTS') {
+              matchesAudience = isGuest;
+            } else if (audience === 'HOSTS') {
+              matchesAudience = isHost;
+            } else if (audience === 'CO_HOSTS') {
+              matchesAudience = isCoHostUser;
+            } else if (audience === 'ADMINS') {
+              matchesAudience = isAdmin;
+            } else if (audience === 'SPECIFIC_USERS') {
+              const targetList = (globalBroadcast?.targetUsers || '')
+                .split(/[\s,]+/)
+                .map(s => s.trim().toLowerCase())
+                .filter(Boolean);
+              const userEmail = (user?.email || '').toLowerCase();
+              const userId = (user?.id || '').toLowerCase();
+              matchesAudience = targetList.length === 0 || targetList.includes(userEmail) || targetList.includes(userId);
+            }
+
+            // Device check
+            const deviceTarget = globalBroadcast?.targetDevice || 'ALL';
+            const isMobile = typeof window !== 'undefined' ? (window.innerWidth < 768) : false;
+            let matchesDevice = true;
+            if (deviceTarget === 'MOBILE_ONLY') {
+              matchesDevice = isMobile;
+            } else if (deviceTarget === 'DESKTOP_ONLY') {
+              matchesDevice = !isMobile;
+            }
+
+            const isBroadcastVisible = globalBroadcast?.active && !isExpired && matchesTargetRoom && matchesAudience && matchesDevice && dismissedBroadcastKey !== activeBroadcastKey;
 
             if (!isBroadcastVisible) return null;
 
             return (
-              <div className={`w-full mb-4 rounded-2xl p-3.5 sm:p-4 backdrop-blur-xl shadow-lg border transition-all duration-300 relative overflow-hidden animate-fade-in ${
-                globalBroadcast.type === 'alert'
-                  ? 'bg-white/95 dark:bg-slate-900/95 border-rose-500/30 dark:border-rose-500/40 text-slate-900 dark:text-slate-100 shadow-rose-500/5'
-                  : globalBroadcast.type === 'maintenance'
-                  ? 'bg-white/95 dark:bg-slate-900/95 border-amber-500/30 dark:border-amber-500/40 text-slate-900 dark:text-slate-100 shadow-amber-500/5'
-                  : 'bg-white/95 dark:bg-slate-900/95 border-emerald-500/30 dark:border-emerald-500/40 text-slate-900 dark:text-slate-100 shadow-emerald-500/5'
-              }`}>
-                {/* Left Accent Bar */}
-                <div className={`absolute left-0 top-0 bottom-0 w-1 ${
-                  globalBroadcast.type === 'alert'
-                    ? 'bg-rose-500'
-                    : globalBroadcast.type === 'maintenance'
-                    ? 'bg-amber-500'
-                    : 'bg-emerald-500'
-                }`} />
-
-                <div className="flex items-start justify-between gap-3 pl-1.5">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className={`p-2 rounded-xl shrink-0 flex items-center justify-center ${
-                      globalBroadcast.type === 'alert'
-                        ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400'
-                        : globalBroadcast.type === 'maintenance'
-                        ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
-                        : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400'
-                    }`}>
-                      {globalBroadcast.type === 'alert' ? (
-                        <ShieldAlert className="w-4 h-4" />
-                      ) : globalBroadcast.type === 'maintenance' ? (
-                        <Activity className="w-4 h-4" />
-                      ) : (
-                        <Radio className="w-4 h-4" />
-                      )}
-                    </div>
-
-                    <div className="space-y-0.5 text-left min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${
-                          globalBroadcast.type === 'alert'
-                            ? 'text-rose-600 dark:text-rose-400'
-                            : globalBroadcast.type === 'maintenance'
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-emerald-600 dark:text-emerald-400'
-                        }`}>
-                          <span className="relative flex h-1.5 w-1.5">
-                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                              globalBroadcast.type === 'alert' ? 'bg-rose-400' : globalBroadcast.type === 'maintenance' ? 'bg-amber-400' : 'bg-emerald-400'
-                            }`}></span>
-                            <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
-                              globalBroadcast.type === 'alert' ? 'bg-rose-500' : globalBroadcast.type === 'maintenance' ? 'bg-amber-500' : 'bg-emerald-500'
-                            }`}></span>
-                          </span>
-                          <span>{globalBroadcast.type === 'alert' ? 'Critical Alert' : globalBroadcast.type === 'maintenance' ? 'System Maintenance' : globalBroadcast.type === 'feature' ? 'New Feature Release' : 'System Broadcast'}</span>
-                        </span>
-
-                        <span className="text-[9px] font-extrabold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                          ⏳ Active 2 Calendar Days
-                        </span>
-
-                        {globalBroadcast.createdAt && (
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                            • {new Date(globalBroadcast.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-xs sm:text-sm font-medium leading-relaxed text-slate-800 dark:text-slate-100 break-words">
-                        {globalBroadcast.text}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      if (activeBroadcastKey) {
-                        setDismissedBroadcastKey(activeBroadcastKey);
-                        localStorage.setItem('tallyin_dismissed_broadcast', activeBroadcastKey);
-                        if (triggerToast) triggerToast('Broadcast banner closed. Click Broadcast icon in header to re-open anytime.');
-                      }
-                    }}
-                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-colors shrink-0"
-                    title="Close Broadcast Banner (Can re-open from header icon)"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+              <AnnouncementBanner
+                banner={globalBroadcast}
+                onDismiss={(b) => {
+                  if (activeBroadcastKey) {
+                    setDismissedBroadcastKey(activeBroadcastKey);
+                    localStorage.setItem('tallyin_dismissed_broadcast', activeBroadcastKey);
+                    if (triggerToast) triggerToast('Broadcast banner closed. Click Broadcast icon in header to re-open anytime.');
+                  }
+                }}
+                isDismissed={dismissedBroadcastKey === activeBroadcastKey}
+                onActionClick={(url) => {
+                  if (url && (url === '#trip-manager' || url === 'trips' || url === '#/trips')) {
+                    navigateTo('trips');
+                  } else if (url && (url === '#settlements' || url === 'settlements' || url === '#/settlements')) {
+                    navigateTo('settlement-records');
+                  }
+                }}
+              />
             );
           })()}
 

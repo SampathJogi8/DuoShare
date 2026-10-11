@@ -70,11 +70,22 @@ import {
   ArrowUpRight,
   MessageSquare,
   XCircle,
-  Compass
+  Compass,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Palette
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
 import { supabase, realSupabase, getActiveDatabaseEngine, setActiveDatabaseEngine } from '../supabase';
+import AnnouncementBanner, { 
+  BANNER_THEMES, 
+  BANNER_PLACEMENTS, 
+  BANNER_FREQUENCIES, 
+  BANNER_AUTO_TIMERS,
+  BANNER_AUDIENCES,
+  BANNER_DEVICES
+} from './AnnouncementBanner';
 
 const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
 const ADMIN_EMAILS = [
@@ -744,11 +755,23 @@ export default function AdminDashboard({
   const [maintMsgInput, setMaintMsgInput] = useState(maintenanceMessage || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.');
   const [newAllowedAccountInput, setNewAllowedAccountInput] = useState('');
 
-  // Broadcast form states
+  // Broadcast banner studio states
+  const [broadcastHeadline, setBroadcastHeadline] = useState('');
   const [broadcastText, setBroadcastText] = useState('');
-  const [broadcastType, setBroadcastType] = useState('feature'); // 'feature' | 'announcement' | 'alert' | 'maintenance'
+  const [broadcastType, setBroadcastType] = useState('feature'); // 'feature' | 'general' | 'alert' | 'maintenance'
+  const [broadcastTheme, setBroadcastTheme] = useState('emerald'); // 'emerald' | 'lime' | 'indigo' | 'cyan' | 'amber' | 'rose' | 'dark' | 'gradient'
+  const [broadcastPlacement, setBroadcastPlacement] = useState('top_inline'); // 'top_sticky' | 'top_inline' | 'bottom_floating' | 'modal_dialog'
+  const [broadcastFrequency, setBroadcastFrequency] = useState('until_dismissed'); // 'always' | 'once_per_session' | 'once_total' | 'twice_total' | 'three_times' | 'until_dismissed'
+  const [broadcastAutoDismissSeconds, setBroadcastAutoDismissSeconds] = useState(0); // 0, 5, 10, 15, 30, 60
   const [broadcastTargetRoom, setBroadcastTargetRoom] = useState('ALL');
   const [broadcastDurationDays, setBroadcastDurationDays] = useState('2'); // default 2 calendar days
+  const [broadcastImageUrl, setBroadcastImageUrl] = useState('');
+  const [broadcastActionUrl, setBroadcastActionUrl] = useState('');
+  const [broadcastActionText, setBroadcastActionText] = useState('Learn More');
+  const [broadcastTargetAudience, setBroadcastTargetAudience] = useState('ALL'); // 'ALL' | 'AUTHENTICATED' | 'GUESTS' | 'HOSTS' | 'CO_HOSTS' | 'ADMINS' | 'SPECIFIC_USERS'
+  const [broadcastTargetUsers, setBroadcastTargetUsers] = useState('');
+  const [broadcastTargetDevice, setBroadcastTargetDevice] = useState('ALL'); // 'ALL' | 'MOBILE_ONLY' | 'DESKTOP_ONLY'
+  const [broadcastIsDismissible, setBroadcastIsDismissible] = useState(true);
 
   // Email form & Live Sync matrix states
   const [emailHubSubTab, setEmailHubSubTab] = useState('matrix'); // 'matrix' | 'dispatcher' | 'outbox'
@@ -4010,28 +4033,83 @@ export default function AdminDashboard({
     }
   };
 
-  // Publish Global Broadcast
+  // Banner Image Upload Handler (FileReader -> base64)
+  const handleBannerImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      if (triggerToast) triggerToast('⚠️ Image file is larger than 2MB. Please select a smaller image.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result;
+      if (typeof result === 'string') {
+        setBroadcastImageUrl(result);
+        if (triggerToast) triggerToast('Banner image uploaded successfully!');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Load Active Banner into Editor
+  const handleEditActiveBanner = () => {
+    if (!globalBroadcast) return;
+    setBroadcastHeadline(globalBroadcast.headline || '');
+    setBroadcastText(globalBroadcast.text || '');
+    setBroadcastType(globalBroadcast.type || 'feature');
+    setBroadcastTheme(globalBroadcast.theme || 'emerald');
+    setBroadcastPlacement(globalBroadcast.placement || 'top_inline');
+    setBroadcastFrequency(globalBroadcast.frequency || 'until_dismissed');
+    setBroadcastAutoDismissSeconds(globalBroadcast.autoDismissSeconds || 0);
+    setBroadcastTargetRoom(globalBroadcast.targetRoom || 'ALL');
+    setBroadcastTargetAudience(globalBroadcast.targetAudience || 'ALL');
+    setBroadcastTargetUsers(globalBroadcast.targetUsers || '');
+    setBroadcastTargetDevice(globalBroadcast.targetDevice || 'ALL');
+    setBroadcastDurationDays(String(globalBroadcast.validDays !== undefined ? globalBroadcast.validDays : '2'));
+    setBroadcastImageUrl(globalBroadcast.imageUrl || '');
+    setBroadcastActionUrl(globalBroadcast.actionUrl || '');
+    setBroadcastActionText(globalBroadcast.actionText || 'Learn More');
+    setBroadcastIsDismissible(globalBroadcast.isDismissible !== false);
+    if (triggerToast) triggerToast('Active banner details loaded into editor!');
+  };
+
+  // Publish Global Announcement Banner
   const handlePublishBroadcast = async () => {
     if (!userPermissions.broadcasts) {
       if (triggerToast) triggerToast('⚠️ Access Denied: Broadcasts operational clearance required.');
       return;
     }
-    if (!broadcastText.trim()) {
-      if (triggerToast) triggerToast('Please enter broadcast message content.');
+    if (!broadcastText.trim() && !broadcastHeadline.trim()) {
+      if (triggerToast) triggerToast('Please enter banner headline or message content.');
       return;
     }
 
     const now = new Date();
-    const durationDays = Number(broadcastDurationDays) || 2;
+    const durationDays = parseFloat(broadcastDurationDays);
     const expiresAt = durationDays > 0 
       ? new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
     const newBroadcast = {
       id: `bc-${Date.now()}`,
+      headline: broadcastHeadline.trim(),
       text: broadcastText.trim(),
       type: broadcastType,
+      theme: broadcastTheme,
+      placement: broadcastPlacement,
+      frequency: broadcastFrequency,
+      autoDismissSeconds: Number(broadcastAutoDismissSeconds) || 0,
       targetRoom: broadcastTargetRoom,
+      targetAudience: broadcastTargetAudience,
+      targetUsers: broadcastTargetUsers.trim(),
+      targetDevice: broadcastTargetDevice,
+      imageUrl: broadcastImageUrl || null,
+      actionUrl: broadcastActionUrl.trim() || null,
+      actionText: broadcastActionText.trim() || 'Learn More',
+      isDismissible: broadcastIsDismissible !== false,
       active: true,
       createdAt: now.toISOString(),
       expiresAt: expiresAt,
@@ -4040,9 +4118,9 @@ export default function AdminDashboard({
     setGlobalBroadcast(newBroadcast);
     localStorage.setItem('tallyin_global_broadcast', JSON.stringify(newBroadcast));
 
-    logAuditAction('PUBLISH_BROADCAST', `[${broadcastType.toUpperCase()}] ${broadcastText.trim()}`);
+    logAuditAction('PUBLISH_BROADCAST', `[${broadcastTheme.toUpperCase()} / ${broadcastPlacement.toUpperCase()} / Audience: ${broadcastTargetAudience}] ${broadcastHeadline ? `"${broadcastHeadline}" - ` : ''}${broadcastText.trim()}`);
 
-    // Save to Supabase rooms table for database persistence across all mobile & web clients
+    // Save to Supabase rooms table & system_settings for database persistence across all mobile & web clients
     try {
       await supabase
         .from('rooms')
@@ -4055,6 +4133,16 @@ export default function AdminDashboard({
     } catch (err) { console.warn("DB broadcast persistence notice:", err); }
 
     try {
+      await supabase
+        .from('system_settings')
+        .upsert({
+          key: 'system_global_banner',
+          value: JSON.stringify(newBroadcast),
+          updated_at: new Date().toISOString()
+        });
+    } catch (err) { console.warn("System settings banner persistence notice:", err); }
+
+    try {
       if (adminChannelRef.current) {
         await adminChannelRef.current.send({
           type: 'broadcast',
@@ -4064,8 +4152,7 @@ export default function AdminDashboard({
       }
     } catch (e) { console.error("Realtime send broadcast error:", e); }
 
-    if (triggerToast) triggerToast(`Global Broadcast Live to all active clients! (Valid for ${durationDays > 0 ? `${durationDays} Calendar Days` : 'Indefinite'})`);
-    setBroadcastText('');
+    if (triggerToast) triggerToast(`Live Banner Broadcasted to all active clients! (${BANNER_PLACEMENTS[broadcastPlacement]?.label || broadcastPlacement})`);
   };
 
   const handleClearBroadcast = async () => {
@@ -4073,7 +4160,7 @@ export default function AdminDashboard({
     setGlobalBroadcast(null);
     localStorage.removeItem('tallyin_global_broadcast');
 
-    logAuditAction('CLEAR_BROADCAST', 'Cleared global broadcast banner across all clients');
+    logAuditAction('CLEAR_BROADCAST', 'Deactivated announcement banner across all clients');
 
     try {
       await supabase
@@ -4087,6 +4174,16 @@ export default function AdminDashboard({
     } catch (err) { console.warn("DB clear broadcast notice:", err); }
 
     try {
+      await supabase
+        .from('system_settings')
+        .upsert({
+          key: 'system_global_banner',
+          value: JSON.stringify(cleared),
+          updated_at: new Date().toISOString()
+        });
+    } catch (err) { console.warn(err); }
+
+    try {
       if (adminChannelRef.current) {
         await adminChannelRef.current.send({
           type: 'broadcast',
@@ -4096,7 +4193,7 @@ export default function AdminDashboard({
       }
     } catch (e) { console.error(e); }
 
-    if (triggerToast) triggerToast('Broadcast message cleared across all devices.');
+    if (triggerToast) triggerToast('Broadcast banner deactivated across all devices.');
   };
 
   // Central Outbox Logger
@@ -7165,95 +7262,532 @@ NOTIFY pgrst, 'reload schema';`;
         !userPermissions.broadcasts ? (
           renderAccessRestrictedCard('Global Broadcast Communications', 'Broadcast Clearance Required')
         ) : (
-          <div className="hud-card rounded-3xl p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
-              <div className="space-y-0.5">
-                <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                  <Radio className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                  Real-Time Global Broadcast Banners
-                </h3>
-                <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                  Push live floating banner messages to all active user screens across all rooms.
+          <div className="space-y-6">
+            {/* Active Live Banner Monitor Card */}
+            {globalBroadcast?.active && (
+              <div className="hud-card rounded-3xl p-5 border-2 border-emerald-500/40 dark:border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-lg space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-200/60 dark:border-emerald-800/60 pb-3.5">
+                  <div className="flex items-center gap-2.5">
+                    <span className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
+                        <span>Live Banner Currently Broadcasted</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-mono">
+                          ACTIVE
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-emerald-800/80 dark:text-emerald-400/80">
+                        Broadcasting to {globalBroadcast.targetRoom === 'ALL' ? 'all users across every room' : `Room ${globalBroadcast.targetRoom}`}.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleEditActiveBanner}
+                      className="px-3 py-1.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Load into Editor</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearBroadcast}
+                      className="px-3 py-1.5 bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 hover:bg-rose-200 border border-rose-300/60 dark:border-rose-800 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>Deactivate Banner</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Banner Specs Pills */}
+                <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                  <span className="font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                    Theme: <strong className="capitalize">{globalBroadcast.theme || 'emerald'}</strong>
+                  </span>
+                  <span className="font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                    Placement: <strong>{BANNER_PLACEMENTS[globalBroadcast.placement]?.label || globalBroadcast.placement || 'Top In-Feed'}</strong>
+                  </span>
+                  <span className="font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                    Audience: <strong>{BANNER_AUDIENCES[globalBroadcast.targetAudience]?.label || globalBroadcast.targetAudience || 'Everyone'}</strong>
+                  </span>
+                  {globalBroadcast.targetDevice && globalBroadcast.targetDevice !== 'ALL' && (
+                    <span className="font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                      Device: <strong>{BANNER_DEVICES[globalBroadcast.targetDevice]?.label || globalBroadcast.targetDevice}</strong>
+                    </span>
+                  )}
+                  <span className="font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                    Frequency: <strong>{BANNER_FREQUENCIES[globalBroadcast.frequency]?.label || globalBroadcast.frequency || 'Until Dismissed'}</strong>
+                  </span>
+                  <span className="font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                    Auto-Dismiss: <strong>{globalBroadcast.autoDismissSeconds ? `${globalBroadcast.autoDismissSeconds}s` : 'Permanent'}</strong>
+                  </span>
+                  {globalBroadcast.expiresAt && (
+                    <span className="font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                      Expires: <strong>{new Date(globalBroadcast.expiresAt).toLocaleDateString()}</strong>
+                    </span>
+                  )}
+                </div>
+
+                {/* Mini Preview of Active Banner */}
+                <AnnouncementBanner banner={globalBroadcast} isPreview={true} />
+              </div>
+            )}
+
+            {/* Studio Form Card */}
+            <div className="hud-card rounded-3xl p-6 sm:p-7 space-y-7 border border-[#E3E8E3] dark:border-slate-800">
+              {/* Studio Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E8E3] dark:border-slate-800 pb-5">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2.5">
+                    <Radio className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    <span>Dynamic Announcement Banner Studio</span>
+                  </h3>
+                  <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
+                    Design, style, preview, and push live banners to all clients with placement, frequency caps, auto-dismiss timers, images, and custom themes.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBroadcastHeadline('');
+                      setBroadcastText('');
+                      setBroadcastTheme('emerald');
+                      setBroadcastPlacement('top_inline');
+                      setBroadcastFrequency('until_dismissed');
+                      setBroadcastAutoDismissSeconds(0);
+                      setBroadcastDurationDays('2');
+                      setBroadcastImageUrl('');
+                      setBroadcastActionUrl('');
+                      setBroadcastActionText('Learn More');
+                      setBroadcastIsDismissible(true);
+                      if (triggerToast) triggerToast('Form reset to default.');
+                    }}
+                    className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all cursor-pointer"
+                  >
+                    Reset Form
+                  </button>
+                </div>
+              </div>
+
+              {/* Live Interactive Preview Box */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-[#1A3827] dark:text-slate-200 flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <span>Interactive Live WYSIWYG Preview</span>
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300">
+                    Placement: {BANNER_PLACEMENTS[broadcastPlacement]?.label}
+                  </span>
+                </div>
+
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 border border-[#E3E8E3] dark:border-slate-800/80">
+                  <AnnouncementBanner
+                    banner={{
+                      id: 'admin-studio-preview',
+                      headline: broadcastHeadline || 'Announcement Headline',
+                      text: broadcastText || 'This is how your banner message will appear in real time across roommate devices and web browsers.',
+                      type: broadcastType,
+                      theme: broadcastTheme,
+                      placement: broadcastPlacement,
+                      frequency: broadcastFrequency,
+                      autoDismissSeconds: Number(broadcastAutoDismissSeconds) || 0,
+                      targetRoom: broadcastTargetRoom,
+                      imageUrl: broadcastImageUrl || null,
+                      actionUrl: broadcastActionUrl || null,
+                      actionText: broadcastActionText || 'Learn More',
+                      isDismissible: broadcastIsDismissible !== false,
+                      active: true,
+                      createdAt: new Date().toISOString()
+                    }}
+                    isPreview={true}
+                  />
+                </div>
+              </div>
+
+              {/* 1. Content & Headlines */}
+              <div className="space-y-4 pt-2">
+                <div className="border-b border-[#E3E8E3]/60 dark:border-slate-800/60 pb-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    1. Message Content & Category
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Banner Headline (Optional)</label>
+                    <input
+                      type="text"
+                      value={broadcastHeadline}
+                      onChange={e => setBroadcastHeadline(e.target.value)}
+                      placeholder="e.g., Scheduled Maintenance Window / ✨ New Feature Released!"
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Category Type</label>
+                    <select
+                      value={broadcastType}
+                      onChange={e => setBroadcastType(e.target.value)}
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                    >
+                      <option value="feature">✨ New Feature Release</option>
+                      <option value="general">📢 General Announcement</option>
+                      <option value="alert">⚠️ Urgent System Alert</option>
+                      <option value="maintenance">🔧 Maintenance Warning</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Message Body Content</label>
+                  <textarea
+                    value={broadcastText}
+                    onChange={e => setBroadcastText(e.target.value)}
+                    rows={3}
+                    placeholder="Type the full announcement message for roommates and users..."
+                    className="w-full p-3.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl text-xs font-medium text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
+                  />
+                </div>
+              </div>
+
+              {/* 2. Visual Themes Picker (8 Themes) */}
+              <div className="space-y-3 pt-2">
+                <div className="border-b border-[#E3E8E3]/60 dark:border-slate-800/60 pb-2 flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5 text-purple-500" />
+                    <span>2. Visual Theme & Styling</span>
+                  </h4>
+                  <span className="text-[10px] text-slate-400 font-bold capitalize">
+                    Selected: {BANNER_THEMES[broadcastTheme]?.name}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {Object.values(BANNER_THEMES).map(t => {
+                    const isSelected = broadcastTheme === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setBroadcastTheme(t.id)}
+                        className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                          isSelected
+                            ? 'border-purple-600 bg-purple-50/50 dark:bg-purple-950/40 ring-2 ring-purple-500/30 shadow-md'
+                            : 'border-[#E3E8E3] dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center gap-2">
+                            <span 
+                              className="w-3.5 h-3.5 rounded-full shadow-xs shrink-0" 
+                              style={{ backgroundColor: t.colorHex }} 
+                            />
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                              {t.name}
+                            </span>
+                          </div>
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1">
+                          {t.desc}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Placement & Screen Position */}
+              <div className="space-y-3 pt-2">
+                <div className="border-b border-[#E3E8E3]/60 dark:border-slate-800/60 pb-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-500" />
+                    <span>3. Banner Placement & Screen Position</span>
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  {Object.values(BANNER_PLACEMENTS).map(p => {
+                    const isSelected = broadcastPlacement === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setBroadcastPlacement(p.id)}
+                        className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                          isSelected
+                            ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 ring-2 ring-blue-500/30 shadow-md'
+                            : 'border-[#E3E8E3] dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                            {p.label}
+                          </span>
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          {p.desc}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. Display Rules: Frequency & Timing */}
+              <div className="space-y-3 pt-2">
+                <div className="border-b border-[#E3E8E3]/60 dark:border-slate-800/60 pb-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                    <span>4. Display Rules & Timing Controls</span>
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Frequency Cap */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Appearance Frequency</label>
+                    <select
+                      value={broadcastFrequency}
+                      onChange={e => setBroadcastFrequency(e.target.value)}
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                    >
+                      {Object.values(BANNER_FREQUENCIES).map(f => (
+                        <option key={f.id} value={f.id}>{f.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Auto-Dismiss Timer */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Stay Duration (Auto-Dismiss)</label>
+                    <select
+                      value={broadcastAutoDismissSeconds}
+                      onChange={e => setBroadcastAutoDismissSeconds(Number(e.target.value))}
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                    >
+                      {BANNER_AUTO_TIMERS.map(t => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Campaign Lifespan / Expiry */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Campaign Lifespan</label>
+                    <select
+                      value={broadcastDurationDays}
+                      onChange={e => setBroadcastDurationDays(e.target.value)}
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                    >
+                      <option value="0.0416">1 Hour</option>
+                      <option value="0.25">6 Hours</option>
+                      <option value="1">1 Calendar Day</option>
+                      <option value="2">2 Days (Standard)</option>
+                      <option value="5">5 Days</option>
+                      <option value="7">7 Days</option>
+                      <option value="14">14 Days</option>
+                      <option value="30">30 Days</option>
+                      <option value="0">Indefinite (Until manually cleared)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Media, Links, and Targeting */}
+              <div className="space-y-4 pt-2">
+                <div className="border-b border-[#E3E8E3]/60 dark:border-slate-800/60 pb-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <LinkIcon className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>5. Media Attachment, Links & Audience Scope</span>
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Image Attachment */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Banner Image / Icon Attachment</label>
+                    <div className="flex items-center gap-2">
+                      <label className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border border-slate-200 dark:border-slate-700">
+                        <ImageIcon className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Upload File</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleBannerImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <input
+                        type="text"
+                        value={broadcastImageUrl}
+                        onChange={e => setBroadcastImageUrl(e.target.value)}
+                        placeholder="OR paste Image URL (https://...)"
+                        className="w-full p-2.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                      />
+
+                      {broadcastImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setBroadcastImageUrl('')}
+                          className="p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl cursor-pointer"
+                          title="Remove image"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {broadcastImageUrl && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <img 
+                          src={broadcastImageUrl} 
+                          alt="Thumbnail preview" 
+                          className="w-10 h-10 object-cover rounded-lg border border-slate-200 dark:border-slate-700" 
+                        />
+                        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+                          ✓ Image attachment loaded
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Audience Privilege Group */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Who Can View This Banner? (Audience Privilege)</label>
+                    <select
+                      value={broadcastTargetAudience}
+                      onChange={e => setBroadcastTargetAudience(e.target.value)}
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                    >
+                      {Object.values(BANNER_AUDIENCES).map(a => (
+                        <option key={a.id} value={a.id}>{a.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      {BANNER_AUDIENCES[broadcastTargetAudience]?.desc}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Specific Users Input (if SPECIFIC_USERS selected) */}
+                {broadcastTargetAudience === 'SPECIFIC_USERS' && (
+                  <div className="p-3.5 rounded-2xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 space-y-1.5 animate-fade-in">
+                    <label className="text-xs font-black text-purple-900 dark:text-purple-300 block">
+                      Target User Emails or UIDs (Comma-separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={broadcastTargetUsers}
+                      onChange={e => setBroadcastTargetUsers(e.target.value)}
+                      placeholder="e.g., alex@gmail.com, sampath@example.com, test_uid_1001"
+                      className="w-full p-2.5 bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    <p className="text-[10px] text-purple-700/80 dark:text-purple-300/80">
+                      The banner will strictly only be presented to matching user emails or IDs.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Room Scope */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Room Scope</label>
+                    <select
+                      value={broadcastTargetRoom}
+                      onChange={e => setBroadcastTargetRoom(e.target.value)}
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                    >
+                      <option value="ALL">🌐 All Rooms (System-Wide Platform)</option>
+                      {allSystemRooms.map(r => (
+                        <option key={r.id || r.roomId} value={r.id || r.roomId}>
+                          {r.name || r.id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Device Platform */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Device Platform Target</label>
+                    <select
+                      value={broadcastTargetDevice}
+                      onChange={e => setBroadcastTargetDevice(e.target.value)}
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                    >
+                      {Object.values(BANNER_DEVICES).map(d => (
+                        <option key={d.id} value={d.id}>{d.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Action Link URL */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Call to Action Link URL (Optional)</label>
+                    <input
+                      type="text"
+                      value={broadcastActionUrl}
+                      onChange={e => setBroadcastActionUrl(e.target.value)}
+                      placeholder="e.g., https://example.com/update or #trip-manager"
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                    />
+                  </div>
+
+                  {/* Action Button Label */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Action Button Label</label>
+                    <input
+                      type="text"
+                      value={broadcastActionText}
+                      onChange={e => setBroadcastActionText(e.target.value)}
+                      placeholder="e.g., Learn More / Update App / View Trips"
+                      className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Dismissible Toggle */}
+                <div className="flex items-center gap-2.5 pt-1">
+                  <input
+                    type="checkbox"
+                    id="dismissible-checkbox"
+                    checked={broadcastIsDismissible}
+                    onChange={e => setBroadcastIsDismissible(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 rounded cursor-pointer"
+                  />
+                  <label htmlFor="dismissible-checkbox" className="text-xs font-bold text-[#1A3827] dark:text-slate-200 cursor-pointer">
+                    Allow roommates to dismiss banner with close ('X') button
+                  </label>
+                </div>
+              </div>
+
+              {/* Publish Button */}
+              <div className="flex items-center justify-between border-t border-[#E3E8E3] dark:border-slate-800 pt-5">
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+                  Mutations are instantly broadcasted over WebSocket channels and persisted to database.
                 </p>
-              </div>
 
-              {globalBroadcast?.active && (
-                <button
-                  onClick={handleClearBroadcast}
-                  className="px-3 py-1.5 bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-xs font-bold hover:bg-rose-200 transition-colors"
-                >
-                  Dismiss Active Broadcast
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Broadcast Message Content</label>
-                <textarea
-                  value={broadcastText}
-                  onChange={e => setBroadcastText(e.target.value)}
-                  rows={3}
-                  placeholder="Type emergency alert, new feature launch announcement, or maintenance notice..."
-                  className="w-full p-3.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Broadcast Type</label>
-                  <select
-                    value={broadcastType}
-                    onChange={e => setBroadcastType(e.target.value)}
-                    className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
-                  >
-                    <option value="feature">✨ New Feature Announcement</option>
-                    <option value="alert">⚠️ Urgent System Alert</option>
-                    <option value="maintenance">🔧 Maintenance Warning</option>
-                    <option value="general">📢 General Notice</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Scope</label>
-                  <select
-                    value={broadcastTargetRoom}
-                    onChange={e => setBroadcastTargetRoom(e.target.value)}
-                    className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
-                  >
-                    <option value="ALL">🌐 All Rooms (System-Wide)</option>
-                    {allSystemRooms.map(r => (
-                      <option key={r.id || r.roomId} value={r.id || r.roomId}>
-                        {r.name || r.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Auto-Expire Duration</label>
-                  <select
-                    value={broadcastDurationDays}
-                    onChange={e => setBroadcastDurationDays(e.target.value)}
-                    className="w-full p-3 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white"
-                  >
-                    <option value="1">1 Day</option>
-                    <option value="2">2 Days (Recommended)</option>
-                    <option value="5">5 Days</option>
-                    <option value="7">7 Days</option>
-                    <option value="0">Until Manually Cleared</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-2">
                 <button
                   type="button"
                   onClick={handlePublishBroadcast}
-                  className="py-3 px-6 bg-purple-700 hover:bg-purple-800 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                  className="py-3 px-7 bg-purple-700 hover:bg-purple-800 active:scale-95 text-white font-black text-xs rounded-2xl shadow-lg shadow-purple-900/20 transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
-                  <span>Publish Live Broadcast</span>
+                  <span>Publish Live Banner Broadcast</span>
                 </button>
               </div>
             </div>
