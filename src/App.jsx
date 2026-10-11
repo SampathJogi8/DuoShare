@@ -80,6 +80,7 @@ import BannedUserView from './components/BannedUserView';
 import QuickBillModal from './components/QuickBillModal';
 import TripExpenseManager from './components/TripExpenseManager';
 import AnnouncementBanner from './components/AnnouncementBanner';
+import LegalAndSupportModal from './components/LegalAndSupportModal';
 
 const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
 const ADMIN_EMAILS = [
@@ -1378,6 +1379,9 @@ export default function App() {
   const [dismissedPinnedKey, setDismissedPinnedKey] = useState(() => {
     return typeof window !== 'undefined' ? localStorage.getItem('tallyin_dismissed_pinned') : null;
   });
+
+  const [legalModalTab, setLegalModalTab] = useState('privacy'); // 'privacy' | 'terms' | 'contact'
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
 
   const [simulatedLatency, setSimulatedLatency] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -2804,6 +2808,11 @@ export default function App() {
 
   // Navigation helper — resets search when switching tabs
   const navigateTo = (view) => {
+    if (view === 'privacy' || view === 'terms' || view === 'contact') {
+      setLegalModalTab(view);
+      setIsLegalModalOpen(true);
+      return;
+    }
     setCurrentView(view);
     setSearchQuery('');
     setIsMobileMenuOpen(false);
@@ -15154,10 +15163,43 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 }}
                 isDismissed={dismissedBroadcastKey === activeBroadcastKey}
                 onActionClick={(url) => {
-                  if (url && (url === '#trip-manager' || url === 'trips' || url === '#/trips')) {
+                  if (!url) return;
+                  const clean = url.trim().toLowerCase().replace(/^#\/?/, '');
+                  if (clean === 'privacy' || clean === 'privacy-policy') {
+                    setLegalModalTab('privacy');
+                    setIsLegalModalOpen(true);
+                  } else if (clean === 'terms' || clean === 'usage' || clean === 'terms-of-service' || clean === 'policy') {
+                    setLegalModalTab('terms');
+                    setIsLegalModalOpen(true);
+                  } else if (clean === 'contact' || clean === 'support' || clean === 'help') {
+                    setLegalModalTab('contact');
+                    setIsLegalModalOpen(true);
+                  } else if (clean === 'trips' || clean === 'trip-manager') {
                     navigateTo('trips');
-                  } else if (url && (url === '#settlements' || url === 'settlements' || url === '#/settlements')) {
+                  } else if (clean === 'settlements' || clean === 'settlement-records') {
                     navigateTo('settlement-records');
+                  } else if (clean === 'bills') {
+                    navigateTo('bills');
+                  } else if (clean === 'insights') {
+                    navigateTo('insights');
+                  } else if (clean === 'receipts') {
+                    navigateTo('receipts');
+                  } else if (clean === 'shopping-board' || clean === 'shopping') {
+                    navigateTo('shopping-board');
+                  } else if (clean === 'settings') {
+                    navigateTo('settings');
+                  } else if (clean === 'admin') {
+                    navigateTo('admin');
+                  } else if (clean === 'home' || clean === 'overview') {
+                    navigateTo('home');
+                  } else {
+                    let targetUrl = url.trim();
+                    if (!/^https?:\/\//i.test(targetUrl) && !targetUrl.startsWith('#') && !targetUrl.startsWith('mailto:')) {
+                      targetUrl = `https://${targetUrl}`;
+                    }
+                    if (/^https?:\/\//i.test(targetUrl)) {
+                      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                    }
                   }
                 }}
               />
@@ -15392,6 +15434,36 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {currentView === 'shopping-board' && <ViewRenderer render={renderShoppingBoard} />}
             {currentView === 'bills' && <ViewRenderer render={renderBills} />}
             {currentView === 'settings' && <ViewRenderer render={renderSettings} />}
+            {currentView === 'privacy' && (
+              <LegalAndSupportModal
+                isOpen={true}
+                initialTab="privacy"
+                isFullPage={true}
+                user={user}
+                triggerToast={triggerToast}
+                onNavigate={navigateTo}
+              />
+            )}
+            {currentView === 'terms' && (
+              <LegalAndSupportModal
+                isOpen={true}
+                initialTab="terms"
+                isFullPage={true}
+                user={user}
+                triggerToast={triggerToast}
+                onNavigate={navigateTo}
+              />
+            )}
+            {currentView === 'contact' && (
+              <LegalAndSupportModal
+                isOpen={true}
+                initialTab="contact"
+                isFullPage={true}
+                user={user}
+                triggerToast={triggerToast}
+                onNavigate={navigateTo}
+              />
+            )}
             {currentView === 'admin' && (
               <AdminDashboard
                 user={user}
@@ -15425,8 +15497,63 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               />
             )}
           </ErrorBoundary>
+
+          {/* Global Platform Footer */}
+          {currentView !== 'admin' && (
+            <footer className="mt-12 py-6 border-t border-slate-200/80 dark:border-slate-800/80 text-center text-xs text-slate-500 dark:text-slate-400 space-y-2">
+              <div className="flex items-center justify-center gap-4 sm:gap-6 flex-wrap text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLegalModalTab('privacy');
+                    setIsLegalModalOpen(true);
+                  }}
+                  className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Privacy Policy
+                </button>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLegalModalTab('terms');
+                    setIsLegalModalOpen(true);
+                  }}
+                  className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Usage Policy & Terms
+                </button>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLegalModalTab('contact');
+                    setIsLegalModalOpen(true);
+                  }}
+                  className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Contact & Support
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                © {new Date().getFullYear()} Tallyin • All-in-One Roommate Expense Manager
+              </p>
+            </footer>
+          )}
         </main>
 
+        {/* Legal & Support Center Modal */}
+        <LegalAndSupportModal
+          isOpen={isLegalModalOpen}
+          initialTab={legalModalTab}
+          onClose={() => setIsLegalModalOpen(false)}
+          user={user}
+          triggerToast={triggerToast}
+          onNavigate={(view) => {
+            setIsLegalModalOpen(false);
+            navigateTo(view);
+          }}
+        />
 
         {/* Add Expense Modal Overlay */}
         {isAddExpenseOpen && renderAddExpenseModal()}
@@ -23571,6 +23698,71 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   </div>
                 ))
               )}
+            </div>
+          </div>
+
+          {/* Trust, Legal & Support Center */}
+          <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 transition-colors duration-300">
+            <div className="flex items-center justify-between pb-2 border-b border-[#F6F8F6] dark:border-slate-800">
+              <div className="space-y-0.5">
+                <h3 className="font-extrabold text-[#1A3827] dark:text-slate-100 text-sm sm:text-base tracking-tight flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>Trust, Policies & Support</span>
+                </h3>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  Read our privacy commitments, acceptable room usage terms, or contact support desk.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setLegalModalTab('privacy');
+                  setIsLegalModalOpen(true);
+                }}
+                className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border border-[#E3E8E3] dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700/60 transition-all text-left space-y-1 cursor-pointer group"
+              >
+                <div className="flex items-center justify-between">
+                  <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-[10px] text-emerald-600 font-bold group-hover:translate-x-0.5 transition-transform">Read →</span>
+                </div>
+                <h4 className="font-extrabold text-xs text-[#1A3827] dark:text-white">Privacy Policy</h4>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Zero data selling & private room data silos.</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLegalModalTab('terms');
+                  setIsLegalModalOpen(true);
+                }}
+                className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-[#E3E8E3] dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700/60 transition-all text-left space-y-1 cursor-pointer group"
+              >
+                <div className="flex items-center justify-between">
+                  <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-[10px] text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform">Read →</span>
+                </div>
+                <h4 className="font-extrabold text-xs text-[#1A3827] dark:text-white">Usage & Terms</h4>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Fair roommate rules & dispute resolution.</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLegalModalTab('contact');
+                  setIsLegalModalOpen(true);
+                }}
+                className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950/60 hover:bg-purple-50 dark:hover:bg-purple-950/30 border border-[#E3E8E3] dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-700/60 transition-all text-left space-y-1 cursor-pointer group"
+              >
+                <div className="flex items-center justify-between">
+                  <Mail className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span className="text-[10px] text-purple-600 font-bold group-hover:translate-x-0.5 transition-transform">Open →</span>
+                </div>
+                <h4 className="font-extrabold text-xs text-[#1A3827] dark:text-white">Contact & Support</h4>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Direct message form & official helpdesk.</p>
+              </button>
             </div>
           </div>
 

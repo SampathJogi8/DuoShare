@@ -186,6 +186,107 @@ export const BANNER_DEVICES = {
   DESKTOP_ONLY: { id: 'DESKTOP_ONLY', label: '💻 Desktop / Laptop Only' }
 };
 
+/**
+ * Normalizes any URL, route, or link target for safe navigation.
+ */
+export const resolveBannerUrl = (rawUrl) => {
+  if (!rawUrl || typeof rawUrl !== 'string') return { href: '#', isInternal: false, cleanUrl: '' };
+  const cleanUrl = rawUrl.trim();
+  const lower = cleanUrl.toLowerCase().replace(/^#\/?/, '');
+
+  const internalViews = [
+    'trips', 'bills', 'settlements', 'settlement-records', 'insights', 
+    'receipts', 'shopping-board', 'settings', 'admin', 'home', 'ledger',
+    'privacy', 'terms', 'contact', 'personal-expenses', 'fund-tracker'
+  ];
+
+  const isInternal = cleanUrl.startsWith('#') || (!cleanUrl.includes('.') && internalViews.includes(lower));
+
+  let href = cleanUrl;
+  if (!isInternal && !/^https?:\/\//i.test(href) && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+    href = `https://${href}`;
+  }
+
+  return { href, isInternal, cleanUrl };
+};
+
+/**
+ * Parses text containing raw URLs or markdown links and returns clickable elements.
+ */
+export const renderClickableText = (text, onActionClick) => {
+  if (!text || typeof text !== 'string') return text;
+
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)|(https?:\/\/[^\s<>"']+)|((?:www\.)[^\s<>"']+)|(\b[a-zA-Z0-9-]+\.(?:com|org|net|edu|gov|io|app|co|in|dev|ai|me)(?:\/[^\s<>"']*)?)/gi;
+
+  const elements = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = linkRegex.exec(text)) !== null) {
+    const matchIndex = match.index;
+    if (matchIndex > lastIndex) {
+      elements.push(text.slice(lastIndex, matchIndex));
+    }
+
+    let label = '';
+    let rawUrl = '';
+
+    if (match[1] && match[2]) {
+      label = match[1];
+      rawUrl = match[2];
+    } else {
+      rawUrl = match[3] || match[4] || match[5];
+      label = rawUrl;
+    }
+
+    let trailingPunctuation = '';
+    const punctMatch = rawUrl.match(/[.,;:!?)]+$/);
+    if (punctMatch) {
+      trailingPunctuation = punctMatch[0];
+      rawUrl = rawUrl.slice(0, -trailingPunctuation.length);
+      if (label.endsWith(trailingPunctuation)) {
+        label = label.slice(0, -trailingPunctuation.length);
+      }
+    }
+
+    const { href, isInternal } = resolveBannerUrl(rawUrl);
+
+    elements.push(
+      <a
+        key={`link-${matchIndex}`}
+        href={href}
+        target={isInternal ? '_self' : '_blank'}
+        rel={isInternal ? undefined : 'noopener noreferrer'}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isInternal) {
+            e.preventDefault();
+            if (onActionClick) onActionClick(rawUrl);
+          } else if (onActionClick) {
+            onActionClick(href);
+          }
+        }}
+        className="underline font-bold hover:opacity-80 transition-opacity cursor-pointer inline-flex items-center gap-0.5 break-all text-current decoration-current/75"
+      >
+        <span>{label}</span>
+        {!isInternal && <ExternalLink className="w-2.5 h-2.5 inline stroke-[2.5] ml-0.5 shrink-0 opacity-80" />}
+      </a>
+    );
+
+    if (trailingPunctuation) {
+      elements.push(trailingPunctuation);
+    }
+
+    lastIndex = matchIndex + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    elements.push(text.slice(lastIndex));
+  }
+
+  return elements.length > 0 ? elements : text;
+};
+
 export default function AnnouncementBanner({
   banner,
   onDismiss,
@@ -423,28 +524,40 @@ export default function AnnouncementBanner({
 
             {banner.headline && (
               <h4 className="font-black text-xs sm:text-sm tracking-tight leading-snug">
-                {banner.headline}
+                {renderClickableText(banner.headline, onActionClick)}
               </h4>
             )}
 
             <p className="text-xs sm:text-xs font-medium leading-relaxed opacity-90 break-words line-clamp-3 sm:line-clamp-none">
-              {banner.text}
+              {renderClickableText(banner.text, onActionClick)}
             </p>
           </div>
         </div>
 
         {/* Action Button & Dismiss Controls */}
         <div className="flex items-center gap-2 self-end sm:self-center shrink-0 pt-1 sm:pt-0">
-          {banner.actionUrl && (
-            <button
-              type="button"
-              onClick={handleLinkClick}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 whitespace-nowrap ${theme.btn}`}
-            >
-              <span>{banner.actionText || 'Learn More'}</span>
-              <ExternalLink className="w-3.5 h-3.5 stroke-[2.5]" />
-            </button>
-          )}
+          {banner.actionUrl && (() => {
+            const { href, isInternal } = resolveBannerUrl(banner.actionUrl);
+            return (
+              <a
+                href={href}
+                target={isInternal ? '_self' : '_blank'}
+                rel={isInternal ? undefined : 'noopener noreferrer'}
+                onClick={(e) => {
+                  if (isInternal) {
+                    e.preventDefault();
+                    if (onActionClick) onActionClick(banner.actionUrl);
+                  } else if (onActionClick) {
+                    onActionClick(href);
+                  }
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 whitespace-nowrap text-decoration-none ${theme.btn}`}
+              >
+                <span>{banner.actionText || 'Learn More'}</span>
+                <ExternalLink className="w-3.5 h-3.5 stroke-[2.5]" />
+              </a>
+            );
+          })()}
 
           {(isDismissible || placement === 'modal_dialog') && (
             <button
