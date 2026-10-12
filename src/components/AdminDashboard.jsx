@@ -11465,6 +11465,7 @@ NOTIFY pgrst, 'reload schema';`;
                       { id: 'review', label: 'Under Review', count: userDisputesAndQueries.filter(d => d.status === 'UNDER_REVIEW').length, color: 'text-indigo-600' },
                       { id: 'disputes', label: 'Disputes Only', count: userDisputesAndQueries.filter(d => d.type === 'dispute').length },
                       { id: 'queries', label: 'Queries / Help', count: userDisputesAndQueries.filter(d => d.type === 'query').length },
+                      { id: 'violations', label: '🚨 Terms Incidents', count: userDisputesAndQueries.filter(d => d.type === 'violation' || d.category?.toLowerCase()?.includes('term') || d.category?.toLowerCase()?.includes('violation')).length, color: 'text-rose-600' },
                       { id: 'resolved', label: 'Resolved', count: userDisputesAndQueries.filter(d => d.status === 'RESOLVED').length, color: 'text-emerald-600' },
                     ].map(tab => (
                       <button
@@ -11521,6 +11522,7 @@ NOTIFY pgrst, 'reload schema';`;
                         if (disputeFilterTab === 'resolved' && ticket.status !== 'RESOLVED') return false;
                         if (disputeFilterTab === 'disputes' && ticket.type !== 'dispute') return false;
                         if (disputeFilterTab === 'queries' && ticket.type !== 'query') return false;
+                        if (disputeFilterTab === 'violations' && ticket.type !== 'violation' && !ticket.category?.toLowerCase()?.includes('term') && !ticket.category?.toLowerCase()?.includes('violation')) return false;
 
                         // Search filter
                         if (!disputeSearchQuery.trim()) return true;
