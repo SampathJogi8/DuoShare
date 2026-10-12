@@ -23,6 +23,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { supabase } from '../supabase';
+import { getUserCode } from '../utils/userCode';
 
 const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
 const SUPPORT_EMAIL = 'tallyin.alerts@gmail.com';
@@ -54,6 +55,7 @@ export default function LegalAndSupportModal({
   const [isSending, setIsSending] = useState(false);
   const [isSent, setIsSent] = useState(false);
   const [submittedTicketId, setSubmittedTicketId] = useState('');
+  const [submittedUserCode, setSubmittedUserCode] = useState('');
 
   if (!isOpen) return null;
 
@@ -77,6 +79,7 @@ export default function LegalAndSupportModal({
     const ticketId = `REQ-${dateStr}-${randCode}`;
     const cleanEmail = contactEmail.trim().toLowerCase();
     const cleanName = contactName.trim() || user?.displayName || user?.name || user?.nickname || cleanEmail.split('@')[0] || 'Tallyin User';
+    const userCode = user?.user_code || user?.userCode || getUserCode(cleanEmail || user?.id || user?.uid);
     const nowIso = new Date().toISOString();
 
     const categoryMap = {
@@ -104,6 +107,7 @@ export default function LegalAndSupportModal({
       transaction_id: null,
       transaction_title: null,
       transaction_amount: null,
+      user_code: userCode,
       user_email: cleanEmail,
       user_name: cleanName,
       user_id: user?.uid || user?.id || null,
@@ -118,6 +122,7 @@ export default function LegalAndSupportModal({
 
     // Optimistically update UI so user has instant feedback
     setSubmittedTicketId(ticketId);
+    setSubmittedUserCode(userCode);
     setIsSent(true);
     if (triggerToast) triggerToast(`Message sent! Reference: ${ticketId}`);
 
@@ -176,6 +181,8 @@ export default function LegalAndSupportModal({
                 <div style="background-color: #eaf0ec; border: 1px solid #cbd7cc; border-left: 4px solid #1A3827; padding: 14px 18px; border-radius: 12px; margin: 20px 0;">
                   <div style="font-size: 11px; font-weight: 700; color: #5c6e5c; text-transform: uppercase; letter-spacing: 0.5px;">Tracking Reference ID</div>
                   <div style="font-size: 18px; font-weight: 900; color: #1A3827; font-family: monospace; margin-top: 2px;">${ticketId}</div>
+                  <div style="font-size: 11px; font-weight: 700; color: #5c6e5c; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 10px;">Unique User Tracking Code</div>
+                  <div style="font-size: 14px; font-weight: 900; color: #166534; font-family: monospace; margin-top: 2px;">${userCode}</div>
                 </div>
 
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">
@@ -199,7 +206,7 @@ export default function LegalAndSupportModal({
                   <ul style="margin: 0; padding-left: 18px; line-height: 1.6;">
                     <li>Our support team typically reviews inquiries within <strong>12 to 24 hours</strong> on weekdays.</li>
                     <li>Our response will be sent directly to your email: <strong>${cleanEmail}</strong>.</li>
-                    <li>If you need to provide additional details, simply reference ticket <code>${ticketId}</code>.</li>
+                    <li>If you need to provide additional details, simply reference ticket <code>${ticketId}</code> or user code <code>${userCode}</code>.</li>
                   </ul>
                 </div>
               </div>
@@ -218,10 +225,11 @@ export default function LegalAndSupportModal({
             <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #10b981;">
               <span style="background-color: #ecfdf5; color: #065f46; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase;">New Support Desk Inquiry</span>
               <h2 style="color: #1a3827; margin: 8px 0 0 0;">${cleanCategory}</h2>
-              <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tracking Ref: <strong>${ticketId}</strong></p>
+              <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tracking Ref: <strong>${ticketId}</strong> • User Code: <strong>${userCode}</strong></p>
             </div>
             <div style="padding: 20px 0; color: #334155; font-size: 13px; line-height: 1.6;">
               <p><strong>From:</strong> ${cleanName} (<a href="mailto:${cleanEmail}">${cleanEmail}</a>)</p>
+              <p><strong>Verified User Code:</strong> <span style="font-family: monospace; font-weight: bold; background-color: #ecfdf5; padding: 3px 8px; border-radius: 6px; color: #065f46; border: 1px solid #a7f3d0;">${userCode}</span></p>
               <p><strong>Subject:</strong> ${cleanTitle}</p>
               <div style="background-color: #f8fafc; border-left: 4px solid #10b981; padding: 12px 16px; border-radius: 8px; margin: 16px 0; white-space: pre-wrap;">
                 ${cleanMessage}
@@ -730,8 +738,18 @@ export default function LegalAndSupportModal({
                   <h4 className="font-black text-[#1A3827] dark:text-white text-sm">
                     Inquiry Dispatched Successfully!
                   </h4>
+                  <div className="flex items-center justify-center gap-2 flex-wrap my-1.5">
+                    <span className="text-[11px] font-mono font-black px-2.5 py-1 rounded-lg bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs">
+                      Ref: {submittedTicketId}
+                    </span>
+                    {submittedUserCode && (
+                      <span className="text-[11px] font-mono font-black px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                        User Code: {submittedUserCode}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-[#5C6E5C] dark:text-slate-300 max-w-md mx-auto">
-                    Reference ID: <strong className="font-mono text-[#1A3827] dark:text-[#A3E635]">{submittedTicketId}</strong>. A copy has been dispatched to our support queue. We will follow up at <strong>{contactEmail}</strong>.
+                    Your inquiry has been registered in the support queue and an acknowledgment email has been dispatched to <strong>{contactEmail}</strong>.
                   </p>
                   <button
                     type="button"

@@ -69,6 +69,7 @@ import {
 } from 'lucide-react';
 
 import { supabase } from './supabase';
+import { getUserCode } from './utils/userCode';
 import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as fbSignOut } from 'firebase/auth';
 import { auth as firebaseAuth, googleProvider } from './firebase';
 import logoIcon from './assets/logo_icon.png';
@@ -21871,6 +21872,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     try {
       const userEmail = (auth?.currentUser?.email || localStorage.getItem('tallyin_user_email') || '').trim().toLowerCase();
       const userName = userNickname || auth?.currentUser?.displayName || userEmail.split('@')[0] || 'User';
+      const userCode = user?.user_code || user?.userCode || getUserCode(userEmail || user?.id || auth?.currentUser?.uid);
       const nowIso = new Date().toISOString();
       const dateStr = nowIso.slice(0, 10).replace(/-/g, '');
       const randCode = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -21888,6 +21890,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         transaction_id: disputeTargetTx?.id || null,
         transaction_title: disputeTargetTx?.title || null,
         transaction_amount: disputeTargetTx?.amount || null,
+        user_code: userCode,
         user_email: userEmail || 'user@tallyin.app',
         user_name: userName,
         user_id: auth?.currentUser?.uid || null,
@@ -21972,16 +21975,17 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 action: 'send_email',
                 to: 'tallyin.alerts@gmail.com',
                 subject: `🚨 New ${newTicket.type === 'dispute' ? 'Dispute' : 'Support Query'} Raised [${refNumber}] by ${userEmail}`,
-                body: `Tallyin Security Notice:\nNew ticket submitted by ${userEmail} (${userName})\nRef: ${refNumber}\nCategory: ${disputeCategory}\nTitle: ${newTicket.title}\nRoom: ${userRoomId || 'N/A'}\nDescription:\n${newTicket.description}\n\nReview in Admin Console: https://tallyin.vercel.app`,
+                body: `Tallyin Security Notice:\nNew ticket submitted by ${userEmail} (${userName})\nRef: ${refNumber}\nUser Code: ${userCode}\nCategory: ${disputeCategory}\nTitle: ${newTicket.title}\nRoom: ${userRoomId || 'N/A'}\nDescription:\n${newTicket.description}\n\nReview in Admin Console: https://tallyin.vercel.app`,
                 htmlBody: `
                   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
                     <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #f59e0b;">
                       <span style="background-color: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase;">New User Submission</span>
                       <h2 style="color: #1a3827; margin: 8px 0 0 0;">${disputeCategory}</h2>
-                      <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tracking Ref: <strong>${refNumber}</strong></p>
+                      <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tracking Ref: <strong>${refNumber}</strong> • User Code: <strong>${userCode}</strong></p>
                     </div>
                     <div style="padding: 20px 0; color: #334155; font-size: 13px; line-height: 1.6;">
                       <p><strong>From:</strong> ${userName} (<a href="mailto:${userEmail}">${userEmail}</a>)</p>
+                      <p><strong>Verified User Code:</strong> <span style="font-family: monospace; font-weight: bold; background-color: #fef3c7; padding: 3px 8px; border-radius: 6px; color: #92400e; border: 1px solid #fde68a;">${userCode}</span></p>
                       <p><strong>Title:</strong> ${newTicket.title}</p>
                       ${userRoomId ? `<p><strong>Room:</strong> ${roomName || userRoomId}</p>` : ''}
                       ${newTicket.transaction_title ? `<p><strong>Transaction:</strong> ${newTicket.transaction_title} (₹${newTicket.transaction_amount})</p>` : ''}
@@ -22007,7 +22011,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   action: 'send_email',
                   to: userEmail,
                   subject: `✅ [${refNumber}] We received your inquiry: ${newTicket.title}`,
-                  body: `Hi ${userName},\n\nThank you for contacting Tallyin. We have received your inquiry and our support team has registered it under tracking ID: ${refNumber}.\n\nCategory: ${disputeCategory}\nSubject: ${newTicket.title}\n\nYour message:\n${newTicket.description}\n\nOur team typically responds within 12 to 24 hours on weekdays.\n\nTallyin Support Desk`,
+                  body: `Hi ${userName},\n\nThank you for contacting Tallyin. We have received your inquiry and our support team has registered it under tracking ID: ${refNumber} and User Code: ${userCode}.\n\nCategory: ${disputeCategory}\nSubject: ${newTicket.title}\n\nYour message:\n${newTicket.description}\n\nOur team typically responds within 12 to 24 hours on weekdays.\n\nTallyin Support Desk`,
                   htmlBody: `
                     <div style="background-color: #f6f8f6; padding: 32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
                       <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e3e8e3; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
@@ -22026,6 +22030,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                           <div style="background-color: #eaf0ec; border: 1px solid #cbd7cc; border-left: 4px solid #1A3827; padding: 14px 18px; border-radius: 12px; margin: 20px 0;">
                             <div style="font-size: 11px; font-weight: 700; color: #5c6e5c; text-transform: uppercase; letter-spacing: 0.5px;">Tracking Reference ID</div>
                             <div style="font-size: 18px; font-weight: 900; color: #1A3827; font-family: monospace; margin-top: 2px;">${refNumber}</div>
+                            <div style="font-size: 11px; font-weight: 700; color: #5c6e5c; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 10px;">Unique User Tracking Code</div>
+                            <div style="font-size: 14px; font-weight: 900; color: #166534; font-family: monospace; margin-top: 2px;">${userCode}</div>
                           </div>
 
                           <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">
@@ -22049,7 +22055,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             <ul style="margin: 0; padding-left: 18px; line-height: 1.6;">
                               <li>Our support team typically reviews inquiries within <strong>12 to 24 hours</strong> on weekdays.</li>
                               <li>Our response will be sent directly to your email: <strong>${userEmail}</strong>.</li>
-                              <li>If you need to provide additional details, simply reference ticket <code>${refNumber}</code>.</li>
+                              <li>If you need to provide additional details, simply reference ticket <code>${refNumber}</code> or user code <code>${userCode}</code>.</li>
                             </ul>
                           </div>
                         </div>
