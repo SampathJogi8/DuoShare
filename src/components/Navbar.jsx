@@ -11,11 +11,9 @@ import {
   ChevronDown, 
   LogOut, 
   Menu,
-  Compass,
-  Copy
+  Compass
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
-import { getUserCode } from '../utils/userCode';
 
 export default function Navbar({
   currentView,
@@ -197,36 +195,9 @@ export default function Navbar({
               {/* Profile Dropdown Menu */}
               {isProfileDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-56 hud-card rounded-2xl p-2 shadow-2xl border border-[#E3E8E3] dark:border-slate-800 z-50 animate-fade-in text-left">
-                  <div className="px-3 py-2 border-b border-[#E3E8E3] dark:border-slate-800/60 space-y-1">
+                  <div className="px-3 py-2 border-b border-[#E3E8E3] dark:border-slate-800/60 space-y-0.5">
                     <p className="text-xs font-black text-[#1A3827] dark:text-slate-100">{userNickname}</p>
                     <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 truncate">{user?.email || 'Logged In'}</p>
-                    {(() => {
-                      const code = (user?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com')
-                        ? 'USR-0000-8888'
-                        : (user?.user_code || user?.userCode || getUserCode(user?.email || user?.id || userNickname));
-                      return (
-                        <div className="pt-1 flex items-center justify-between gap-1.5 bg-[#F0F4F1] dark:bg-slate-950 px-2 py-1 rounded-lg border border-[#E3E8E3]/60 dark:border-slate-800">
-                          <div className="min-w-0">
-                            <span className="text-[8px] font-black uppercase text-[#5C6E5C] dark:text-slate-400 tracking-wider block">Unique User ID</span>
-                            <span className="font-mono text-[10px] font-black text-emerald-800 dark:text-[#A3E635] tracking-wide block truncate">
-                              {code}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(code);
-                              if (triggerToast) triggerToast(`Copied User ID: ${code}`);
-                            }}
-                            className="p-1 rounded hover:bg-white dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0 cursor-pointer"
-                            title="Copy User ID"
-                          >
-                            <Copy className="w-3 h-3" />
-                          </button>
-                        </div>
-                      );
-                    })()}
                   </div>
 
                   <div className="py-1">

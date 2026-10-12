@@ -15127,32 +15127,6 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {isProfileDropdownOpen && (
               <div className="absolute right-0 top-12 mt-2 w-52 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-30 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
                 <div className="px-4 py-2 border-b border-[#F6F8F6] dark:border-slate-800 text-left space-y-2">
-                  {(() => {
-                    const myUserCode = (auth?.currentUser?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' || user?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com')
-                      ? 'USR-0000-8888'
-                      : (user?.user_code || user?.userCode || getUserCode(user?.email || auth?.currentUser?.email || user?.id || userNickname));
-                    return (
-                      <div>
-                        <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Unique User ID</p>
-                        <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1 rounded-lg">
-                          <span className="font-mono text-[11px] font-black text-emerald-800 dark:text-[#A3E635] tracking-wide select-all truncate">
-                            {myUserCode}
-                          </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(myUserCode);
-                              triggerToast(`Copied User ID: ${myUserCode}`);
-                            }}
-                            className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0"
-                            title="Copy User ID"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })()}
                   <div>
                     <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Access Code</p>
                     <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1 rounded-lg">
