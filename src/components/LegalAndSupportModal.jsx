@@ -105,10 +105,10 @@ export default function LegalAndSupportModal({
   };
 
   const content = (
-    <div className="flex flex-col h-full max-h-[88vh] bg-white dark:bg-slate-950 rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-slate-800 overflow-hidden text-left font-sans">
+    <div className="flex flex-col h-[90vh] max-h-[860px] min-h-[580px] bg-white dark:bg-slate-950 rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-slate-800 overflow-hidden text-left font-sans">
       
       {/* ── TALLYIN BRANDED HEADER HERO ── */}
-      <div className="bg-gradient-to-r from-[#1A3827] via-[#214732] to-[#1A3827] text-white px-5 sm:px-7 py-4.5 shrink-0 border-b border-emerald-950/40 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#1A3827] via-[#214732] to-[#1A3827] text-white px-6 sm:px-8 py-3.5 sm:py-4 shrink-0 border-b border-emerald-950/40 relative overflow-hidden">
         {/* Subtle decorative background patterns */}
         <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-[#A3E635]/10 blur-2xl pointer-events-none" />
         <div className="absolute -bottom-8 left-1/3 w-28 h-28 rounded-full bg-[#BEF264]/5 blur-xl pointer-events-none" />
@@ -127,7 +127,7 @@ export default function LegalAndSupportModal({
             )}
             <div className="space-y-0.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#A3E635] text-slate-950 inline-flex items-center gap-1">
+                <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#A3E635] text-slate-950 inline-flex items-center gap-1 shadow-xs">
                   <ShieldCheck className="w-3 h-3" />
                   <span>Tallyin Trust &amp; Standards</span>
                 </span>
@@ -153,12 +153,12 @@ export default function LegalAndSupportModal({
       </div>
 
       {/* ── TALLYIN SEGMENTED NAVIGATION PILLS ── */}
-      <div className="px-5 sm:px-7 py-2.5 bg-[#F6F8F6] dark:bg-slate-900 border-b border-[#E3E8E3] dark:border-slate-800 shrink-0">
+      <div className="px-6 sm:px-8 py-2.5 bg-[#F6F8F6] dark:bg-slate-900 border-b border-[#E3E8E3] dark:border-slate-800 shrink-0">
         <div className="flex items-center gap-1.5 p-1 bg-[#EAF0EC] dark:bg-slate-950 rounded-2xl max-w-full overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('privacy')}
-            className={`flex-1 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-2 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
               activeTab === 'privacy'
                 ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
                 : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-900/60'
@@ -171,7 +171,7 @@ export default function LegalAndSupportModal({
           <button
             type="button"
             onClick={() => setActiveTab('terms')}
-            className={`flex-1 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-2 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
               activeTab === 'terms'
                 ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
                 : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-900/60'
@@ -184,7 +184,7 @@ export default function LegalAndSupportModal({
           <button
             type="button"
             onClick={() => setActiveTab('contact')}
-            className={`flex-1 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-2 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
               activeTab === 'contact'
                 ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-sm'
                 : 'text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-900/60'
@@ -197,40 +197,42 @@ export default function LegalAndSupportModal({
       </div>
 
       {/* ── SCROLLABLE CONTENT BODY ── */}
-      <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-6">
+      <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-5 sm:py-6 space-y-6 pb-12">
         
         {/* ══════════════════════════════════════════
             MODULE 1: PRIVACY POLICY
         ══════════════════════════════════════════ */}
         {activeTab === 'privacy' && (
-          <div className="space-y-5 max-w-3xl animate-fade-in text-[#1A3827] dark:text-slate-200 text-xs sm:text-sm leading-relaxed">
+          <div className="space-y-5 w-full animate-fade-in text-[#1A3827] dark:text-slate-200 text-xs sm:text-sm leading-relaxed">
             
             {/* Core Principle Banner */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/15 dark:border-[#A3E635]/20 flex items-start gap-3.5 shadow-xs">
-              <div className="p-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 shrink-0">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-black text-[#1A3827] dark:text-white text-sm">
-                    Core Commitment: Zero Data Commercialization &amp; Isolated Vaults
-                  </h4>
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hidden sm:inline-block">
-                    Strict Guarantee
-                  </span>
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-[#EAF0EC] to-emerald-500/5 dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900 border border-emerald-600/20 dark:border-[#A3E635]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 shrink-0">
+                  <ShieldCheck className="w-5 h-5" />
                 </div>
-                <p className="text-xs text-[#5C6E5C] dark:text-slate-300">
-                  Tallyin is built for roommates, travel groups, and shared households. We believe shared finances are personal. We do not sell your personal information or monetize your room ledgers with advertising brokers.
-                </p>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-extrabold text-[#1A3827] dark:text-white text-xs sm:text-sm">
+                      Core Commitment: Zero Data Commercialization &amp; Isolated Vaults
+                    </h4>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hidden sm:inline-block">
+                      Strict Guarantee
+                    </span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-300 leading-normal">
+                    Tallyin is built for roommates, travel groups, and shared households. We believe shared finances are personal. We do not sell your personal information or monetize your room ledgers with advertising brokers.
+                  </p>
+                </div>
               </div>
             </div>
 
             {/* Grid of Privacy Pillars */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
               {/* Card 1: Essential Data Minimalization */}
-              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5">
-                <div className="flex items-center gap-2.5">
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-2.5">
+                <div className="flex items-center gap-2.5 pb-2 border-b border-[#E3E8E3]/70 dark:border-slate-800">
                   <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
                     <Database className="w-4 h-4" />
                   </div>
@@ -242,24 +244,24 @@ export default function LegalAndSupportModal({
                   We process only the bare minimum data required to compute roommate balances:
                 </p>
                 <div className="space-y-1.5 text-[11px] text-[#1A3827] dark:text-slate-300 font-medium">
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span><strong>Display Profile:</strong> Nickname and optional Google auth email.</span>
                   </p>
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span><strong>Room Records:</strong> Room code, room title, and member nicknames.</span>
                   </p>
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span><strong>Ledger Entries:</strong> Expense amount, title, date, payer, and category.</span>
                   </p>
                 </div>
               </div>
 
               {/* Card 2: Cryptographic Isolation */}
-              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5">
-                <div className="flex items-center gap-2.5">
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-2.5">
+                <div className="flex items-center gap-2.5 pb-2 border-b border-[#E3E8E3]/70 dark:border-slate-800">
                   <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
                     <Lock className="w-4 h-4" />
                   </div>
@@ -271,24 +273,24 @@ export default function LegalAndSupportModal({
                   Each shared room functions as an isolated data silo:
                 </p>
                 <div className="space-y-1.5 text-[11px] text-[#1A3827] dark:text-slate-300 font-medium">
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span>Only members with verified room codes can access transaction records.</span>
                   </p>
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span>Protected by Row Level Security (RLS) on PostgreSQL.</span>
                   </p>
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span>Data transmission strictly encrypted via industry-grade TLS 1.3.</span>
                   </p>
                 </div>
               </div>
 
               {/* Card 3: Zero Ad Trackers */}
-              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5">
-                <div className="flex items-center gap-2.5">
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-2.5">
+                <div className="flex items-center gap-2.5 pb-2 border-b border-[#E3E8E3]/70 dark:border-slate-800">
                   <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
                     <Eye className="w-4 h-4" />
                   </div>
@@ -300,24 +302,24 @@ export default function LegalAndSupportModal({
                   Your device stays clean and private while using Tallyin:
                 </p>
                 <div className="space-y-1.5 text-[11px] text-[#1A3827] dark:text-slate-300 font-medium">
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span>Browser storage is used strictly for offline cache, room selection &amp; theme.</span>
                   </p>
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span>Zero cross-site tracking cookies, telemetry ad SDKs, or meta pixels.</span>
                   </p>
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span>Never shared with outside advertisers or financial data brokers.</span>
                   </p>
                 </div>
               </div>
 
               {/* Card 4: Ledger Exports & Purge */}
-              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5">
-                <div className="flex items-center gap-2.5">
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-2.5">
+                <div className="flex items-center gap-2.5 pb-2 border-b border-[#E3E8E3]/70 dark:border-slate-800">
                   <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
                     <HeartHandshake className="w-4 h-4" />
                   </div>
@@ -329,16 +331,16 @@ export default function LegalAndSupportModal({
                   You own your bookkeeping records completely:
                 </p>
                 <div className="space-y-1.5 text-[11px] text-[#1A3827] dark:text-slate-300 font-medium">
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span>Export full itemized ledgers to Excel / CSV format at any moment.</span>
                   </p>
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span>Room hosts can permanently delete rooms &amp; attached receipts in Settings.</span>
                   </p>
-                  <p className="flex items-center gap-1.5">
-                    <span className="text-emerald-700 dark:text-[#A3E635] font-black">✓</span>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] shrink-0 mt-0.5" />
                     <span>Direct erasure requests can be directed to <code>{SUPPORT_EMAIL}</code>.</span>
                   </p>
                 </div>
@@ -352,41 +354,43 @@ export default function LegalAndSupportModal({
             MODULE 2: USAGE POLICY & TERMS
         ══════════════════════════════════════════ */}
         {activeTab === 'terms' && (
-          <div className="space-y-5 max-w-3xl animate-fade-in text-[#1A3827] dark:text-slate-200 text-xs sm:text-sm leading-relaxed">
+          <div className="space-y-5 w-full animate-fade-in text-[#1A3827] dark:text-slate-200 text-xs sm:text-sm leading-relaxed">
             
             {/* Standards Banner */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/15 dark:border-[#A3E635]/20 flex items-start gap-3.5 shadow-xs">
-              <div className="p-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 shrink-0">
-                <Scale className="w-5 h-5" />
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-black text-[#1A3827] dark:text-white text-sm">
-                    Roommate Agreement: Transparent, Fair &amp; Good-Faith Bookkeeping
-                  </h4>
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hidden sm:inline-block">
-                    Community Code
-                  </span>
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-[#EAF0EC] to-emerald-500/5 dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900 border border-emerald-600/20 dark:border-[#A3E635]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 shrink-0">
+                  <Scale className="w-5 h-5" />
                 </div>
-                <p className="text-xs text-[#5C6E5C] dark:text-slate-300">
-                  By creating a new room or joining an existing one on Tallyin, you commit to recording accurate, mutual shared expenses and honoring settlement agreements with your roommates.
-                </p>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-extrabold text-[#1A3827] dark:text-white text-xs sm:text-sm">
+                      Roommate Agreement: Transparent, Fair &amp; Good-Faith Bookkeeping
+                    </h4>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 hidden sm:inline-block">
+                      Community Code
+                    </span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-[#5C6E5C] dark:text-slate-300 leading-normal">
+                    By creating a new room or joining an existing one on Tallyin, you commit to recording accurate, mutual shared expenses and honoring settlement agreements with your roommates.
+                  </p>
+                </div>
               </div>
             </div>
 
             {/* Grid of Usage Terms */}
-            <div className="space-y-3.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
               {/* Rule 1: Accurate Expense Entry */}
-              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2">
-                <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 text-[10px] font-black flex items-center justify-center">1</span>
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-2.5">
+                <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white flex items-center gap-2 pb-2 border-b border-[#E3E8E3]/70 dark:border-slate-800">
+                  <span className="w-5 h-5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 text-[10px] font-black flex items-center justify-center shrink-0">1</span>
                   <span>Honest Bookkeeping &amp; Shared Responsibility</span>
                 </h3>
                 <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
                   Tallyin acts as an automated calculator and shared record-keeper. All entries must reflect actual transactions:
                 </p>
-                <ul className="list-disc pl-5 space-y-1 text-[11px] text-[#1A3827] dark:text-slate-300">
+                <ul className="list-disc pl-5 space-y-1.5 text-[11px] text-[#1A3827] dark:text-slate-300">
                   <li>Only enter genuine shared expenses incurred on behalf of the room members or group.</li>
                   <li>Verify split ratios, exclusion rules, and individual shares prior to posting recurring transactions.</li>
                   <li>Confirm physical bank/UPI transfers prior to recording settlements as cleared.</li>
@@ -394,15 +398,15 @@ export default function LegalAndSupportModal({
               </div>
 
               {/* Rule 2: Prohibited Conduct Callout */}
-              <div className="p-4 rounded-2xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 space-y-2">
-                <h3 className="font-extrabold text-xs sm:text-sm text-rose-900 dark:text-rose-300 flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 hover:border-rose-300 transition-all flex flex-col justify-between space-y-2.5">
+                <h3 className="font-extrabold text-xs sm:text-sm text-rose-900 dark:text-rose-300 flex items-center gap-2 pb-2 border-b border-rose-200/60 dark:border-rose-900/40">
+                  <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
                   <span>2. Prohibited Platform Misuse</span>
                 </h3>
                 <p className="text-[11px] text-rose-800/90 dark:text-rose-300/80">
                   The following behaviors violate Tallyin terms and will result in room locks or account revocation:
                 </p>
-                <ul className="list-disc pl-5 space-y-1 text-[11px] text-rose-800 dark:text-rose-300">
+                <ul className="list-disc pl-5 space-y-1.5 text-[11px] text-rose-800 dark:text-rose-300">
                   <li>Fabricating false expense claims or manipulating settlement figures deceitfully.</li>
                   <li>Uploading unlawful, infringing, or harassing media attachments as receipt proofs.</li>
                   <li>Attempting automated room code harvesting or unauthorized administrative actions.</li>
@@ -410,25 +414,29 @@ export default function LegalAndSupportModal({
               </div>
 
               {/* Rule 3: Host Governance */}
-              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 space-y-2">
-                <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
-                  <Users className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900/80 border border-[#E3E8E3] dark:border-slate-800 hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-2.5">
+                <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white flex items-center gap-2 pb-2 border-b border-[#E3E8E3]/70 dark:border-slate-800">
+                  <Users className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635] shrink-0" />
                   <span>3. Room Host &amp; Member Privileges</span>
                 </h3>
                 <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
                   Room creators retain administrative authority over their spaces:
                 </p>
-                <p className="text-[11px] text-[#1A3827] dark:text-slate-300">
+                <p className="text-[11px] text-[#1A3827] dark:text-slate-300 leading-relaxed">
                   Hosts may configure monthly budget caps, adjust individual quota shares, designate Co-Hosts, toggle frozen audit mode, or remove unverified member profiles from the room.
                 </p>
               </div>
 
               {/* Rule 4: Availability & Financial Disclaimer */}
-              <div className="p-4 rounded-2xl bg-[#EAF0EC]/60 dark:bg-slate-900/60 border border-[#1A3827]/10 dark:border-slate-800 text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal space-y-1">
-                <p className="font-bold text-[#1A3827] dark:text-slate-300">
-                  Disclaimer on Financial Custody:
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-[#EAF0EC]/60 dark:bg-slate-900/60 border border-[#1A3827]/10 dark:border-slate-800 hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-2.5">
+                <h3 className="font-extrabold text-xs sm:text-sm text-[#1A3827] dark:text-white flex items-center gap-2 pb-2 border-b border-[#E3E8E3]/70 dark:border-slate-800">
+                  <span className="w-5 h-5 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 text-[10px] font-black flex items-center justify-center shrink-0">4</span>
+                  <span>Disclaimer on Financial Custody</span>
+                </h3>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  Mathematical Debt Settlement Notice:
                 </p>
-                <p>
+                <p className="text-[11px] text-[#1A3827] dark:text-slate-300 leading-relaxed">
                   Tallyin provides mathematical debt settlement calculations and tracking assistance. Tallyin is not a chartered bank, payment gateway, or escrow agent, and does not hold user funds. Direct payments are performed independently by roommates via UPI, cash, or bank transfers.
                 </p>
               </div>
@@ -441,13 +449,13 @@ export default function LegalAndSupportModal({
             MODULE 3: CONTACT & SUPPORT
         ══════════════════════════════════════════ */}
         {activeTab === 'contact' && (
-          <div className="space-y-5 max-w-3xl animate-fade-in text-[#1A3827] dark:text-slate-200 text-xs sm:text-sm">
+          <div className="space-y-6 w-full animate-fade-in text-[#1A3827] dark:text-slate-200 text-xs sm:text-sm">
             
             {/* Quick Support Channels */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
               
               {/* Channel 1: Email */}
-              <div className="p-4 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/15 dark:border-[#A3E635]/20 space-y-2">
+              <div className="p-4 rounded-2xl bg-[#EAF0EC] dark:bg-slate-900 border border-[#1A3827]/15 dark:border-[#A3E635]/20 flex flex-col justify-between space-y-2">
                 <div className="p-1.5 rounded-lg bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 w-fit">
                   <Mail className="w-4 h-4" />
                 </div>
@@ -468,7 +476,7 @@ export default function LegalAndSupportModal({
               </div>
 
               {/* Channel 2: Response Time */}
-              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-2">
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex flex-col justify-between space-y-2">
                 <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] w-fit">
                   <Clock className="w-4 h-4" />
                 </div>
@@ -478,13 +486,13 @@ export default function LegalAndSupportModal({
                     Typically within <strong>12 to 24 hours</strong> on weekdays.
                   </p>
                 </div>
-                <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] w-fit">
                   Active Support Queue
                 </span>
               </div>
 
               {/* Channel 3: Security & Dispute */}
-              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-2">
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex flex-col justify-between space-y-2">
                 <div className="p-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] w-fit">
                   <ShieldCheck className="w-4 h-4" />
                 </div>
@@ -494,7 +502,7 @@ export default function LegalAndSupportModal({
                     Urgent room code recovery &amp; data privacy escalation.
                   </p>
                 </div>
-                <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]">
+                <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] w-fit">
                   High Priority
                 </span>
               </div>
@@ -538,7 +546,7 @@ export default function LegalAndSupportModal({
                 </div>
               ) : (
                 <form onSubmit={handleSendContactMessage} className="space-y-3.5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div className="space-y-1">
                       <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200">
                         Your Name
@@ -548,7 +556,7 @@ export default function LegalAndSupportModal({
                         value={contactName}
                         onChange={e => setContactName(e.target.value)}
                         placeholder="e.g. Rahul Sharma"
-                        className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
                       />
                     </div>
                     <div className="space-y-1">
@@ -561,12 +569,12 @@ export default function LegalAndSupportModal({
                         value={contactEmail}
                         onChange={e => setContactEmail(e.target.value)}
                         placeholder="e.g. rahul@example.com"
-                        className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div className="space-y-1">
                       <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200">
                         Inquiry Category
@@ -574,7 +582,7 @@ export default function LegalAndSupportModal({
                       <select
                         value={contactCategory}
                         onChange={e => setContactCategory(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
                       >
                         <option value="general">General Support / Question</option>
                         <option value="room_access">Room Access / Joining Trouble</option>
@@ -594,7 +602,7 @@ export default function LegalAndSupportModal({
                         value={contactSubject}
                         onChange={e => setContactSubject(e.target.value)}
                         placeholder="Brief summary of your inquiry"
-                        className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
                       />
                     </div>
                   </div>
@@ -605,18 +613,18 @@ export default function LegalAndSupportModal({
                     </label>
                     <textarea
                       required
-                      rows={4}
+                      rows={3}
                       value={contactMessage}
                       onChange={e => setContactMessage(e.target.value)}
                       placeholder="Please provide details, room code if applicable, and how we can assist you..."
-                      className="w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635] resize-none"
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] dark:focus:ring-[#A3E635] resize-none"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={isSending}
-                    className="w-full sm:w-auto px-7 py-3 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] hover:bg-[#255038] dark:hover:bg-[#BEF264] text-white dark:text-slate-950 font-black text-xs transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-98"
+                    className="w-full sm:w-auto px-7 py-2.5 rounded-xl bg-[#1A3827] dark:bg-[#A3E635] hover:bg-[#255038] dark:hover:bg-[#BEF264] text-white dark:text-slate-950 font-black text-xs transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-98"
                   >
                     {isSending ? (
                       <span>Dispatching Inquiry...</span>
@@ -632,12 +640,12 @@ export default function LegalAndSupportModal({
             </div>
 
             {/* Frequently Asked Questions */}
-            <div className="space-y-2.5 pt-1">
+            <div className="space-y-3 pt-1">
               <h4 className="font-black text-xs sm:text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
                 <HelpCircle className="w-4 h-4 text-[#1A3827] dark:text-[#A3E635]" />
                 <span>Frequently Asked Questions</span>
               </h4>
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 <div className="p-3.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800">
                   <h5 className="font-bold text-xs text-[#1A3827] dark:text-white">
                     How do Room Codes and QR Codes work?
@@ -656,7 +664,7 @@ export default function LegalAndSupportModal({
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800">
+                <div className="p-3.5 rounded-xl bg-[#F6F8F6] dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 md:col-span-2">
                   <h5 className="font-bold text-xs text-[#1A3827] dark:text-white">
                     Can a room be archived or permanently purged?
                   </h5>
@@ -673,7 +681,7 @@ export default function LegalAndSupportModal({
       </div>
 
       {/* ── TALLYIN BRANDED FOOTER ── */}
-      <div className="px-5 sm:px-7 py-3 border-t border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6] dark:bg-slate-950 text-[11px] text-[#5C6E5C] dark:text-slate-400 flex flex-wrap items-center justify-between gap-2 shrink-0">
+      <div className="px-6 sm:px-8 py-3 border-t border-[#E3E8E3] dark:border-slate-800 bg-[#F6F8F6] dark:bg-slate-950 text-[11px] text-[#5C6E5C] dark:text-slate-400 flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2">
           <span className="font-bold text-[#1A3827] dark:text-[#A3E635]">Tallyin</span>
           <span>•</span>
@@ -697,7 +705,7 @@ export default function LegalAndSupportModal({
   if (isFullPage) {
     return (
       <div className="min-h-screen bg-[#F6F8F6] dark:bg-slate-950 p-4 sm:p-8 flex flex-col justify-center items-center">
-        <div className="w-full max-w-4xl h-[90vh]">
+        <div className="w-full max-w-5xl h-[90vh]">
           {content}
         </div>
       </div>
@@ -713,7 +721,7 @@ export default function LegalAndSupportModal({
         }
       }}
     >
-      <div className="max-w-4xl w-full animate-scale-up">
+      <div className="max-w-5xl w-full animate-scale-up">
         {content}
       </div>
     </div>

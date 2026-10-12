@@ -7772,6 +7772,39 @@ export default function App() {
       `;
     }
 
+    // Analyze receipt attachment types (Image vs PDF vs Spreadsheet)
+    const attachmentTypes = (receiptImages || []).map(fileData => {
+      if (!fileData || typeof fileData !== 'string') return 'image';
+      if (fileData.startsWith('data:application/pdf') || fileData.startsWith('data:pdf/') || fileData.startsWith('JVBERi0') || fileData.toLowerCase().includes('.pdf')) {
+        return 'pdf';
+      }
+      if (fileData.startsWith('data:application/vnd') || fileData.startsWith('data:application/spreadsheet') || fileData.toLowerCase().includes('.xls') || fileData.toLowerCase().includes('.xlsx') || fileData.toLowerCase().includes('.csv')) {
+        return 'excel';
+      }
+      return 'image';
+    });
+
+    const pdfAttachmentsCount = attachmentTypes.filter(t => t === 'pdf').length;
+    const excelAttachmentsCount = attachmentTypes.filter(t => t === 'excel').length;
+    const imageAttachmentsCount = attachmentTypes.filter(t => t === 'image').length;
+
+    let receiptBannerIcon = '📎';
+    let receiptBannerTitle = `${receiptImages?.length || 0} Receipt Attachment${receiptImages?.length === 1 ? '' : 's'} to this Email!`;
+
+    if (pdfAttachmentsCount > 0 && imageAttachmentsCount === 0 && excelAttachmentsCount === 0) {
+      receiptBannerIcon = '📄';
+      receiptBannerTitle = `${pdfAttachmentsCount} Receipt PDF Document${pdfAttachmentsCount === 1 ? '' : 's'} Attached to this Email!`;
+    } else if (imageAttachmentsCount > 0 && pdfAttachmentsCount === 0 && excelAttachmentsCount === 0) {
+      receiptBannerIcon = '📷';
+      receiptBannerTitle = `${imageAttachmentsCount} Receipt Image${imageAttachmentsCount === 1 ? '' : 's'} Attached to this Email!`;
+    } else if (excelAttachmentsCount > 0 && pdfAttachmentsCount === 0 && imageAttachmentsCount === 0) {
+      receiptBannerIcon = '📊';
+      receiptBannerTitle = `${excelAttachmentsCount} Receipt Spreadsheet${excelAttachmentsCount === 1 ? '' : 's'} Attached to this Email!`;
+    } else {
+      receiptBannerIcon = '📎';
+      receiptBannerTitle = `${receiptImages?.length || 0} Receipt Attachment${receiptImages?.length === 1 ? '' : 's'} (PDF/Photo) Attached to this Email!`;
+    }
+
     const htmlBody = isGenesisRoomEmail ? `
       <div style="background-color: #060e0a; padding: 40px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 16px 40px rgba(245, 158, 11, 0.15); border: 1px solid #fde68a;">
@@ -7820,10 +7853,10 @@ export default function App() {
               <div style="background: linear-gradient(135deg, #ecfdf5 0%, #fffbeb 100%); border: 1px solid #a7f3d0; border-left: 4px solid #10b981; padding: 14px 18px; border-radius: 12px; margin-bottom: 24px;">
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
-                    <td style="width: 24px; vertical-align: middle; font-size: 18px;">📎</td>
+                    <td style="width: 24px; vertical-align: middle; font-size: 18px;">${receiptBannerIcon}</td>
                     <td style="padding-left: 10px; vertical-align: middle;">
-                      <div style="font-size: 12px; font-weight: 800; color: #065f46;">
-                        ${receiptImages.length} RECEIPT DOCUMENT(S) ATTACHED
+                      <div style="font-size: 12px; font-weight: 800; color: #065f46; text-transform: uppercase;">
+                        ${receiptBannerTitle}
                       </div>
                       <div style="font-size: 11px; color: #047857; margin-top: 2px;">
                         Attached files are available in your email app at the bottom.
@@ -8057,11 +8090,11 @@ export default function App() {
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
                     <td style="width: 36px; vertical-align: middle;">
-                      <div style="background-color: #059669; color: #FFFFFF; width: 32px; height: 32px; border-radius: 10px; text-align: center; line-height: 32px; font-size: 16px;">📷</div>
+                      <div style="background-color: #059669; color: #FFFFFF; width: 32px; height: 32px; border-radius: 10px; text-align: center; line-height: 32px; font-size: 16px;">${receiptBannerIcon}</div>
                     </td>
                     <td style="padding-left: 10px; vertical-align: middle;">
                       <div style="font-size: 13px; font-weight: 800; color: #065F46;">
-                        ${receiptImages.length} Receipt Image${receiptImages.length === 1 ? '' : 's'} Attached to this Email!
+                        ${receiptBannerTitle}
                       </div>
                       <div style="font-size: 11px; color: #047857; margin-top: 2px;">
                         Attached files are available in your email app at the bottom.
