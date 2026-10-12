@@ -2370,7 +2370,7 @@ export default function AdminDashboard({
           seen.add(key);
           combined.push({
             id: m.uid || m.id,
-            userCode: m.user_code || getUserCode(email || m.uid || m.id || m.nickname),
+            userCode: email === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (m.user_code || getUserCode(email || m.uid || m.id || m.nickname)),
             name: m.nickname || m.name || (email ? email.split('@')[0] : 'Roommate'),
             email: email || 'N/A',
             roomId: m.room_id || 'Shared Space',
@@ -2387,7 +2387,7 @@ export default function AdminDashboard({
           seen.add(key);
           combined.push({
             id: u.uid || u.id,
-            userCode: u.user_code || getUserCode(email || u.uid || u.id),
+            userCode: email === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (u.user_code || getUserCode(email || u.uid || u.id)),
             name: u.nickname || u.name || (email ? email.split('@')[0] : 'User'),
             email: email || 'N/A',
             roomId: u.room_id || 'Joined Space',
@@ -2400,7 +2400,7 @@ export default function AdminDashboard({
             existing.name = u.nickname || u.name || email.split('@')[0];
           }
           if (existing && !existing.userCode) {
-            existing.userCode = u.user_code || getUserCode(email || u.uid || u.id);
+            existing.userCode = email === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (u.user_code || getUserCode(email || u.uid || u.id));
           }
         }
       });
@@ -9115,7 +9115,7 @@ NOTIFY pgrst, 'reload schema';`;
                   );
                 })
                 .map(u => {
-                  const userCode = u.userCode || getUserCode(u.email || u.id || u.name);
+                  const userCode = (u.email?.toLowerCase() === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (u.userCode || getUserCode(u.email || u.id || u.name));
                   const userTarget = (u.email && u.email !== 'N/A') ? u.email : (u.name || u.id);
                   const isBanned = bannedUsers.some(b => {
                     const bId = (b.identifier || b.email || b.id || '').toLowerCase();
@@ -11525,7 +11525,7 @@ NOTIFY pgrst, 'reload schema';`;
                         // Search filter
                         if (!disputeSearchQuery.trim()) return true;
                         const q = disputeSearchQuery.toLowerCase();
-                        const tUserCode = (ticket.user_code || getUserCode(ticket.user_email || ticket.user_id)).toLowerCase();
+                        const tUserCode = (ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (ticket.user_code || getUserCode(ticket.user_email || ticket.user_id))).toLowerCase();
                         return (
                           (ticket.refNumber && ticket.refNumber.toLowerCase().includes(q)) ||
                           (ticket.title && ticket.title.toLowerCase().includes(q)) ||
@@ -11540,7 +11540,7 @@ NOTIFY pgrst, 'reload schema';`;
                       })
                       .map(ticket => {
                         const isDispute = ticket.type === 'dispute' || ticket.category?.toLowerCase().includes('dispute');
-                        const ticketUserCode = ticket.user_code || getUserCode(ticket.user_email || ticket.user_id);
+                        const ticketUserCode = ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (ticket.user_code || getUserCode(ticket.user_email || ticket.user_id));
                         const statusColors = {
                           OPEN: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800',
                           UNDER_REVIEW: 'bg-indigo-100 text-indigo-900 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800',
@@ -12675,12 +12675,12 @@ NOTIFY pgrst, 'reload schema';`;
                   </div>
                   <div className="flex items-center gap-2 flex-wrap pt-0.5">
                     <span className="font-mono text-[10px] font-black px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-[#A3E635] border border-emerald-300 dark:border-emerald-800">
-                      User Code: {selectedDisputeTicket.user_code || getUserCode(selectedDisputeTicket.user_email || selectedDisputeTicket.user_id)}
+                      User Code: {selectedDisputeTicket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (selectedDisputeTicket.user_code || getUserCode(selectedDisputeTicket.user_email || selectedDisputeTicket.user_id))}
                     </span>
                     <button
                       type="button"
                       onClick={() => {
-                        const code = selectedDisputeTicket.user_code || getUserCode(selectedDisputeTicket.user_email || selectedDisputeTicket.user_id);
+                        const code = selectedDisputeTicket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (selectedDisputeTicket.user_code || getUserCode(selectedDisputeTicket.user_email || selectedDisputeTicket.user_id));
                         setSelectedDisputeTicket(null);
                         setSearchQuery(code);
                         setActiveTab('user_directory');

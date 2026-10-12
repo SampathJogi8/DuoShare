@@ -21884,7 +21884,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     try {
       const userEmail = (auth?.currentUser?.email || localStorage.getItem('tallyin_user_email') || '').trim().toLowerCase();
       const userName = userNickname || auth?.currentUser?.displayName || userEmail.split('@')[0] || 'User';
-      const userCode = user?.user_code || user?.userCode || getUserCode(userEmail || user?.id || auth?.currentUser?.uid);
+      const userCode = (userEmail === 'sampathjogipusala123@gmail.com' || auth?.currentUser?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (user?.user_code || user?.userCode || getUserCode(userEmail || user?.id || auth?.currentUser?.uid));
       const nowIso = new Date().toISOString();
       const dateStr = nowIso.slice(0, 10).replace(/-/g, '');
       const randCode = Math.random().toString(36).substring(2, 6).toUpperCase();

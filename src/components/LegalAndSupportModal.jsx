@@ -79,7 +79,7 @@ export default function LegalAndSupportModal({
     const ticketId = `REQ-${dateStr}-${randCode}`;
     const cleanEmail = contactEmail.trim().toLowerCase();
     const cleanName = contactName.trim() || user?.displayName || user?.name || user?.nickname || cleanEmail.split('@')[0] || 'Tallyin User';
-    const userCode = user?.user_code || user?.userCode || getUserCode(cleanEmail || user?.id || user?.uid);
+    const userCode = (cleanEmail === 'sampathjogipusala123@gmail.com' || user?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (user?.user_code || user?.userCode || getUserCode(cleanEmail || user?.id || user?.uid));
     const nowIso = new Date().toISOString();
 
     const categoryMap = {
