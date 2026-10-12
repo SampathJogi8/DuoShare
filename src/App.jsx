@@ -2166,11 +2166,13 @@ export default function App() {
       setFormCategory(tx.category);
       setFormDate(tx.date);
 
+      const activeMemberList = uniqueMembers?.length > 0 ? uniqueMembers : members;
+
       // Resolve legacy or missing payer UIDs by matching nickname
       let payerUid = tx.paidByUid;
       if (!payerUid) {
-        const mem = members.find(m => m.nickname === tx.paidBy);
-        payerUid = mem ? mem.uid : (auth.currentUser?.uid || 'anonymous');
+        const mem = activeMemberList.find(m => m.nickname === tx.paidBy);
+        payerUid = mem ? mem.uid : (auth.currentUser?.uid || user?.id || 'anonymous');
       }
       setFormPaidBy(payerUid);
 
@@ -2180,11 +2182,11 @@ export default function App() {
       const initialCustomValues = {};
       if (tx.splits && Array.isArray(tx.splits)) {
         // Resolve splits without UIDs by matching nickname too
-        members.forEach(m => {
+        activeMemberList.forEach(m => {
           initialSplits[m.uid] = tx.splits.some(s => s.uid === m.uid || s.nickname === m.nickname);
         });
         tx.splits.forEach(s => {
-          const matchedMember = members.find(m => m.uid === s.uid || m.nickname === s.nickname);
+          const matchedMember = activeMemberList.find(m => m.uid === s.uid || m.nickname === s.nickname);
           if (matchedMember) {
             // Fix: If percentage split type, load calculated percentages instead of absolute amounts
             if (tx.splitType === 'percentage') {
@@ -2196,7 +2198,7 @@ export default function App() {
           }
         });
       } else {
-        members.forEach(m => {
+        activeMemberList.forEach(m => {
           initialSplits[m.uid] = true;
         });
       }
@@ -2234,17 +2236,18 @@ export default function App() {
       setFormReceiptImages([]);
       setSplitType('equal');
       setEnableQuotaSplit(false);
+      const activeMemberList = uniqueMembers?.length > 0 ? uniqueMembers : members;
       const initialSplits = {};
-      members.forEach(m => {
+      activeMemberList.forEach(m => {
         initialSplits[m.uid] = true;
       });
       setSelectedSplitMembers(initialSplits);
       setCustomSplitValues({});
-      const currentUid = auth.currentUser?.uid || 'anonymous';
-      if (members.some(m => m.uid === currentUid)) {
+      const currentUid = auth.currentUser?.uid || user?.id || 'anonymous';
+      if (activeMemberList.some(m => m.uid === currentUid)) {
         setFormPaidBy(currentUid);
-      } else if (members.length > 0) {
-        setFormPaidBy(members[0].uid);
+      } else if (activeMemberList.length > 0) {
+        setFormPaidBy(activeMemberList[0].uid);
       } else {
         setFormPaidBy(currentUid);
       }
@@ -17330,8 +17333,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // PAGE 3: ADD EXPENSE MODAL (OVERLAY)
   // ==========================================
   function renderAddExpenseModal() {
-    const checkedMemberCount = members.filter(m => selectedSplitMembers[m.uid] !== false).length;
-    const isPersonalModal = !editingTransaction?.isShared && (checkedMemberCount === 1 || members.length <= 1);
+    const activeMemberList = uniqueMembers?.length > 0 ? uniqueMembers : members;
+    const checkedMemberCount = activeMemberList.filter(m => selectedSplitMembers[m.uid] !== false).length;
+    const isPersonalModal = !editingTransaction?.isShared && (checkedMemberCount === 1 || activeMemberList.length <= 1);
 
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4 animate-fade-in">
@@ -17357,13 +17361,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           <form onSubmit={handleAddExpense} className="p-6 space-y-4 overflow-y-auto flex-1 text-slate-800 dark:text-slate-200">
             
             {/* Quick Mode Switcher: Room Shared vs Personal Expense */}
-            {members.length > 1 && (
+            {activeMemberList.length > 1 && (
               <div className="flex bg-[#F4F9F5] dark:bg-slate-900 p-1 rounded-2xl border border-[#E2EAE3] dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => {
                     const allSplits = {};
-                    members.forEach(m => { allSplits[m.uid] = true; });
+                    activeMemberList.forEach(m => { allSplits[m.uid] = true; });
                     setSelectedSplitMembers(allSplits);
                     setSplitType('equal');
                   }}
@@ -17379,12 +17383,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   type="button"
                   onClick={() => {
                     const singleSplit = {};
-                    const currentUid = auth.currentUser?.uid || 'anonymous';
+                    const currentUid = auth.currentUser?.uid || user?.id || 'anonymous';
                     const targetPayer = formPaidBy || currentUid;
-                    members.forEach(m => { singleSplit[m.uid] = (m.uid === targetPayer); });
+                    activeMemberList.forEach(m => { singleSplit[m.uid] = (m.uid === targetPayer); });
                     setSelectedSplitMembers(singleSplit);
                     setSplitType('equal');
-                    setEnableQuotaSplit(true);
+                    setEnableQuotaSplit(false);
                   }}
                   className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     isPersonalModal
@@ -17625,13 +17629,21 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">Paid by</label>
               <select
                 value={formPaidBy}
-                onChange={(e) => setFormPaidBy(e.target.value)}
+                onChange={(e) => {
+                  const newPaidBy = e.target.value;
+                  setFormPaidBy(newPaidBy);
+                  if (isPersonalModal) {
+                    const singleSplit = {};
+                    activeMemberList.forEach(m => { singleSplit[m.uid] = (m.uid === newPaidBy); });
+                    setSelectedSplitMembers(singleSplit);
+                  }
+                }}
                 className="w-full px-3 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs sm:text-sm bg-white dark:bg-slate-900 text-[#1A3827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#1A3827] cursor-pointer"
               >
-                {members.length > 0 ? (
-                  members.map(m => (
+                {activeMemberList.length > 0 ? (
+                  activeMemberList.map(m => (
                     <option key={m.uid} value={m.uid}>
-                      {m.uid === (auth.currentUser?.uid) ? `${m.nickname} (You)` : m.nickname}
+                      {(m.uid === auth.currentUser?.uid || m.uid === user?.id) ? `${m.nickname} (You)` : m.nickname}
                     </option>
                   ))
                 ) : (
@@ -17640,8 +17652,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </select>
             </div>
 
-            {/* In Quota Mode: Optional Split Toggle (Off by default) */}
-            {isQuotaMode && (
+            {/* In Quota Mode: Optional Split Toggle (Off by default, Shared expense only) */}
+            {isQuotaMode && !isPersonalModal && (
               <div className="p-3.5 bg-[#F6F8F6] dark:bg-slate-900/40 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl flex items-center justify-between transition-all">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
@@ -17664,8 +17676,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             )}
 
-            {/* Split Type Tabs & Breakdown (Classic Split Mode or Quota Mode with Toggle ON) */}
-            {(!isQuotaMode || enableQuotaSplit) && (
+            {/* Split Type Tabs & Breakdown (Classic Split Mode or Quota Mode with Toggle ON) - Shared expense only */}
+            {!isPersonalModal && (!isQuotaMode || enableQuotaSplit) && (
               <>
                 {/* Split Type Tabs */}
                 <div className="space-y-2">
@@ -17689,13 +17701,13 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 </div>
 
                 {/* Split Members & Values */}
-                {members.length > 0 && (
+                {activeMemberList.length > 0 && (
                   <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/30 dark:bg-slate-900/20 space-y-2">
                     <p className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">Split breakdown</p>
-                    {members.map(m => {
+                    {activeMemberList.map(m => {
                       const isChecked = selectedSplitMembers[m.uid] !== false;
                       const amountNum = parseFloat(formAmount) || 0;
-                      const checkedMembers = members.filter(mm => selectedSplitMembers[mm.uid] !== false);
+                      const checkedMembers = activeMemberList.filter(mm => selectedSplitMembers[mm.uid] !== false);
                       const checkedCount = checkedMembers.length || 1;
                       const equalShare = amountNum / checkedCount;
                       const totalCheckedBudget = checkedMembers.reduce((sum, mm) => sum + (Number(mm.individualBudget) || 2000), 0);
@@ -17721,7 +17733,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                             </div>
                           )}
                           <span className="text-[11px] font-semibold text-[#1A3827] dark:text-slate-200 flex-1 truncate">
-                            {m.uid === auth.currentUser?.uid ? `${m.nickname} (You)` : m.nickname}
+                            {(m.uid === auth.currentUser?.uid || m.uid === user?.id) ? `${m.nickname} (You)` : m.nickname}
                           </span>
                           {splitType === 'equal' && isChecked && (
                             <span className="text-[11px] font-bold text-[#1A3827] dark:text-[#A3E635]">{formatINR(equalShare)}</span>
@@ -17778,7 +17790,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </label>
 
             {/* Also add to Fund Tracker — only shown when expense is personal and user has funds available */}
-            {myFunds && myFunds.length > 0 && members.filter(mm => selectedSplitMembers[mm.uid] !== false).length === 1 && (
+            {myFunds && myFunds.length > 0 && isPersonalModal && (
               <div className="border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 bg-[#F6F8F6]/30 dark:bg-slate-900/20 space-y-2">
                 <div className="flex items-center gap-2">
                   <Wallet className="w-3.5 h-3.5 text-[#1A3827] dark:text-[#A3E635] shrink-0" />
