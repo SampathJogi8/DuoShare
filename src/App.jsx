@@ -4045,6 +4045,9 @@ export default function App() {
     const htmlBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #F6F8F6; border-radius: 24px;">
         <div style="text-align: center; margin-bottom: 20px;">
+          <div style="margin-bottom: 12px;">
+            <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="48" height="48" style="display: inline-block; border-radius: 12px; border: 2px solid #A3E635; box-shadow: 0 4px 12px rgba(26,56,39,0.2);" />
+          </div>
           <h2 style="color: #1A3827; margin: 0; font-size: 20px; font-weight: 800;">Tallyin Room Approval</h2>
           <p style="color: #5C6E5C; font-size: 12px; margin-top: 4px;">YouthFirst DuoShare Expense Manager</p>
         </div>
@@ -4287,6 +4290,9 @@ export default function App() {
     const htmlBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #F6F8F6; border-radius: 24px;">
         <div style="text-align: center; margin-bottom: 20px;">
+          <div style="margin-bottom: 12px;">
+            <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="48" height="48" style="display: inline-block; border-radius: 12px; border: 2px solid #64748B; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" />
+          </div>
           <h2 style="color: #1A3827; margin: 0; font-size: 20px; font-weight: 800;">Tallyin Room Update</h2>
           <p style="color: #5C6E5C; font-size: 12px; margin-top: 4px;">YouthFirst DuoShare Expense Manager</p>
         </div>
@@ -5812,6 +5818,9 @@ export default function App() {
       const htmlBody = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #F6F8F6; border-radius: 24px;">
           <div style="text-align: center; margin-bottom: 20px;">
+            <div style="margin-bottom: 12px;">
+              <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="48" height="48" style="display: inline-block; border-radius: 12px; border: 2px solid #DC2626; box-shadow: 0 4px 12px rgba(220,38,38,0.2);" />
+            </div>
             <h2 style="color: #1A3827; margin: 0; font-size: 20px; font-weight: 800;">Tallyin Room Update</h2>
             <p style="color: #5C6E5C; font-size: 12px; margin-top: 4px;">YouthFirst DuoShare Expense Manager</p>
           </div>
@@ -5931,6 +5940,9 @@ export default function App() {
         const otherHtmlBody = `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #F6F8F6; border-radius: 24px;">
             <div style="text-align: center; margin-bottom: 20px;">
+              <div style="margin-bottom: 12px;">
+                <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="48" height="48" style="display: inline-block; border-radius: 12px; border: 2px solid #A3E635; box-shadow: 0 4px 12px rgba(26,56,39,0.2);" />
+              </div>
               <h2 style="color: #1A3827; margin: 0; font-size: 20px; font-weight: 800;">Tallyin Room Update</h2>
               <p style="color: #5C6E5C; font-size: 12px; margin-top: 4px;">YouthFirst DuoShare Expense Manager</p>
             </div>
@@ -21979,6 +21991,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 htmlBody: `
                   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
                     <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #f59e0b;">
+                      <div style="margin-bottom: 12px;">
+                        <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="48" height="48" style="display: inline-block; border-radius: 12px; border: 2px solid #f59e0b; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);" />
+                      </div>
                       <span style="background-color: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase;">New User Submission</span>
                       <h2 style="color: #1a3827; margin: 8px 0 0 0;">${disputeCategory}</h2>
                       <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tracking Ref: <strong>${refNumber}</strong> • User Code: <strong>${userCode}</strong></p>
@@ -21994,6 +22009,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       </div>
                     </div>
                     <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+                      <div style="margin-bottom: 6px;">
+                        <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin" width="18" height="18" style="display: inline-block; vertical-align: middle; border-radius: 4px; margin-right: 6px;" />
+                        <span style="font-weight: 700; color: #1a3827;">Tallyin Operations Desk</span>
+                      </div>
                       Tallyin Help & Dispute Operations Center
                     </div>
                   </div>
@@ -22016,6 +22035,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     <div style="background-color: #f6f8f6; padding: 32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
                       <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e3e8e3; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
                         <div style="background: linear-gradient(135deg, #1A3827 0%, #214732 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+                          <div style="text-align: center; margin-bottom: 14px;">
+                            <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="52" height="52" style="display: inline-block; width: 52px; height: 52px; border-radius: 14px; border: 2px solid #A3E635; box-shadow: 0 4px 12px rgba(0,0,0,0.35); vertical-align: middle;" />
+                          </div>
                           <div style="display: inline-block; background-color: #A3E635; color: #0a1b11; font-size: 10px; font-weight: 900; letter-spacing: 1px; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; margin-bottom: 12px;">
                             Tallyin Support &amp; Helpdesk
                           </div>
@@ -22061,6 +22083,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         </div>
 
                         <div style="background-color: #f6f8f6; border-top: 1px solid #e3e8e3; padding: 18px 24px; text-align: center; font-size: 11px; color: #718271;">
+                          <div style="margin-bottom: 8px;">
+                            <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin" width="22" height="22" style="display: inline-block; vertical-align: middle; border-radius: 6px; margin-right: 6px;" />
+                            <span style="font-weight: 800; color: #1A3827; font-size: 12px; vertical-align: middle;">Tallyin</span>
+                          </div>
                           <p style="margin: 0;">Tallyin Support &amp; Dispute Operations Desk</p>
                           <p style="margin: 4px 0 0 0; color: #94a394;">Official Helpdesk: <a href="mailto:tallyin.alerts@gmail.com" style="color: #1A3827; font-weight: 700; text-decoration: none;">tallyin.alerts@gmail.com</a></p>
                         </div>

@@ -167,6 +167,9 @@ export default function LegalAndSupportModal({
           <div style="background-color: #f6f8f6; padding: 32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
             <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e3e8e3; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
               <div style="background: linear-gradient(135deg, #1A3827 0%, #214732 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+                <div style="text-align: center; margin-bottom: 14px;">
+                  <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="52" height="52" style="display: inline-block; width: 52px; height: 52px; border-radius: 14px; border: 2px solid #A3E635; box-shadow: 0 4px 12px rgba(0,0,0,0.35); vertical-align: middle;" />
+                </div>
                 <div style="display: inline-block; background-color: #A3E635; color: #0a1b11; font-size: 10px; font-weight: 900; letter-spacing: 1px; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; margin-bottom: 12px;">
                   Tallyin Support &amp; Helpdesk
                 </div>
@@ -212,6 +215,10 @@ export default function LegalAndSupportModal({
               </div>
 
               <div style="background-color: #f6f8f6; border-top: 1px solid #e3e8e3; padding: 18px 24px; text-align: center; font-size: 11px; color: #718271;">
+                <div style="margin-bottom: 8px;">
+                  <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin" width="22" height="22" style="display: inline-block; vertical-align: middle; border-radius: 6px; margin-right: 6px;" />
+                  <span style="font-weight: 800; color: #1A3827; font-size: 12px; vertical-align: middle;">Tallyin</span>
+                </div>
                 <p style="margin: 0;">Tallyin Support &amp; Dispute Operations Desk</p>
                 <p style="margin: 4px 0 0 0; color: #94a394;">Official Helpdesk: <a href="mailto:tallyin.alerts@gmail.com" style="color: #1A3827; font-weight: 700; text-decoration: none;">tallyin.alerts@gmail.com</a></p>
               </div>
@@ -223,6 +230,9 @@ export default function LegalAndSupportModal({
         const adminAlertHtml = `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
             <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #10b981;">
+              <div style="margin-bottom: 12px;">
+                <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="48" height="48" style="display: inline-block; border-radius: 12px; border: 2px solid #10b981; box-shadow: 0 4px 12px rgba(16,185,129,0.25);" />
+              </div>
               <span style="background-color: #ecfdf5; color: #065f46; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase;">New Support Desk Inquiry</span>
               <h2 style="color: #1a3827; margin: 8px 0 0 0;">${cleanCategory}</h2>
               <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tracking Ref: <strong>${ticketId}</strong> • User Code: <strong>${userCode}</strong></p>
@@ -236,6 +246,10 @@ export default function LegalAndSupportModal({
               </div>
             </div>
             <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+              <div style="margin-bottom: 6px;">
+                <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin" width="18" height="18" style="display: inline-block; vertical-align: middle; border-radius: 4px; margin-right: 6px;" />
+                <span style="font-weight: 700; color: #1a3827;">Tallyin Operations Desk</span>
+              </div>
               Tallyin Help &amp; Dispute Operations Center • <a href="https://tallyin.vercel.app/admin" style="color: #10b981; font-weight: bold;">Open Admin Console</a>
             </div>
           </div>

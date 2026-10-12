@@ -253,6 +253,9 @@ export default function BannedUserView({
               htmlBody: `
                 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
                   <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #ef4444;">
+                    <div style="margin-bottom: 12px;">
+                      <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="48" height="48" style="display: inline-block; border-radius: 12px; border: 2px solid #ef4444; box-shadow: 0 4px 12px rgba(239,68,68,0.2);" />
+                    </div>
                     <span style="background-color: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Security Shield Alert</span>
                     <h2 style="color: #1a3827; margin: 8px 0 0 0;">New Account Suspension Appeal</h2>
                     <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tallyin Operations & Access Control</p>
@@ -280,6 +283,10 @@ export default function BannedUserView({
                   </div>
 
                   <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+                    <div style="margin-bottom: 6px;">
+                      <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin" width="18" height="18" style="display: inline-block; vertical-align: middle; border-radius: 4px; margin-right: 6px;" />
+                      <span style="font-weight: 700; color: #1a3827;">Tallyin Trust & Security</span>
+                    </div>
                     Automated Alert • Tallyin Security & User Moderation Service
                   </div>
                 </div>

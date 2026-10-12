@@ -1662,6 +1662,9 @@ export default function AdminDashboard({
             htmlBody: `
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
                 <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #ef4444;">
+                  <div style="margin-bottom: 12px;">
+                    <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="48" height="48" style="display: inline-block; border-radius: 12px; border: 2px solid #ef4444; box-shadow: 0 4px 12px rgba(239,68,68,0.2);" />
+                  </div>
                   <span style="background-color: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Appeal Decision Notice</span>
                   <h2 style="color: #1a3827; margin: 8px 0 0 0;">Suspension Appeal Rejected</h2>
                   <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Tallyin Access & Security Operations</p>
@@ -1679,7 +1682,11 @@ export default function AdminDashboard({
                 </div>
 
                 <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
-                  Official Decision Notice • Tallyin System Administration
+                  <div style="margin-bottom: 6px;">
+                    <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin" width="18" height="18" style="display: inline-block; vertical-align: middle; border-radius: 4px; margin-right: 6px;" />
+                    <span style="font-weight: 700; color: #1a3827;">Tallyin System Administration</span>
+                  </div>
+                  Official Decision Notice • Tallyin Security Operations
                 </div>
               </div>
             `
@@ -1823,6 +1830,9 @@ export default function AdminDashboard({
                           <!-- Top Brand Header -->
                           <tr>
                             <td style="background: linear-gradient(135deg, #1A3827 0%, #0F291E 100%); padding: 32px 24px; text-align: center;">
+                              <div style="text-align: center; margin-bottom: 14px;">
+                                <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="52" height="52" style="display: inline-block; width: 52px; height: 52px; border-radius: 14px; border: 2px solid #A3E635; box-shadow: 0 4px 12px rgba(0,0,0,0.35); vertical-align: middle;" />
+                              </div>
                               <div style="display: inline-block; padding: 6px 14px; background-color: rgba(163, 230, 53, 0.15); border: 1px solid rgba(163, 230, 53, 0.4); border-radius: 9999px; font-size: 11px; font-weight: 800; color: #A3E635; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">
                                 Tallyin Resolution Desk
                               </div>
@@ -1897,6 +1907,10 @@ export default function AdminDashboard({
                           <!-- Footer -->
                           <tr>
                             <td style="background-color: #f8fafc; padding: 20px 24px; text-align: center; border-top: 1px solid #e2e8f0;">
+                              <div style="margin-bottom: 8px;">
+                                <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin" width="22" height="22" style="display: inline-block; vertical-align: middle; border-radius: 6px; margin-right: 6px;" />
+                                <span style="font-weight: 800; color: #1A3827; font-size: 12px; vertical-align: middle;">Tallyin</span>
+                              </div>
                               <p style="font-size: 11px; color: #94a3b8; margin: 0 0 4px 0;">
                                 This is an automated resolution dispatch from the Tallyin Security &amp; Financial Dispute System.
                               </p>
@@ -8363,7 +8377,10 @@ NOTIFY pgrst, 'reload schema';`;
                                         body: `This is a test notification trigger sent from Tallyin Admin Email Matrix for ${rule.label}. Routing mode: ${rule.routing}.`,
                                         htmlBody: `
                                           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #10b981; border-radius: 12px;">
-                                            <h3 style="color: #1a3827; margin: 0 0 10px 0;">🧪 Test Trigger: ${rule.label}</h3>
+                                            <div style="margin-bottom: 12px; text-align: center;">
+                                              <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="44" height="44" style="display: inline-block; border-radius: 10px; border: 2px solid #10b981;" />
+                                            </div>
+                                            <h3 style="color: #1a3827; margin: 0 0 10px 0; text-align: center;">🧪 Test Trigger: ${rule.label}</h3>
                                             <p style="color: #475569; font-size: 13px;">This test email verifies that the central mail relay and trigger switchboard are operating with zero errors.</p>
                                             <div style="background: #f1f5f9; padding: 10px; border-radius: 8px; font-size: 12px; font-family: monospace;">
                                               Category: ${rule.category}<br/>
