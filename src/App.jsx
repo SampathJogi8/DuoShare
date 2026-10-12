@@ -21995,7 +21995,76 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   </div>
                 `
               })
-            })
+            }),
+
+            // Acknowledgment Email to User
+            ...(userEmail && userEmail.includes('@') ? [
+              fetch(mailRelayUrl, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                  action: 'send_email',
+                  to: userEmail,
+                  subject: `✅ [${refNumber}] We received your inquiry: ${newTicket.title}`,
+                  body: `Hi ${userName},\n\nThank you for contacting Tallyin. We have received your inquiry and our support team has registered it under tracking ID: ${refNumber}.\n\nCategory: ${disputeCategory}\nSubject: ${newTicket.title}\n\nYour message:\n${newTicket.description}\n\nOur team typically responds within 12 to 24 hours on weekdays.\n\nTallyin Support Desk`,
+                  htmlBody: `
+                    <div style="background-color: #f6f8f6; padding: 32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                      <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e3e8e3; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
+                        <div style="background: linear-gradient(135deg, #1A3827 0%, #214732 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+                          <div style="display: inline-block; background-color: #A3E635; color: #0a1b11; font-size: 10px; font-weight: 900; letter-spacing: 1px; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; margin-bottom: 12px;">
+                            Tallyin Support &amp; Helpdesk
+                          </div>
+                          <h1 style="margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">Inquiry Acknowledged</h1>
+                          <p style="margin: 6px 0 0 0; font-size: 12px; color: #a7f3d0;">Your support ticket has been received and registered</p>
+                        </div>
+
+                        <div style="padding: 28px 24px; color: #1A3827; font-size: 13px; line-height: 1.6;">
+                          <p style="margin-top: 0;">Hi <strong>${userName}</strong>,</p>
+                          <p>Thank you for reaching out to Tallyin. We have received your submission and our support team has registered it under the tracking reference ID below:</p>
+                          
+                          <div style="background-color: #eaf0ec; border: 1px solid #cbd7cc; border-left: 4px solid #1A3827; padding: 14px 18px; border-radius: 12px; margin: 20px 0;">
+                            <div style="font-size: 11px; font-weight: 700; color: #5c6e5c; text-transform: uppercase; letter-spacing: 0.5px;">Tracking Reference ID</div>
+                            <div style="font-size: 18px; font-weight: 900; color: #1A3827; font-family: monospace; margin-top: 2px;">${refNumber}</div>
+                          </div>
+
+                          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">
+                            <tr>
+                              <td style="padding: 6px 0; color: #5c6e5c; width: 90px; vertical-align: top;"><strong>Category:</strong></td>
+                              <td style="padding: 6px 0; color: #1A3827; font-weight: 600;">${disputeCategory}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding: 6px 0; color: #5c6e5c; vertical-align: top;"><strong>Subject:</strong></td>
+                              <td style="padding: 6px 0; color: #1A3827; font-weight: 600;">${newTicket.title}</td>
+                            </tr>
+                          </table>
+
+                          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; margin-bottom: 20px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">Your Submission Details:</div>
+                            <div style="font-size: 12px; color: #334155; white-space: pre-wrap; line-height: 1.5;">${newTicket.description}</div>
+                          </div>
+
+                          <div style="border-top: 1px solid #e3e8e3; padding-top: 18px; font-size: 12px; color: #5c6e5c;">
+                            <p style="margin: 0 0 8px 0;"><strong>What happens next?</strong></p>
+                            <ul style="margin: 0; padding-left: 18px; line-height: 1.6;">
+                              <li>Our support team typically reviews inquiries within <strong>12 to 24 hours</strong> on weekdays.</li>
+                              <li>Our response will be sent directly to your email: <strong>${userEmail}</strong>.</li>
+                              <li>If you need to provide additional details, simply reference ticket <code>${refNumber}</code>.</li>
+                            </ul>
+                          </div>
+                        </div>
+
+                        <div style="background-color: #f6f8f6; border-top: 1px solid #e3e8e3; padding: 18px 24px; text-align: center; font-size: 11px; color: #718271;">
+                          <p style="margin: 0;">Tallyin Support &amp; Dispute Operations Desk</p>
+                          <p style="margin: 4px 0 0 0; color: #94a394;">Official Helpdesk: <a href="mailto:tallyin.alerts@gmail.com" style="color: #1A3827; font-weight: 700; text-decoration: none;">tallyin.alerts@gmail.com</a></p>
+                        </div>
+                      </div>
+                    </div>
+                  `,
+                  senderName: 'Tallyin Support Desk'
+                })
+              })
+            ] : [])
           ]);
         } catch (backgroundErr) {
           console.warn('[Dispute Sync] Background sync warning:', backgroundErr);
