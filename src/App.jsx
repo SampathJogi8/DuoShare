@@ -9046,7 +9046,6 @@ export default function App() {
     const termsCheck = checkExpenseTermsCompliance({
       description: formFor,
       amount: formAmount,
-      notes: formNotes,
       category: formCategory
     });
     if (!termsCheck.compliant) {
@@ -9056,7 +9055,7 @@ export default function App() {
         roomId: userRoomId,
         roomName,
         incidentType: termsCheck.category,
-        violationContent: `Attempted Expense Entry: "${formFor}" | Amount: ₹${formAmount} | Category: ${formCategory} | Notes: ${formNotes || 'None'}\nReason: ${termsCheck.reason}`,
+        violationContent: `Attempted Expense Entry: "${formFor}" | Amount: ₹${formAmount} | Category: ${formCategory}\nReason: ${termsCheck.reason}`,
         ruleViolated: termsCheck.ruleViolated,
         severity: termsCheck.severity,
         actionTaken: 'Expense Creation Blocked & Incident Dispatched to Admin'
