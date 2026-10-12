@@ -14590,11 +14590,50 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <img 
-                src={faviconLogo} 
-                alt="Tallyin Logo" 
-                className="w-9 h-9 object-cover rounded-xl shadow-sm flex-shrink-0"
-              />
+              <div 
+                className="relative flex-shrink-0 cursor-default select-none"
+                title={(() => {
+                  const isNoInternet = !navigator.onLine || offlineMode;
+                  const isLive = isDbSynced && !isNoInternet;
+                  return isNoInternet
+                    ? 'Offline: No internet access (Offline Cache active)'
+                    : isLive
+                      ? 'Live: Synchronized with database in real time'
+                      : 'Waiting for internet / Syncing...';
+                })()}
+              >
+                <img 
+                  src={faviconLogo} 
+                  alt="Tallyin Logo" 
+                  className="w-9 h-9 object-cover rounded-xl shadow-sm flex-shrink-0"
+                />
+                {(() => {
+                  const isNoInternet = !navigator.onLine || offlineMode;
+                  const isLive = isDbSynced && !isNoInternet;
+                  const dotColor = isNoInternet 
+                    ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'
+                    : isLive 
+                      ? 'bg-emerald-500 shadow-[0_0_8px_#10B981]' 
+                      : 'bg-amber-400 shadow-[0_0_8px_#f59e0b]';
+
+                  return (
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center bg-white dark:bg-[#07090C] rounded-full p-0.5 ring-1 ring-black/5 dark:ring-white/10 shadow-xs">
+                      <span className="relative flex h-2 w-2">
+                        {isLive && (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        )}
+                        {!isLive && !isNoInternet && (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        )}
+                        {isNoInternet && (
+                          <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        )}
+                        <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`}></span>
+                      </span>
+                    </span>
+                  );
+                })()}
+              </div>
               <div>
                 <h1 className="font-black text-[#1A3827] dark:text-white tracking-tight leading-tight">Tallyin</h1>
                 <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 font-bold uppercase tracking-wider">Smart Roommate Sync</p>
@@ -14940,11 +14979,52 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             </button>
 
             <div className="flex items-center gap-3">
-              <img 
-                src={faviconLogo} 
-                alt="Tallyin Logo" 
-                className="w-8 h-8 object-cover rounded-xl hidden sm:block flex-shrink-0 shadow-sm border border-emerald-500/20"
-              />
+              {/* Tallyin Logo with integrated Live Sync Status Dot */}
+              {(() => {
+                const isNoInternet = !navigator.onLine || offlineMode;
+                const isLive = isDbSynced && !isNoInternet;
+
+                const dotColor = isNoInternet 
+                  ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'
+                  : isLive 
+                    ? 'bg-emerald-500 shadow-[0_0_8px_#10B981]' 
+                    : 'bg-amber-400 shadow-[0_0_8px_#f59e0b]';
+
+                const dotTitle = isNoInternet
+                  ? 'Offline: No internet access (Offline Cache active)'
+                  : isLive
+                    ? 'Live: Synchronized with database in real time'
+                    : 'Waiting for internet / Syncing...';
+
+                return (
+                  <div 
+                    className="relative flex-shrink-0 cursor-default select-none"
+                    title={dotTitle}
+                  >
+                    <img 
+                      src={faviconLogo} 
+                      alt="Tallyin Logo" 
+                      className="w-8 h-8 object-cover rounded-xl flex-shrink-0 shadow-sm border border-emerald-500/20"
+                    />
+                    {/* Embedded Status Dot inside / on Tallyin Logo badge (Bottom-Right Corner) */}
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center bg-white dark:bg-[#07090C] rounded-full p-0.5 ring-1 ring-black/5 dark:ring-white/10 shadow-xs">
+                      <span className="relative flex h-2 w-2">
+                        {isLive && (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        )}
+                        {!isLive && !isNoInternet && (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        )}
+                        {isNoInternet && (
+                          <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        )}
+                        <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`}></span>
+                      </span>
+                    </span>
+                  </div>
+                );
+              })()}
+
               <div className="flex flex-col justify-center text-left min-w-0">
                 <div className="flex items-center gap-1.5 flex-nowrap min-w-0">
                   <h2 className="font-black text-xs sm:text-sm text-[#0F172A] dark:text-slate-100 leading-tight tracking-tight truncate max-w-[130px] xs:max-w-[180px] sm:max-w-[260px] md:max-w-[320px]" title={roomName}>
@@ -14963,51 +15043,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                  {isGenesisRoom && (
-                    <div className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/25 dark:border-amber-400/25 text-amber-800 dark:text-amber-300 text-[9px] font-black tracking-wider uppercase shrink-0">
-                      <Sparkles className="w-2.5 h-2.5 text-amber-500" />
-                      <span>Founding Space • Est. June 2026</span>
-                    </div>
-                  )}
-                  {/* Minimalist Live Sync & Network Status Dot (Green: Live, Yellow: Waiting/Syncing, Red: No Internet) */}
-                  {(() => {
-                    const isNoInternet = !navigator.onLine || offlineMode;
-                    const isLive = isDbSynced && !isNoInternet;
-
-                    const dotColor = isNoInternet 
-                      ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'
-                      : isLive 
-                        ? 'bg-emerald-500 shadow-[0_0_8px_#10B981]' 
-                        : 'bg-amber-400 shadow-[0_0_8px_#f59e0b]';
-
-                    const dotTitle = isNoInternet
-                      ? 'Offline: No internet access (Offline Cache active)'
-                      : isLive
-                        ? 'Live: Synchronized with database in real time'
-                        : 'Waiting for internet / Syncing...';
-
-                    return (
-                      <div 
-                        className="inline-flex items-center justify-center p-1 cursor-default shrink-0 select-none" 
-                        title={dotTitle}
-                      >
-                        <span className="relative flex h-2 w-2">
-                          {isLive && (
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          )}
-                          {!isLive && !isNoInternet && (
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                          )}
-                          {isNoInternet && (
-                            <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                          )}
-                          <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`}></span>
-                        </span>
-                      </div>
-                    );
-                  })()}
-                </div>
+                {isGenesisRoom && (
+                  <div className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/25 dark:border-amber-400/25 text-amber-800 dark:text-amber-300 text-[9px] font-black tracking-wider uppercase shrink-0 mt-0.5 w-fit">
+                    <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                    <span>Founding Space • Est. June 2026</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

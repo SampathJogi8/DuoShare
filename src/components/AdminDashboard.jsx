@@ -248,6 +248,15 @@ export default function AdminDashboard({
     }
   }, [initialTab]);
 
+  // Direct router for terms_violations
+  useEffect(() => {
+    if (activeTab === 'terms_violations') {
+      setActiveTab('dispute_resolver');
+      setDisputeFilterTab('violations');
+      setDisputeViewMode('tickets');
+    }
+  }, [activeTab]);
+
   // Time-based expiry utility helpers
   const calculateExpiryTimestamp = (duration, customDate, baseTimestamp = null) => {
     const base = baseTimestamp ? new Date(baseTimestamp).getTime() : Date.now();
@@ -723,6 +732,20 @@ export default function AdminDashboard({
   const openDisputesCount = useMemo(() => {
     return (userDisputesAndQueries || []).filter(d => 
       !d.status || d.status === 'OPEN' || d.status === 'IN_REVIEW' || d.status === 'UNDER_REVIEW' || d.status === 'PENDING'
+    ).length;
+  }, [userDisputesAndQueries]);
+
+  // Calculate live pending/open Terms of Use violation incidents
+  const openViolationsCount = useMemo(() => {
+    return (userDisputesAndQueries || []).filter(d => 
+      (d.type === 'violation' || d.category?.toLowerCase()?.includes('term') || d.category?.toLowerCase()?.includes('violation')) &&
+      (!d.status || d.status === 'OPEN' || d.status === 'IN_REVIEW' || d.status === 'UNDER_REVIEW' || d.status === 'PENDING')
+    ).length;
+  }, [userDisputesAndQueries]);
+
+  const totalViolationsCount = useMemo(() => {
+    return (userDisputesAndQueries || []).filter(d => 
+      d.type === 'violation' || d.category?.toLowerCase()?.includes('term') || d.category?.toLowerCase()?.includes('violation')
     ).length;
   }, [userDisputesAndQueries]);
 
@@ -1583,6 +1606,7 @@ export default function AdminDashboard({
   const fetchDisputesAndQueries = useCallback(async () => {
     setLoadingDisputes(true);
     try {
+      let fetchedList = [];
       const { data } = await supabase
         .from('rooms')
         .select('name')
@@ -1591,7 +1615,7 @@ export default function AdminDashboard({
 
       if (data?.name && data.name.startsWith('[')) {
         const list = JSON.parse(data.name);
-        setUserDisputesAndQueries(Array.isArray(list) ? list : []);
+        if (Array.isArray(list)) fetchedList = list;
       } else {
         const { data: setRow } = await supabase
           .from('system_settings')
@@ -1600,9 +1624,24 @@ export default function AdminDashboard({
           .maybeSingle();
         if (setRow?.value) {
           const parsed = JSON.parse(setRow.value);
-          setUserDisputesAndQueries(Array.isArray(parsed) ? parsed : []);
+          if (Array.isArray(parsed)) fetchedList = parsed;
         }
       }
+
+      // Merge local incident reports if any
+      try {
+        const localIncidents = JSON.parse(localStorage.getItem('tallyin_incident_reports') || '[]');
+        if (Array.isArray(localIncidents) && localIncidents.length > 0) {
+          const existingIds = new Set(fetchedList.map(item => item.id));
+          for (const inc of localIncidents) {
+            if (!existingIds.has(inc.id)) {
+              fetchedList.push(inc);
+            }
+          }
+        }
+      } catch (err) {}
+
+      setUserDisputesAndQueries(fetchedList);
     } catch (e) {
       console.warn("Fetch user disputes error:", e);
     } finally {
@@ -4858,6 +4897,13 @@ export default function AdminDashboard({
               <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 px-3 pb-1">Management</p>
               {userPermissions.user_management && navItem('user_directory', 'User Directory', <Users className="w-4 h-4 text-blue-500" />, allRegisteredUsers.length, 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300')}
               {userPermissions.user_management && navItem('banned_accounts', 'Banned Accounts', <Ban className="w-4 h-4 text-rose-500" />, bannedUsers.length > 0 ? bannedUsers.length : null, 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300')}
+              {navItem(
+                'terms_violations', 
+                'Terms Incidents', 
+                <ShieldAlert className="w-4 h-4 text-rose-500" />, 
+                openViolationsCount > 0 ? `${openViolationsCount} New` : (totalViolationsCount > 0 ? totalViolationsCount : null), 
+                openViolationsCount > 0 ? 'bg-rose-500 text-white font-black animate-pulse shadow-xs' : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+              )}
               {userPermissions.room_explorer && navItem('room_explorer', 'Room Explorer', <Building2 className="w-4 h-4 text-sky-500" />, allSystemRooms.length, 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300')}
               {userPermissions.room_commander && navItem('room_commander', 'Room Commander', <SlidersHorizontal className="w-4 h-4 text-emerald-500" />)}
             </div>
@@ -5223,6 +5269,42 @@ export default function AdminDashboard({
                 </div>
               </div>
             </div>
+
+            {/* Urgent Terms of Use Incidents Alert Card */}
+            {openViolationsCount > 0 && (
+              <div className="col-span-1 md:col-span-2 rounded-3xl p-6 bg-gradient-to-r from-rose-950 via-red-950 to-amber-950 border border-rose-500/60 shadow-xl text-white ring-2 ring-rose-500/30 animate-pulse">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-rose-500/30 text-rose-300 border border-rose-400/50 flex items-center justify-center shrink-0">
+                      <ShieldAlert className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-black tracking-tight">🚨 Terms of Use Violations Reported</h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500 text-white">
+                          {openViolationsCount} Urgent Action
+                        </span>
+                      </div>
+                      <p className="text-xs text-rose-200/90 mt-1">
+                        Inappropriate content, terms violations, or security incidents have been logged and require administrative action.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('dispute_resolver');
+                      setDisputeFilterTab('violations');
+                      setDisputeViewMode('tickets');
+                    }}
+                    className="px-5 py-2.5 rounded-2xl text-xs font-black bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/40 cursor-pointer shrink-0 transition-all active:scale-95 flex items-center gap-2"
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                    <span>Review Incidents ({openViolationsCount}) →</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Live Disputes & Inquiries Realtime Card */}
             <div className={`col-span-1 md:col-span-2 rounded-3xl p-6 border shadow-xl transition-all ${
@@ -11542,7 +11624,8 @@ NOTIFY pgrst, 'reload schema';`;
                       })
                       .map(ticket => {
                         const isDispute = ticket.type === 'dispute' || ticket.category?.toLowerCase().includes('dispute');
-                        const ticketUserCode = ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (ticket.user_code || getUserCode(ticket.user_email || ticket.user_id));
+                        const isViolation = ticket.type === 'violation' || ticket.category?.toLowerCase().includes('term') || ticket.category?.toLowerCase().includes('violation');
+                        const ticketUserCode = ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (ticket.user_code || ticket.userCode || getUserCode(ticket.user_email || ticket.user_id));
                         const statusColors = {
                           OPEN: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800',
                           UNDER_REVIEW: 'bg-indigo-100 text-indigo-900 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800',
@@ -11553,13 +11636,22 @@ NOTIFY pgrst, 'reload schema';`;
                         return (
                           <div
                             key={ticket.id}
-                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 space-y-3 shadow-xs hover:border-amber-400 transition-all text-left"
+                            className={`p-4 rounded-2xl bg-white dark:bg-slate-900 border space-y-3 shadow-xs hover:border-amber-400 transition-all text-left ${
+                              isViolation 
+                                ? 'border-rose-200 dark:border-rose-900/50 hover:border-rose-400 bg-gradient-to-br from-rose-50/15 via-transparent to-transparent' 
+                                : 'border-[#E3E8E3] dark:border-slate-800'
+                            }`}
                           >
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#F6F8F6] dark:border-slate-800 pb-2.5">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColors[ticket.status] || statusColors.OPEN}`}>
                                   {ticket.status || 'OPEN'}
                                 </span>
+                                {isViolation && (
+                                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-xs animate-pulse">
+                                    🚨 {ticket.severity || 'HIGH'} Incident
+                                  </span>
+                                )}
                                 <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                   {ticket.category || 'General Help'}
                                 </span>
@@ -11574,22 +11666,56 @@ NOTIFY pgrst, 'reload schema';`;
 
                             <div className="space-y-1">
                               <h4 className="font-extrabold text-sm text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
-                                {isDispute ? <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" /> : <MessageSquare className="w-4 h-4 text-blue-500 shrink-0" />}
+                                {isViolation ? (
+                                  <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
+                                ) : isDispute ? (
+                                  <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+                                ) : (
+                                  <MessageSquare className="w-4 h-4 text-blue-500 shrink-0" />
+                                )}
                                 <span>{ticket.title}</span>
                               </h4>
                               <p className="text-xs text-[#5C6E5C] dark:text-slate-300 whitespace-pre-wrap leading-relaxed bg-[#F6F8F6] dark:bg-slate-950 p-3 rounded-xl border border-[#E3E8E3]/60 dark:border-slate-800/80">
-                                {ticket.description}
+                                {ticket.description || ticket.message || 'No description provided.'}
                               </p>
                             </div>
+
+                            {/* Terms Violation Specific Info Banner */}
+                            {isViolation && (ticket.ruleViolated || ticket.reporter || ticket.actionTaken) && (
+                              <div className="p-3 rounded-xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs text-rose-900 dark:text-rose-200 space-y-1">
+                                {ticket.ruleViolated && (
+                                  <div>
+                                    <span className="font-extrabold uppercase text-[9px] tracking-wider text-rose-600 dark:text-rose-400">Rule Violated: </span>
+                                    <span className="font-semibold">{ticket.ruleViolated}</span>
+                                  </div>
+                                )}
+                                {ticket.actionTaken && (
+                                  <div>
+                                    <span className="font-extrabold uppercase text-[9px] tracking-wider text-slate-500 dark:text-slate-400">System Action: </span>
+                                    <span className="font-medium text-slate-700 dark:text-slate-300">{ticket.actionTaken}</span>
+                                  </div>
+                                )}
+                                {ticket.reporter && (
+                                  <div>
+                                    <span className="font-extrabold uppercase text-[9px] tracking-wider text-slate-500 dark:text-slate-400">Reported By Roommate: </span>
+                                    <span className="font-medium text-slate-700 dark:text-slate-300">
+                                      {ticket.reporter.name} ({ticket.reporter.code || ticket.reporter.email || 'N/A'})
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {/* Requester & Context Metadata */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] pt-1 text-slate-600 dark:text-slate-400">
                               <div>
-                                <span className="text-[9px] uppercase font-bold text-slate-400 block">Submitted By</span>
-                                <span className="font-bold text-[#1A3827] dark:text-slate-200">{ticket.user_name || 'User'}</span>
-                                {ticket.user_email && (
-                                  <a href={`mailto:${ticket.user_email}`} className="text-blue-600 dark:text-blue-400 hover:underline block truncate">
-                                    {ticket.user_email}
+                                <span className="text-[9px] uppercase font-bold text-slate-400 block">
+                                  {isViolation ? 'Offending User' : 'Submitted By'}
+                                </span>
+                                <span className="font-bold text-[#1A3827] dark:text-slate-200">{ticket.user_name || ticket.userName || 'User'}</span>
+                                {(ticket.user_email || ticket.userEmail) && (
+                                  <a href={`mailto:${ticket.user_email || ticket.userEmail}`} className="text-blue-600 dark:text-blue-400 hover:underline block truncate">
+                                    {ticket.user_email || ticket.userEmail}
                                   </a>
                                 )}
                                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -11610,15 +11736,15 @@ NOTIFY pgrst, 'reload schema';`;
                                   </button>
                                 </div>
                               </div>
-                              {ticket.room_id && (
+                              {(ticket.room_id || ticket.roomId) && (
                                 <div>
                                   <span className="text-[9px] uppercase font-bold text-slate-400 block">Room Context</span>
-                                  <span className="font-bold text-[#1A3827] dark:text-slate-200">{ticket.room_name || ticket.room_id}</span>
+                                  <span className="font-bold text-[#1A3827] dark:text-slate-200">{ticket.room_name || ticket.roomName || ticket.room_id || ticket.roomId}</span>
                                 </div>
                               )}
                               {ticket.transaction_title && (
                                 <div>
-                                  <span className="text-[9px] uppercase font-bold text-slate-400 block">Disputed Expense</span>
+                                  <span className="text-[9px] uppercase font-bold text-slate-400 block">Related Expense</span>
                                   <span className="font-bold text-emerald-700 dark:text-[#A3E635]">
                                     {ticket.transaction_title} {ticket.transaction_amount ? `(₹${ticket.transaction_amount})` : ''}
                                   </span>
@@ -11641,6 +11767,22 @@ NOTIFY pgrst, 'reload schema';`;
 
                             {/* Action Buttons */}
                             <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F6F8F6] dark:border-slate-800 flex-wrap">
+                              {isViolation && userPermissions.user_management && (
+                                <button
+                                  onClick={() => {
+                                    const violatorTarget = ticket.user_email || ticket.userEmail || ticket.user_id || ticketUserCode;
+                                    const banReason = `Terms of Use Violation: ${ticket.category || ticket.title} (${ticket.ruleViolated || 'Prohibited Activity'})`;
+                                    if (window.confirm(`Are you sure you want to BAN and SUSPEND account "${ticket.user_name || ticket.userName || violatorTarget}" (${violatorTarget})?`)) {
+                                      handleBanUser(violatorTarget, banReason, { name: ticket.user_name || ticket.userName, id: ticket.user_id });
+                                    }
+                                  }}
+                                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                  title="Ban offending user account"
+                                >
+                                  <Ban className="w-3.5 h-3.5" />
+                                  <span>Ban Violator</span>
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
                                   setSelectedDisputeTicket(ticket);
@@ -11653,7 +11795,7 @@ NOTIFY pgrst, 'reload schema';`;
                               </button>
                               {ticket.status !== 'RESOLVED' && (
                                 <button
-                                  onClick={() => handleUpdateDisputeStatus(ticket.id, 'RESOLVED', 'Dispute reviewed and resolved by System Administration.')}
+                                  onClick={() => handleUpdateDisputeStatus(ticket.id, 'RESOLVED', 'Incident reviewed and resolved by System Administration.')}
                                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                                 >
                                   <CheckCircle2 className="w-3.5 h-3.5" />
