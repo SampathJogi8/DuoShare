@@ -15115,23 +15115,51 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {/* Dropdown Menu */}
             {isProfileDropdownOpen && (
               <div className="absolute right-0 top-12 mt-2 w-52 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-30 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
-                <div className="px-4 py-2 border-b border-[#F6F8F6] dark:border-slate-800 text-left">
-                  <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Access Code</p>
-                  <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1 rounded-lg">
-                    <span className="font-mono text-[11px] text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all">
-                      {auth.currentUser?.loginCode || 'Generating...'}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(auth.currentUser?.loginCode || '');
-                        triggerToast('Access code copied!');
-                      }}
-                      className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0"
-                      title="Copy Code"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
+                <div className="px-4 py-2 border-b border-[#F6F8F6] dark:border-slate-800 text-left space-y-2">
+                  {(() => {
+                    const myUserCode = (auth.currentUser?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' || user?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com')
+                      ? 'USR-0000-8888'
+                      : (user?.user_code || user?.userCode || getUserCode(auth.currentUser?.email || user?.email || user?.id || userNickname));
+                    return (
+                      <div>
+                        <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Unique User ID</p>
+                        <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1 rounded-lg">
+                          <span className="font-mono text-[11px] font-black text-emerald-800 dark:text-[#A3E635] tracking-wide select-all truncate">
+                            {myUserCode}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(myUserCode);
+                              triggerToast(`Copied User ID: ${myUserCode}`);
+                            }}
+                            className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0"
+                            title="Copy User ID"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  <div>
+                    <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Access Code</p>
+                    <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1 rounded-lg">
+                      <span className="font-mono text-[11px] text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all">
+                        {auth.currentUser?.loginCode || 'Generating...'}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(auth.currentUser?.loginCode || '');
+                          triggerToast('Access code copied!');
+                        }}
+                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0"
+                        title="Copy Code"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <button 
@@ -23034,6 +23062,37 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 )}
               </div>
             </div>
+
+            {/* Permanent Unique User ID */}
+            {(() => {
+              const myUserCode = (auth.currentUser?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' || user?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com')
+                ? 'USR-0000-8888'
+                : (user?.user_code || user?.userCode || getUserCode(auth.currentUser?.email || user?.email || user?.id || userNickname));
+              return (
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-3 border-t border-[#F6F8F6] dark:border-slate-800 mt-2">
+                  <div className="flex-1 w-full text-left">
+                    <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Permanent Unique User ID</p>
+                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Your official platform tracking code used for support inquiries, dispute settlements, and account identification.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs sm:text-sm font-extrabold bg-[#EAF0EC] dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800 text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all">
+                      {myUserCode}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(myUserCode);
+                        triggerToast(`Copied User ID: ${myUserCode}`);
+                      }}
+                      className="p-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 cursor-pointer"
+                      title="Copy User ID"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Unique Access Code */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-3 border-t border-[#F6F8F6] dark:border-slate-800 mt-2">
