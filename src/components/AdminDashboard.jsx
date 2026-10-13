@@ -76,7 +76,8 @@ import {
   Palette,
   Printer,
   Calendar,
-  BadgeCheck
+  BadgeCheck,
+  Moon
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
@@ -2092,6 +2093,421 @@ export default function AdminDashboard({
       }
     }
   }, []);
+
+  // Inactive Accounts & Re-engagement States
+  const [inactiveUsers, setInactiveUsers] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_inactive_users');
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+  const [userDirectoryFilter, setUserDirectoryFilter] = useState('all'); // 'all' | 'active' | 'inactive' | 'banned'
+  const [isScanningInactive, setIsScanningInactive] = useState(false);
+  const [isSendingComeBackEmails, setIsSendingComeBackEmails] = useState(false);
+  const [inactiveAuditMessage, setInactiveAuditMessage] = useState(null);
+
+  // Persistence for Inactive User Accounts Registry
+  const saveInactiveUsers = async (updatedList) => {
+    setInactiveUsers(updatedList);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tallyin_inactive_users', JSON.stringify(updatedList));
+    }
+
+    // 1. Persist to rooms table (__SYSTEM_INACTIVE_USERS__)
+    try {
+      await supabase
+        .from('rooms')
+        .upsert({
+          id: '__SYSTEM_INACTIVE_USERS__',
+          name: JSON.stringify(updatedList),
+          pin: '9999',
+          created_by: 'system_security_daemon',
+          monthly_budget: 0,
+          max_members: 100
+        }, { onConflict: 'id' });
+    } catch (err) {
+      console.warn("Supabase rooms table inactive users upsert notice:", err);
+    }
+
+    // 2. Persist to system_settings
+    try {
+      await supabase
+        .from('system_settings')
+        .upsert({ key: 'inactive_users', value: updatedList }, { onConflict: 'key' });
+    } catch (err) {
+      console.warn("Supabase system_settings upsert notice:", err);
+    }
+  };
+
+  const fetchInactiveUsers = useCallback(async () => {
+    let foundList = null;
+
+    try {
+      const { data } = await supabase
+        .from('rooms')
+        .select('name')
+        .eq('id', '__SYSTEM_INACTIVE_USERS__')
+        .maybeSingle();
+
+      if (data?.name && data.name.startsWith('[')) {
+        foundList = JSON.parse(data.name);
+      }
+    } catch (err) {
+      console.warn("Fetch rooms table inactive list notice:", err);
+    }
+
+    if (!foundList) {
+      try {
+        const { data } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'inactive_users')
+          .maybeSingle();
+
+        if (data?.value && Array.isArray(data.value)) {
+          foundList = data.value;
+        }
+      } catch (err) {
+        console.warn("Fetch system_settings inactive notice:", err);
+      }
+    }
+
+    if (!foundList && typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_inactive_users');
+        if (saved) foundList = JSON.parse(saved);
+      } catch (err) { console.error(err); }
+    }
+
+    if (foundList && Array.isArray(foundList)) {
+      setInactiveUsers(foundList);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tallyin_inactive_users', JSON.stringify(foundList));
+      }
+    }
+  }, []);
+
+  // Generate personalized "We Miss You / Come Back to Tallyin" email
+  const getPersonalizedComeBackEmail = (name, userCode, email, daysInactive = 90) => {
+    const safeDays = Math.max(Number(daysInactive) || 90, 90);
+    const subject = `We Miss You at Tallyin, ${name}! 💚 Your Account & Trips Are Waiting`;
+    const plainBody = `Hey ${name},
+
+We noticed you haven't used Tallyin for over ${safeDays} days! To keep your balances and roommate data secure, your account has been placed in an Inactive status.
+
+Don't worry — all your shared rooms, group expenses, and settlements are 100% safe and intact.
+
+Log back in anytime at https://tallyin.vercel.app to reactivate your account instantly!
+
+Your Details:
+- User: ${name}
+- Email: ${email}
+- User Code: ${userCode}
+
+What's New in Tallyin:
+- All-in-One Trip Splitter & Vacation Manager
+- Smart Debt Minimizer ("Who Owes Whom")
+- Real-Time OCR Bill Scanner & Quick Settlement
+- Enhanced Security & Audit Dossier
+
+We can't wait to see you back on Tallyin!
+Tallyin Team`;
+
+    const htmlBody = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>We Miss You at Tallyin! 💚</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #F4F7F4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1E293B;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #F4F7F4; padding: 36px 14px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width: 620px; background-color: #FFFFFF; border-radius: 28px; border: 1px solid #E2EAE3; box-shadow: 0 14px 40px -10px rgba(26, 56, 39, 0.12); overflow: hidden;" cellspacing="0" cellpadding="0">
+          
+          <!-- Brand Header -->
+          <tr>
+            <td style="padding: 26px 32px; background: linear-gradient(135deg, #1A3827 0%, #0F2418 100%); text-align: left;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td width="48" valign="middle">
+                    <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="44" height="44" style="display: block; border-radius: 12px; border: 2px solid rgba(163, 230, 53, 0.45);" />
+                  </td>
+                  <td style="padding-left: 14px;" valign="middle">
+                    <span style="font-size: 22px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px;">Tallyin</span>
+                    <span style="display: block; font-size: 10px; font-weight: 800; color: #A3E635; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">Smart Expense &amp; Room Sync</span>
+                  </td>
+                  <td align="right" valign="middle">
+                    <span style="background-color: rgba(254, 243, 199, 0.15); border: 1px solid rgba(251, 191, 36, 0.4); color: #FDE047; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 5px 12px; border-radius: 20px; letter-spacing: 0.5px;">
+                      Account Inactivity Notice
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Hero Greeting -->
+          <tr>
+            <td style="padding: 34px 32px 18px 32px; text-align: left;">
+              <div style="display: inline-block; padding: 4px 12px; background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 20px; font-size: 11px; font-weight: 800; color: #92400E; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px;">
+                ⏳ We Miss Having You With Us
+              </div>
+              <h1 style="margin: 0 0 14px 0; font-size: 25px; font-weight: 900; color: #1A3827; letter-spacing: -0.5px; line-height: 1.25;">
+                Hey ${name}, it's been over ${safeDays} days! Come back to Tallyin 👋
+              </h1>
+              <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.65; color: #475569;">
+                We noticed that your account has not been active on Tallyin for more than <strong>${safeDays} days</strong>. To safeguard your account privacy and ensure data integrity, your profile status has been marked as <strong>Inactive</strong>.
+              </p>
+
+              <!-- User Dossier Snippet -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background: #F8FAF9; border: 1px solid #E2EAE3; border-radius: 16px; padding: 14px 18px; margin: 18px 0;">
+                <tr>
+                  <td style="font-size: 12px; color: #64748B;">Account Name: <strong style="color: #1A3827;">${name}</strong></td>
+                  <td align="right" style="font-size: 12px; color: #64748B;">User Code: <strong style="font-family: monospace; color: #047857;">${userCode}</strong></td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="padding-top: 8px; font-size: 12px; color: #64748B;">
+                    Registered Email: <span style="font-family: monospace;">${email}</span> &bull; Status: <span style="color: #D97706; font-weight: bold;">Inactive (${safeDays}+ Days)</span>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="background-color: #ECFDF5; border-left: 4px solid #10B981; border-radius: 8px; padding: 14px 16px; margin-bottom: 22px;">
+                <p style="margin: 0; font-size: 13px; font-weight: 700; color: #065F46; line-height: 1.5;">
+                  🔒 Don't worry — all your data, group rooms, shared balances, and trip expense histories are 100% safe and intact!
+                </p>
+                <p style="margin: 6px 0 0 0; font-size: 12px; color: #047857; line-height: 1.5;">
+                  Reactivating your account takes just one click. Simply log back into the app, and your account will automatically return to <strong>Active</strong> status immediately.
+                </p>
+              </div>
+
+              <!-- Main CTA Button -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 24px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="https://tallyin.vercel.app" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #1A3827 0%, #122B1E 100%); color: #A3E635; font-size: 15px; font-weight: 900; text-decoration: none; padding: 16px 36px; border-radius: 16px; box-shadow: 0 8px 24px -4px rgba(26, 56, 39, 0.35); letter-spacing: 0.3px; border: 1px solid rgba(163, 230, 53, 0.3);">
+                      🚀 Log In &amp; Reactivate My Account &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- What You Missed -->
+              <h2 style="margin: 28px 0 12px 0; font-size: 16px; font-weight: 900; color: #1A3827; letter-spacing: -0.3px;">
+                ✨ Here is what you've missed on Tallyin:
+              </h2>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
+                <tr>
+                  <td width="32" valign="top" style="font-size: 18px;">🌴</td>
+                  <td style="padding-left: 10px;">
+                    <strong style="font-size: 13px; color: #1A3827;">All-in-One Trip Splitter &amp; Vacation Manager</strong>
+                    <div style="font-size: 12px; color: #64748B; margin-top: 2px;">Easily split weekend trips, group meals, road trips, and hotel stays with selective attendee picking.</div>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
+                <tr>
+                  <td width="32" valign="top" style="font-size: 18px;">⚡</td>
+                  <td style="padding-left: 10px;">
+                    <strong style="font-size: 13px; color: #1A3827;">Smart 'Who Owes Whom' Debt Minimizer</strong>
+                    <div style="font-size: 12px; color: #64748B; margin-top: 2px;">Zero complex math. Tallyin condenses multi-person balances into the fewest direct payments.</div>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
+                <tr>
+                  <td width="32" valign="top" style="font-size: 18px;">🧾</td>
+                  <td style="padding-left: 10px;">
+                    <strong style="font-size: 13px; color: #1A3827;">Instant Bill Scanner &amp; Quick Settle</strong>
+                    <div style="font-size: 12px; color: #64748B; margin-top: 2px;">Upload paper receipts to auto-extract items and settle up instantly with 1-click UPI logs.</div>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10px;">
+                <tr>
+                  <td width="32" valign="top" style="font-size: 18px;">🛡️</td>
+                  <td style="padding-left: 10px;">
+                    <strong style="font-size: 13px; color: #1A3827;">Comprehensive Security Shield &amp; Audit Dossier</strong>
+                    <div style="font-size: 12px; color: #64748B; margin-top: 2px;">Full protection against unauthorized charges, duplicate bills, and automatic data backups.</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 32px; background-color: #F8FAF9; border-top: 1px solid #E2EAE3; text-align: center;">
+              <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: 700; color: #1A3827;">
+                We can't wait to welcome you back!
+              </p>
+              <p style="margin: 0 0 12px 0; font-size: 11px; color: #64748B;">
+                Need assistance? Reply directly to this email or reach us anytime at <a href="mailto:sampathjogipusala123@gmail.com" style="color: #059669; font-weight: bold;">sampathjogipusala123@gmail.com</a>.
+              </p>
+              <div style="font-size: 10px; color: #94A3B8;">
+                Tallyin Platform &bull; Security &amp; Account Governance &bull; https://tallyin.vercel.app
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    return { subject, plainBody, htmlBody };
+  };
+
+  // Dispatch personalized come-back email to a single user
+  const handleSendComeBackEmail = async (targetUser) => {
+    if (!targetUser || !targetUser.email || !targetUser.email.includes('@') || targetUser.email.toLowerCase() === 'n/a') {
+      if (triggerToast) triggerToast('Cannot send email: user does not have a valid email address.');
+      return false;
+    }
+
+    const { subject, plainBody, htmlBody } = getPersonalizedComeBackEmail(
+      targetUser.name || 'User',
+      targetUser.userCode || getUserCode(targetUser.email),
+      targetUser.email,
+      targetUser.daysSinceLastActive || 90
+    );
+
+    const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+    try {
+      await fetch(mailRelayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: targetUser.email,
+          subject,
+          body: plainBody,
+          htmlBody
+        })
+      });
+
+      if (triggerToast) triggerToast(`Personalized come-back email sent to ${targetUser.email}!`);
+      return true;
+    } catch (err) {
+      console.warn("Failed to dispatch come-back email:", err);
+      if (triggerToast) triggerToast(`Failed to dispatch email to ${targetUser.email}`);
+      return false;
+    }
+  };
+
+  // Test mail directly to user's admin email (sampathjogipusala123@gmail.com)
+  const handleSendTestComeBackEmailToMe = async () => {
+    const testUser = {
+      name: 'Sampath Jogi Pusala',
+      email: 'sampathjogipusala123@gmail.com',
+      userCode: 'USR-0000-8888',
+      daysSinceLastActive: 94
+    };
+    if (triggerToast) triggerToast('Sending test personalized come-back email to sampathjogipusala123@gmail.com...');
+    await handleSendComeBackEmail(testUser);
+  };
+
+  // Batch dispatch to all inactive accounts
+  const handleBatchSendComeBackEmails = async () => {
+    const eligible = allRegisteredUsers.filter(u => u.isInactive && u.email && u.email.includes('@') && u.email !== 'N/A');
+    if (eligible.length === 0) {
+      if (triggerToast) triggerToast('No inactive accounts with valid email addresses found.');
+      return;
+    }
+
+    setIsSendingComeBackEmails(true);
+    let sentCount = 0;
+    for (const u of eligible) {
+      const ok = await handleSendComeBackEmail(u);
+      if (ok) sentCount++;
+      await new Promise(r => setTimeout(r, 350));
+    }
+    setIsSendingComeBackEmails(false);
+    if (triggerToast) triggerToast(`Dispatched personalized come-back emails to ${sentCount} inactive users!`);
+  };
+
+  // Scan and mark all accounts inactive if >= 90 days
+  const handleScanAndMarkInactiveUsers = async () => {
+    setIsScanningInactive(true);
+    const toMark = [];
+
+    allRegisteredUsers.forEach(u => {
+      if ((u.daysSinceLastActive !== undefined && u.daysSinceLastActive >= 90) || u.isInactive) {
+        toMark.push({
+          identifier: (u.email && u.email !== 'N/A') ? u.email.toLowerCase() : String(u.id || u.userCode),
+          email: u.email,
+          name: u.name,
+          userCode: u.userCode,
+          daysInactive: u.daysSinceLastActive || 90,
+          markedAt: new Date().toISOString()
+        });
+      }
+    });
+
+    const updated = [...inactiveUsers];
+    let newlyMarked = 0;
+    toMark.forEach(item => {
+      const exists = updated.some(x => {
+        const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || '')).toLowerCase();
+        return xId === item.identifier.toLowerCase();
+      });
+      if (!exists) {
+        updated.push(item);
+        newlyMarked++;
+      }
+    });
+
+    await saveInactiveUsers(updated);
+    setIsScanningInactive(false);
+    setInactiveAuditMessage(`Audit complete: ${toMark.length} accounts flagged as 90+ days inactive (${newlyMarked} newly marked).`);
+    if (triggerToast) triggerToast(`Audit complete: ${toMark.length} accounts marked as Inactive (90+ days).`);
+    fetchUserDirectory();
+  };
+
+  // Manually toggle active/inactive status for a single user
+  const handleToggleUserInactive = async (userObj) => {
+    if (!userObj) return;
+    const identifier = (userObj.email && userObj.email !== 'N/A') ? userObj.email.toLowerCase() : String(userObj.id || userObj.userCode || '').toLowerCase();
+    const isCurrentlyInactive = inactiveUsers.some(x => {
+      const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || '')).toLowerCase();
+      return xId === identifier;
+    });
+
+    let updated;
+    if (isCurrentlyInactive) {
+      updated = inactiveUsers.filter(x => {
+        const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || '')).toLowerCase();
+        return xId !== identifier;
+      });
+      if (triggerToast) triggerToast(`Reactivated account for ${userObj.name} (${userObj.userCode})!`);
+    } else {
+      updated = [
+        ...inactiveUsers,
+        {
+          identifier,
+          email: userObj.email,
+          name: userObj.name,
+          userCode: userObj.userCode,
+          daysInactive: userObj.daysSinceLastActive || 90,
+          markedAt: new Date().toISOString()
+        }
+      ];
+      if (triggerToast) triggerToast(`Marked account for ${userObj.name} (${userObj.userCode}) as Inactive.`);
+    }
+
+    await saveInactiveUsers(updated);
+    fetchUserDirectory();
+  };
 
   // User Directory & Search states
   const [allRegisteredUsers, setAllRegisteredUsers] = useState([]);
@@ -9604,34 +10020,143 @@ NOTIFY pgrst, 'reload schema';`;
           renderAccessRestrictedCard('User Accounts Directory', 'User Governance Clearance Required')
         ) : (
           <div className="hud-card rounded-3xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-4 gap-3">
             <div className="space-y-0.5">
               <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100 flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-500" />
                 Registered User Accounts Directory ({allRegisteredUsers.length})
               </h3>
               <p className="text-xs text-[#5C6E5C] dark:text-slate-400">
-                View registered roommates, email addresses, and room assignments.
+                View registered roommates, email addresses, activity tracking, and dormancy governance.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleScanAndMarkInactiveUsers}
+                disabled={isScanningInactive}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                title="Audit and automatically flag users with 90+ days of dormancy as Inactive"
+              >
+                <Clock className={`w-3.5 h-3.5 ${isScanningInactive ? 'animate-spin' : ''}`} />
+                <span>{isScanningInactive ? 'Auditing...' : 'Auto-Mark Inactive (90+ Days)'}</span>
+              </button>
+              <button
+                onClick={handleSendTestComeBackEmailToMe}
+                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Send a sample personalized come-back email to sampathjogipusala123@gmail.com"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Test Email to Me</span>
+              </button>
+              <button
+                onClick={handleBatchSendComeBackEmails}
+                disabled={isSendingComeBackEmails}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                title="Dispatch personalized come-back emails to all inactive accounts"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>{isSendingComeBackEmails ? 'Dispatching...' : 'Email All Inactive'}</span>
+              </button>
               <button
                 onClick={handleExportAllUsersCSV}
                 className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
                 title="Export all registered users as CSV"
               >
                 <Download className="w-3.5 h-3.5 text-blue-500" />
-                <span>Export Directory CSV</span>
+                <span>Export CSV</span>
               </button>
               <button
                 onClick={fetchUserDirectory}
                 className="px-3 py-1.5 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Refresh Users</span>
+                <span>Refresh</span>
               </button>
             </div>
           </div>
+
+          {/* Inactivity Audit Feedback Banner */}
+          {inactiveAuditMessage && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-2xl flex items-center justify-between text-xs text-amber-800 dark:text-amber-300 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>{inactiveAuditMessage}</span>
+              </div>
+              <button onClick={() => setInactiveAuditMessage(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Directory Filter Pills */}
+          {(() => {
+            const totalCount = allRegisteredUsers.length;
+            const inactiveCount = allRegisteredUsers.filter(u => u.isInactive).length;
+            const bannedCount = allRegisteredUsers.filter(u => {
+              const uEmail = (u.email || '').toLowerCase();
+              const uName = (u.name || '').toLowerCase();
+              const uId = (u.id || '').toLowerCase();
+              return bannedUsers.some(b => {
+                const bId = (b.identifier || b.email || b.id || '').toLowerCase();
+                const bName = (b.name || '').toLowerCase();
+                return (uEmail && uEmail !== 'n/a' && bId === uEmail) || (uName && bName === uName) || (uId && bId === uId);
+              });
+            }).length;
+            const activeCount = totalCount - inactiveCount - bannedCount;
+
+            return (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  onClick={() => setUserDirectoryFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                    userDirectoryFilter === 'all'
+                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>All Users ({totalCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDirectoryFilter('active')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                    userDirectoryFilter === 'active'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Active ({Math.max(0, activeCount)})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDirectoryFilter('inactive')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                    userDirectoryFilter === 'inactive'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Inactive (90+ Days) ({inactiveCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDirectoryFilter('banned')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                    userDirectoryFilter === 'banned'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 hover:bg-rose-100'
+                  }`}
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  <span>Suspended ({bannedCount})</span>
+                </button>
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
             {allRegisteredUsers.length === 0 ? (
@@ -9639,6 +10164,19 @@ NOTIFY pgrst, 'reload schema';`;
             ) : (
               allRegisteredUsers
                 .filter(u => {
+                  const isBanned = bannedUsers.some(b => {
+                    const bId = (b.identifier || b.email || b.id || '').toLowerCase();
+                    const bName = (b.name || '').toLowerCase();
+                    const uEmail = (u.email || '').toLowerCase();
+                    const uName = (u.name || '').toLowerCase();
+                    const uId = (u.id || '').toLowerCase();
+                    return (uEmail && uEmail !== 'n/a' && bId === uEmail) || (uName && bName === uName) || (uId && bId === uId);
+                  });
+
+                  if (userDirectoryFilter === 'active' && (u.isInactive || isBanned)) return false;
+                  if (userDirectoryFilter === 'inactive' && !u.isInactive) return false;
+                  if (userDirectoryFilter === 'banned' && !isBanned) return false;
+
                   if (!searchQuery.trim()) return true;
                   const q = searchQuery.toLowerCase();
                   return (
@@ -9664,7 +10202,11 @@ NOTIFY pgrst, 'reload schema';`;
                   return (
                     <div 
                       key={u.id || u.email} 
-                      className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500/50 flex items-center justify-between gap-3 text-xs transition-all shadow-xs group"
+                      className={`p-4 rounded-2xl bg-white dark:bg-slate-900 border ${
+                        u.isInactive 
+                          ? 'border-amber-300 dark:border-amber-800/60 bg-amber-50/10' 
+                          : 'border-[#E3E8E3] dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500/50'
+                      } flex items-center justify-between gap-3 text-xs transition-all shadow-xs group`}
                     >
                       <div 
                         onClick={() => handleInspectUserReport(u)}
@@ -9674,7 +10216,9 @@ NOTIFY pgrst, 'reload schema';`;
                         {u.photoURL ? (
                           <img src={u.photoURL} alt={u.name} className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700 group-hover:ring-2 group-hover:ring-blue-500/50 transition-all" />
                         ) : (
-                          <div className="w-10 h-10 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 flex items-center justify-center font-black text-xs shrink-0 group-hover:scale-105 transition-transform">
+                          <div className={`w-10 h-10 rounded-full ${
+                            u.isInactive ? 'bg-amber-600 text-white' : 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950'
+                          } flex items-center justify-center font-black text-xs shrink-0 group-hover:scale-105 transition-transform`}>
                             {u.name ? u.name.charAt(0).toUpperCase() : 'U'}
                           </div>
                         )}
@@ -9684,6 +10228,20 @@ NOTIFY pgrst, 'reload schema';`;
                             <span className="font-mono text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635] border border-emerald-300 dark:border-emerald-800 shrink-0">
                               {userCode}
                             </span>
+                            {isBanned ? (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                                Suspended
+                              </span>
+                            ) : u.isInactive ? (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-0.5">
+                                <Clock className="w-2.5 h-2.5" />
+                                Inactive ({u.daysSinceLastActive !== undefined ? u.daysSinceLastActive : 90}d)
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                Active
+                              </span>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => {
@@ -9700,6 +10258,11 @@ NOTIFY pgrst, 'reload schema';`;
                           <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 truncate">{u.email}</p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[10px] font-mono text-emerald-700 dark:text-[#A3E635]">Room: {u.roomId}</span>
+                            {u.daysSinceLastActive !== undefined && (
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                • {u.daysSinceLastActive}d since active
+                              </span>
+                            )}
                             <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
                               View Report →
                             </span>
@@ -9708,6 +10271,28 @@ NOTIFY pgrst, 'reload schema';`;
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
+                          {u.isInactive && (
+                            <button
+                              onClick={() => handleSendComeBackEmail(u)}
+                              className="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors cursor-pointer"
+                              title="Send Personalized Come-Back Email to this User"
+                            >
+                              <Send className="w-3.5 h-3.5 text-amber-600" />
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => handleToggleUserInactive(u)}
+                            className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                              u.isInactive
+                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100'
+                                : 'bg-[#F6F8F6] dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                            title={u.isInactive ? "Reactivate User Account" : "Mark Account Inactive (90+ Days)"}
+                          >
+                            {u.isInactive ? <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Moon className="w-3.5 h-3.5 text-amber-600" />}
+                          </button>
+
                           <button
                             onClick={() => handleInspectUserReport(u)}
                             className="p-2 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
@@ -9724,7 +10309,7 @@ NOTIFY pgrst, 'reload schema';`;
                               if (triggerToast) triggerToast(`Composing email to ${u.email}`);
                             }}
                             className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
-                            title="Send Mail"
+                            title="Send Custom Mail"
                           >
                             <Mail className="w-3.5 h-3.5" />
                           </button>
@@ -13419,9 +14004,11 @@ NOTIFY pgrst, 'reload schema';`;
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
                       selectedUserDossier.isBanned 
                         ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800' 
-                        : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+                        : selectedUserDossier.isInactive
+                          ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
                     }`}>
-                      {selectedUserDossier.isBanned ? 'Suspended' : 'Active Account'}
+                      {selectedUserDossier.isBanned ? 'Suspended' : selectedUserDossier.isInactive ? `Inactive (${selectedUserDossier.daysSinceLastActive || 90}+ Days)` : 'Active Account'}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
@@ -13431,12 +14018,41 @@ NOTIFY pgrst, 'reload schema';`;
                       <Calendar className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                       Joined {selectedUserDossier.dateJoined}
                     </span>
+                    {selectedUserDossier.daysSinceLastActive !== undefined && (
+                      <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">
+                        • {selectedUserDossier.daysSinceLastActive}d since active
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons: Export & Close */}
+              {/* Action Buttons: Export, Come-Back Email, Inactive Toggle & Close */}
               <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 flex-wrap">
+                {selectedUserDossier.isInactive && (
+                  <button
+                    type="button"
+                    onClick={() => handleSendComeBackEmail(selectedUserDossier)}
+                    title="Send Personalized Come-Back Email to this User"
+                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send Come-Back Email</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleToggleUserInactive(selectedUserDossier)}
+                  title={selectedUserDossier.isInactive ? "Reactivate User Account" : "Mark Account Inactive"}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                    selectedUserDossier.isInactive
+                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
+                  }`}
+                >
+                  {selectedUserDossier.isInactive ? <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Moon className="w-3.5 h-3.5 text-amber-500" />}
+                  <span>{selectedUserDossier.isInactive ? "Reactivate" : "Mark Inactive"}</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleExportUserReportPDF}

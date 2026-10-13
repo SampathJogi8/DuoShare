@@ -65,7 +65,9 @@ import {
   Users,
   Eye,
   Crown,
-  Compass
+  Compass,
+  Key,
+  EyeOff
 } from 'lucide-react';
 
 import { supabase } from './supabase';
@@ -611,6 +613,21 @@ export default function App() {
     return localStorage.getItem('codeLoginEmail') || localStorage.getItem('tallyin_user_email') || '';
   });
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+
+  // User ID & Password Authentication States
+  const [showUserIdLogin, setShowUserIdLogin] = useState(false);
+  const [userIdInput, setUserIdInput] = useState('');
+  const [userPasswordInput, setUserPasswordInput] = useState('');
+  const [userIdEmailInput, setUserIdEmailInput] = useState('');
+  const [isPasswordMailed, setIsPasswordMailed] = useState(false);
+  const [isGeneratingPassword, setIsGeneratingPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [changePasswordOld, setChangePasswordOld] = useState('');
+  const [changePasswordNew, setChangePasswordNew] = useState('');
+  const [changePasswordConfirm, setChangePasswordConfirm] = useState('');
+  const [showPasswordText, setShowPasswordText] = useState(false);
 
   const auth = useMemo(() => ({
     currentUser: user ? {
@@ -5271,6 +5288,477 @@ export default function App() {
       triggerToast(err.message || 'Verification failed.');
     } finally {
       setIsVerifyingCode(false);
+    }
+  };
+
+  // User ID Password Email Template Generator
+  const getPasswordEmailHtml = (name, userCode, password, isReset = false) => {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Tallyin Account Security</title></head>
+<body style="margin:0;padding:0;background:#F4F7F4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1E293B;">
+  <table width="100%" style="background:#F4F7F4;padding:36px 14px;"><tr><td align="center">
+    <table width="100%" style="max-width:600px;background:#fff;border-radius:24px;border:1px solid #E2EAE3;overflow:hidden;box-shadow:0 12px 35px -8px rgba(26,56,39,0.12);">
+      <tr>
+        <td style="padding:24px 32px;background:linear-gradient(135deg,#1A3827 0%,#0F2418 100%);">
+          <table width="100%"><tr>
+            <td width="44"><img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" width="40" height="40" style="border-radius:10px;border:1px solid rgba(163,230,53,0.4);" /></td>
+            <td style="padding-left:12px;"><span style="font-size:20px;font-weight:900;color:#fff;">Tallyin</span><span style="display:block;font-size:10px;font-weight:800;color:#A3E635;text-transform:uppercase;letter-spacing:1px;">Account Security &amp; Access</span></td>
+          </tr></table>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:32px;">
+          <h2 style="margin:0 0 12px 0;font-size:22px;font-weight:900;color:#1A3827;">${isReset ? '🔑 Your Password Has Been Reset' : '🔐 Your Tallyin Account Password'}</h2>
+          <p style="font-size:14px;color:#475569;line-height:1.6;">Hello <strong>${name}</strong>,<br/>Here are your official login credentials for User ID: <code style="color:#047857;font-weight:bold;font-size:14px;">${userCode}</code></p>
+          <div style="background:#F8FAF9;border:2px dashed #047857;border-radius:16px;padding:22px;text-align:center;margin:22px 0;">
+            <span style="font-size:11px;font-weight:bold;color:#64748B;text-transform:uppercase;letter-spacing:1.5px;display:block;">Your Password</span>
+            <span style="font-size:30px;font-weight:900;font-family:monospace;letter-spacing:4px;color:#1A3827;display:block;margin-top:6px;">${password}</span>
+          </div>
+          <p style="font-size:13px;color:#64748B;line-height:1.6;">You can use this password along with your User ID (<strong>${userCode}</strong>) to log in directly to Tallyin. Once logged in, you can change your password anytime via your profile settings.</p>
+          <div style="text-align:center;margin-top:26px;">
+            <a href="https://tallyin.vercel.app" style="background:#1A3827;color:#A3E635;padding:14px 30px;border-radius:14px;text-decoration:none;font-weight:900;font-size:14px;display:inline-block;box-shadow:0 6px 18px rgba(26,56,39,0.3);">Go to Tallyin Login &rarr;</a>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:18px 32px;background:#F8FAF9;border-top:1px solid #E2EAE3;font-size:11px;color:#94A3B8;text-align:center;">
+          Tallyin Platform &bull; Security &amp; Access Governance &bull; https://tallyin.vercel.app
+        </td>
+      </tr>
+    </table>
+  </td></tr></table>
+</body>
+</html>`;
+  };
+
+  // Retrieve user password registry
+  const getUserPasswordsRegistry = async () => {
+    let creds = {};
+    if (typeof window !== 'undefined') {
+      try {
+        const local = localStorage.getItem('tallyin_user_passwords');
+        if (local) creds = JSON.parse(local);
+      } catch (e) {}
+    }
+
+    try {
+      const { data } = await supabase
+        .from('rooms')
+        .select('name')
+        .eq('id', '__SYSTEM_USER_PASSWORDS__')
+        .maybeSingle();
+      if (data?.name && data.name.startsWith('{')) {
+        const parsed = JSON.parse(data.name);
+        creds = { ...creds, ...parsed };
+      }
+    } catch (e) {}
+
+    try {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'user_passwords')
+        .maybeSingle();
+      if (data?.value && typeof data.value === 'object') {
+        creds = { ...creds, ...data.value };
+      }
+    } catch (e) {}
+
+    return creds;
+  };
+
+  // Save password credentials to persistent storage
+  const saveUserPassword = async (userKey, passwordData) => {
+    const registry = await getUserPasswordsRegistry();
+    const cleanKey = userKey.toLowerCase().trim();
+    registry[cleanKey] = {
+      ...passwordData,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tallyin_user_passwords', JSON.stringify(registry));
+    }
+
+    // Save to rooms table (__SYSTEM_USER_PASSWORDS__)
+    try {
+      await supabase.from('rooms').upsert({
+        id: '__SYSTEM_USER_PASSWORDS__',
+        name: JSON.stringify(registry),
+        pin: '9999',
+        created_by: 'system_security_daemon',
+        monthly_budget: 0,
+        max_members: 100
+      }, { onConflict: 'id' });
+    } catch (e) {}
+
+    // Save to system_settings
+    try {
+      await supabase.from('system_settings').upsert({
+        key: 'user_passwords',
+        value: registry
+      }, { onConflict: 'key' });
+    } catch (e) {}
+  };
+
+  // Resolve user profile by User Code, UID, or Email
+  const resolveUserById = async (inputStr) => {
+    const raw = (inputStr || '').trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+
+    // 1. Direct check in users table
+    try {
+      const { data: users } = await supabase.from('users').select('*').limit(500);
+      let matched = (users || []).find(u => {
+        const uEmail = (u.email || '').toLowerCase();
+        const uUid = String(u.uid || u.id || '').toLowerCase();
+        const uCode = (uEmail === 'sampathjogipusala123@gmail.com') ? 'usr-0000-8888' : (u.login_code || getUserCode(uEmail || uUid || u.name)).toLowerCase();
+        return uEmail === lower || uUid === lower || uCode === lower || (u.login_code && u.login_code.toLowerCase() === lower);
+      });
+      if (matched) return matched;
+    } catch (e) {}
+
+    // 2. Check in members table
+    try {
+      const { data: members } = await supabase.from('members').select('*').limit(500);
+      let memberMatch = (members || []).find(m => {
+        const mEmail = (m.email || '').toLowerCase();
+        const mUid = String(m.uid || m.id || '').toLowerCase();
+        const mCode = (mEmail === 'sampathjogipusala123@gmail.com') ? 'usr-0000-8888' : getUserCode(mEmail || mUid || m.nickname).toLowerCase();
+        return mEmail === lower || mUid === lower || mCode === lower;
+      });
+
+      if (memberMatch) {
+        return {
+          id: memberMatch.uid || memberMatch.id,
+          uid: memberMatch.uid || memberMatch.id,
+          name: memberMatch.nickname || memberMatch.name,
+          email: memberMatch.email,
+          room_id: memberMatch.room_id
+        };
+      }
+    } catch (e) {}
+
+    // Special match for Super Admin
+    if (lower === 'usr-0000-8888' || lower === 'sampathjogipusala123@gmail.com') {
+      return {
+        id: 't8tECIWsjbW01Hm2e4B93bXVTuU2',
+        uid: 't8tECIWsjbW01Hm2e4B93bXVTuU2',
+        name: 'Sampath Jogi Pusala',
+        email: 'sampathjogipusala123@gmail.com',
+        userCode: 'USR-0000-8888'
+      };
+    }
+
+    // Direct email format fallback
+    if (lower.includes('@') && lower.includes('.')) {
+      return {
+        id: crypto.randomUUID(),
+        uid: crypto.randomUUID(),
+        name: lower.split('@')[0],
+        email: lower,
+        userCode: getUserCode(lower)
+      };
+    }
+
+    return null;
+  };
+
+  // Generate password for first-time User ID login and email it to the user
+  const handleGeneratePassword = async () => {
+    if (!userIdInput.trim()) {
+      setAuthError('Please enter your User ID or registered Email first.');
+      if (triggerToast) triggerToast('Please enter your User ID or registered Email first.');
+      return;
+    }
+
+    setIsGeneratingPassword(true);
+    setAuthError(null);
+
+    try {
+      const userRecord = await resolveUserById(userIdInput);
+      if (!userRecord) {
+        throw new Error(`User ID "${userIdInput}" not found on Tallyin. Please check your User Code or register.`);
+      }
+
+      const targetEmail = (userRecord.email || userIdEmailInput || '').trim().toLowerCase();
+      if (!targetEmail || !targetEmail.includes('@') || targetEmail.endsWith('@tallyin.app')) {
+        setIsGeneratingPassword(false);
+        setAuthError('Please provide your valid email address to receive your password.');
+        if (triggerToast) triggerToast('Please enter your email address to receive your password.');
+        return;
+      }
+
+      // Generate random secure password (e.g. TL-829147)
+      const randomPassword = 'TL-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const userCode = (targetEmail === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (userRecord.login_code || getUserCode(targetEmail || userRecord.id));
+
+      // Save to credentials store by userCode and email
+      await saveUserPassword(userCode, {
+        password: randomPassword,
+        email: targetEmail,
+        uid: userRecord.uid || userRecord.id,
+        name: userRecord.name || userRecord.displayName || targetEmail.split('@')[0],
+        userCode
+      });
+      await saveUserPassword(targetEmail, {
+        password: randomPassword,
+        email: targetEmail,
+        uid: userRecord.uid || userRecord.id,
+        name: userRecord.name || userRecord.displayName || targetEmail.split('@')[0],
+        userCode
+      });
+
+      // Dispatch password email via Google Apps Script
+      const htmlBody = getPasswordEmailHtml(userRecord.name || 'User', userCode, randomPassword, false);
+      const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+      
+      await fetch(mailRelayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: targetEmail,
+          subject: '🔐 Your Tallyin Account Password & Login Credentials',
+          body: `Hello ${userRecord.name || 'User'}, your password for User ID ${userCode} is: ${randomPassword}. Log in at https://tallyin.vercel.app`,
+          htmlBody
+        })
+      });
+
+      setIsPasswordMailed(true);
+      setUserPasswordInput('');
+      if (triggerToast) triggerToast(`🔐 Password generated & sent to ${targetEmail}! Check your inbox and enter it below.`);
+    } catch (err) {
+      console.error("Error generating password:", err);
+      setAuthError(err.message || 'Failed to generate password. Please verify your User ID.');
+      if (triggerToast) triggerToast(err.message || 'Failed to generate password.');
+    } finally {
+      setIsGeneratingPassword(false);
+    }
+  };
+
+  // Reset password and mail new password to registered email
+  const handleResetPassword = async () => {
+    if (!userIdInput.trim()) {
+      setAuthError('Please enter your User ID or Email to reset your password.');
+      if (triggerToast) triggerToast('Please enter your User ID or Email to reset your password.');
+      return;
+    }
+
+    setIsResettingPassword(true);
+    setAuthError(null);
+
+    try {
+      const userRecord = await resolveUserById(userIdInput);
+      if (!userRecord) {
+        throw new Error(`User ID "${userIdInput}" not found on Tallyin.`);
+      }
+
+      const targetEmail = (userRecord.email || userIdEmailInput || '').trim().toLowerCase();
+      if (!targetEmail || !targetEmail.includes('@') || targetEmail.endsWith('@tallyin.app')) {
+        throw new Error('No valid registered email found for this User ID to send reset instructions.');
+      }
+
+      const newPassword = 'TL-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const userCode = (targetEmail === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (userRecord.login_code || getUserCode(targetEmail || userRecord.id));
+
+      await saveUserPassword(userCode, {
+        password: newPassword,
+        email: targetEmail,
+        uid: userRecord.uid || userRecord.id,
+        name: userRecord.name || targetEmail.split('@')[0],
+        userCode
+      });
+      await saveUserPassword(targetEmail, {
+        password: newPassword,
+        email: targetEmail,
+        uid: userRecord.uid || userRecord.id,
+        name: userRecord.name || targetEmail.split('@')[0],
+        userCode
+      });
+
+      const htmlBody = getPasswordEmailHtml(userRecord.name || 'User', userCode, newPassword, true);
+      const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+      
+      await fetch(mailRelayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: targetEmail,
+          subject: '🔑 Your Tallyin Account Password Has Been Reset',
+          body: `Hello ${userRecord.name || 'User'}, your new password for User ID ${userCode} is: ${newPassword}. Log in at https://tallyin.vercel.app`,
+          htmlBody
+        })
+      });
+
+      setIsPasswordMailed(true);
+      if (triggerToast) triggerToast(`🔑 New reset password sent to ${targetEmail}! Check your inbox and enter it to log in.`);
+    } catch (err) {
+      console.error("Error resetting password:", err);
+      setAuthError(err.message || 'Failed to reset password.');
+      if (triggerToast) triggerToast(err.message || 'Failed to reset password.');
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
+  // Log in using User ID + Password
+  const handleUserIdLogin = async (e) => {
+    e?.preventDefault();
+    if (!userIdInput.trim()) return;
+    if (!userPasswordInput.trim()) {
+      setAuthError('Please enter your password. First time? Click "Generate Password" below.');
+      return;
+    }
+    if (!hasAgreedToTerms) {
+      setAuthError('Please agree to the Terms of Service & Privacy Policy to continue.');
+      if (triggerToast) triggerToast('Please agree to the Terms of Service & Privacy Policy to continue.');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      const userRecord = await resolveUserById(userIdInput);
+      if (!userRecord) {
+        throw new Error(`User ID "${userIdInput}" not recognized. Please verify your User Code or register.`);
+      }
+
+      const userCode = (userRecord.email?.toLowerCase() === 'sampathjogipusala123@gmail.com')
+        ? 'USR-0000-8888'
+        : (userRecord.login_code || getUserCode(userRecord.email || userRecord.id));
+
+      const registry = await getUserPasswordsRegistry();
+      const creds = registry[userCode.toLowerCase()] || registry[(userRecord.email || '').toLowerCase()] || registry[userIdInput.toLowerCase().trim()];
+
+      if (!creds || !creds.password) {
+        throw new Error('No password has been set up for this User ID yet. Please click "Generate Password" to receive your password via email.');
+      }
+
+      if (creds.password.trim() !== userPasswordInput.trim()) {
+        throw new Error('Incorrect password. Please verify or click "Reset Password" to receive a new one.');
+      }
+
+      // Password matches! Construct user session
+      const autoName = userRecord.name || userRecord.nickname || creds.name || (userRecord.email ? userRecord.email.split('@')[0] : 'Roommate');
+      const finalEmail = userRecord.email || creds.email || null;
+      const finalUid = userRecord.uid || userRecord.id || creds.uid || crypto.randomUUID();
+
+      const userProfile = {
+        id: finalUid,
+        uid: finalUid,
+        email: finalEmail,
+        displayName: autoName,
+        nickname: autoName,
+        name: autoName,
+        userCode,
+        isCustomAuth: true
+      };
+
+      setUserNickname(autoName);
+      setNicknameInput(autoName);
+      localStorage.setItem('userNickname', autoName);
+      localStorage.setItem('tallyin_code_user', JSON.stringify(userProfile));
+      localStorage.setItem('tallyin_agreed_terms', 'true');
+
+      // Auto reactivate if inactive
+      try {
+        const savedInactive = localStorage.getItem('tallyin_inactive_users');
+        if (savedInactive) {
+          const parsed = JSON.parse(savedInactive);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter(x => {
+              const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || '')).toLowerCase();
+              return xId !== (finalEmail || '').toLowerCase() && xId !== finalUid.toLowerCase() && xId !== userCode.toLowerCase();
+            });
+            localStorage.setItem('tallyin_inactive_users', JSON.stringify(cleaned));
+            supabase.from('system_settings').upsert({ key: 'inactive_users', value: cleaned }, { onConflict: 'key' }).catch(() => {});
+            supabase.from('rooms').upsert({ id: '__SYSTEM_INACTIVE_USERS__', name: JSON.stringify(cleaned) }, { onConflict: 'id' }).catch(() => {});
+          }
+        }
+        supabase.from('users').update({ updated_at: new Date().toISOString() }).eq('uid', finalUid).catch(() => {});
+      } catch (e) {}
+
+      setUser(userProfile);
+      await handleAuthUser(userProfile);
+      if (triggerToast) triggerToast(`🎉 Welcome, ${autoName}! Logged in via User ID.`);
+    } catch (err) {
+      console.error("User ID login error:", err);
+      setAuthError(err.message || 'Authentication failed. Please verify your User ID and password.');
+      if (triggerToast) triggerToast(err.message || 'Authentication failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Change password handler
+  const handleChangePassword = async (oldPass, newPass, confirmPass) => {
+    if (!newPass || newPass.length < 6) {
+      if (triggerToast) triggerToast('New password must be at least 6 characters long.');
+      return false;
+    }
+    if (newPass !== confirmPass) {
+      if (triggerToast) triggerToast('New password and confirmation do not match.');
+      return false;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const activeUserCode = user?.userCode || (user?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : getUserCode(user?.email || user?.id));
+      const registry = await getUserPasswordsRegistry();
+      const creds = registry[activeUserCode.toLowerCase()] || registry[(user?.email || '').toLowerCase()];
+
+      // Verify old password if one was set
+      if (creds && creds.password && oldPass && creds.password.trim() !== oldPass.trim()) {
+        throw new Error('Current password does not match our records.');
+      }
+
+      await saveUserPassword(activeUserCode, {
+        password: newPass,
+        email: user?.email,
+        uid: user?.id || user?.uid,
+        name: user?.displayName || userNickname,
+        userCode: activeUserCode
+      });
+      if (user?.email) {
+        await saveUserPassword(user.email, {
+          password: newPass,
+          email: user?.email,
+          uid: user?.id || user?.uid,
+          name: user?.displayName || userNickname,
+          userCode: activeUserCode
+        });
+
+        // Send confirmation email
+        const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+        await fetch(mailRelayUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'send_email',
+            to: user.email,
+            subject: '🔒 Your Tallyin Account Password Was Changed',
+            body: `Hello ${userNickname || 'User'}, your password for User ID ${activeUserCode} was successfully updated.`,
+            htmlBody: `<div style="font-family:sans-serif;padding:24px;"><h2 style="color:#1A3827;">Password Successfully Updated</h2><p>Your password for User ID: <strong>${activeUserCode}</strong> has been updated. If you did not perform this change, please contact support immediately.</p></div>`
+          })
+        }).catch(() => {});
+      }
+
+      if (triggerToast) triggerToast('🎉 Password successfully updated!');
+      setShowChangePasswordModal(false);
+      setChangePasswordOld('');
+      setChangePasswordNew('');
+      setChangePasswordConfirm('');
+      return true;
+    } catch (err) {
+      if (triggerToast) triggerToast(err.message || 'Failed to update password.');
+      return false;
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -12551,7 +13039,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
             </label>
           </div>
 
-          {!showCodeLogin ? (
+          {!showCodeLogin && !showUserIdLogin ? (
             <div className="space-y-3">
               <button 
                 onClick={handleGoogleLogin}
@@ -12562,12 +13050,32 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                 </svg>
                 <span>Sign in with Google</span>
               </button>
+
+              <div className="relative flex items-center justify-center my-1">
+                <div className="border-t border-[#E3E8E3] dark:border-slate-800 w-full"></div>
+                <span className="bg-white dark:bg-slate-900 px-3 text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">or</span>
+              </div>
+
+              {/* Login with User ID & Password Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUserIdLogin(true);
+                  setShowCodeLogin(false);
+                  setAuthError(null);
+                }}
+                className="w-full bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 dark:hover:bg-slate-700/80 text-[#1A3827] dark:text-[#A3E635] py-3.5 px-4 rounded-2xl font-extrabold text-sm transition-all shadow-sm flex items-center justify-center gap-2.5 border border-emerald-600/20 dark:border-slate-700 active:scale-98 cursor-pointer"
+              >
+                <Key className="w-4 h-4 text-emerald-700 dark:text-[#A3E635]" />
+                <span>Log In with User ID &amp; Password</span>
+              </button>
               
               <div className="flex items-center justify-center gap-2 pt-1 text-xs">
                 <span className="text-[#5C6E5C] dark:text-slate-400 font-medium">Or have an access code?</span>
                 <button
                   onClick={() => {
                     setShowCodeLogin(true);
+                    setShowUserIdLogin(false);
                     setAuthError(null);
                   }}
                   className="text-[#1A3827] dark:text-[#A3E635] font-extrabold underline hover:opacity-85 cursor-pointer"
@@ -12576,6 +13084,164 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                 </button>
               </div>
             </div>
+          ) : showUserIdLogin ? (
+            <form onSubmit={handleUserIdLogin} className="space-y-4 text-left animate-fade-in">
+              <div className="flex items-center justify-between pb-1">
+                <div>
+                  <h3 className="text-sm font-extrabold text-[#1A3827] dark:text-slate-100">User ID Login</h3>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Sign in with your User ID &amp; Password</p>
+                </div>
+                <div className="p-2 bg-emerald-50 dark:bg-slate-800 rounded-xl text-emerald-700 dark:text-[#A3E635]">
+                  <Key className="w-4 h-4" />
+                </div>
+              </div>
+
+              {/* User ID Input */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                  User ID / Registered Email
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. USR-0000-8888 or your email"
+                  value={userIdInput}
+                  onChange={e => {
+                    setUserIdInput(e.target.value);
+                    setAuthError(null);
+                  }}
+                  className="w-full px-3.5 py-3 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-mono font-bold tracking-wider"
+                  required
+                />
+              </div>
+
+              {/* Optional Email field if entering USR-XXXX code without email */}
+              {!userIdInput.includes('@') && (
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-[#5C6E5C] dark:text-slate-400 block">
+                    Registered Email <span className="font-normal">(to receive password)</span>
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={userIdEmailInput}
+                    onChange={e => setUserIdEmailInput(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
+                  />
+                </div>
+              )}
+
+              {/* Password Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                    Password
+                  </label>
+                  {/* Reset Password Button - enabled when password has been mailed or generated */}
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    disabled={isResettingPassword || !userIdInput.trim() || !isPasswordMailed}
+                    className={`text-[11px] font-bold transition-all ${
+                      isPasswordMailed && userIdInput.trim()
+                        ? 'text-emerald-700 dark:text-[#A3E635] underline hover:opacity-80 cursor-pointer'
+                        : 'text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                    }`}
+                    title={isPasswordMailed ? "Generate & email a new reset password" : "Option enabled after password is mailed"}
+                  >
+                    {isResettingPassword ? 'Sending Reset...' : 'Reset Password'}
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPasswordText ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={userPasswordInput}
+                    onChange={e => {
+                      setUserPasswordInput(e.target.value);
+                      setAuthError(null);
+                    }}
+                    className="w-full px-3.5 py-3 pr-10 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-mono font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordText(!showPasswordText)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
+                  >
+                    {showPasswordText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* First Time User: Generate Password Section */}
+              <div className="p-3 bg-emerald-50/70 dark:bg-slate-950/70 border border-emerald-500/20 dark:border-slate-800 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold text-[#1A3827] dark:text-slate-200">
+                    First time logging in with User ID?
+                  </span>
+                  <span className="text-[10px] text-emerald-700 dark:text-[#A3E635] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
+                    Setup
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-snug">
+                  Click below to generate a secure password. We will deliver it immediately to your registered email address.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleGeneratePassword}
+                  disabled={isGeneratingPassword || !userIdInput.trim()}
+                  className="w-full py-2.5 px-3 bg-white dark:bg-slate-900 border border-emerald-600/30 dark:border-emerald-700/50 hover:bg-emerald-50 dark:hover:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] text-xs font-black rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  {isGeneratingPassword ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                      <span>Generating &amp; Mailing Password...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Key className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                      <span>Generate Password</span>
+                    </>
+                  )}
+                </button>
+                {isPasswordMailed && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 font-bold pt-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>Password sent to your email! Reset Password option is now enabled.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons: Back & Log In */}
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUserIdLogin(false);
+                    setAuthError(null);
+                  }}
+                  className="flex-1 py-3 border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="flex-1 py-3 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] disabled:opacity-60 shadow-sm rounded-xl cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {authLoading ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Logging In...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Log In</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           ) : (
             <form onSubmit={handleCodeLogin} className="space-y-4 text-left">
               <div className="space-y-1.5">
@@ -15361,6 +16027,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   );
                 })()}
                 <button 
+                  onClick={() => { 
+                    setShowChangePasswordModal(true); 
+                    setIsProfileDropdownOpen(false); 
+                  }}
+                  className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 text-slate-700 dark:text-slate-300"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>Change Password</span>
+                </button>
+                <button 
                   onClick={() => { handleSignOut(); setIsProfileDropdownOpen(false); }}
                   className="w-full text-left px-4 py-2.5 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 flex items-center gap-2 border-t border-[#F6F8F6] dark:border-slate-800"
                 >
@@ -16057,6 +16733,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
         {/* Feature: User Inquiries, Disputes & Requests Modal */}
         {isDisputeModalOpen && renderDisputeModal()}
+
+        {/* Change Password Modal */}
+        {showChangePasswordModal && renderChangePasswordModal()}
 
 
         
@@ -22329,6 +23008,142 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     }
   };
 
+  // Change Password Modal
+  const renderChangePasswordModal = () => {
+    const activeUserCode = user?.userCode || (user?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : getUserCode(user?.email || user?.id || userNickname));
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in text-left"
+        onClick={() => setShowChangePasswordModal(false)}
+      >
+        <div 
+          className="w-full max-w-md bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-2xl p-6 space-y-5 animate-scale-up"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between pb-3 border-b border-[#E3E8E3] dark:border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-500/20 text-emerald-700 dark:text-[#A3E635] flex items-center justify-center shadow-xs">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-[#1A3827] dark:text-slate-100">
+                  Change Password
+                </h3>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">
+                  Update your credentials for User ID login
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowChangePasswordModal(false)}
+              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* User ID Pill */}
+          <div className="p-3 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-[#E3E8E3]/60 dark:border-slate-800 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider font-extrabold text-[#5C6E5C] dark:text-slate-400">Target User ID</p>
+              <p className="font-mono text-xs font-black text-[#1A3827] dark:text-[#A3E635]">{activeUserCode}</p>
+            </div>
+            {user?.email && (
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-wider font-extrabold text-[#5C6E5C] dark:text-slate-400">Account Email</p>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate max-w-[160px]">{user.email}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Form */}
+          <form 
+            onSubmit={async (e) => {
+              e.preventDefault();
+              await handleChangePassword(changePasswordOld, changePasswordNew, changePasswordConfirm);
+            }} 
+            className="space-y-4"
+          >
+            {/* Current Password (Optional if first time setting) */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                Current Password <span className="text-[#5C6E5C] dark:text-slate-500 font-normal">(if previously set)</span>
+              </label>
+              <input
+                type="password"
+                placeholder="Leave blank if never set"
+                value={changePasswordOld}
+                onChange={e => setChangePasswordOld(e.target.value)}
+                className="w-full px-3.5 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-mono"
+              />
+            </div>
+
+            {/* New Password */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                New Password <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="password"
+                placeholder="At least 6 characters"
+                value={changePasswordNew}
+                onChange={e => setChangePasswordNew(e.target.value)}
+                className="w-full px-3.5 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-mono"
+                required
+                minLength={6}
+              />
+            </div>
+
+            {/* Confirm New Password */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#1A3827] dark:text-slate-200 block">
+                Confirm New Password <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="password"
+                placeholder="Re-enter new password"
+                value={changePasswordConfirm}
+                onChange={e => setChangePasswordConfirm(e.target.value)}
+                className="w-full px-3.5 py-2.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-950 font-mono"
+                required
+                minLength={6}
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowChangePasswordModal(false)}
+                className="flex-1 py-2.5 border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isChangingPassword || !changePasswordNew || !changePasswordConfirm}
+                className="flex-1 py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 text-xs font-extrabold rounded-xl hover:bg-[#255038] disabled:opacity-60 shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isChangingPassword ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Updating...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Save Password</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
   function renderDisputeModal() {
     if (!isDisputeModalOpen) return null;
 
@@ -23307,6 +24122,22 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <Copy className="w-4 h-4" />
                 </button>
               </div>
+            </div>
+
+            {/* Account Password & Security */}
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-3 border-t border-[#F6F8F6] dark:border-slate-800 mt-2">
+              <div className="flex-1 w-full text-left">
+                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Account Password</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Manage your secret password for direct User ID sign-in.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePasswordModal(true)}
+                className="px-4 py-2 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-xs rounded-xl transition-all flex items-center gap-2 justify-center w-full sm:w-auto shadow-xs cursor-pointer"
+              >
+                <Key className="w-3.5 h-3.5 text-emerald-700 dark:text-[#A3E635]" />
+                <span>Change Password</span>
+              </button>
             </div>
           </div>
 

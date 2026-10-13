@@ -11,7 +11,8 @@ import {
   ChevronDown, 
   LogOut, 
   Menu,
-  Compass
+  Compass,
+  Key
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 
@@ -31,7 +32,8 @@ export default function Navbar({
   isProfileDropdownOpen,
   setIsProfileDropdownOpen,
   handleSignOut,
-  setIsMobileMenuOpen
+  setIsMobileMenuOpen,
+  setShowChangePasswordModal
 }) {
   const activeRoom = userRooms?.find(r => r.room_id === userRoomId);
 
@@ -212,6 +214,16 @@ export default function Navbar({
                       <span>Room Invite Code</span>
                     </button>
 
+                    <button
+                      onClick={() => {
+                        setIsProfileDropdownOpen(false);
+                        if (setShowChangePasswordModal) setShowChangePasswordModal(true);
+                      }}
+                      className="w-full px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 hover:bg-[#F0F4F1] dark:hover:bg-slate-800 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Key className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Change Password</span>
+                    </button>
 
                     <button
                       onClick={() => {
