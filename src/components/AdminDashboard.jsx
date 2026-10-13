@@ -73,7 +73,10 @@ import {
   Compass,
   Image as ImageIcon,
   Link as LinkIcon,
-  Palette
+  Palette,
+  Printer,
+  Calendar,
+  BadgeCheck
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
 import securityShieldLogo from '../assets/tallyin_security_shield.png';
@@ -774,6 +777,11 @@ export default function AdminDashboard({
   const [warningReason, setWarningReason] = useState('Conduct & Room Etiquette Violation');
   const [warningNotes, setWarningNotes] = useState('');
   const [isSendingWarning, setIsSendingWarning] = useState(false);
+
+  // 6. User Dossier & Comprehensive Report Inspector states
+  const [selectedUserDossier, setSelectedUserDossier] = useState(null);
+  const [loadingUserDossier, setLoadingUserDossier] = useState(false);
+  const [userDossierActiveTab, setUserDossierActiveTab] = useState('overview'); // 'overview' | 'rooms' | 'violations' | 'transactions'
 
   // Maintenance form states
   const [maintMsgInput, setMaintMsgInput] = useState(maintenanceMessage || 'Tallyin is undergoing planned maintenance and system upgrades. Normal access will resume shortly.');
@@ -2414,6 +2422,7 @@ export default function AdminDashboard({
             email: email || 'N/A',
             roomId: m.room_id || 'Shared Space',
             photoURL: m.photoURL,
+            createdAt: m.created_at || m.timestamp || m.joined_at || null,
             role: 'Member'
           });
         }
@@ -2431,6 +2440,7 @@ export default function AdminDashboard({
             email: email || 'N/A',
             roomId: u.room_id || 'Joined Space',
             photoURL: u.photoURL,
+            createdAt: u.created_at || u.createdAt || null,
             role: 'User'
           });
         } else if (email && seen.has(email)) {
@@ -2441,12 +2451,15 @@ export default function AdminDashboard({
           if (existing && !existing.userCode) {
             existing.userCode = email === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (u.user_code || getUserCode(email || u.uid || u.id));
           }
+          if (existing && !existing.createdAt && (u.created_at || u.createdAt)) {
+            existing.createdAt = u.created_at || u.createdAt;
+          }
         }
       });
 
       // Also query transactions to discover active payer/member emails if any
       try {
-        const { data: txEmails } = await supabase.from('transactions').select('paid_by, created_by').limit(200);
+        const { data: txEmails } = await supabase.from('transactions').select('paid_by, created_by, created_at').limit(200);
         (txEmails || []).forEach(tx => {
           if (tx.paid_by && tx.paid_by.includes('@')) {
             const key = tx.paid_by.trim().toLowerCase();
@@ -2458,6 +2471,7 @@ export default function AdminDashboard({
                 name: key.split('@')[0],
                 email: key,
                 roomId: 'Transaction Participant',
+                createdAt: tx.created_at || null,
                 role: 'Participant'
               });
             }
@@ -2470,6 +2484,435 @@ export default function AdminDashboard({
       console.warn("User directory fetch error:", e);
     }
   }, []);
+
+  // Comprehensive User Audit Report Builder
+  const handleInspectUserReport = useCallback(async (userObj) => {
+    if (!userObj) return;
+    setLoadingUserDossier(true);
+    try {
+      const cleanEmail = (userObj.email || '').trim().toLowerCase();
+      const cleanName = (userObj.name || '').trim();
+      const userUid = String(userObj.id || userObj.uid || '');
+      const userCode = (cleanEmail === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (userObj.userCode || getUserCode(cleanEmail || userUid || cleanName));
+
+      // 1. Fetch Rooms Created by this user
+      let createdRooms = [];
+      try {
+        const { data: cRooms } = await supabase
+          .from('rooms')
+          .select('*')
+          .or(`created_by.eq.${cleanEmail},created_by.eq.${userUid}`);
+        if (Array.isArray(cRooms)) createdRooms = cRooms;
+      } catch (e) {}
+
+      // Cross-reference with commanderRooms
+      if (commanderRooms && commanderRooms.length > 0) {
+        const fromCommander = commanderRooms.filter(r => 
+          (r.created_by && (r.created_by.toLowerCase() === cleanEmail || r.created_by === userUid))
+        );
+        const existingIds = new Set(createdRooms.map(r => r.id));
+        fromCommander.forEach(r => {
+          if (!existingIds.has(r.id)) createdRooms.push(r);
+        });
+      }
+
+      // 2. Fetch Rooms Involved (Participating in / Member of)
+      let memberRooms = [];
+      try {
+        const { data: memberships } = await supabase
+          .from('members')
+          .select('*')
+          .or(`email.eq.${cleanEmail},uid.eq.${userUid}`);
+        if (Array.isArray(memberships)) memberRooms = memberships;
+      } catch (e) {}
+
+      // Fallback if primary roomId is set
+      if (memberRooms.length === 0 && userObj.roomId && userObj.roomId !== 'Shared Space') {
+        memberRooms.push({
+          room_id: userObj.roomId,
+          role: userObj.role || 'Member',
+          nickname: cleanName,
+          email: cleanEmail
+        });
+      }
+
+      // 3. Fetch Transactions / Financial footprint
+      let userTxList = [];
+      try {
+        const { data: txData } = await supabase
+          .from('transactions')
+          .select('*')
+          .or(`paid_by.eq.${cleanEmail},paid_by.eq.${cleanName},created_by.eq.${userUid}`)
+          .order('created_at', { ascending: false })
+          .limit(150);
+        if (Array.isArray(txData)) userTxList = txData;
+      } catch (e) {}
+
+      if (allGlobalTx && allGlobalTx.length > 0) {
+        const fromGlobal = allGlobalTx.filter(t => 
+          (t.paid_by && (t.paid_by.toLowerCase() === cleanEmail || t.paid_by.toLowerCase() === cleanName.toLowerCase())) ||
+          (t.created_by && t.created_by === userUid)
+        );
+        const existingTxIds = new Set(userTxList.map(t => t.id));
+        fromGlobal.forEach(t => {
+          if (!existingTxIds.has(t.id)) userTxList.push(t);
+        });
+      }
+
+      // 4. Calculate Total Violations & Policy Incidents
+      const userViolations = (userDisputesAndQueries || []).filter(d => {
+        const isViol = d.type === 'violation' || d.category?.toLowerCase()?.includes('term') || d.category?.toLowerCase()?.includes('violation');
+        if (!isViol) return false;
+        const dEmail = (d.user_email || d.userEmail || '').toLowerCase();
+        const dCode = (d.user_code || d.userCode || '').toLowerCase();
+        const dUid = (d.user_id || d.userId || '').toLowerCase();
+        return (cleanEmail && dEmail === cleanEmail) || (dCode === userCode.toLowerCase()) || (userUid && dUid === userUid.toLowerCase());
+      });
+
+      // 5. Calculate User Disputes / Support Tickets
+      const userDisputes = (userDisputesAndQueries || []).filter(d => {
+        const isViol = d.type === 'violation' || d.category?.toLowerCase()?.includes('term') || d.category?.toLowerCase()?.includes('violation');
+        if (isViol) return false;
+        const dEmail = (d.user_email || d.userEmail || '').toLowerCase();
+        const dCode = (d.user_code || d.userCode || '').toLowerCase();
+        const dUid = (d.user_id || d.userId || '').toLowerCase();
+        return (cleanEmail && dEmail === cleanEmail) || (dCode === userCode.toLowerCase()) || (userUid && dUid === userUid.toLowerCase());
+      });
+
+      // 6. Determine Date Joined (Earliest recorded platform timestamp)
+      const possibleDates = [
+        userObj.createdAt,
+        userObj.created_at,
+        userObj.joinedAt,
+        userObj.timestamp,
+        ...memberRooms.map(m => m.created_at || m.timestamp || m.joined_at),
+        ...createdRooms.map(r => r.created_at),
+        ...userTxList.map(t => t.created_at || t.date)
+      ].filter(Boolean).map(d => new Date(d).getTime()).filter(t => !isNaN(t));
+
+      const earliestTimestamp = possibleDates.length > 0 ? Math.min(...possibleDates) : null;
+      const dateJoinedFormatted = earliestTimestamp 
+        ? new Date(earliestTimestamp).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+        : 'Early Platform Member';
+
+      const totalSpent = userTxList.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+
+      const isBanned = bannedUsers.some(b => {
+        const bId = (b.identifier || b.email || b.id || '').toLowerCase();
+        const bName = (b.name || '').toLowerCase();
+        return (cleanEmail && cleanEmail !== 'n/a' && bId === cleanEmail) || (cleanName && bName === cleanName.toLowerCase()) || (userUid && bId === userUid.toLowerCase());
+      });
+
+      const dossierData = {
+        user: userObj,
+        name: cleanName || 'Tallyin User',
+        email: cleanEmail || 'No Email',
+        userCode,
+        uid: userUid || 'N/A',
+        photoURL: userObj.photoURL,
+        role: userObj.role || 'Member',
+        isBanned,
+        dateJoined: dateJoinedFormatted,
+        dateJoinedTimestamp: earliestTimestamp,
+        createdRoomsCount: createdRooms.length,
+        createdRooms,
+        involvedRoomsCount: memberRooms.length,
+        involvedRooms: memberRooms,
+        violationsCount: userViolations.length,
+        violations: userViolations,
+        disputesCount: userDisputes.length,
+        disputes: userDisputes,
+        transactionsCount: userTxList.length,
+        transactions: userTxList,
+        totalSpent,
+        generatedAt: new Date().toISOString()
+      };
+
+      setSelectedUserDossier(dossierData);
+      setUserDossierActiveTab('overview');
+    } catch (err) {
+      console.error("Failed to build user dossier:", err);
+      if (triggerToast) triggerToast("Could not load user report details.");
+    } finally {
+      setLoadingUserDossier(false);
+    }
+  }, [commanderRooms, allGlobalTx, userDisputesAndQueries, bannedUsers, triggerToast]);
+
+  // Export User Dossier as Printable PDF
+  const handleExportUserReportPDF = () => {
+    if (!selectedUserDossier) return;
+    const d = selectedUserDossier;
+    const printWindow = window.open('', '_blank', 'width=900,height=950');
+    if (!printWindow) {
+      if (triggerToast) triggerToast('Pop-up blocked. Please allow pop-ups to print or export PDF.');
+      return;
+    }
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Tallyin User Audit Report - ${d.userCode}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1e293b; padding: 40px; margin: 0; background: #fff; line-height: 1.5; font-size: 13px; }
+    .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #1A3827; padding-bottom: 20px; margin-bottom: 24px; }
+    .logo-box { display: flex; align-items: center; gap: 14px; }
+    .logo-img { width: 48px; height: 48px; border-radius: 12px; }
+    .title { font-size: 20px; font-weight: 900; color: #1A3827; margin: 0; }
+    .subtitle { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+    .meta-badge { font-family: monospace; font-size: 13px; font-weight: bold; background: #f1f5f9; padding: 6px 12px; border-radius: 8px; border: 1px solid #cbd5e1; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+    .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center; }
+    .card-num { font-size: 22px; font-weight: 900; color: #1A3827; margin-top: 4px; }
+    .card-label { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .alert-card { background: #fef2f2; border-color: #fecaca; }
+    .alert-card .card-num { color: #dc2626; }
+    .section-title { font-size: 13px; font-weight: 900; color: #1A3827; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin: 24px 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 16px; }
+    th { background: #f1f5f9; text-align: left; padding: 8px 10px; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #475569; border: 1px solid #e2e8f0; }
+    td { padding: 8px 10px; border: 1px solid #e2e8f0; color: #334155; }
+    .footer { margin-top: 40px; border-top: 1px dashed #cbd5e1; padding-top: 16px; font-size: 10px; color: #94a3b8; display: flex; justify-content: space-between; }
+    .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; text-transform: uppercase; }
+    .tag-danger { background: #fee2e2; color: #991b1b; }
+    .tag-success { background: #dcfce7; color: #166534; }
+    @media print { body { padding: 20px; } button { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-box">
+      <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" class="logo-img" alt="Tallyin" />
+      <div>
+        <h1 class="title">Tallyin Administrative User Dossier</h1>
+        <div class="subtitle">Official Platform Conduct &amp; Account Audit</div>
+      </div>
+    </div>
+    <div class="meta-badge">
+      ${d.userCode}
+    </div>
+  </div>
+
+  <table style="margin-bottom: 20px;">
+    <tr>
+      <th style="width: 25%;">User Name</th><td><strong>${d.name}</strong></td>
+      <th style="width: 25%;">Account Email</th><td>${d.email}</td>
+    </tr>
+    <tr>
+      <th>Unique User Code</th><td><span style="font-family:monospace;font-weight:bold;">${d.userCode}</span></td>
+      <th>Account Status</th><td><span class="tag ${d.isBanned ? 'tag-danger' : 'tag-success'}">${d.isBanned ? 'BANNED / SUSPENDED' : 'ACTIVE'}</span></td>
+    </tr>
+    <tr>
+      <th>Date Joined</th><td>${d.dateJoined}</td>
+      <th>Platform User UID</th><td><span style="font-family:monospace;font-size:11px;">${d.uid}</span></td>
+    </tr>
+  </table>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-label">Date Joined</div>
+      <div class="card-num" style="font-size: 15px;">${d.dateJoined}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Rooms Created</div>
+      <div class="card-num">${d.createdRoomsCount}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Rooms Involved</div>
+      <div class="card-num">${d.involvedRoomsCount}</div>
+    </div>
+    <div class="card ${d.violationsCount > 0 ? 'alert-card' : ''}">
+      <div class="card-label">Total Violations</div>
+      <div class="card-num">${d.violationsCount}</div>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns: repeat(2, 1fr);">
+    <div class="card">
+      <div class="card-label">Total Transactions Logged</div>
+      <div class="card-num">${d.transactionsCount}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Total Spend Recorded</div>
+      <div class="card-num">₹${d.totalSpent.toLocaleString('en-IN')}</div>
+    </div>
+  </div>
+
+  <div class="section-title">🚨 Terms of Use Violations &amp; Security Incidents (${d.violationsCount})</div>
+  ${d.violations.length === 0 ? '<p style="color:#16a34a;font-weight:bold;">✓ Clean Record — Zero platform policy or terms violations recorded.</p>' : `
+    <table>
+      <thead>
+        <tr>
+          <th>Tracking Ref</th>
+          <th>Incident Category</th>
+          <th>Severity</th>
+          <th>Rule Broken</th>
+          <th>Date Recorded</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${d.violations.map(v => `
+          <tr>
+            <td style="font-family:monospace;font-weight:bold;">${v.refNumber || v.id}</td>
+            <td>${v.category || 'Violation'}</td>
+            <td><span class="tag tag-danger">${v.severity || 'HIGH'}</span></td>
+            <td>${v.ruleViolated || 'Platform Misuse'}</td>
+            <td>${v.createdAt ? new Date(v.createdAt).toLocaleDateString() : 'N/A'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `}
+
+  <div class="section-title">🏠 Rooms Created (${d.createdRoomsCount})</div>
+  ${d.createdRooms.length === 0 ? '<p style="color:#64748b;">User has not created any rooms.</p>' : `
+    <table>
+      <thead><tr><th>Room ID</th><th>Room Name</th><th>Created Date</th></tr></thead>
+      <tbody>
+        ${d.createdRooms.map(r => `
+          <tr>
+            <td style="font-family:monospace;">${r.id}</td>
+            <td><strong>${r.name || r.id}</strong></td>
+            <td>${r.created_at ? new Date(r.created_at).toLocaleDateString() : 'N/A'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `}
+
+  <div class="section-title">👥 Rooms Involved / Participating In (${d.involvedRoomsCount})</div>
+  ${d.involvedRooms.length === 0 ? '<p style="color:#64748b;">No room memberships recorded.</p>' : `
+    <table>
+      <thead><tr><th>Room ID / Space</th><th>Role</th><th>Status</th></tr></thead>
+      <tbody>
+        ${d.involvedRooms.map(m => `
+          <tr>
+            <td style="font-family:monospace;">${m.room_id || m.id}</td>
+            <td>${m.role || 'Member'}</td>
+            <td>Active</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `}
+
+  <div class="footer">
+    <div>Generated by Tallyin System Administration • Confidential Audit Document</div>
+    <div>Report Timestamp: ${new Date().toUTCString()}</div>
+  </div>
+</body>
+</html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 450);
+  };
+
+  // Export User Dossier as JSON
+  const handleExportUserReportJSON = () => {
+    if (!selectedUserDossier) return;
+    try {
+      const jsonStr = JSON.stringify(selectedUserDossier, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tallyin-user-dossier-${selectedUserDossier.userCode || 'report'}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (triggerToast) triggerToast('Downloaded user dossier as JSON!');
+    } catch (err) {
+      if (triggerToast) triggerToast('Failed to export JSON dossier.');
+    }
+  };
+
+  // Export User Dossier as CSV
+  const handleExportUserReportCSV = () => {
+    if (!selectedUserDossier) return;
+    const d = selectedUserDossier;
+    try {
+      const rows = [
+        ['TALLYIN OFFICIAL USER AUDIT REPORT'],
+        ['Generated At', new Date().toISOString()],
+        ['Generated By', user?.email || 'Admin'],
+        [],
+        ['USER IDENTIFICATION'],
+        ['Full Name', `"${d.name.replace(/"/g, '""')}"`],
+        ['Email Address', d.email],
+        ['Permanent User Code', d.userCode],
+        ['User UID', d.uid],
+        ['Account Status', d.isBanned ? 'BANNED / SUSPENDED' : 'ACTIVE'],
+        ['Date Joined', `"${d.dateJoined}"`],
+        [],
+        ['PLATFORM METRICS'],
+        ['Rooms Created', d.createdRoomsCount],
+        ['Rooms Involved', d.involvedRoomsCount],
+        ['Terms & Policy Violations', d.violationsCount],
+        ['Total Transactions', d.transactionsCount],
+        ['Total Platform Spend (INR)', d.totalSpent],
+        [],
+        ['ROOMS CREATED'],
+        ['Room ID', 'Room Name', 'Created At'],
+        ...d.createdRooms.map(r => [r.id, `"${(r.name || r.id).replace(/"/g, '""')}"`, r.created_at || 'N/A']),
+        [],
+        ['ROOMS INVOLVED'],
+        ['Room ID', 'Role', 'Joined At'],
+        ...d.involvedRooms.map(r => [r.room_id || r.id, r.role || 'Member', r.created_at || 'N/A']),
+        [],
+        ['TERMS OF USE VIOLATIONS & INCIDENTS'],
+        ['Incident Ref', 'Category', 'Severity', 'Rule Violated', 'Date'],
+        ...d.violations.map(v => [v.refNumber || v.id, `"${(v.category || '').replace(/"/g, '""')}"`, v.severity || 'HIGH', `"${(v.ruleViolated || '').replace(/"/g, '""')}"`, v.createdAt || 'N/A'])
+      ];
+
+      const csvContent = rows.map(r => r.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tallyin-user-dossier-${d.userCode || 'report'}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (triggerToast) triggerToast('Downloaded user dossier as CSV!');
+    } catch (err) {
+      if (triggerToast) triggerToast('Failed to export CSV dossier.');
+    }
+  };
+
+  // Export All Registered Users Directory as CSV
+  const handleExportAllUsersCSV = () => {
+    if (!allRegisteredUsers || allRegisteredUsers.length === 0) {
+      if (triggerToast) triggerToast('No users to export.');
+      return;
+    }
+    try {
+      const headers = ['User Code', 'Name', 'Email', 'Primary Room', 'Role', 'Date Joined', 'UID'];
+      const rows = allRegisteredUsers.map(u => {
+        const uCode = (u.email?.toLowerCase() === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (u.userCode || getUserCode(u.email || u.id || u.name));
+        return [
+          uCode,
+          `"${(u.name || '').replace(/"/g, '""')}"`,
+          u.email || 'N/A',
+          `"${(u.roomId || '').replace(/"/g, '""')}"`,
+          u.role || 'Member',
+          u.createdAt ? `"${new Date(u.createdAt).toLocaleDateString()}"` : 'N/A',
+          u.id || ''
+        ];
+      });
+
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tallyin-users-directory-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (triggerToast) triggerToast(`Exported ${allRegisteredUsers.length} users to CSV!`);
+    } catch (err) {
+      if (triggerToast) triggerToast('Failed to export users directory.');
+    }
+  };
 
   // Fetch Co-Admin Acknowledgement & Clearance Registry from system_settings
   const fetchCoAdminAckRegistry = useCallback(async () => {
@@ -9171,13 +9614,23 @@ NOTIFY pgrst, 'reload schema';`;
                 View registered roommates, email addresses, and room assignments.
               </p>
             </div>
-            <button
-              onClick={fetchUserDirectory}
-              className="px-3 py-1.5 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-colors flex items-center gap-1.5"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Refresh Users</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportAllUsersCSV}
+                className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Export all registered users as CSV"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-500" />
+                <span>Export Directory CSV</span>
+              </button>
+              <button
+                onClick={fetchUserDirectory}
+                className="px-3 py-1.5 bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-[#d8e4db] transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Refresh Users</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
@@ -9209,39 +9662,60 @@ NOTIFY pgrst, 'reload schema';`;
                   });
 
                   return (
-                    <div key={u.id || u.email} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-3 min-w-0">
+                    <div 
+                      key={u.id || u.email} 
+                      className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500/50 flex items-center justify-between gap-3 text-xs transition-all shadow-xs group"
+                    >
+                      <div 
+                        onClick={() => handleInspectUserReport(u)}
+                        className="flex items-center gap-3 min-w-0 cursor-pointer flex-1"
+                        title="Click to view comprehensive user audit report"
+                      >
                         {u.photoURL ? (
-                          <img src={u.photoURL} alt={u.name} className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
+                          <img src={u.photoURL} alt={u.name} className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700 group-hover:ring-2 group-hover:ring-blue-500/50 transition-all" />
                         ) : (
-                          <div className="w-9 h-9 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 flex items-center justify-center font-black text-xs shrink-0">
+                          <div className="w-10 h-10 rounded-full bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 flex items-center justify-center font-black text-xs shrink-0 group-hover:scale-105 transition-transform">
                             {u.name ? u.name.charAt(0).toUpperCase() : 'U'}
                           </div>
                         )}
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="font-extrabold text-[#1A3827] dark:text-slate-100 truncate">{u.name}</p>
+                            <p className="font-extrabold text-[#1A3827] dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-[#A3E635] transition-colors truncate">{u.name}</p>
                             <span className="font-mono text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#A3E635] border border-emerald-300 dark:border-emerald-800 shrink-0">
                               {userCode}
                             </span>
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 navigator.clipboard.writeText(userCode);
                                 if (triggerToast) triggerToast(`Copied ${userCode} to clipboard!`);
                               }}
-                              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-0.5"
                               title="Copy User Code"
                             >
                               <Copy className="w-3 h-3" />
                             </button>
                           </div>
                           <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 truncate">{u.email}</p>
-                          <p className="text-[10px] font-mono text-emerald-700 dark:text-[#A3E635]">Room: {u.roomId}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] font-mono text-emerald-700 dark:text-[#A3E635]">Room: {u.roomId}</span>
+                            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                              View Report →
+                            </span>
+                          </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => handleInspectUserReport(u)}
+                            className="p-2 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
+                            title="Inspect User Audit Report & Export Dossier"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+
                           <button
                             onClick={() => {
                               setEmailRecipientGroup('CUSTOM');
@@ -9249,7 +9723,7 @@ NOTIFY pgrst, 'reload schema';`;
                               setActiveTab('email');
                               if (triggerToast) triggerToast(`Composing email to ${u.email}`);
                             }}
-                            className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700"
+                            className="p-2 bg-[#F6F8F6] dark:bg-slate-800 text-[#5C6E5C] dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
                             title="Send Mail"
                           >
                             <Mail className="w-3.5 h-3.5" />
@@ -9260,7 +9734,7 @@ NOTIFY pgrst, 'reload schema';`;
                               setWarningTargetUser(u);
                               setWarningNotes('');
                             }}
-                            className="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors"
+                            className="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors cursor-pointer"
                             title="Issue Official Administrative Warning"
                           >
                             <AlertOctagon className="w-3.5 h-3.5" />
@@ -9269,7 +9743,7 @@ NOTIFY pgrst, 'reload schema';`;
                           {isBanned ? (
                             <button
                               onClick={() => handleUnbanUser(userTarget)}
-                              className="px-2.5 py-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black hover:bg-emerald-200 transition-colors flex items-center gap-1"
+                              className="px-2.5 py-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black hover:bg-emerald-200 transition-colors flex items-center gap-1 cursor-pointer"
                               title="Unban User Account"
                             >
                               <UserCheck className="w-3.5 h-3.5" />
@@ -9281,7 +9755,7 @@ NOTIFY pgrst, 'reload schema';`;
                                 setBanEmailInput(userTarget);
                                 handleBanUser(userTarget, banReasonInput, { name: u.name, id: u.id });
                               }}
-                              className="px-2.5 py-1.5 bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-[10px] font-black hover:bg-rose-200 transition-colors flex items-center gap-1"
+                              className="px-2.5 py-1.5 bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl text-[10px] font-black hover:bg-rose-200 transition-colors flex items-center gap-1 cursor-pointer"
                               title="Ban & Block User Account"
                             >
                               <Ban className="w-3.5 h-3.5" />
@@ -12905,6 +13379,481 @@ NOTIFY pgrst, 'reload schema';`;
                   <span>{isUpdatingTicket ? 'Updating...' : 'Resolve & Notify User'}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Audit Dossier Loading Spinner Overlay */}
+      {loadingUserDossier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl flex items-center gap-3">
+            <RefreshCw className="w-5 h-5 text-emerald-600 animate-spin" />
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Compiling user audit dossier...</span>
+          </div>
+        </div>
+      )}
+
+      {/* User Audit Dossier & Inspection Modal */}
+      {selectedUserDossier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl space-y-6 max-h-[92vh] flex flex-col my-auto">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div className="flex items-center gap-3.5">
+                <div className="w-13 h-13 rounded-2xl bg-[#1A3827] text-white flex items-center justify-center font-black text-xl shadow-md border-2 border-emerald-500/30 overflow-hidden shrink-0">
+                  {selectedUserDossier.photoURL ? (
+                    <img src={selectedUserDossier.photoURL} alt={selectedUserDossier.name} className="w-full h-full object-cover" />
+                  ) : (
+                    selectedUserDossier.name.charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-extrabold text-[#1A3827] dark:text-white text-lg tracking-tight">
+                      {selectedUserDossier.name}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/50">
+                      {selectedUserDossier.userCode}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                      selectedUserDossier.isBanned 
+                        ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800' 
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+                    }`}>
+                      {selectedUserDossier.isBanned ? 'Suspended' : 'Active Account'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
+                    <span className="font-mono">{selectedUserDossier.email}</span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 font-mono text-[11px]">
+                      <Calendar className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                      Joined {selectedUserDossier.dateJoined}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons: Export & Close */}
+              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleExportUserReportPDF}
+                  title="Print / Save as PDF"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Printer className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Print / PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportUserReportCSV}
+                  title="Export User Dossier to CSV"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Export CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportUserReportJSON}
+                  title="Export User Dossier to JSON"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>JSON</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserDossier(null)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Body */}
+            <div className="space-y-6 overflow-y-auto pr-1">
+              {/* Primary Metrics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider">Date Joined</span>
+                    <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div className="text-sm font-black text-[#1A3827] dark:text-white truncate" title={selectedUserDossier.dateJoined}>
+                    {selectedUserDossier.dateJoined}
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Platform account creation</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-800/40 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-400 mb-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider">Rooms Created</span>
+                    <Building2 className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="text-2xl font-black text-[#1A3827] dark:text-emerald-300">
+                    {selectedUserDossier.createdRoomsCount}
+                  </div>
+                  <div className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">Hosted as room creator</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/70 dark:border-blue-800/40 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-blue-700 dark:text-blue-400 mb-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider">Rooms Involved</span>
+                    <Users className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="text-2xl font-black text-[#1A3827] dark:text-blue-300">
+                    {selectedUserDossier.involvedRoomsCount}
+                  </div>
+                  <div className="text-[10px] text-blue-600/80 dark:text-blue-400/80 mt-0.5">Member / Participant</div>
+                </div>
+
+                <div className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
+                  selectedUserDossier.violationsCount > 0 
+                    ? 'bg-rose-50/80 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800/60' 
+                    : 'bg-emerald-50/50 dark:bg-emerald-950/10 border-emerald-200/60 dark:border-emerald-900/30'
+                }`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${
+                      selectedUserDossier.violationsCount > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'
+                    }`}>
+                      Terms Violations
+                    </span>
+                    <AlertTriangle className={`w-3.5 h-3.5 ${
+                      selectedUserDossier.violationsCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                    }`} />
+                  </div>
+                  <div className={`text-2xl font-black ${
+                    selectedUserDossier.violationsCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-300'
+                  }`}>
+                    {selectedUserDossier.violationsCount}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {selectedUserDossier.violationsCount > 0 ? 'Requires administrative review' : 'No policy strikes recorded'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Secondary Metrics: Spend and Transactions */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                      Total Expenses / Transactions Logged
+                    </span>
+                    <span className="text-xl font-black text-[#1A3827] dark:text-white">
+                      {selectedUserDossier.transactionsCount}
+                    </span>
+                  </div>
+                  <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 flex items-center justify-center font-bold">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                      Cumulative Platform Spend
+                    </span>
+                    <span className="text-xl font-black text-emerald-700 dark:text-emerald-400">
+                      ₹{selectedUserDossier.totalSpent.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Internal Tab Navigation */}
+              <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setUserDossierActiveTab('overview')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    userDossierActiveTab === 'overview'
+                      ? 'bg-[#1A3827] text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  Overview &amp; Identity
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDossierActiveTab('rooms')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                    userDossierActiveTab === 'rooms'
+                      ? 'bg-[#1A3827] text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>Rooms ({selectedUserDossier.createdRoomsCount + selectedUserDossier.involvedRoomsCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDossierActiveTab('violations')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                    userDossierActiveTab === 'violations'
+                      ? 'bg-rose-600 text-white shadow-sm'
+                      : selectedUserDossier.violationsCount > 0
+                        ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>Terms Violations</span>
+                  {selectedUserDossier.violationsCount > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] flex items-center justify-center font-black">
+                      {selectedUserDossier.violationsCount}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDossierActiveTab('transactions')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    userDossierActiveTab === 'transactions'
+                      ? 'bg-[#1A3827] text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  Expenses Logged ({selectedUserDossier.transactionsCount})
+                </button>
+              </div>
+
+              {/* Tab 1: Overview */}
+              {userDossierActiveTab === 'overview' && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-[#1A3827] dark:text-emerald-400">
+                      System Credentials &amp; Identifiers
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Official Display Name</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{selectedUserDossier.name}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Primary Email</span>
+                        <span className="font-mono text-slate-800 dark:text-slate-200">{selectedUserDossier.email}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Permanent User Code</span>
+                        <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{selectedUserDossier.userCode}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Database UID</span>
+                        <span className="font-mono text-slate-600 dark:text-slate-400 text-[11px] break-all">{selectedUserDossier.uid}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Conduct & Security Health */}
+                  <div className={`p-4 rounded-2xl border ${
+                    selectedUserDossier.violationsCount === 0
+                      ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50'
+                      : 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/50'
+                  }`}>
+                    <div className="flex items-start gap-3">
+                      {selectedUserDossier.violationsCount === 0 ? (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <h4 className={`text-xs font-black uppercase tracking-wider ${
+                          selectedUserDossier.violationsCount === 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-rose-800 dark:text-rose-300'
+                        }`}>
+                          {selectedUserDossier.violationsCount === 0 ? 'Pristine Platform Conduct Status' : 'Platform Policy Violations Flagged'}
+                        </h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                          {selectedUserDossier.violationsCount === 0
+                            ? 'This user has zero platform strikes, zero terms of use infractions, and holds good standing across all active group rooms.'
+                            : `This account has accumulated ${selectedUserDossier.violationsCount} terms of use violations or conduct disputes requiring administrative intervention.`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Rooms (Created & Involved) */}
+              {userDossierActiveTab === 'rooms' && (
+                <div className="space-y-5">
+                  {/* Rooms Created */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-[#1A3827] dark:text-emerald-400 flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5" />
+                        Rooms Created as Host ({selectedUserDossier.createdRoomsCount})
+                      </h4>
+                    </div>
+                    {selectedUserDossier.createdRooms.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 text-center">
+                        This user has not created or hosted any rooms yet.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-slate-800/20">
+                        {selectedUserDossier.createdRooms.map((room, idx) => (
+                          <div key={room.id || idx} className="p-3 flex items-center justify-between text-xs hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition-colors">
+                            <div>
+                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <span>{room.name || 'Untitled Room'}</span>
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                  ID: {room.id}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                Created on {room.created_at ? new Date(room.created_at).toLocaleDateString() : 'N/A'}
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                              Host / Creator
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Rooms Involved */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5" />
+                        Rooms Participating In ({selectedUserDossier.involvedRoomsCount})
+                      </h4>
+                    </div>
+                    {selectedUserDossier.involvedRooms.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 text-center">
+                        This user is not currently recorded as a participant in other rooms.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-slate-800/20">
+                        {selectedUserDossier.involvedRooms.map((mem, idx) => (
+                          <div key={mem.id || idx} className="p-3 flex items-center justify-between text-xs hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition-colors">
+                            <div>
+                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <span className="font-mono text-xs">Room #{mem.room_id || mem.roomId || mem.id}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                Member status: {mem.role || 'Active Member'}
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
+                              Participant
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: Violations */}
+              {userDossierActiveTab === 'violations' && (
+                <div className="space-y-4">
+                  {selectedUserDossier.violations.length === 0 ? (
+                    <div className="p-8 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/50 text-center space-y-2">
+                      <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center">
+                        <CheckCircle2 className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-sm font-black text-emerald-900 dark:text-emerald-300">Clean Conduct Record</h4>
+                      <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80 max-w-md mx-auto">
+                        No terms of use violations, suspicious behavioral flags, or harassment strikes have been reported against this account.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Recorded Terms Violations &amp; Security Incidents ({selectedUserDossier.violationsCount})
+                      </h4>
+                      <div className="divide-y divide-rose-100 dark:divide-rose-950 border border-rose-200 dark:border-rose-900/50 rounded-2xl overflow-hidden bg-rose-50/20 dark:bg-rose-950/10">
+                        {selectedUserDossier.violations.map((v, idx) => (
+                          <div key={v.id || idx} className="p-3.5 space-y-1.5 text-xs">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <span className="font-black text-rose-800 dark:text-rose-300 font-mono">
+                                REF: {v.refNumber || v.id || `VIOL-${idx+1}`}
+                              </span>
+                              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200">
+                                {v.category || 'Platform Conduct'}
+                              </span>
+                            </div>
+                            <div className="font-bold text-slate-800 dark:text-slate-200">
+                              {v.ruleViolated || v.title || 'Terms of Use Infraction'}
+                            </div>
+                            {v.description && (
+                              <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
+                                {v.description}
+                              </p>
+                            )}
+                            <div className="text-[10px] text-slate-400 flex items-center gap-2 pt-1">
+                              <span>Reported: {v.createdAt ? new Date(v.createdAt).toLocaleString() : 'N/A'}</span>
+                              <span>•</span>
+                              <span>Status: {v.status || 'LOGGED'}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 4: Transactions / Financial Footprint */}
+              {userDossierActiveTab === 'transactions' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-[#1A3827] dark:text-emerald-400">
+                      Logged Expenses &amp; Ledger History ({selectedUserDossier.transactionsCount})
+                    </h4>
+                    <span className="text-xs font-black text-emerald-700 dark:text-emerald-400">
+                      Total: ₹{selectedUserDossier.totalSpent.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  {selectedUserDossier.transactions.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 text-center">
+                      No expense transactions logged for this user yet.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-slate-800/20 max-h-72 overflow-y-auto">
+                      {selectedUserDossier.transactions.slice(0, 50).map((tx, idx) => (
+                        <div key={tx.id || idx} className="p-3 flex items-center justify-between text-xs hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition-colors">
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white">
+                              {tx.description || tx.title || 'Expense Item'}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              {tx.date || tx.created_at ? new Date(tx.date || tx.created_at).toLocaleDateString() : 'N/A'} {tx.category ? `• ${tx.category}` : ''}
+                            </div>
+                          </div>
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            ₹{Number(tx.amount || 0).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 text-xs">
+              <span className="text-[11px] text-slate-400">
+                Generated {new Date(selectedUserDossier.generatedAt).toLocaleString()} • Confidential Tallyin Audit
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedUserDossier(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold cursor-pointer transition-all"
+              >
+                Close Report
+              </button>
             </div>
           </div>
         </div>
