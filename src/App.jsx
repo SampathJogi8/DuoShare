@@ -28,6 +28,7 @@ import {
   QrCode,
   Send,
   ArrowRight,
+  ArrowLeft,
   User,
   Zap,
   Coffee,
@@ -607,6 +608,16 @@ export default function App() {
     return !localStorage.getItem('tallyin_code_user');
   });
   const [authError, setAuthError] = useState(null);
+  const [authTab, setAuthTab] = useState('login'); // 'login' | 'signup' | 'code' | 'forgot'
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [isSigningUp, setIsSigningUp] = useState(false);
+  const [forgotInput, setForgotInput] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [customAvatarInput, setCustomAvatarInput] = useState('');
+
   const [showCodeLogin, setShowCodeLogin] = useState(false);
   const [accessCodeInput, setAccessCodeInput] = useState('');
   const [codeLoginEmail, setCodeLoginEmail] = useState(() => {
@@ -629,16 +640,39 @@ export default function App() {
   const [changePasswordConfirm, setChangePasswordConfirm] = useState('');
   const [showPasswordText, setShowPasswordText] = useState(false);
 
-  const auth = useMemo(() => ({
-    currentUser: user ? {
-      id: user.id,
-      uid: user.id,
-      email: user.email || '',
-      photoURL: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
-      displayName: user.user_metadata?.full_name || user.user_metadata?.name || 'You',
-      loginCode: user.loginCode
-    } : null
-  }), [user]);
+  const auth = useMemo(() => {
+    if (!user) return { currentUser: null };
+
+    const candidates = [
+      user.photoURL,
+      user.photo_url,
+      user.avatar_url,
+      user.user_metadata?.avatar_url,
+      user.user_metadata?.picture,
+      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_avatar') : null
+    ];
+    const validPhoto = candidates.find(p => p && typeof p === 'string' && p.trim() !== '' && p !== 'null' && p !== 'undefined') || '';
+
+    const codeCandidates = [
+      user.loginCode,
+      user.login_code,
+      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_login_code') : null
+    ];
+    const validLoginCode = codeCandidates.find(c => c && typeof c === 'string' && c.trim() !== '' && c !== 'null' && c !== 'undefined') || '';
+
+    const displayName = user.displayName || user.name || user.user_metadata?.full_name || user.user_metadata?.name || (typeof window !== 'undefined' ? localStorage.getItem('userNickname') : '') || 'You';
+
+    return {
+      currentUser: {
+        id: user.id || user.uid,
+        uid: user.id || user.uid,
+        email: user.email || '',
+        photoURL: validPhoto,
+        displayName: displayName,
+        loginCode: validLoginCode
+      }
+    };
+  }, [user]);
 
   // Room members & settings
   const [members, setMembers] = useState(() => {
@@ -3566,6 +3600,121 @@ export default function App() {
     }
   }, [user?.id, user?.email, fetchUserRooms]);
 
+  // Auto-heal / Ensure loginCode and avatar for current active user
+  useEffect(() => {
+    if (!user || (!user.id && !user.uid && !user.email)) return;
+
+    const currentCode = user.loginCode || user.login_code || (typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_login_code') : null);
+    const currentPhoto = user.photoURL || user.photo_url || user.avatar_url || user.user_metadata?.avatar_url || (typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_avatar') : null);
+
+    const needsLoginCode = !currentCode || currentCode === 'null' || currentCode === 'undefined' || currentCode.trim() === '';
+    const needsAvatar = !currentPhoto || currentPhoto === 'null' || currentPhoto === 'undefined' || currentPhoto.trim() === '';
+
+    if (!needsLoginCode && !needsAvatar) {
+      if ((!user.loginCode && currentCode) || (!user.photoURL && currentPhoto)) {
+        setUser(prev => prev ? {
+          ...prev,
+          loginCode: prev.loginCode || currentCode,
+          login_code: prev.login_code || currentCode,
+          photoURL: prev.photoURL || currentPhoto,
+          user_metadata: {
+            ...(prev.user_metadata || {}),
+            avatar_url: prev.user_metadata?.avatar_url || currentPhoto || ''
+          }
+        } : prev);
+      }
+      return;
+    }
+
+    let isMounted = true;
+    const resolveUserMeta = async () => {
+      try {
+        const uId = user.id || user.uid;
+        const uEmail = user.email ? user.email.toLowerCase().trim() : null;
+
+        let foundProfile = null;
+        if (uId) {
+          const { data } = await supabase.from('users').select('*').eq('uid', uId).maybeSingle();
+          if (data) foundProfile = data;
+        }
+        if (!foundProfile && uEmail && !uEmail.endsWith('@tallyin.app')) {
+          const { data } = await supabase.from('users').select('*').eq('email', uEmail).limit(1).maybeSingle();
+          if (data) foundProfile = data;
+        }
+
+        // Also check members table for avatar photo_url
+        let memberPhoto = null;
+        if (needsAvatar) {
+          if (uId) {
+            const { data: mem } = await supabase.from('members').select('photo_url').eq('uid', uId).not('photo_url', 'is', null).limit(1).maybeSingle();
+            if (mem?.photo_url && mem.photo_url !== 'null' && mem.photo_url.trim() !== '') memberPhoto = mem.photo_url;
+          }
+          if (!memberPhoto && uEmail) {
+            const { data: mem } = await supabase.from('members').select('photo_url').eq('email', uEmail).not('photo_url', 'is', null).limit(1).maybeSingle();
+            if (mem?.photo_url && mem.photo_url !== 'null' && mem.photo_url.trim() !== '') memberPhoto = mem.photo_url;
+          }
+        }
+
+        let finalCode = (currentCode && currentCode !== 'null' && currentCode !== 'undefined' && currentCode.trim() !== '') 
+          ? currentCode 
+          : (foundProfile?.login_code && foundProfile.login_code !== 'null' ? foundProfile.login_code : null);
+        
+        if (!finalCode) {
+          finalCode = await generateUniqueLoginCode();
+          if (foundProfile?.id) {
+            await supabase.from('users').update({ login_code: finalCode, updated_at: new Date().toISOString() }).eq('id', foundProfile.id);
+          } else if (uId) {
+            await supabase.from('users').upsert({
+              id: uId,
+              uid: uId,
+              email: uEmail,
+              name: user.displayName || user.name || userNickname || 'User',
+              login_code: finalCode,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+          }
+        }
+
+        const rawProfilePhoto = foundProfile?.avatar_url || foundProfile?.photo_url;
+        const validProfilePhoto = (rawProfilePhoto && rawProfilePhoto !== 'null' && rawProfilePhoto !== 'undefined' && rawProfilePhoto.trim() !== '') ? rawProfilePhoto.trim() : null;
+        const resolvedPhoto = memberPhoto || validProfilePhoto || currentPhoto || '';
+
+        if (finalCode && typeof window !== 'undefined') {
+          localStorage.setItem('tallyin_user_login_code', finalCode);
+        }
+        if (resolvedPhoto && typeof window !== 'undefined') {
+          localStorage.setItem('tallyin_user_avatar', resolvedPhoto);
+        }
+
+        if (isMounted) {
+          setUser(prev => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              loginCode: finalCode || prev.loginCode,
+              login_code: finalCode || prev.login_code,
+              photoURL: resolvedPhoto || prev.photoURL,
+              user_metadata: {
+                ...(prev.user_metadata || {}),
+                avatar_url: resolvedPhoto || prev.user_metadata?.avatar_url || '',
+                picture: resolvedPhoto || prev.user_metadata?.picture || ''
+              }
+            };
+            if (typeof window !== 'undefined' && localStorage.getItem('tallyin_code_user')) {
+              localStorage.setItem('tallyin_code_user', JSON.stringify(updated));
+            }
+            return updated;
+          });
+        }
+      } catch (err) {
+        console.warn('Error resolving user meta / login code:', err);
+      }
+    };
+
+    resolveUserMeta();
+    return () => { isMounted = false; };
+  }, [user?.id, user?.uid, user?.email, user?.loginCode, user?.photoURL]);
+
   // Deep-link invite handler: parse ?join=ROOM-CODE from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -5636,6 +5785,9 @@ export default function App() {
       const autoName = userRecord.name || userRecord.nickname || creds.name || (userRecord.email ? userRecord.email.split('@')[0] : 'Roommate');
       const finalEmail = userRecord.email || creds.email || null;
       const finalUid = userRecord.uid || userRecord.id || creds.uid || crypto.randomUUID();
+      const rawPhoto = userRecord.photo_url || userRecord.avatar_url || creds.photoURL || creds.photo_url || '';
+      const finalPhoto = (rawPhoto && rawPhoto !== 'null' && rawPhoto !== 'undefined') ? rawPhoto.trim() : '';
+      const finalLoginCode = (userRecord.login_code && userRecord.login_code !== 'null' && userRecord.login_code !== 'undefined') ? userRecord.login_code.trim() : null;
 
       const userProfile = {
         id: finalUid,
@@ -5645,8 +5797,21 @@ export default function App() {
         nickname: autoName,
         name: autoName,
         userCode,
+        loginCode: finalLoginCode,
+        login_code: finalLoginCode,
+        photoURL: finalPhoto,
+        photo_url: finalPhoto,
+        avatar_url: finalPhoto,
+        user_metadata: {
+          full_name: autoName,
+          avatar_url: finalPhoto,
+          picture: finalPhoto
+        },
         isCustomAuth: true
       };
+
+      if (finalPhoto && typeof window !== 'undefined') localStorage.setItem('tallyin_user_avatar', finalPhoto);
+      if (finalLoginCode && typeof window !== 'undefined') localStorage.setItem('tallyin_user_login_code', finalLoginCode);
 
       setUserNickname(autoName);
       setNicknameInput(autoName);
@@ -5681,6 +5846,244 @@ export default function App() {
       if (triggerToast) triggerToast(err.message || 'Authentication failed.');
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  // Create account handler for new users
+  const handleSignUp = async (e) => {
+    e?.preventDefault();
+    if (!signupName.trim()) {
+      setAuthError('Please enter your full name or nickname.');
+      return;
+    }
+    if (!signupEmail.trim() || !signupEmail.includes('@')) {
+      setAuthError('Please enter a valid email address.');
+      return;
+    }
+    if (!signupPassword || signupPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setIsSigningUp(true);
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      const cleanEmail = signupEmail.trim().toLowerCase();
+      const cleanName = signupName.trim();
+      
+      const existingUser = await resolveUserById(cleanEmail);
+      if (existingUser) {
+        throw new Error('An account with this email already exists. Please switch to Sign In.');
+      }
+
+      const newUid = crypto.randomUUID();
+      const userCode = (cleanEmail === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : getUserCode(cleanEmail);
+      const newLoginCode = await generateUniqueLoginCode();
+
+      // Save credentials in password registry
+      await saveUserPassword(userCode, {
+        password: signupPassword,
+        email: cleanEmail,
+        uid: newUid,
+        name: cleanName,
+        userCode
+      });
+      await saveUserPassword(cleanEmail, {
+        password: signupPassword,
+        email: cleanEmail,
+        uid: newUid,
+        name: cleanName,
+        userCode
+      });
+
+      // Save user to database
+      await supabase.from('users').insert({
+        id: newUid,
+        uid: newUid,
+        email: cleanEmail,
+        name: cleanName,
+        login_code: newLoginCode,
+        updated_at: new Date().toISOString()
+      });
+
+      // Create local user session
+      const newUserProfile = {
+        id: newUid,
+        uid: newUid,
+        email: cleanEmail,
+        displayName: cleanName,
+        nickname: cleanName,
+        name: cleanName,
+        userCode,
+        loginCode: newLoginCode,
+        login_code: newLoginCode,
+        photoURL: '',
+        user_metadata: {
+          full_name: cleanName,
+          avatar_url: ''
+        },
+        isCustomAuth: true
+      };
+
+      localStorage.setItem('tallyin_code_user', JSON.stringify(newUserProfile));
+      localStorage.setItem('userNickname', cleanName);
+      localStorage.setItem('tallyin_user_login_code', newLoginCode);
+      localStorage.setItem('tallyin_agreed_terms', 'true');
+      setHasAgreedToTerms(true);
+      setUserNickname(cleanName);
+      setNicknameInput(cleanName);
+      setIsNicknameFixed(true);
+
+      setUser(newUserProfile);
+      await handleAuthUser(newUserProfile);
+
+      if (triggerToast) triggerToast(`🎉 Welcome to Tallyin, ${cleanName}! Account created.`);
+    } catch (err) {
+      console.error('Sign up error:', err);
+      setAuthError(err.message || 'Failed to create account.');
+      if (triggerToast) triggerToast(err.message || 'Failed to create account.');
+    } finally {
+      setIsSigningUp(false);
+      setAuthLoading(false);
+    }
+  };
+
+  // Unified reset / setup password helper
+  const handleSendOrResetPassword = async (rawInput) => {
+    const inputVal = (rawInput || forgotInput || userIdInput || '').trim();
+    if (!inputVal) {
+      setAuthError('Please enter your User ID or Email address.');
+      return;
+    }
+
+    setIsResettingPassword(true);
+    setAuthError(null);
+
+    try {
+      const userRecord = await resolveUserById(inputVal);
+      const targetEmail = (userRecord?.email || (inputVal.includes('@') ? inputVal : null) || '').trim().toLowerCase();
+
+      if (!targetEmail || !targetEmail.includes('@') || targetEmail.endsWith('@tallyin.app')) {
+        throw new Error('Could not find a valid registered email for this User ID. Please check your spelling or contact support.');
+      }
+
+      const newPassword = 'TL-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const userCode = (targetEmail === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (userRecord?.login_code || getUserCode(targetEmail || userRecord?.id || inputVal));
+      const recipientName = userRecord?.name || userRecord?.nickname || targetEmail.split('@')[0];
+
+      await saveUserPassword(userCode, {
+        password: newPassword,
+        email: targetEmail,
+        uid: userRecord?.uid || userRecord?.id || crypto.randomUUID(),
+        name: recipientName,
+        userCode
+      });
+      await saveUserPassword(targetEmail, {
+        password: newPassword,
+        email: targetEmail,
+        uid: userRecord?.uid || userRecord?.id || crypto.randomUUID(),
+        name: recipientName,
+        userCode
+      });
+
+      const htmlBody = getPasswordEmailHtml(recipientName, userCode, newPassword, true);
+      const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+      
+      await fetch(mailRelayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: targetEmail,
+          subject: '🔐 Your Tallyin Account Password',
+          body: `Hello ${recipientName}, your password for User ID ${userCode} is: ${newPassword}. Log in at https://tallyin.vercel.app`,
+          htmlBody
+        })
+      });
+
+      setForgotSuccess(true);
+      setIsPasswordMailed(true);
+      if (triggerToast) triggerToast(`🔑 Password sent to ${targetEmail}! Check your inbox.`);
+    } catch (err) {
+      console.error('Password sending error:', err);
+      setAuthError(err.message || 'Failed to send password.');
+      if (triggerToast) triggerToast(err.message || 'Failed to send password.');
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
+  // Update profile avatar helper
+  const handleUpdateAvatar = async (newPhotoUrl) => {
+    const cleanUrl = (newPhotoUrl || '').trim();
+    if (!cleanUrl) return;
+
+    setUser(prev => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        photoURL: cleanUrl,
+        photo_url: cleanUrl,
+        avatar_url: cleanUrl,
+        user_metadata: {
+          ...(prev.user_metadata || {}),
+          avatar_url: cleanUrl,
+          picture: cleanUrl
+        }
+      };
+      if (typeof window !== 'undefined' && localStorage.getItem('tallyin_code_user')) {
+        localStorage.setItem('tallyin_code_user', JSON.stringify(updated));
+      }
+      return updated;
+    });
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tallyin_user_avatar', cleanUrl);
+    }
+
+    const uId = user?.id || user?.uid;
+    if (uId) {
+      supabase.from('users').update({ avatar_url: cleanUrl, updated_at: new Date().toISOString() }).eq('uid', uId).catch(() => {});
+      if (userRoomId) {
+        supabase.from('members').update({ photo_url: cleanUrl }).eq('room_id', userRoomId).eq('uid', uId).catch(() => {});
+      }
+    }
+    if (user?.email) {
+      supabase.from('users').update({ avatar_url: cleanUrl, updated_at: new Date().toISOString() }).eq('email', user.email.toLowerCase().trim()).catch(() => {});
+    }
+
+    setShowAvatarModal(false);
+    setCustomAvatarInput('');
+    if (triggerToast) triggerToast('🎉 Profile photo updated successfully!');
+  };
+
+  // Refresh or regenerate login code helper
+  const handleRefreshLoginCode = async () => {
+    try {
+      const newCode = await generateUniqueLoginCode();
+      const uId = user?.id || user?.uid;
+      if (uId) {
+        await supabase.from('users').update({ login_code: newCode, updated_at: new Date().toISOString() }).eq('uid', uId);
+      }
+      if (user?.email) {
+        await supabase.from('users').update({ login_code: newCode, updated_at: new Date().toISOString() }).eq('email', user.email.toLowerCase().trim());
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tallyin_user_login_code', newCode);
+      }
+      setUser(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev, loginCode: newCode, login_code: newCode };
+        if (typeof window !== 'undefined' && localStorage.getItem('tallyin_code_user')) {
+          localStorage.setItem('tallyin_code_user', JSON.stringify(updated));
+        }
+        return updated;
+      });
+      if (triggerToast) triggerToast(`🔑 New access code generated: ${newCode}`);
+    } catch (e) {
+      console.warn('Error refreshing login code:', e);
     }
   };
 
@@ -12940,168 +13343,142 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-emerald-100 dark:bg-emerald-950/10 rounded-full blur-3xl opacity-40 -z-10"></div>
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-lime-100 dark:bg-lime-950/10 rounded-full blur-3xl opacity-40 -z-10"></div>
 
-        <div className="w-full max-w-[340px] sm:max-w-[350px] bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-5 shadow-2xl space-y-3 animate-fade-in text-center">
-          <div className="space-y-1">
-            <img 
-              src={faviconLogo} 
-              alt="Tallyin Logo" 
-              className="w-8 h-8 object-cover rounded-xl mx-auto shadow-xs"
-            />
-            <h1 className="text-lg font-black text-[#1A3827] dark:text-slate-100 tracking-tight leading-tight">Tallyin</h1>
-            <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-tight">
-              Sign in to split roommate expenses
+        <div className="w-full max-w-[390px] sm:max-w-[420px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-4 animate-fade-in text-center relative z-10">
+          {/* Header & Logo */}
+          <div className="space-y-1.5 pb-0.5">
+            <div className="inline-flex p-2.5 bg-emerald-50 dark:bg-slate-800/80 rounded-2xl border border-emerald-500/20 shadow-xs mb-1">
+              <img 
+                src={faviconLogo} 
+                alt="Tallyin Logo" 
+                className="w-8 h-8 object-cover rounded-xl"
+              />
+            </div>
+            <h1 className="text-xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight leading-tight">
+              {authTab === 'signup' ? 'Create Account' : authTab === 'code' ? 'Access Code' : authTab === 'forgot' ? 'Reset Password' : 'Welcome to Tallyin'}
+            </h1>
+            <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-medium">
+              {authTab === 'signup' 
+                ? 'Join to split, track, and settle roommate bills' 
+                : authTab === 'code'
+                ? 'Enter your 6-digit access code to enter'
+                : authTab === 'forgot'
+                ? 'We will send a secure password to your email'
+                : 'Sign in to manage & split roommate expenses'}
             </p>
           </div>
 
-          {!showCodeLogin && !showUserIdLogin ? (
-            <div className="space-y-2 pt-1 text-left">
-              <button 
-                onClick={handleGoogleLogin}
-                className="w-full bg-[#1A3827] text-white hover:bg-[#255038] py-2.5 px-3.5 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center justify-center gap-2.5 border border-white/5 active:scale-98 cursor-pointer"
-              >
-                <svg className="w-3.5 h-3.5 fill-white shrink-0" viewBox="0 0 488 512">
-                  <path d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"/>
-                </svg>
-                <span>Sign in with Google</span>
-              </button>
-
-              <div className="relative flex items-center justify-center my-0.5">
-                <div className="border-t border-[#E3E8E3] dark:border-slate-800 w-full"></div>
-                <span className="bg-white dark:bg-slate-900 px-2 text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">or</span>
-              </div>
-
-              {/* Login with User ID & Password Button */}
+          {/* Segmented Control Tabs */}
+          {(authTab === 'login' || authTab === 'signup') && (
+            <div className="flex bg-[#F1F5F2] dark:bg-slate-950 p-1 rounded-2xl border border-[#E3E8E3]/70 dark:border-slate-800">
               <button
                 type="button"
-                onClick={() => {
-                  setShowUserIdLogin(true);
-                  setShowCodeLogin(false);
-                  setAuthError(null);
-                }}
-                className="w-full bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 dark:hover:bg-slate-700/80 text-[#1A3827] dark:text-[#A3E635] py-2.5 px-3.5 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center justify-center gap-2 border border-emerald-600/20 dark:border-slate-700 active:scale-98 cursor-pointer"
+                onClick={() => { setAuthTab('login'); setAuthError(null); }}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  authTab === 'login'
+                    ? 'bg-white dark:bg-slate-850 text-[#1A3827] dark:text-[#A3E635] shadow-xs'
+                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
               >
-                <Key className="w-3.5 h-3.5 text-emerald-700 dark:text-[#A3E635] shrink-0" />
-                <span>Log In with User ID &amp; Password</span>
+                Sign In
               </button>
-              
-              <div className="flex items-center justify-center gap-1.5 pt-0.5 text-[11px]">
-                <span className="text-[#5C6E5C] dark:text-slate-400 font-medium">Or have an access code?</span>
-                <button
-                  onClick={() => {
-                    setShowCodeLogin(true);
-                    setShowUserIdLogin(false);
-                    setAuthError(null);
-                  }}
-                  className="text-[#1A3827] dark:text-[#A3E635] font-extrabold underline hover:opacity-85 cursor-pointer"
-                >
-                  Log In via Code
-                </button>
-              </div>
-
-              {/* Subtle Legal Notice */}
-              <p className="text-[10px] text-center text-slate-500 dark:text-slate-400 pt-1 leading-tight">
-                By continuing, you agree to our{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLegalModalTab('terms');
-                    setIsLegalModalOpen(true);
-                  }}
-                  className="underline font-semibold hover:text-[#1A3827] dark:hover:text-[#A3E635] cursor-pointer"
-                >
-                  Terms
-                </button>
-                {' '}&amp;{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLegalModalTab('privacy');
-                    setIsLegalModalOpen(true);
-                  }}
-                  className="underline font-semibold hover:text-[#1A3827] dark:hover:text-[#A3E635] cursor-pointer"
-                >
-                  Privacy Policy
-                </button>
-                .
-              </p>
+              <button
+                type="button"
+                onClick={() => { setAuthTab('signup'); setAuthError(null); }}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  authTab === 'signup'
+                    ? 'bg-white dark:bg-slate-850 text-[#1A3827] dark:text-[#A3E635] shadow-xs'
+                    : 'text-[#5C6E5C] dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Create Account
+              </button>
             </div>
-          ) : showUserIdLogin ? (
-            <form onSubmit={handleUserIdLogin} className="space-y-3 text-left animate-fade-in">
-              <div className="flex items-center justify-between pb-0.5">
-                <div>
-                  <h3 className="text-xs font-black text-[#1A3827] dark:text-slate-100 leading-tight">User ID Login</h3>
-                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-tight">Sign in with your User ID &amp; Password</p>
-                </div>
-                <div className="p-1.5 bg-emerald-50 dark:bg-slate-800 rounded-lg text-emerald-700 dark:text-[#A3E635]">
-                  <Key className="w-3.5 h-3.5" />
-                </div>
-              </div>
+          )}
 
-              {/* User ID Input */}
+          {/* Google Auth Button (Shown on login & signup) */}
+          {(authTab === 'login' || authTab === 'signup') && (
+            <div className="space-y-3 pt-0.5">
+              <button 
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={authLoading}
+                className="w-full bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-100 py-2.5 px-4 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center justify-center gap-2.5 border border-[#E3E8E3] dark:border-slate-700 active:scale-98 cursor-pointer disabled:opacity-60"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </svg>
+                <span>{authTab === 'login' ? 'Continue with Google' : 'Sign up with Google'}</span>
+              </button>
+
+              <div className="relative flex items-center justify-center my-1">
+                <div className="border-t border-[#E3E8E3] dark:border-slate-800 w-full"></div>
+                <span className="bg-white dark:bg-slate-900 px-3 text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">
+                  {authTab === 'login' ? 'or sign in with password' : 'or register with email'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* SIGN IN TAB */}
+          {authTab === 'login' && (
+            <form onSubmit={handleUserIdLogin} className="space-y-3 text-left animate-fade-in">
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">
-                  User ID / Registered Email
+                  Email or User ID
                 </label>
-                <input
-                  type="text"
-                  placeholder="e.g. USR-0000-8888 or your email"
-                  value={userIdInput}
-                  onChange={e => {
-                    setUserIdInput(e.target.value);
-                    setAuthError(null);
-                  }}
-                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-mono font-bold tracking-wide"
-                  required
-                />
-              </div>
-
-              {/* Optional Email field if entering USR-XXXX code without email */}
-              {!userIdInput.includes('@') && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block">
-                    Registered Email <span className="font-normal">(to receive password)</span>
-                  </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <User className="w-3.5 h-3.5" />
+                  </div>
                   <input
-                    type="email"
-                    placeholder="you@example.com"
-                    value={userIdEmailInput}
-                    onChange={e => setUserIdEmailInput(e.target.value)}
-                    className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
+                    type="text"
+                    placeholder="you@example.com or USR-0000-8888"
+                    value={userIdInput}
+                    onChange={e => {
+                      setUserIdInput(e.target.value);
+                      setAuthError(null);
+                    }}
+                    className="w-full pl-9 pr-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-medium"
+                    required
                   />
                 </div>
-              )}
+              </div>
 
-              {/* Password Input */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">
                     Password
                   </label>
-                  {/* Reset Password Button */}
                   <button
                     type="button"
-                    onClick={handleResetPassword}
-                    disabled={isResettingPassword || !userIdInput.trim() || !isPasswordMailed}
-                    className={`text-[10px] font-bold transition-all ${
-                      isPasswordMailed && userIdInput.trim()
-                        ? 'text-emerald-700 dark:text-[#A3E635] underline hover:opacity-80 cursor-pointer'
-                        : 'text-slate-400 dark:text-slate-600 cursor-not-allowed'
-                    }`}
-                    title={isPasswordMailed ? "Generate & email a new reset password" : "Option enabled after password is mailed"}
+                    onClick={() => {
+                      setAuthTab('forgot');
+                      setForgotInput(userIdInput);
+                      setAuthError(null);
+                      setForgotSuccess(false);
+                    }}
+                    className="text-[11px] font-bold text-emerald-700 dark:text-[#A3E635] hover:underline cursor-pointer"
                   >
-                    {isResettingPassword ? 'Sending...' : 'Reset Password'}
+                    Forgot password?
                   </button>
                 </div>
                 <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="w-3.5 h-3.5" />
+                  </div>
                   <input
                     type={showPasswordText ? "text" : "password"}
-                    placeholder="Enter password"
+                    placeholder="Enter your password"
                     value={userPasswordInput}
                     onChange={e => {
                       setUserPasswordInput(e.target.value);
                       setAuthError(null);
                     }}
-                    className="w-full px-3 py-2 pr-9 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-mono"
+                    className="w-full pl-9 pr-9 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-medium"
+                    required
                   />
                   <button
                     type="button"
@@ -13113,122 +13490,299 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
                 </div>
               </div>
 
-              {/* First Time User: Generate Password Section */}
-              <div className="p-2.5 bg-emerald-50/70 dark:bg-slate-950/70 border border-emerald-500/20 dark:border-slate-800 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10.5px] font-extrabold text-[#1A3827] dark:text-slate-200">
-                    First time logging in with User ID?
-                  </span>
-                  <span className="text-[9px] text-emerald-700 dark:text-[#A3E635] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-full">
-                    Setup
-                  </span>
-                </div>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 leading-tight">
-                  Click below to generate a secure password sent to your registered email.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleGeneratePassword}
-                  disabled={isGeneratingPassword || !userIdInput.trim()}
-                  className="w-full py-1.5 px-2.5 bg-white dark:bg-slate-900 border border-emerald-600/30 dark:border-emerald-700/50 hover:bg-emerald-50 dark:hover:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] text-[11px] font-black rounded-lg transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                >
-                  {isGeneratingPassword ? (
-                    <>
-                      <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
-                      <span>Mailing Password...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Key className="w-3 h-3 text-emerald-600 dark:text-[#A3E635]" />
-                      <span>Generate Password</span>
-                    </>
-                  )}
-                </button>
-                {isPasswordMailed && (
-                  <div className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 font-bold pt-0.5">
-                    <CheckCircle2 className="w-3 h-3 shrink-0" />
-                    <span>Password mailed! Reset Password is now enabled.</span>
-                  </div>
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] disabled:opacity-60 shadow-sm rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all mt-1"
+              >
+                {authLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Signing in...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Sign In</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
                 )}
-              </div>
+              </button>
 
-              {/* Action Buttons: Back & Log In */}
-              <div className="flex gap-2 pt-0.5">
+              <div className="pt-2 text-center border-t border-[#F6F8F6] dark:border-slate-800/80">
                 <button
                   type="button"
                   onClick={() => {
-                    setShowUserIdLogin(false);
+                    setAuthTab('code');
                     setAuthError(null);
                   }}
-                  className="flex-1 py-2 border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl cursor-pointer"
+                  className="text-[11px] text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-[#A3E635] font-semibold cursor-pointer inline-flex items-center gap-1.5"
                 >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="flex-1 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] disabled:opacity-60 shadow-sm rounded-xl cursor-pointer flex items-center justify-center gap-1"
-                >
-                  {authLoading ? (
-                    <>
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                      <span>Logging In...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Log In</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </>
-                  )}
+                  <Key className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>Have a 6-digit access code? <strong className="underline">Sign in with Code</strong></span>
                 </button>
               </div>
             </form>
-          ) : (
-            <form onSubmit={handleCodeLogin} className="space-y-3 text-left">
+          )}
+
+          {/* SIGN UP TAB */}
+          {authTab === 'signup' && (
+            <form onSubmit={handleSignUp} className="space-y-3 text-left animate-fade-in">
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">Enter 6-digit Access Code</label>
+                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">
+                  Full Name or Nickname
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <User className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="e.g. Alex Kumar"
+                    value={signupName}
+                    onChange={e => {
+                      setSignupName(e.target.value);
+                      setAuthError(null);
+                    }}
+                    className="w-full pl-9 pr-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-medium"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Mail className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={signupEmail}
+                    onChange={e => {
+                      setSignupEmail(e.target.value);
+                      setAuthError(null);
+                    }}
+                    className="w-full pl-9 pr-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-medium"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">
+                  Create Password <span className="font-normal text-[#5C6E5C] dark:text-slate-400">(min 6 characters)</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type={showPasswordText ? "text" : "password"}
+                    placeholder="Create a secure password"
+                    value={signupPassword}
+                    onChange={e => {
+                      setSignupPassword(e.target.value);
+                      setAuthError(null);
+                    }}
+                    className="w-full pl-9 pr-9 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-medium"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordText(!showPasswordText)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 cursor-pointer"
+                  >
+                    {showPasswordText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSigningUp || authLoading}
+                className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] disabled:opacity-60 shadow-sm rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all mt-1"
+              >
+                {isSigningUp ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Creating account...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Create Free Account</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
+
+              <div className="pt-2 text-center border-t border-[#F6F8F6] dark:border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthTab('forgot');
+                    setForgotInput(signupEmail);
+                    setAuthError(null);
+                  }}
+                  className="text-[11px] text-[#5C6E5C] dark:text-slate-400 hover:text-[#1A3827] dark:hover:text-[#A3E635] font-semibold cursor-pointer"
+                >
+                  Roommate gave you a User ID? <strong className="underline">Set up your password</strong>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* ACCESS CODE TAB */}
+          {authTab === 'code' && (
+            <form onSubmit={handleCodeLogin} className="space-y-3.5 text-left animate-fade-in">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab('login');
+                  setAuthError(null);
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:text-slate-800 dark:hover:text-white cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
+              </button>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block text-center">
+                  Enter 6-digit Access Code
+                </label>
                 <input
                   type="text"
                   maxLength={6}
-                  placeholder="e.g. 123456"
+                  placeholder="e.g. BE2SJ0"
                   value={accessCodeInput}
-                  onChange={e => setAccessCodeInput(e.target.value)}
-                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-mono tracking-widest uppercase text-center font-bold animate-fade-in"
+                  onChange={e => setAccessCodeInput(e.target.value.toUpperCase())}
+                  className="w-full px-3 py-2.5 border-2 border-emerald-600/30 dark:border-emerald-600/50 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-mono tracking-widest uppercase text-center font-black shadow-inner"
                   required
+                  autoFocus
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">Your Email <span className="text-[#5C6E5C] dark:text-slate-500 font-normal">(optional)</span></label>
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  value={codeLoginEmail}
-                  onChange={e => setCodeLoginEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
-                />
+                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">
+                  Your Email <span className="text-[#5C6E5C] dark:text-slate-400 font-normal">(optional, for syncing receipts)</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Mail className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={codeLoginEmail}
+                    onChange={e => setCodeLoginEmail(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
+                  />
+                </div>
               </div>
 
-              <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={isVerifyingCode}
+                className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] disabled:opacity-60 shadow-sm rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all"
+              >
+                {isVerifyingCode ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Verifying Code...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Enter Workspace</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* FORGOT / SETUP PASSWORD TAB */}
+          {authTab === 'forgot' && (
+            <div className="space-y-3.5 text-left animate-fade-in">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab('login');
+                  setAuthError(null);
+                  setForgotSuccess(false);
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:text-slate-800 dark:hover:text-white cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
+              </button>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">
+                  User ID or Registered Email
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <User className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="e.g. USR-0000-8888 or your email"
+                    value={forgotInput}
+                    onChange={e => {
+                      setForgotInput(e.target.value);
+                      setAuthError(null);
+                    }}
+                    className="w-full pl-9 pr-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900 font-medium"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {forgotSuccess ? (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                    <span>Password sent to your email!</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                    Please check your inbox (and spam folder). Once you copy your password, switch back to Sign In.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserIdInput(forgotInput);
+                      setAuthTab('login');
+                    }}
+                    className="mt-1 w-full py-1.5 bg-[#1A3827] text-white rounded-lg font-bold text-xs hover:bg-[#255038] cursor-pointer"
+                  >
+                    Go to Sign In
+                  </button>
+                </div>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowCodeLogin(false);
-                    setAuthError(null);
-                  }}
-                  className="flex-1 py-2 border border-[#E3E8E3] dark:border-slate-800 text-xs font-bold text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 rounded-xl cursor-pointer"
+                  onClick={() => handleSendOrResetPassword(forgotInput)}
+                  disabled={isResettingPassword || !forgotInput.trim()}
+                  className="w-full py-2.5 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] disabled:opacity-60 shadow-sm rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all"
                 >
-                  Back
+                  {isResettingPassword ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Sending Password...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Key className="w-3.5 h-3.5" />
+                      <span>Email My Password</span>
+                    </>
+                  )}
                 </button>
-                <button
-                  type="submit"
-                  disabled={isVerifyingCode}
-                  className="flex-1 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-950 font-bold text-xs hover:bg-[#255038] disabled:opacity-60 shadow-sm rounded-xl cursor-pointer"
-                >
-                  {isVerifyingCode ? 'Verifying...' : 'Log In'}
-                </button>
-              </div>
-            </form>
+              )}
+            </div>
           )}
 
           {authError && (
@@ -15873,11 +16427,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <img 
                   src={auth.currentUser.photoURL} 
                   alt={userNickname} 
-                  className="w-8 h-8 rounded-full border border-[#E3E8E3] dark:border-slate-800 shadow-sm"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  className="w-8 h-8 rounded-full border border-emerald-500/20 dark:border-slate-800 shadow-sm object-cover"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-xs shadow-inner">
-                  {userNickname.charAt(0)}
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 text-white flex items-center justify-center font-bold text-xs shadow-sm ring-1 ring-emerald-500/30">
+                  {userNickname.charAt(0).toUpperCase()}
                 </div>
               )}
               <div className="text-left hidden lg:block">
@@ -15889,25 +16444,83 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
             {/* Dropdown Menu */}
             {isProfileDropdownOpen && (
-              <div className="absolute right-0 top-12 mt-2 w-52 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-30 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
-                <div className="px-4 py-2 border-b border-[#F6F8F6] dark:border-slate-800 text-left space-y-2">
+              <div className="absolute right-0 top-12 mt-2 w-56 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-30 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+                <div className="px-4 py-2 border-b border-[#F6F8F6] dark:border-slate-800 text-left space-y-2.5">
+                  <div className="flex items-center gap-2.5 pb-1">
+                    {auth.currentUser && auth.currentUser.photoURL ? (
+                      <img 
+                        src={auth.currentUser.photoURL} 
+                        alt={userNickname} 
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        className="w-8 h-8 rounded-full border border-emerald-500/20 object-cover shadow-xs shrink-0"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                        {userNickname.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="overflow-hidden">
+                      <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 truncate">{userNickname}</p>
+                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 truncate font-normal">
+                        {auth.currentUser?.email || 'Active Member'}
+                      </p>
+                    </div>
+                  </div>
+
                   <div>
-                    <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Access Code</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Access Code</p>
+                      {!auth.currentUser?.loginCode && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRefreshLoginCode();
+                          }}
+                          className="text-[9px] text-emerald-600 dark:text-[#A3E635] hover:underline font-bold cursor-pointer"
+                        >
+                          Generate
+                        </button>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1 rounded-lg">
-                      <span className="font-mono text-[11px] text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all">
-                        {auth.currentUser?.loginCode || 'Generating...'}
+                      <span className="font-mono text-[11px] text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all font-black">
+                        {auth.currentUser?.loginCode || (
+                          <span 
+                            onClick={(e) => { e.stopPropagation(); handleRefreshLoginCode(); }}
+                            className="cursor-pointer underline text-emerald-600"
+                          >
+                            Click to Generate
+                          </span>
+                        )}
                       </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigator.clipboard.writeText(auth.currentUser?.loginCode || '');
-                          triggerToast('Access code copied!');
-                        }}
-                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0"
-                        title="Copy Code"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRefreshLoginCode();
+                          }}
+                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0 cursor-pointer"
+                          title="Generate New Code"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (auth.currentUser?.loginCode) {
+                              navigator.clipboard.writeText(auth.currentUser.loginCode);
+                              triggerToast('Access code copied!');
+                            } else {
+                              handleRefreshLoginCode();
+                            }
+                          }}
+                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0 cursor-pointer"
+                          title="Copy Code"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -16624,6 +17237,118 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           roomName={roomName}
           triggerToast={triggerToast}
         />
+
+        {/* Avatar Customization Modal */}
+        {showAvatarModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-sm sm:max-w-md w-full shadow-2xl space-y-4 text-left">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="font-extrabold text-[#12291C] dark:text-slate-100 text-base">Choose Profile Avatar</h3>
+                  <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400">Select a fun avatar or paste an image link.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarModal(false)}
+                  className="p-1 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Current Preview */}
+              <div className="flex items-center gap-3.5 p-3 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-emerald-500/10">
+                {auth.currentUser?.photoURL ? (
+                  <img
+                    src={auth.currentUser.photoURL}
+                    alt="Preview"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    className="w-14 h-14 rounded-full border-2 border-emerald-500/40 object-cover shadow-sm shrink-0"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 text-white flex items-center justify-center font-black text-lg shadow-inner ring-2 ring-emerald-500/20 shrink-0">
+                    {userNickname.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100">{userNickname}</p>
+                  <span className="text-[10px] text-emerald-700 dark:text-[#A3E635] font-semibold">Active Avatar</span>
+                </div>
+              </div>
+
+              {/* Preset Avatars */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">Preset Avatars</label>
+                <div className="grid grid-cols-6 gap-2">
+                  {[
+                    'https://api.dicebear.com/7.x/bottts/svg?seed=tallyin1',
+                    'https://api.dicebear.com/7.x/adventurer/svg?seed=tallyin2',
+                    'https://api.dicebear.com/7.x/micah/svg?seed=tallyin3',
+                    'https://api.dicebear.com/7.x/notionists/svg?seed=tallyin4',
+                    'https://api.dicebear.com/7.x/lorelei/svg?seed=tallyin5',
+                    'https://api.dicebear.com/7.x/personas/svg?seed=tallyin6'
+                  ].map((url, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleUpdateAvatar(url)}
+                      className="p-1 rounded-2xl border-2 border-slate-200 dark:border-slate-800 hover:border-emerald-600 dark:hover:border-emerald-500 hover:scale-105 transition-all bg-white dark:bg-slate-800 cursor-pointer"
+                    >
+                      <img src={url} alt={`Preset ${idx + 1}`} className="w-full h-auto rounded-xl aspect-square" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Image URL */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-[#1A3827] dark:text-slate-200 block">Or Paste Image URL</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    placeholder="https://example.com/photo.jpg"
+                    value={customAvatarInput}
+                    onChange={(e) => setCustomAvatarInput(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1A3827] text-[#1A3827] dark:text-white bg-white dark:bg-slate-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (customAvatarInput.trim()) {
+                        handleUpdateAvatar(customAvatarInput.trim());
+                      }
+                    }}
+                    disabled={!customAvatarInput.trim()}
+                    className="px-3.5 py-2 bg-[#1A3827] dark:bg-[#A3E635] text-white dark:text-slate-900 rounded-xl font-bold text-xs hover:bg-[#255038] disabled:opacity-50 cursor-pointer"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+
+              {/* Restore original photo if available */}
+              <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const googlePhoto = user?.user_metadata?.picture || user?.user_metadata?.avatar_url || 'https://lh3.googleusercontent.com/a/ACg8ocLv4B6nBUn0pP8pxyyRKI4Mtld7Z5y259n3mAqCxZJcFYcBRtFjvg=s96-c';
+                    handleUpdateAvatar(googlePhoto);
+                  }}
+                  className="text-xs font-bold text-emerald-700 dark:text-[#A3E635] hover:underline cursor-pointer"
+                >
+                  Use Google Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarModal(false)}
+                  className="px-4 py-1.5 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add Expense Modal Overlay */}
         {isAddExpenseOpen && renderAddExpenseModal()}
@@ -23943,6 +24668,37 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 Your Profile
               </h3>
             </div>
+
+            {/* Profile Photo Avatar Section */}
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-3 border-b border-[#F6F8F6] dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                {auth.currentUser?.photoURL ? (
+                  <img 
+                    src={auth.currentUser.photoURL} 
+                    alt={userNickname} 
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    className="w-12 h-12 rounded-full border-2 border-emerald-500/30 object-cover shadow-sm"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 text-white flex items-center justify-center font-bold text-sm shadow-inner ring-2 ring-emerald-500/20">
+                    {userNickname.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="text-left">
+                  <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Profile Photo</p>
+                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">Personalize your avatar displayed to your roommates.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarModal(true)}
+                  className="px-3.5 py-1.5 border border-[#E3E8E3] dark:border-slate-800 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#1A3827] dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  Change Photo
+                </button>
+              </div>
+            </div>
             
             {/* Display Name editing */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2">
@@ -24049,15 +24805,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Use this unique code to instantly log in to this account on other devices.</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs sm:text-sm font-bold bg-[#F6F8F6] dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-[#E3E8E3]/50 dark:border-slate-800 text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all">
+                <span className="font-mono text-xs sm:text-sm font-bold bg-[#F6F8F6] dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-[#E3E8E3]/50 dark:border-slate-800 text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all font-black">
                   {auth.currentUser?.loginCode || 'Generating...'}
                 </span>
                 <button
+                  onClick={handleRefreshLoginCode}
+                  className="p-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 cursor-pointer"
+                  title="Generate New Access Code"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+                <button
                   onClick={() => {
-                    navigator.clipboard.writeText(auth.currentUser?.loginCode || '');
-                    triggerToast('Access code copied!');
+                    if (auth.currentUser?.loginCode) {
+                      navigator.clipboard.writeText(auth.currentUser.loginCode);
+                      triggerToast('Access code copied!');
+                    } else {
+                      handleRefreshLoginCode();
+                    }
                   }}
-                  className="p-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"
+                  className="p-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 cursor-pointer"
                   title="Copy Access Code"
                 >
                   <Copy className="w-4 h-4" />
