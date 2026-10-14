@@ -864,10 +864,6 @@ export default function App() {
     };
   }, [isProfileDropdownOpen]);
 
-  useEffect(() => {
-    setIsProfileDropdownOpen(false);
-  }, [currentView]);
-
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isManageRoomOpen, setIsManageRoomOpen] = useState(false);
@@ -1182,6 +1178,11 @@ export default function App() {
     }
     return 'home';
   });
+
+  // Auto-close profile dropdown whenever currentView changes
+  useEffect(() => {
+    setIsProfileDropdownOpen(false);
+  }, [currentView]);
 
   // Sync URL location changes to currentView
   useEffect(() => {
