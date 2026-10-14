@@ -252,14 +252,6 @@ export default function AdminDashboard({
     }
   }, [initialTab]);
 
-  // Direct router for terms_violations
-  useEffect(() => {
-    if (activeTab === 'terms_violations') {
-      setActiveTab('dispute_resolver');
-      setDisputeFilterTab('violations');
-      setDisputeViewMode('tickets');
-    }
-  }, [activeTab]);
 
   // Time-based expiry utility helpers
   const calculateExpiryTimestamp = (duration, customDate, baseTimestamp = null) => {
@@ -731,6 +723,15 @@ export default function AdminDashboard({
   const [selectedDisputeTicket, setSelectedDisputeTicket] = useState(null);
   const [adminResponseText, setAdminResponseText] = useState('');
   const [isUpdatingTicket, setIsUpdatingTicket] = useState(false);
+
+  // Direct router for terms_violations
+  useEffect(() => {
+    if (activeTab === 'terms_violations') {
+      setActiveTab('dispute_resolver');
+      setDisputeFilterTab('violations');
+      setDisputeViewMode('tickets');
+    }
+  }, [activeTab]);
 
   // Calculate live pending/open dispute tickets
   const openDisputesCount = useMemo(() => {

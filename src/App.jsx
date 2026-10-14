@@ -751,6 +751,7 @@ export default function App() {
   const [monthlyBudget, setMonthlyBudget] = useState(() => Number(localStorage.getItem('monthlyBudget')) || 22000);
   const [monthlyBudgetInput, setMonthlyBudgetInput] = useState(() => String(localStorage.getItem('monthlyBudget') || 22000));
   const [personalCap, setPersonalCap] = useState(() => Number(localStorage.getItem('personalCap')) || 2500);
+  const [personalCapInput, setPersonalCapInput] = useState(() => String(localStorage.getItem('personalCap') || 2500));
   const [isEditingPersonalCap, setIsEditingPersonalCap] = useState(false);
   const [roomCreatedBy, setRoomCreatedBy] = useState(null); // uid of room creator (host)
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
@@ -1089,19 +1090,11 @@ export default function App() {
       const filtered = (Array.isArray(currentApps) ? currentApps : []).filter(
         a => a.email?.toLowerCase() !== applicantEmail.toLowerCase()
       );
+      const updatedApps = [newApp, ...filtered];
       await supabase.from('system_settings').upsert({
         key: 'beta_tester_applications',
         value: JSON.stringify(updatedApps)
       }, { onConflict: 'key' });
-
-      try {
-        if (typeof realSupabase !== 'undefined' && realSupabase?.from) {
-          await realSupabase.from('system_settings').upsert({
-            key: 'beta_tester_applications',
-            value: JSON.stringify(updatedApps)
-          }, { onConflict: 'key' });
-        }
-      } catch (sbErr) {}
 
       setBetaApplications(updatedApps);
       localStorage.setItem('tallyin_beta_applications', JSON.stringify(updatedApps));
@@ -23663,7 +23656,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   };
 
   // Change Password Modal
-  const renderChangePasswordModal = () => {
+  function renderChangePasswordModal() {
     const activeUserCode = user?.userCode || (user?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : getUserCode(user?.email || user?.id || userNickname));
     return (
       <div 

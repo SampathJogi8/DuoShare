@@ -157,6 +157,8 @@ kfc: 748`;
     return items.reduce((sum, item) => sum + (item.amount * (item.qty || 1)), 0);
   }, [items]);
 
+  const grandTotal = subtotal;
+
   const [receiptRefCode, setReceiptRefCode] = useState('');
 
   useEffect(() => {

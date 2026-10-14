@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Radio, 
   ShieldAlert, 
@@ -371,6 +371,13 @@ export default function AnnouncementBanner({
     setIsClientVisible(true);
   }, [bannerId, frequency, isDismissed, isPreview]);
 
+  const handleDismissAction = useCallback(() => {
+    setIsClientVisible(false);
+    if (onDismiss) {
+      onDismiss(banner);
+    }
+  }, [onDismiss, banner]);
+
   // Handle auto-dismiss timer countdown
   useEffect(() => {
     if (isPreview || autoDismissSeconds <= 0 || !isClientVisible) return;
@@ -393,14 +400,7 @@ export default function AnnouncementBanner({
     timerRef.current = interval;
 
     return () => clearInterval(interval);
-  }, [autoDismissSeconds, isClientVisible, isPaused, isPreview, bannerId]);
-
-  const handleDismissAction = () => {
-    setIsClientVisible(false);
-    if (onDismiss) {
-      onDismiss(banner);
-    }
-  };
+  }, [autoDismissSeconds, isClientVisible, isPaused, isPreview, bannerId, handleDismissAction]);
 
   // Keyboard shortcut listener: Press Escape to close modal dialog
   useEffect(() => {
