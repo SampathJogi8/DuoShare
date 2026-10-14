@@ -282,42 +282,152 @@ export default {
 
         const isValidCol = (col) => /^[a-zA-Z0-9_]+$/.test(col);
 
+        const buildWhereClauses = (filterList) => {
+          const clauses = [];
+          const params = [];
+          if (!filterList || !Array.isArray(filterList) || filterList.length === 0) {
+            return { clauses, params };
+          }
+          for (const f of filterList) {
+            if (f.operator === "or" && typeof f.value === "string") {
+              const orParts = f.value.split(',');
+              const orClauses = [];
+              for (const part of orParts) {
+                const trimmed = part.trim();
+                if (!trimmed) continue;
+                const firstDot = trimmed.indexOf('.');
+                const secondDot = trimmed.indexOf('.', firstDot + 1);
+                if (firstDot === -1 || secondDot === -1) continue;
+                const col = trimmed.slice(0, firstDot);
+                const op = trimmed.slice(firstDot + 1, secondDot);
+                let val = trimmed.slice(secondDot + 1);
+                if (!isValidCol(col)) continue;
+                if (val.startsWith('"') && val.endsWith('"')) {
+                  val = val.slice(1, -1);
+                }
+                if (op === 'eq') {
+                  if (val === 'null') {
+                    orClauses.push(`${col} IS NULL`);
+                  } else {
+                    orClauses.push(`${col} = ?`);
+                    params.push(val);
+                  }
+                } else if (op === 'neq') {
+                  if (val === 'null') {
+                    orClauses.push(`${col} IS NOT NULL`);
+                  } else {
+                    orClauses.push(`${col} != ?`);
+                    params.push(val);
+                  }
+                } else if (op === 'gte') {
+                  orClauses.push(`${col} >= ?`);
+                  params.push(val);
+                } else if (op === 'lte') {
+                  orClauses.push(`${col} <= ?`);
+                  params.push(val);
+                } else if (op === 'gt') {
+                  orClauses.push(`${col} > ?`);
+                  params.push(val);
+                } else if (op === 'lt') {
+                  orClauses.push(`${col} < ?`);
+                  params.push(val);
+                } else if (op === 'like') {
+                  orClauses.push(`${col} LIKE ?`);
+                  params.push(val);
+                } else if (op === 'ilike') {
+                  orClauses.push(`LOWER(${col}) LIKE LOWER(?)`);
+                  params.push(val);
+                } else if (op === 'is') {
+                  if (val === 'null') {
+                    orClauses.push(`${col} IS NULL`);
+                  } else {
+                    orClauses.push(`${col} = ?`);
+                    params.push(val);
+                  }
+                }
+              }
+              if (orClauses.length > 0) {
+                clauses.push(`(${orClauses.join(" OR ")})`);
+              }
+              continue;
+            }
+
+            if (!isValidCol(f.column)) continue;
+
+            if (f.operator === "not") {
+              const subOp = f.subOperator || 'eq';
+              if (subOp === 'is' || f.value === null || f.value === 'null') {
+                clauses.push(`${f.column} IS NOT NULL`);
+              } else if (subOp === 'eq') {
+                clauses.push(`${f.column} != ?`);
+                params.push(f.value);
+              } else if (subOp === 'in' && Array.isArray(f.value)) {
+                if (f.value.length > 0) {
+                  clauses.push(`${f.column} NOT IN (${f.value.map(() => "?").join(", ")})`);
+                  f.value.forEach(v => params.push(v));
+                }
+              } else if (subOp === 'like') {
+                clauses.push(`${f.column} NOT LIKE ?`);
+                params.push(f.value);
+              } else if (subOp === 'ilike') {
+                clauses.push(`LOWER(${f.column}) NOT LIKE LOWER(?)`);
+                params.push(f.value);
+              }
+              continue;
+            }
+
+            if (f.operator === "eq") {
+              clauses.push(`${f.column} = ?`);
+              params.push(f.value);
+            } else if (f.operator === "neq") {
+              clauses.push(`${f.column} != ?`);
+              params.push(f.value);
+            } else if (f.operator === "gte") {
+              clauses.push(`${f.column} >= ?`);
+              params.push(f.value);
+            } else if (f.operator === "lte") {
+              clauses.push(`${f.column} <= ?`);
+              params.push(f.value);
+            } else if (f.operator === "gt") {
+              clauses.push(`${f.column} > ?`);
+              params.push(f.value);
+            } else if (f.operator === "lt") {
+              clauses.push(`${f.column} < ?`);
+              params.push(f.value);
+            } else if (f.operator === "like") {
+              clauses.push(`${f.column} LIKE ?`);
+              params.push(f.value);
+            } else if (f.operator === "ilike") {
+              clauses.push(`LOWER(${f.column}) LIKE LOWER(?)`);
+              params.push(f.value);
+            } else if (f.operator === "is") {
+              if (f.value === null || f.value === "null") {
+                clauses.push(`${f.column} IS NULL`);
+              } else {
+                clauses.push(`${f.column} = ?`);
+                params.push(f.value);
+              }
+            } else if (f.operator === "in") {
+              if (Array.isArray(f.value) && f.value.length > 0) {
+                clauses.push(`${f.column} IN (${f.value.map(() => "?").join(", ")})`);
+                f.value.forEach(val => params.push(val));
+              } else if (Array.isArray(f.value) && f.value.length === 0) {
+                clauses.push("1 = 0"); // Empty IN returns nothing
+              } else {
+                clauses.push(`${f.column} = ?`);
+                params.push(f.value);
+              }
+            }
+          }
+          return { clauses, params };
+        };
+
         // --- SELECT ---
         if (action === "select") {
           let sql = `SELECT * FROM ${table}`;
-          let params = [];
-
-          if (filters && filters.length > 0) {
-            const clauses = [];
-            for (const f of filters) {
-              if (!isValidCol(f.column)) continue;
-              if (f.operator === "eq") {
-                clauses.push(`${f.column} = ?`);
-                params.push(f.value);
-              } else if (f.operator === "neq") {
-                clauses.push(`${f.column} != ?`);
-                params.push(f.value);
-              } else if (f.operator === "gte") {
-                clauses.push(`${f.column} >= ?`);
-                params.push(f.value);
-              } else if (f.operator === "lte") {
-                clauses.push(`${f.column} <= ?`);
-                params.push(f.value);
-              } else if (f.operator === "in") {
-                if (Array.isArray(f.value) && f.value.length > 0) {
-                  clauses.push(`${f.column} IN (${f.value.map(() => "?").join(", ")})`);
-                  f.value.forEach(val => params.push(val));
-                } else if (Array.isArray(f.value) && f.value.length === 0) {
-                  clauses.push("1 = 0"); // Empty IN returns nothing
-                } else {
-                  clauses.push(`${f.column} = ?`);
-                  params.push(f.value);
-                }
-              }
-            }
-            if (clauses.length > 0) {
-              sql += ` WHERE ${clauses.join(" AND ")}`;
-            }
+          const { clauses, params } = buildWhereClauses(filters);
+          if (clauses.length > 0) {
+            sql += ` WHERE ${clauses.join(" AND ")}`;
           }
 
           if (order && order.length > 0) {
@@ -514,19 +624,11 @@ export default {
           const values = keys.map(k => (data[k] !== null && typeof data[k] === "object") ? JSON.stringify(data[k]) : (data[k] === undefined ? null : data[k]));
 
           let sql = `UPDATE ${table} SET ${setClause}`;
-          let params = [...values];
-
-          if (filters && filters.length > 0) {
-            const clauses = [];
-            for (const f of filters) {
-              if (!isValidCol(f.column)) continue;
-              clauses.push(`${f.column} = ?`);
-              params.push(f.value);
-            }
-            if (clauses.length > 0) {
-              sql += ` WHERE ${clauses.join(" AND ")}`;
-            }
+          const { clauses, params: whereParams } = buildWhereClauses(filters);
+          if (clauses.length > 0) {
+            sql += ` WHERE ${clauses.join(" AND ")}`;
           }
+          const params = [...values, ...whereParams];
 
           await env.DB.prepare(sql).bind(...params).run();
           return Response.json({ data }, { headers: corsHeaders });
@@ -538,18 +640,11 @@ export default {
             return Response.json({ error: `Safety guard: Refusing DELETE on ${table} without WHERE filters.` }, { status: 400, headers: corsHeaders });
           }
           let sql = `DELETE FROM ${table}`;
-          let params = [];
-
-          if (filters && filters.length > 0) {
-            const clauses = [];
-            for (const f of filters) {
-              if (!isValidCol(f.column)) continue;
-              clauses.push(`${f.column} = ?`);
-              params.push(f.value);
-            }
-            if (clauses.length > 0) {
-              sql += ` WHERE ${clauses.join(" AND ")}`;
-            }
+          const { clauses, params } = buildWhereClauses(filters);
+          if (clauses.length > 0) {
+            sql += ` WHERE ${clauses.join(" AND ")}`;
+          } else {
+            return Response.json({ error: `Safety guard: Refusing DELETE on ${table} without valid WHERE filters.` }, { status: 400, headers: corsHeaders });
           }
 
           await env.DB.prepare(sql).bind(...params).run();

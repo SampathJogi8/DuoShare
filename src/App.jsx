@@ -3459,13 +3459,13 @@ export default function App() {
     const targetUid = currentUser.id || currentUser.uid;
     const targetEmail = currentUser.email ? currentUser.email.toLowerCase().trim() : null;
 
-    supabase
-      .from('users')
-      .select('*')
-      .or(`uid.eq.${targetUid}${targetEmail ? `,email.eq.${targetEmail}` : ''}`)
-      .limit(1)
-      .maybeSingle()
-      .then(async ({ data: userProfile, error }) => {
+    if (targetUid) {
+      const userQuery = targetEmail
+        ? supabase.from('users').select('*').or(`uid.eq.${targetUid},email.eq.${targetEmail}`).limit(1).maybeSingle()
+        : supabase.from('users').select('*').eq('uid', targetUid).limit(1).maybeSingle();
+
+      userQuery
+        .then(async ({ data: userProfile, error }) => {
         if (!error) {
           let code = userProfile?.login_code;
           if (!code || code === 'null' || code === 'undefined' || code.trim() === '') {
@@ -3499,6 +3499,7 @@ export default function App() {
         }
       })
       .catch(e => console.error('Error verifying user login code:', e));
+    }
 
     // Load room ID from localStorage if available, otherwise fetch from Supabase
     // Fire-and-forget addMemberToRoom — don't await it to avoid login latency

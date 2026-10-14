@@ -167,6 +167,61 @@ class D1QueryBuilder {
     return this;
   }
 
+  gt(column, value) {
+    this.filters.push({ column, operator: 'gt', value });
+    return this;
+  }
+
+  lt(column, value) {
+    this.filters.push({ column, operator: 'lt', value });
+    return this;
+  }
+
+  like(column, pattern) {
+    this.filters.push({ column, operator: 'like', value: pattern });
+    return this;
+  }
+
+  ilike(column, pattern) {
+    this.filters.push({ column, operator: 'ilike', value: pattern });
+    return this;
+  }
+
+  is(column, value) {
+    this.filters.push({ column, operator: 'is', value });
+    return this;
+  }
+
+  not(column, operator, value) {
+    this.filters.push({ column, operator: 'not', subOperator: operator, value });
+    return this;
+  }
+
+  or(filters, options = {}) {
+    this.filters.push({ operator: 'or', value: filters, options });
+    return this;
+  }
+
+  filter(column, operator, value) {
+    this.filters.push({ column, operator, value });
+    return this;
+  }
+
+  match(query) {
+    if (query && typeof query === 'object') {
+      Object.entries(query).forEach(([col, val]) => {
+        this.eq(col, val);
+      });
+    }
+    return this;
+  }
+
+  range(from, to) {
+    this.limitVal = Number(to) - Number(from) + 1;
+    this.offsetVal = Number(from);
+    return this;
+  }
+
   limit(value) {
     this.limitVal = value;
     return this;
@@ -231,7 +286,15 @@ class D1QueryBuilder {
       else if (f.operator === 'neq') q = q.neq(f.column, f.value);
       else if (f.operator === 'gte') q = q.gte(f.column, f.value);
       else if (f.operator === 'lte') q = q.lte(f.column, f.value);
+      else if (f.operator === 'gt') q = q.gt(f.column, f.value);
+      else if (f.operator === 'lt') q = q.lt(f.column, f.value);
       else if (f.operator === 'in') q = q.in(f.column, f.value);
+      else if (f.operator === 'or') q = q.or(f.value, f.options);
+      else if (f.operator === 'ilike') q = q.ilike(f.column, f.value);
+      else if (f.operator === 'like') q = q.like(f.column, f.value);
+      else if (f.operator === 'is') q = q.is(f.column, f.value);
+      else if (f.operator === 'not') q = q.not(f.column, f.subOperator || 'eq', f.value);
+      else if (f.column && f.operator) q = q.filter(f.column, f.operator, f.value);
     });
 
     this.orderFields.forEach(o => {
@@ -410,6 +473,13 @@ export const supabase = new Proxy(realSupabase, {
           mutationFilters.push({ column, operator: 'in', value: values });
           return originalIn(column, values);
         };
+        if (typeof queryBuilder.or === 'function') {
+          const originalOr = queryBuilder.or.bind(queryBuilder);
+          queryBuilder.or = (filters, options) => {
+            mutationFilters.push({ operator: 'or', value: filters, options });
+            return originalOr(filters, options);
+          };
+        }
 
         queryBuilder.then = (onfulfilled, onrejected) => {
           if (mutationAction) {
