@@ -1931,7 +1931,9 @@ export default function App() {
   const isInitialThemeMount = useRef(true);
   const [offlineMode, setOfflineMode] = useState(false);
   const [isDbSynced, setIsDbSynced] = useState(false);
-  const [hasConfirmedRoom, setHasConfirmedRoom] = useState(false);
+  const [hasConfirmedRoom, setHasConfirmedRoom] = useState(() => {
+    return !!(typeof window !== 'undefined' && localStorage.getItem('userRoomId'));
+  });
   
   // Nicknames & Roommates Dynamic State
   const [userNickname, setUserNickname] = useState(() => localStorage.getItem('userNickname') || 'You');
@@ -3191,6 +3193,7 @@ export default function App() {
           : (formatted.find(r => r.roomId !== 'DUO-KLIZ-2508') || formatted[0]);
         if (activeRoom && activeRoom.roomId) {
           setUserRoomId(activeRoom.roomId);
+          setHasConfirmedRoom(true);
           if (activeRoom.roomName && !isUserActivelyEditingRoomName()) setRoomName(activeRoom.roomName);
           localStorage.setItem('userRoomId', activeRoom.roomId);
         }
@@ -3397,10 +3400,10 @@ export default function App() {
   };
 
   const handleAuthUser = useCallback(async (currentUser) => {
-    // Run self-healing migration from old Supabase UIDs to Firebase UID
+    // Run self-healing migration in background from old Supabase UIDs to Firebase UID
     if (currentUser && currentUser.email) {
       try {
-        await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/auth/migrate', {
+        fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/auth/migrate', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -3409,7 +3412,7 @@ export default function App() {
             email: currentUser.email,
             uid: currentUser.id
           })
-        });
+        }).catch(() => {});
       } catch (err) {
         console.warn('Failed to run authentication migration:', err);
       }
@@ -3481,7 +3484,7 @@ export default function App() {
                 updated_at: new Date().toISOString()
               }).eq('id', userProfile.id);
             } else {
-              await supabase.from('users').insert({
+              await supabase.from('users').upsert({
                 id: targetUid,
                 uid: targetUid,
                 email: targetEmail,
@@ -3489,7 +3492,7 @@ export default function App() {
                 room_id: localRoomId || null,
                 login_code: code,
                 updated_at: new Date().toISOString()
-              });
+              }, { onConflict: 'id' });
             }
           }
           if (code) {
@@ -3508,6 +3511,7 @@ export default function App() {
     // Fire-and-forget addMemberToRoom — don't await it to avoid login latency
     if (localRoomId) {
       setUserRoomId(localRoomId);
+      setHasConfirmedRoom(true);
       addMemberToRoom(localRoomId, finalNickname, currentUser); // intentionally not awaited
     } else {
       // Fetch in parallel without blocking auth
@@ -3520,6 +3524,7 @@ export default function App() {
           if (!error && userProfile?.room_id && userProfile.room_id !== 'null' && userProfile.room_id !== 'undefined') {
             const rId = userProfile.room_id;
             setUserRoomId(rId);
+            setHasConfirmedRoom(true);
             localStorage.setItem('userRoomId', rId);
             addMemberToRoom(rId, finalNickname, currentUser); // intentionally not awaited
           } else if (currentUser.email) {
@@ -3535,6 +3540,7 @@ export default function App() {
               if (memData?.room_id && memData.room_id !== 'null' && memData.room_id !== 'undefined') {
                 const rId = memData.room_id;
                 setUserRoomId(rId);
+                setHasConfirmedRoom(true);
                 localStorage.setItem('userRoomId', rId);
                 addMemberToRoom(rId, finalNickname, currentUser);
               }
@@ -5361,23 +5367,23 @@ export default function App() {
         await handleAuthUser(currentUser);
       }
     } catch (err) {
-      if (err.code === 'auth/popup-blocked') {
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/operation-not-supported-in-this-environment') {
         try {
           await signInWithRedirect(firebaseAuth, googleProvider);
           return;
         } catch (redirErr) {
           console.error("Firebase redirect login error:", redirErr);
           setAuthError(`Auth Error: ${redirErr.message}`);
-          setAuthLoading(false);
         }
       } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
-        setAuthLoading(false);
+        // User closed the popup, silently reset loading
       } else {
         console.error("Firebase login error:", err);
         setAuthError(`Auth Error: ${err.message}`);
         triggerToast(`Authentication failed: ${err.message}.`);
-        setAuthLoading(false);
       }
+    } finally {
+      setAuthLoading(false);
     }
   };
 
