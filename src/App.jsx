@@ -658,7 +658,24 @@ export default function App() {
       user.login_code,
       typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_login_code') : null
     ];
-    const validLoginCode = codeCandidates.find(c => c && typeof c === 'string' && c.trim() !== '' && c !== 'null' && c !== 'undefined') || '';
+    let validLoginCode = codeCandidates.find(c => c && typeof c === 'string' && c.trim() !== '' && c !== 'null' && c !== 'undefined') || '';
+    if (!validLoginCode) {
+      const seed = (user.id || user.uid || user.email || 'USER').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      let hash = 0;
+      for (let i = 0; i < seed.length; i++) {
+        hash = (hash * 31 + seed.charCodeAt(i)) & 0xffffff;
+      }
+      const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+      let autoAssigned = '';
+      for (let i = 0; i < 6; i++) {
+        autoAssigned += chars[hash % chars.length];
+        hash = Math.floor(hash / chars.length);
+      }
+      validLoginCode = autoAssigned;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tallyin_user_login_code', autoAssigned);
+      }
+    }
 
     const displayName = user.displayName || user.name || user.user_metadata?.full_name || user.user_metadata?.name || (typeof window !== 'undefined' ? localStorage.getItem('userNickname') : '') || 'You';
 
@@ -3402,37 +3419,47 @@ export default function App() {
 
     const localRoomId = localStorage.getItem('userRoomId');
 
-    // Ensure user record and access code exist in 'users' table
+    // Ensure user record and access code exist in 'users' table automatically
+    const targetUid = currentUser.id || currentUser.uid;
+    const targetEmail = currentUser.email ? currentUser.email.toLowerCase().trim() : null;
+
     supabase
       .from('users')
       .select('*')
-      .eq('uid', currentUser.id)
+      .or(`uid.eq.${targetUid}${targetEmail ? `,email.eq.${targetEmail}` : ''}`)
+      .limit(1)
       .maybeSingle()
       .then(async ({ data: userProfile, error }) => {
         if (!error) {
-          if (!userProfile) {
-            const newCode = await generateUniqueLoginCode();
-            await supabase.from('users').insert({
-              id: currentUser.id,
-              uid: currentUser.id,
-              email: currentUser.email || null,
-              name: currentUser.displayName || currentUser.nickname || null,
-              room_id: localRoomId || null,
-              login_code: newCode,
-              updated_at: new Date().toISOString()
-            });
-            currentUser.loginCode = newCode;
-          } else if (!userProfile.login_code) {
-            const newCode = await generateUniqueLoginCode();
-            await supabase.from('users').update({
-              login_code: newCode,
-              updated_at: new Date().toISOString()
-            }).eq('uid', currentUser.id);
-            currentUser.loginCode = newCode;
-          } else {
-            currentUser.loginCode = userProfile.login_code;
+          let code = userProfile?.login_code;
+          if (!code || code === 'null' || code === 'undefined' || code.trim() === '') {
+            code = await generateUniqueLoginCode();
+            if (userProfile?.id) {
+              await supabase.from('users').update({
+                login_code: code,
+                uid: targetUid,
+                updated_at: new Date().toISOString()
+              }).eq('id', userProfile.id);
+            } else {
+              await supabase.from('users').insert({
+                id: targetUid,
+                uid: targetUid,
+                email: targetEmail,
+                name: currentUser.displayName || currentUser.nickname || null,
+                room_id: localRoomId || null,
+                login_code: code,
+                updated_at: new Date().toISOString()
+              });
+            }
           }
-          setUser({ ...currentUser });
+          if (code) {
+            currentUser.loginCode = code;
+            currentUser.login_code = code;
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('tallyin_user_login_code', code);
+            }
+            setUser(prev => prev ? { ...prev, loginCode: code, login_code: code } : { ...currentUser, loginCode: code, login_code: code });
+          }
         }
       })
       .catch(e => console.error('Error verifying user login code:', e));
@@ -3482,13 +3509,29 @@ export default function App() {
   // Handle Supabase Auth state changes
   const mapFirebaseUser = (fbUser) => {
     if (!fbUser) return null;
+    const photo = fbUser.photoURL || fbUser.providerData?.[0]?.photoURL || '';
+    if (photo && typeof window !== 'undefined') {
+      localStorage.setItem('tallyin_original_google_photo', photo);
+      localStorage.setItem('tallyin_google_avatar', photo);
+      if (!localStorage.getItem('tallyin_user_avatar')) {
+        localStorage.setItem('tallyin_user_avatar', photo);
+      }
+    }
+    const name = fbUser.displayName || fbUser.email?.split('@')[0] || 'User';
     return {
       id: fbUser.uid,
+      uid: fbUser.uid,
       email: fbUser.email,
+      displayName: name,
+      name: name,
+      photoURL: photo,
+      photo_url: photo,
+      avatar_url: photo,
+      googlePhotoURL: photo,
       user_metadata: {
-        avatar_url: fbUser.photoURL || '',
-        picture: fbUser.photoURL || '',
-        full_name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User'
+        avatar_url: photo,
+        picture: photo,
+        full_name: name
       }
     };
   };
@@ -5267,6 +5310,12 @@ export default function App() {
     try {
       const result = await signInWithPopup(firebaseAuth, googleProvider);
       if (result && result.user) {
+        const photo = result.user.photoURL || result.user.providerData?.[0]?.photoURL || '';
+        if (photo && typeof window !== 'undefined') {
+          localStorage.setItem('tallyin_original_google_photo', photo);
+          localStorage.setItem('tallyin_google_avatar', photo);
+          localStorage.setItem('tallyin_user_avatar', photo);
+        }
         const currentUser = mapFirebaseUser(result.user);
         setUser(currentUser);
         await handleAuthUser(currentUser);
@@ -6033,8 +6082,11 @@ export default function App() {
           picture: cleanUrl
         }
       };
-      if (typeof window !== 'undefined' && localStorage.getItem('tallyin_code_user')) {
-        localStorage.setItem('tallyin_code_user', JSON.stringify(updated));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tallyin_user_avatar', cleanUrl);
+        if (localStorage.getItem('tallyin_code_user')) {
+          localStorage.setItem('tallyin_code_user', JSON.stringify(updated));
+        }
       }
       return updated;
     });
@@ -6044,14 +6096,35 @@ export default function App() {
     }
 
     const uId = user?.id || user?.uid;
+    const uEmail = user?.email ? user.email.toLowerCase().trim() : null;
+
+    // Immediately update in-memory members list so all avatar components re-render instantly
+    setMembers(prev => {
+      if (!Array.isArray(prev)) return prev;
+      const updated = prev.map(m => {
+        const isMe = (uId && (m.uid === uId || m.id === uId)) ||
+                     (uEmail && m.email?.toLowerCase() === uEmail) ||
+                     (userNickname && m.nickname === userNickname);
+        return isMe ? { ...m, photo_url: cleanUrl, avatar_url: cleanUrl } : m;
+      });
+      if (typeof window !== 'undefined') {
+        if (userRoomId) {
+          localStorage.setItem(`tallyin_cache_members_${userRoomId}`, JSON.stringify(updated));
+        }
+        localStorage.setItem('tallyin_cache_members_latest', JSON.stringify(updated));
+      }
+      return updated;
+    });
+
+    // Update in database (users table & members table)
     if (uId) {
       supabase.from('users').update({ avatar_url: cleanUrl, updated_at: new Date().toISOString() }).eq('uid', uId).catch(() => {});
-      if (userRoomId) {
-        supabase.from('members').update({ photo_url: cleanUrl }).eq('room_id', userRoomId).eq('uid', uId).catch(() => {});
-      }
+      supabase.from('users').update({ avatar_url: cleanUrl, updated_at: new Date().toISOString() }).eq('id', uId).catch(() => {});
+      supabase.from('members').update({ photo_url: cleanUrl }).eq('uid', uId).catch(() => {});
     }
-    if (user?.email) {
-      supabase.from('users').update({ avatar_url: cleanUrl, updated_at: new Date().toISOString() }).eq('email', user.email.toLowerCase().trim()).catch(() => {});
+    if (uEmail) {
+      supabase.from('users').update({ avatar_url: cleanUrl, updated_at: new Date().toISOString() }).eq('email', uEmail).catch(() => {});
+      supabase.from('members').update({ photo_url: cleanUrl }).eq('email', uEmail).catch(() => {});
     }
 
     setShowAvatarModal(false);
@@ -16337,58 +16410,27 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
                   <div>
                     <div className="flex items-center justify-between">
-                      <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Access Code</p>
-                      {!auth.currentUser?.loginCode && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRefreshLoginCode();
-                          }}
-                          className="text-[9px] text-emerald-600 dark:text-[#A3E635] hover:underline font-bold cursor-pointer"
-                        >
-                          Generate
-                        </button>
-                      )}
+                      <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Assigned Access Code</p>
                     </div>
-                    <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1 rounded-lg">
-                      <span className="font-mono text-[11px] text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all font-black">
-                        {auth.currentUser?.loginCode || (
-                          <span 
-                            onClick={(e) => { e.stopPropagation(); handleRefreshLoginCode(); }}
-                            className="cursor-pointer underline text-emerald-600"
-                          >
-                            Click to Generate
-                          </span>
-                        )}
+                    <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1.5 rounded-lg border border-[#E3E8E3]/60 dark:border-slate-800">
+                      <span className="font-mono text-xs text-[#1A3827] dark:text-[#A3E635] tracking-wider select-all font-black">
+                        {auth.currentUser?.loginCode}
                       </span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRefreshLoginCode();
-                          }}
-                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0 cursor-pointer"
-                          title="Generate New Code"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (auth.currentUser?.loginCode) {
-                              navigator.clipboard.writeText(auth.currentUser.loginCode);
-                              triggerToast('Access code copied!');
-                            } else {
-                              handleRefreshLoginCode();
-                            }
-                          }}
-                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0 cursor-pointer"
-                          title="Copy Code"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (auth.currentUser?.loginCode) {
+                            navigator.clipboard.writeText(auth.currentUser.loginCode);
+                            triggerToast(`Access code copied: ${auth.currentUser.loginCode}`);
+                          }
+                        }}
+                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0 cursor-pointer flex items-center gap-1 font-bold text-[10px]"
+                        title="Copy Access Code"
+                      >
+                        <Copy className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                        <span>Copy</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -17198,13 +17240,43 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => {
-                    const googlePhoto = user?.user_metadata?.picture || user?.user_metadata?.avatar_url || 'https://lh3.googleusercontent.com/a/ACg8ocLv4B6nBUn0pP8pxyyRKI4Mtld7Z5y259n3mAqCxZJcFYcBRtFjvg=s96-c';
-                    handleUpdateAvatar(googlePhoto);
+                  onClick={async () => {
+                    let googlePhoto = 
+                      firebaseAuth.currentUser?.photoURL ||
+                      firebaseAuth.currentUser?.providerData?.[0]?.photoURL ||
+                      localStorage.getItem('tallyin_original_google_photo') ||
+                      localStorage.getItem('tallyin_google_avatar') ||
+                      user?.googlePhotoURL;
+
+                    if (!googlePhoto && (user?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' || auth?.currentUser?.email?.toLowerCase() === 'sampathjogipusala123@gmail.com')) {
+                      googlePhoto = 'https://lh3.googleusercontent.com/a/ACg8ocLv4B6nBUn0pP8pxyyRKI4Mtld7Z5y259n3mAqCxZJcFYcBRtFjvg=s96-c';
+                    }
+
+                    if (!googlePhoto && user?.email) {
+                      try {
+                        const { data } = await supabase.from('users').select('avatar_url').eq('email', user.email.toLowerCase().trim()).maybeSingle();
+                        if (data?.avatar_url && data.avatar_url.includes('googleusercontent.com')) {
+                          googlePhoto = data.avatar_url;
+                        }
+                      } catch (e) {}
+                    }
+
+                    if (googlePhoto) {
+                      localStorage.setItem('tallyin_original_google_photo', googlePhoto);
+                      await handleUpdateAvatar(googlePhoto);
+                    } else {
+                      if (triggerToast) triggerToast('No Google profile photo found for this account.');
+                    }
                   }}
-                  className="text-xs font-bold text-emerald-700 dark:text-[#A3E635] hover:underline cursor-pointer"
+                  className="text-xs font-bold text-emerald-700 dark:text-[#A3E635] hover:underline cursor-pointer flex items-center gap-1.5"
                 >
-                  Use Google Photo
+                  <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>Use Google Photo</span>
                 </button>
                 <button
                   type="button"
@@ -24666,36 +24738,29 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               );
             })()}
 
-            {/* Unique Access Code */}
+            {/* Assigned Access Code */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-3 border-t border-[#F6F8F6] dark:border-slate-800 mt-2">
               <div className="flex-1 w-full text-left">
-                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Unique Access Code</p>
-                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Use this unique code to instantly log in to this account on other devices.</p>
+                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-200">Assigned Access Code</p>
+                <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">Your automatically assigned 6-digit access code for instant sign-in on any device.</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs sm:text-sm font-bold bg-[#F6F8F6] dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-[#E3E8E3]/50 dark:border-slate-800 text-[#1A3827] dark:text-[#A3E635] tracking-wide select-all font-black">
-                  {auth.currentUser?.loginCode || 'Generating...'}
+                <span className="font-mono text-xs sm:text-sm font-black bg-[#EAF0EC] dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800 text-[#1A3827] dark:text-[#A3E635] tracking-widest select-all">
+                  {auth.currentUser?.loginCode}
                 </span>
                 <button
-                  onClick={handleRefreshLoginCode}
-                  className="p-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 cursor-pointer"
-                  title="Generate New Access Code"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-                <button
+                  type="button"
                   onClick={() => {
                     if (auth.currentUser?.loginCode) {
                       navigator.clipboard.writeText(auth.currentUser.loginCode);
-                      triggerToast('Access code copied!');
-                    } else {
-                      handleRefreshLoginCode();
+                      triggerToast(`Access code ${auth.currentUser.loginCode} copied!`);
                     }
                   }}
-                  className="p-2 border border-[#E3E8E3] dark:border-slate-800 rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 cursor-pointer"
+                  className="px-3 py-1.5 border border-[#E3E8E3] dark:border-slate-800 rounded-xl hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 cursor-pointer flex items-center gap-1.5 text-xs font-bold shadow-xs"
                   title="Copy Access Code"
                 >
-                  <Copy className="w-4 h-4" />
+                  <Copy className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>Copy Code</span>
                 </button>
               </div>
             </div>
