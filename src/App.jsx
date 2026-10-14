@@ -829,6 +829,45 @@ export default function App() {
 
   // Dropdown & Modal toggles
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef(null);
+
+  // Auto-close profile dropdown when clicking outside or interacting with the app
+  useEffect(() => {
+    if (!isProfileDropdownOpen) return;
+
+    const handlePointerDown = (event) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target)) {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+
+    const handleScrollOrInteraction = () => {
+      setIsProfileDropdownOpen(false);
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown, true);
+    document.addEventListener('touchstart', handlePointerDown, true);
+    window.addEventListener('scroll', handleScrollOrInteraction, true);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown, true);
+      document.removeEventListener('touchstart', handlePointerDown, true);
+      window.removeEventListener('scroll', handleScrollOrInteraction, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isProfileDropdownOpen]);
+
+  useEffect(() => {
+    setIsProfileDropdownOpen(false);
+  }, [currentView]);
+
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isManageRoomOpen, setIsManageRoomOpen] = useState(false);
@@ -16359,156 +16398,158 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               return null;
             })()}
 
-            {/* Profile widget */}
-            <div 
-              onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-              className="flex items-center gap-1.5 border-l border-[#E3E8E3] dark:border-slate-800 pl-2 sm:pl-4 cursor-pointer select-none hover:opacity-80 py-1"
-            >
-              {auth.currentUser && auth.currentUser.photoURL ? (
-                <img 
-                  src={auth.currentUser.photoURL} 
-                  alt={userNickname} 
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                  className="w-8 h-8 rounded-full border border-emerald-500/20 dark:border-slate-800 shadow-sm object-cover"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 text-white flex items-center justify-center font-bold text-xs shadow-sm ring-1 ring-emerald-500/30">
-                  {userNickname.charAt(0).toUpperCase()}
+            {/* Profile widget and dropdown container */}
+            <div ref={profileDropdownRef} className="relative">
+              <div 
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                className="flex items-center gap-1.5 border-l border-[#E3E8E3] dark:border-slate-800 pl-2 sm:pl-4 cursor-pointer select-none hover:opacity-80 py-1"
+              >
+                {auth.currentUser && auth.currentUser.photoURL ? (
+                  <img 
+                    src={auth.currentUser.photoURL} 
+                    alt={userNickname} 
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    className="w-8 h-8 rounded-full border border-emerald-500/20 dark:border-slate-800 shadow-sm object-cover"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 text-white flex items-center justify-center font-bold text-xs shadow-sm ring-1 ring-emerald-500/30">
+                    {userNickname.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="text-left hidden lg:block">
+                  <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 leading-none truncate max-w-[120px]">{userNickname}</p>
+                  <span className="text-[9px] text-[#5C6E5C] dark:text-slate-400 font-semibold">Active User</span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-[#5C6E5C]" />
+              </div>
+
+              {/* Dropdown Menu */}
+              {isProfileDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-30 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+                  <div className="px-4 py-2 border-b border-[#F6F8F6] dark:border-slate-800 text-left space-y-2.5">
+                    <div className="flex items-center gap-2.5 pb-1">
+                      {auth.currentUser && auth.currentUser.photoURL ? (
+                        <img 
+                          src={auth.currentUser.photoURL} 
+                          alt={userNickname} 
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          className="w-8 h-8 rounded-full border border-emerald-500/20 object-cover shadow-xs shrink-0"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                          {userNickname.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 truncate">{userNickname}</p>
+                        <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 truncate font-normal">
+                          {auth.currentUser?.email || 'Active Member'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Assigned Access Code</p>
+                      </div>
+                      <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1.5 rounded-lg border border-[#E3E8E3]/60 dark:border-slate-800">
+                        <span className="font-mono text-xs text-[#1A3827] dark:text-[#A3E635] tracking-wider select-all font-black">
+                          {auth.currentUser?.loginCode}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (auth.currentUser?.loginCode) {
+                              navigator.clipboard.writeText(auth.currentUser.loginCode);
+                              triggerToast(`Access code copied: ${auth.currentUser.loginCode}`);
+                            }
+                          }}
+                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0 cursor-pointer flex items-center gap-1 font-bold text-[10px]"
+                          title="Copy Access Code"
+                        >
+                          <Copy className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                          <span>Copy</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => { setCurrentView('settings'); setIsProfileDropdownOpen(false); }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
+                  >
+                    <SettingsIcon className="w-3.5 h-3.5" />
+                    <span>Settings</span>
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      setOnboardingTipIndex(0);
+                      setShowOnboarding(true); 
+                      setIsProfileDropdownOpen(false); 
+                    }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 text-emerald-700 dark:text-emerald-400"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Interactive App Tour</span>
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      setIsDisputeModalOpen(true); 
+                      setDisputeModalTab('new');
+                      setIsProfileDropdownOpen(false); 
+                    }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 text-amber-700 dark:text-amber-400"
+                  >
+                    <Scale className="w-3.5 h-3.5" />
+                    <span>Disputes &amp; Help Hub</span>
+                  </button>
+                  {(() => {
+                    const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
+                    const isSuperAdmin = ADMIN_EMAILS.some(e => e.toLowerCase() === currentEmailClean.toLowerCase()) || currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
+                    if (!isSuperAdmin && !isUserCoAdmin) return null;
+                    return (
+                      <button 
+                        onClick={() => {
+                          setAdminInitialTab(adminPendingDisputesCount > 0 ? 'dispute_resolver' : 'overview');
+                          setCurrentView('admin'); 
+                          setIsProfileDropdownOpen(false); 
+                        }}
+                        className={`w-full text-left px-4 py-2.5 flex items-center gap-2 font-black ${
+                          isSuperAdmin 
+                            ? 'hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-700 dark:text-rose-400' 
+                            : 'hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
+                        }`}
+                      >
+                        {isSuperAdmin ? <ShieldAlert className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                        <span>{isSuperAdmin ? 'Admin Console' : 'Co-Admin Console'}</span>
+                        {adminPendingDisputesCount > 0 && (
+                          <span className="ml-auto px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black">
+                            {adminPendingDisputesCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })()}
+                  <button 
+                    onClick={() => { 
+                      setShowChangePasswordModal(true); 
+                      setIsProfileDropdownOpen(false); 
+                    }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 text-slate-700 dark:text-slate-300"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span>Change Password</span>
+                  </button>
+                  <button 
+                    onClick={() => { handleSignOut(); setIsProfileDropdownOpen(false); }}
+                    className="w-full text-left px-4 py-2.5 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 flex items-center gap-2 border-t border-[#F6F8F6] dark:border-slate-800"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign out</span>
+                  </button>
                 </div>
               )}
-              <div className="text-left hidden lg:block">
-                <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 leading-none truncate max-w-[120px]">{userNickname}</p>
-                <span className="text-[9px] text-[#5C6E5C] dark:text-slate-400 font-semibold">Active User</span>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-[#5C6E5C]" />
             </div>
-
-            {/* Dropdown Menu */}
-            {isProfileDropdownOpen && (
-              <div className="absolute right-0 top-12 mt-2 w-56 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-lg py-2 z-30 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
-                <div className="px-4 py-2 border-b border-[#F6F8F6] dark:border-slate-800 text-left space-y-2.5">
-                  <div className="flex items-center gap-2.5 pb-1">
-                    {auth.currentUser && auth.currentUser.photoURL ? (
-                      <img 
-                        src={auth.currentUser.photoURL} 
-                        alt={userNickname} 
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                        className="w-8 h-8 rounded-full border border-emerald-500/20 object-cover shadow-xs shrink-0"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
-                        {userNickname.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="overflow-hidden">
-                      <p className="text-xs font-bold text-[#1A3827] dark:text-slate-100 truncate">{userNickname}</p>
-                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 truncate font-normal">
-                        {auth.currentUser?.email || 'Active Member'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-[9px] text-[#5C6E5C] dark:text-slate-400 uppercase tracking-widest font-bold">Assigned Access Code</p>
-                    </div>
-                    <div className="flex items-center justify-between mt-1 gap-2 bg-[#F6F8F6] dark:bg-slate-950 px-2 py-1.5 rounded-lg border border-[#E3E8E3]/60 dark:border-slate-800">
-                      <span className="font-mono text-xs text-[#1A3827] dark:text-[#A3E635] tracking-wider select-all font-black">
-                        {auth.currentUser?.loginCode}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (auth.currentUser?.loginCode) {
-                            navigator.clipboard.writeText(auth.currentUser.loginCode);
-                            triggerToast(`Access code copied: ${auth.currentUser.loginCode}`);
-                          }
-                        }}
-                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 shrink-0 cursor-pointer flex items-center gap-1 font-bold text-[10px]"
-                        title="Copy Access Code"
-                      >
-                        <Copy className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
-                        <span>Copy</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => { setCurrentView('settings'); setIsProfileDropdownOpen(false); }}
-                  className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2"
-                >
-                  <SettingsIcon className="w-3.5 h-3.5" />
-                  <span>Settings</span>
-                </button>
-                <button 
-                  onClick={() => { 
-                    setOnboardingTipIndex(0);
-                    setShowOnboarding(true); 
-                    setIsProfileDropdownOpen(false); 
-                  }}
-                  className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 text-emerald-700 dark:text-emerald-400"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Interactive App Tour</span>
-                </button>
-                <button 
-                  onClick={() => { 
-                    setIsDisputeModalOpen(true); 
-                    setDisputeModalTab('new');
-                    setIsProfileDropdownOpen(false); 
-                  }}
-                  className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 text-amber-700 dark:text-amber-400"
-                >
-                  <Scale className="w-3.5 h-3.5" />
-                  <span>Disputes &amp; Help Hub</span>
-                </button>
-                {(() => {
-                  const currentEmailClean = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
-                  const isSuperAdmin = ADMIN_EMAILS.some(e => e.toLowerCase() === currentEmailClean.toLowerCase()) || currentEmailClean === SUPER_ADMIN_EMAIL.toLowerCase();
-                  if (!isSuperAdmin && !isUserCoAdmin) return null;
-                  return (
-                    <button 
-                      onClick={() => {
-                        setAdminInitialTab(adminPendingDisputesCount > 0 ? 'dispute_resolver' : 'overview');
-                        setCurrentView('admin'); 
-                        setIsProfileDropdownOpen(false); 
-                      }}
-                      className={`w-full text-left px-4 py-2.5 flex items-center gap-2 font-black ${
-                        isSuperAdmin 
-                          ? 'hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-700 dark:text-rose-400' 
-                          : 'hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
-                      }`}
-                    >
-                      {isSuperAdmin ? <ShieldAlert className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
-                      <span>{isSuperAdmin ? 'Admin Console' : 'Co-Admin Console'}</span>
-                      {adminPendingDisputesCount > 0 && (
-                        <span className="ml-auto px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black">
-                          {adminPendingDisputesCount}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })()}
-                <button 
-                  onClick={() => { 
-                    setShowChangePasswordModal(true); 
-                    setIsProfileDropdownOpen(false); 
-                  }}
-                  className="w-full text-left px-4 py-2.5 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 flex items-center gap-2 text-slate-700 dark:text-slate-300"
-                >
-                  <Key className="w-3.5 h-3.5" />
-                  <span>Change Password</span>
-                </button>
-                <button 
-                  onClick={() => { handleSignOut(); setIsProfileDropdownOpen(false); }}
-                  className="w-full text-left px-4 py-2.5 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 flex items-center gap-2 border-t border-[#F6F8F6] dark:border-slate-800"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign out</span>
-                </button>
-              </div>
-            )}
           </div>
         </header>
 
