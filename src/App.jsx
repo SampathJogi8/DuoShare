@@ -81,6 +81,7 @@ import faviconLogo from './assets/favicon_logo.png';
 import MaintenanceView from './components/MaintenanceView';
 import AdminDashboard from './components/AdminDashboard';
 import BannedUserView from './components/BannedUserView';
+import InactiveUserView from './components/InactiveUserView';
 import QuickBillModal from './components/QuickBillModal';
 import TripExpenseManager from './components/TripExpenseManager';
 import AnnouncementBanner from './components/AnnouncementBanner';
@@ -2220,6 +2221,101 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [isUserBanned]);
+
+  // Inactive User Accounts Management & Reactivation State
+  const [inactiveUsers, setInactiveUsers] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_inactive_users');
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    const fetchInactiveList = async () => {
+      let found = null;
+      try {
+        const { data } = await supabase
+          .from('rooms')
+          .select('name')
+          .eq('id', '__SYSTEM_INACTIVE_USERS__')
+          .maybeSingle();
+
+        if (data?.name && data.name.startsWith('[')) {
+          found = JSON.parse(data.name);
+        }
+      } catch (e) {}
+
+      if (!found) {
+        try {
+          const { data } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'inactive_users')
+            .maybeSingle();
+
+          if (data?.value && Array.isArray(data.value)) {
+            found = data.value;
+          }
+        } catch (e) {}
+      }
+
+      if (found && Array.isArray(found)) {
+        setInactiveUsers(found);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('tallyin_inactive_users', JSON.stringify(found));
+        }
+      }
+    };
+
+    fetchInactiveList();
+
+    const handleInactiveStorage = (e) => {
+      if (e.key === 'tallyin_inactive_users' && e.newValue) {
+        try {
+          setInactiveUsers(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
+    };
+    window.addEventListener('storage', handleInactiveStorage);
+    return () => window.removeEventListener('storage', handleInactiveStorage);
+  }, []);
+
+  const inactiveInfo = useMemo(() => {
+    if (!inactiveUsers || inactiveUsers.length === 0) return null;
+
+    // Do NOT lock out authorized system administrator
+    const currentEmail = String(user?.email || codeLoginEmail || (typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : '') || '').trim().toLowerCase();
+    if (currentEmail === 'sampathjogipusala123@gmail.com') return null;
+
+    const possibleIdentifiers = [
+      user?.email,
+      user?.uid,
+      user?.id,
+      userNickname,
+      codeLoginEmail,
+      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('user_email') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_nickname') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('user_nickname') : null,
+      typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_login_code') : null
+    ]
+      .filter(Boolean)
+      .map(id => String(id).trim().toLowerCase());
+
+    if (possibleIdentifiers.length === 0) return null;
+
+    return inactiveUsers.find(item => {
+      if (!item) return false;
+      const xId = (typeof item === 'string' ? item : (item.identifier || item.email || item.id || item.userCode || '')).trim().toLowerCase();
+      const xName = (typeof item === 'object' && item.name ? String(item.name).trim().toLowerCase() : '');
+      return possibleIdentifiers.some(id => (xId && (id === xId || (id.includes('@') && xId === id))) || (xName && id === xName));
+    }) || null;
+  }, [user, userNickname, codeLoginEmail, inactiveUsers]);
+
+  const isUserInactive = Boolean(inactiveInfo);
 
   // Load and sync room WhatsApp phone numbers from system_settings
   useEffect(() => {
@@ -5909,22 +6005,18 @@ export default function App() {
       localStorage.setItem('tallyin_code_user', JSON.stringify(userProfile));
       localStorage.setItem('tallyin_agreed_terms', 'true');
 
-      // Auto reactivate if inactive
+      // Sync inactive users state on login
       try {
-        const savedInactive = localStorage.getItem('tallyin_inactive_users');
-        if (savedInactive) {
-          const parsed = JSON.parse(savedInactive);
-          if (Array.isArray(parsed)) {
-            const cleaned = parsed.filter(x => {
-              const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || '')).toLowerCase();
-              return xId !== (finalEmail || '').toLowerCase() && xId !== finalUid.toLowerCase() && xId !== userCode.toLowerCase();
-            });
-            localStorage.setItem('tallyin_inactive_users', JSON.stringify(cleaned));
-            supabase.from('system_settings').upsert({ key: 'inactive_users', value: cleaned }, { onConflict: 'key' }).catch(() => {});
-            supabase.from('rooms').upsert({ id: '__SYSTEM_INACTIVE_USERS__', name: JSON.stringify(cleaned) }, { onConflict: 'id' }).catch(() => {});
-          }
+        const { data: inactData } = await supabase
+          .from('rooms')
+          .select('name')
+          .eq('id', '__SYSTEM_INACTIVE_USERS__')
+          .maybeSingle();
+        if (inactData?.name && inactData.name.startsWith('[')) {
+          const list = JSON.parse(inactData.name);
+          setInactiveUsers(list);
+          localStorage.setItem('tallyin_inactive_users', JSON.stringify(list));
         }
-        supabase.from('users').update({ updated_at: new Date().toISOString() }).eq('uid', finalUid).catch(() => {});
       } catch (e) {}
 
       setUser(userProfile);
@@ -13435,6 +13527,31 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
         isDarkMode={isDarkMode}
         setIsDarkMode={setIsDarkMode}
         onOpenAdmin={isUserAdmin ? () => setCurrentView('admin') : null}
+      />
+    );
+  }
+
+  // INACTIVE USER OVERRIDE (Block Dormant / Inactive Accounts Until Reactivated via Code or Link)
+  if (user && isUserInactive && currentView !== 'admin' && !isUserBanned) {
+    const isUserAdmin = isUserAdminOrCoAdmin;
+    return (
+      <InactiveUserView
+        user={user}
+        inactiveInfo={inactiveInfo}
+        handleSignOut={handleSignOut}
+        isDarkMode={isDarkMode}
+        setIsDarkMode={setIsDarkMode}
+        onOpenAdmin={isUserAdmin ? () => setCurrentView('admin') : null}
+        onAccountActivated={() => {
+          const saved = localStorage.getItem('tallyin_inactive_users');
+          if (saved) {
+            try { setInactiveUsers(JSON.parse(saved)); } catch (e) {}
+          } else {
+            setInactiveUsers([]);
+          }
+          if (triggerToast) triggerToast('🎉 Account successfully activated! Welcome back to Tallyin.');
+        }}
+        triggerToast={triggerToast}
       />
     );
   }

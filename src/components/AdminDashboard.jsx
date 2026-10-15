@@ -2151,6 +2151,241 @@ export default function AdminDashboard({
   const [isSendingComeBackEmails, setIsSendingComeBackEmails] = useState(false);
   const [inactiveAuditMessage, setInactiveAuditMessage] = useState(null);
 
+  // Helper to reliably check if a user is in the inactive users registry
+  const checkIsInactive = useCallback((u, list = inactiveUsers) => {
+    if (!u) return false;
+    const targetList = Array.isArray(list) ? list : (inactiveUsers || []);
+    if (targetList.length === 0) return false;
+
+    const uEmail = String(u.email || '').trim().toLowerCase();
+    const uId = String(u.id || u.uid || '').trim().toLowerCase();
+    const uCode = String(u.userCode || '').trim().toLowerCase();
+    const uName = String(u.name || '').trim().toLowerCase();
+
+    return targetList.some(x => {
+      if (!x) return false;
+      const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || x.userCode || '')).trim().toLowerCase();
+      if (!xId) return false;
+      return (uEmail && uEmail !== 'n/a' && uEmail !== 'no email' && xId === uEmail) ||
+             (uId && uId !== 'n/a' && xId === uId) ||
+             (uCode && uCode !== 'n/a' && xId === uCode) ||
+             (uName && xId === uName);
+    });
+  }, [inactiveUsers]);
+
+  // Activation Requests Registry (Users requesting codes to reactivate inactive accounts)
+  const [activationRequests, setActivationRequests] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_activation_requests');
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+
+  const saveActivationRequests = async (updatedList) => {
+    setActivationRequests(updatedList);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tallyin_activation_requests', JSON.stringify(updatedList));
+    }
+    try {
+      await supabase
+        .from('rooms')
+        .upsert({
+          id: '__SYSTEM_ACTIVATION_REQUESTS__',
+          name: JSON.stringify(updatedList),
+          pin: '9999',
+          created_by: 'system_security_daemon',
+          monthly_budget: 0,
+          max_members: 100
+        }, { onConflict: 'id' });
+    } catch (err) {}
+    try {
+      await supabase
+        .from('system_settings')
+        .upsert({ key: 'activation_requests', value: updatedList }, { onConflict: 'key' });
+    } catch (err) {}
+  };
+
+  const fetchActivationRequests = useCallback(async () => {
+    let foundList = null;
+    try {
+      const { data } = await supabase
+        .from('rooms')
+        .select('name')
+        .eq('id', '__SYSTEM_ACTIVATION_REQUESTS__')
+        .maybeSingle();
+
+      if (data?.name && data.name.startsWith('[')) {
+        foundList = JSON.parse(data.name);
+      }
+    } catch (err) {}
+
+    if (!foundList) {
+      try {
+        const { data } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'activation_requests')
+          .maybeSingle();
+
+        if (data?.value && Array.isArray(data.value)) {
+          foundList = data.value;
+        }
+      } catch (err) {}
+    }
+
+    if (!foundList && typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_activation_requests');
+        if (saved) foundList = JSON.parse(saved);
+      } catch (err) {}
+    }
+
+    if (foundList && Array.isArray(foundList)) {
+      setActivationRequests(foundList);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tallyin_activation_requests', JSON.stringify(foundList));
+      }
+      return foundList;
+    }
+    return [];
+  }, []);
+
+  const getPendingActivationRequest = useCallback((u, list = activationRequests) => {
+    if (!u) return null;
+    const targetList = Array.isArray(list) ? list : (activationRequests || []);
+    if (targetList.length === 0) return null;
+
+    const uEmail = String(u.email || '').trim().toLowerCase();
+    const uId = String(u.id || u.uid || '').trim().toLowerCase();
+    const uCode = String(u.userCode || '').trim().toLowerCase();
+
+    return targetList.find(r => {
+      if (!r || r.status !== 'PENDING') return false;
+      const rEmail = String(r.email || '').trim().toLowerCase();
+      const rId = String(r.userId || r.id || '').trim().toLowerCase();
+      const rCode = String(r.userCode || '').trim().toLowerCase();
+
+      return (uEmail && uEmail !== 'n/a' && rEmail === uEmail) ||
+             (uId && uId !== 'n/a' && rId === uId) ||
+             (uCode && uCode !== 'n/a' && rCode === uCode);
+    }) || null;
+  }, [activationRequests]);
+
+  const handleApproveActivationRequest = async (req) => {
+    if (!req) return;
+    
+    // 1. Remove from inactiveUsers
+    const uEmail = String(req.email || '').trim().toLowerCase();
+    const uId = String(req.userId || req.id || '').trim().toLowerCase();
+    const uCode = String(req.userCode || '').trim().toLowerCase();
+
+    const updatedInactive = inactiveUsers.filter(x => {
+      const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || x.userCode || '')).trim().toLowerCase();
+      const matches = (uEmail && uEmail !== 'n/a' && xId === uEmail) ||
+                      (uId && uId !== 'n/a' && xId === uId) ||
+                      (uCode && uCode !== 'n/a' && xId === uCode);
+      return !matches;
+    });
+    await saveInactiveUsers(updatedInactive);
+
+    // 2. Mark request as ACTIVATED
+    const updatedRequests = activationRequests.map(r => {
+      if (r.id === req.id || (r.code === req.code && r.email === req.email)) {
+        return { ...r, status: 'ACTIVATED', activatedAt: new Date().toISOString() };
+      }
+      return r;
+    });
+    await saveActivationRequests(updatedRequests);
+
+    // 3. Immediately update UI states
+    setAllRegisteredUsers(prev => prev.map(u => {
+      const isTarget = (uEmail && u.email?.toLowerCase() === uEmail) ||
+                       (uId && (u.id === uId || u.uid === uId)) ||
+                       (uCode && u.userCode === uCode);
+      return isTarget ? { ...u, isInactive: false, daysSinceLastActive: 0 } : u;
+    }));
+
+    setSelectedUserDossier(prev => {
+      if (!prev) return null;
+      const isTarget = (uEmail && prev.email?.toLowerCase() === uEmail) ||
+                       (uId && (prev.uid === uId || prev.id === uId)) ||
+                       (uCode && prev.userCode === uCode);
+      return isTarget ? { ...prev, isInactive: false, daysSinceLastActive: 0 } : prev;
+    });
+
+    if (triggerToast) triggerToast(`Activated account for ${req.name || req.userCode}! User can now access Tallyin.`);
+  };
+
+  const handleSendActivationCodeEmail = async (req) => {
+    if (!req || !req.email || !req.email.includes('@') || req.email.toLowerCase() === 'n/a') {
+      if (triggerToast) triggerToast('Cannot send email: user does not have a valid email address.');
+      return false;
+    }
+
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tallyin.vercel.app';
+    const activationLink = req.activationLink || `${origin}/?activate_code=${req.code}&email=${encodeURIComponent(req.email)}`;
+    const subject = `Your Tallyin Account Activation Code: ${req.code} 🔑`;
+    const plainBody = `Hello ${req.name || 'User'},
+
+You requested an activation code to reactivate your inactive Tallyin account (${req.userCode}).
+
+Your 6-digit Activation Code: ${req.code}
+
+Quick 1-Click Activation Link:
+${activationLink}
+
+Simply click the link above or enter the code on the activation screen to restore your active status immediately. All your rooms and trip expenses are 100% safe.
+
+Best regards,
+Tallyin Security & Administration Team`;
+
+    const htmlBody = `<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, sans-serif; background-color: #F4F7F4; padding: 24px;">
+  <div style="max-width: 540px; margin: auto; background: white; border-radius: 20px; padding: 28px; border: 1px solid #E2EAE3;">
+    <h2 style="color: #1A3827; margin-top: 0;">Account Activation Code</h2>
+    <p style="color: #475569; font-size: 14px;">Hi <strong>${req.name || 'User'}</strong>,</p>
+    <p style="color: #475569; font-size: 14px;">You requested an activation code to reactivate your inactive Tallyin account (<code>${req.userCode}</code>).</p>
+    <div style="background: #F0FDF4; border: 2px dashed #22C55E; border-radius: 14px; padding: 18px; text-align: center; margin: 20px 0;">
+      <span style="font-size: 11px; text-transform: uppercase; color: #15803D; font-weight: bold; letter-spacing: 1px;">Your 6-Digit Activation Code</span>
+      <div style="font-family: monospace; font-size: 32px; font-weight: 900; color: #166534; letter-spacing: 4px; margin-top: 6px;">${req.code}</div>
+    </div>
+    <div style="text-align: center; margin: 24px 0;">
+      <a href="${activationLink}" style="background-color: #1A3827; color: #FFFFFF; font-weight: 900; font-size: 14px; text-decoration: none; padding: 12px 28px; border-radius: 12px; display: inline-block;">
+        Activate Account in 1-Click →
+      </a>
+    </div>
+    <p style="color: #94A3B8; font-size: 11px; text-align: center;">All your rooms, transactions, and group data are 100% intact.</p>
+  </div>
+</body>
+</html>`;
+
+    const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+    try {
+      await fetch(mailRelayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: req.email,
+          subject,
+          body: plainBody,
+          htmlBody
+        })
+      });
+
+      if (triggerToast) triggerToast(`Activation code email dispatched to ${req.email}!`);
+      return true;
+    } catch (err) {
+      console.warn("Failed to dispatch activation email:", err);
+      if (triggerToast) triggerToast(`Failed to dispatch email to ${req.email}`);
+      return false;
+    }
+  };
+
   // Persistence for Inactive User Accounts Registry
   const saveInactiveUsers = async (updatedList) => {
     setInactiveUsers(updatedList);
@@ -2229,7 +2464,9 @@ export default function AdminDashboard({
       if (typeof window !== 'undefined') {
         localStorage.setItem('tallyin_inactive_users', JSON.stringify(foundList));
       }
+      return foundList;
     }
+    return [];
   }, []);
 
   // Generate personalized "We Miss You / Come Back to Tallyin" email
@@ -2513,41 +2750,72 @@ Tallyin Team`;
     setIsScanningInactive(false);
     setInactiveAuditMessage(`Audit complete: ${toMark.length} accounts flagged as 90+ days inactive (${newlyMarked} newly marked).`);
     if (triggerToast) triggerToast(`Audit complete: ${toMark.length} accounts marked as Inactive (90+ days).`);
+
+    // Immediately update allRegisteredUsers state
+    setAllRegisteredUsers(prev => prev.map(u => {
+      const isTarget = toMark.some(tm => tm.email === u.email || tm.identifier === u.email || tm.identifier === u.id);
+      return isTarget ? { ...u, isInactive: true, daysSinceLastActive: u.daysSinceLastActive || 90 } : u;
+    }));
     fetchUserDirectory();
   };
 
   // Manually toggle active/inactive status for a single user
   const handleToggleUserInactive = async (userObj) => {
     if (!userObj) return;
-    const identifier = (userObj.email && userObj.email !== 'N/A') ? userObj.email.toLowerCase() : String(userObj.id || userObj.userCode || '').toLowerCase();
-    const isCurrentlyInactive = inactiveUsers.some(x => {
-      const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || '')).toLowerCase();
-      return xId === identifier;
-    });
+    const identifier = (userObj.email && userObj.email !== 'N/A' && userObj.email !== 'No Email') 
+      ? userObj.email.trim().toLowerCase() 
+      : String(userObj.id || userObj.uid || userObj.userCode || '').trim().toLowerCase();
+    
+    const isCurrentlyInactive = checkIsInactive(userObj, inactiveUsers);
 
     let updated;
     if (isCurrentlyInactive) {
       updated = inactiveUsers.filter(x => {
-        const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || '')).toLowerCase();
-        return xId !== identifier;
+        const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || x.userCode || '')).trim().toLowerCase();
+        const uEmail = String(userObj.email || '').trim().toLowerCase();
+        const uId = String(userObj.id || userObj.uid || '').trim().toLowerCase();
+        const uCode = String(userObj.userCode || '').trim().toLowerCase();
+        const matches = (uEmail && uEmail !== 'n/a' && uEmail !== 'no email' && xId === uEmail) ||
+                        (uId && uId !== 'n/a' && xId === uId) ||
+                        (uCode && uCode !== 'n/a' && xId === uCode) ||
+                        (xId === identifier);
+        return !matches;
       });
-      if (triggerToast) triggerToast(`Reactivated account for ${userObj.name} (${userObj.userCode})!`);
+      if (triggerToast) triggerToast(`Reactivated account for ${userObj.name || userObj.userCode || 'User'}!`);
     } else {
       updated = [
         ...inactiveUsers,
         {
           identifier,
-          email: userObj.email,
-          name: userObj.name,
+          email: userObj.email || 'N/A',
+          name: userObj.name || 'User',
           userCode: userObj.userCode,
           daysInactive: userObj.daysSinceLastActive || 90,
           markedAt: new Date().toISOString()
         }
       ];
-      if (triggerToast) triggerToast(`Marked account for ${userObj.name} (${userObj.userCode}) as Inactive.`);
+      if (triggerToast) triggerToast(`Marked account for ${userObj.name || userObj.userCode || 'User'} as Inactive.`);
     }
 
     await saveInactiveUsers(updated);
+
+    // Immediately update state in allRegisteredUsers
+    setAllRegisteredUsers(prev => prev.map(u => {
+      const isTarget = checkIsInactive(u, [userObj]) || 
+        (userObj.email && u.email?.toLowerCase() === userObj.email.toLowerCase()) || 
+        (userObj.id && (u.id === userObj.id || u.uid === userObj.id));
+      return isTarget ? { ...u, isInactive: !isCurrentlyInactive, daysSinceLastActive: !isCurrentlyInactive ? 90 : 0 } : u;
+    }));
+
+    // Immediately update selectedUserDossier if open
+    setSelectedUserDossier(prev => {
+      if (!prev) return null;
+      const isTarget = checkIsInactive(prev, [userObj]) || 
+        (userObj.email && prev.email?.toLowerCase() === userObj.email.toLowerCase()) ||
+        (userObj.id && (prev.uid === userObj.id || prev.id === userObj.id));
+      return isTarget ? { ...prev, isInactive: !isCurrentlyInactive, daysSinceLastActive: !isCurrentlyInactive ? 90 : 0 } : prev;
+    });
+
     fetchUserDirectory();
   };
 
@@ -3087,11 +3355,29 @@ Tallyin Team`;
         });
       } catch (e) {}
 
-      setAllRegisteredUsers(combined);
+      let currentInactive = Array.isArray(customInactiveList) ? customInactiveList : inactiveUsers;
+      if (!currentInactive || currentInactive.length === 0) {
+        try {
+          const saved = localStorage.getItem('tallyin_inactive_users');
+          if (saved) currentInactive = JSON.parse(saved);
+        } catch (e) {}
+      }
+      if (!Array.isArray(currentInactive)) currentInactive = [];
+
+      const enriched = combined.map(u => {
+        const isInactive = checkIsInactive(u, currentInactive);
+        return {
+          ...u,
+          isInactive,
+          daysSinceLastActive: isInactive ? (u.daysSinceLastActive || 90) : 0
+        };
+      });
+
+      setAllRegisteredUsers(enriched);
     } catch (e) {
       console.warn("User directory fetch error:", e);
     }
-  }, []);
+  }, [inactiveUsers, checkIsInactive]);
 
   // Comprehensive User Audit Report Builder
   const handleInspectUserReport = useCallback(async (userObj) => {
@@ -3211,6 +3497,8 @@ Tallyin Team`;
         return (cleanEmail && cleanEmail !== 'n/a' && bId === cleanEmail) || (cleanName && bName === cleanName.toLowerCase()) || (userUid && bId === userUid.toLowerCase());
       });
 
+      const isInactive = checkIsInactive({ email: cleanEmail, id: userUid, userCode, name: cleanName }, inactiveUsers) || Boolean(userObj.isInactive);
+
       const dossierData = {
         user: userObj,
         name: cleanName || 'Tallyin User',
@@ -3220,6 +3508,8 @@ Tallyin Team`;
         photoURL: userObj.photoURL,
         role: userObj.role || 'Member',
         isBanned,
+        isInactive,
+        daysSinceLastActive: isInactive ? (userObj.daysSinceLastActive || 90) : 0,
         dateJoined: dateJoinedFormatted,
         dateJoinedTimestamp: earliestTimestamp,
         createdRoomsCount: createdRooms.length,
@@ -3244,7 +3534,7 @@ Tallyin Team`;
     } finally {
       setLoadingUserDossier(false);
     }
-  }, [commanderRooms, allGlobalTx, userDisputesAndQueries, bannedUsers, triggerToast]);
+  }, [commanderRooms, allGlobalTx, userDisputesAndQueries, bannedUsers, inactiveUsers, checkIsInactive, triggerToast]);
 
   // Export User Dossier as Printable PDF
   const handleExportUserReportPDF = () => {
@@ -3581,13 +3871,16 @@ Tallyin Team`;
       measurePing();
       fetchSystemStats();
       fetchFinancialsAndLogs();
-      fetchUserDirectory();
+      fetchInactiveUsers().then((list) => {
+        fetchUserDirectory(list);
+      });
       fetchBannedUsers();
       fetchBanAppeals();
       fetchCoAdminAckRegistry();
       fetchEmailConfiguration();
+      fetchActivationRequests();
     }
-  }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry, fetchEmailConfiguration]);
+  }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchInactiveUsers, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry, fetchEmailConfiguration, fetchActivationRequests]);
 
   // Live heartbeat polling loop for realtime activity feed and platform financials
   useEffect(() => {
@@ -11072,7 +11365,7 @@ NOTIFY pgrst, 'reload schema';`;
           {/* Directory Filter Pills */}
           {(() => {
             const totalCount = allRegisteredUsers.length;
-            const inactiveCount = allRegisteredUsers.filter(u => u.isInactive).length;
+            const inactiveCount = allRegisteredUsers.filter(u => checkIsInactive(u, inactiveUsers) || u.isInactive).length;
             const bannedCount = allRegisteredUsers.filter(u => {
               const uEmail = (u.email || '').toLowerCase();
               const uName = (u.name || '').toLowerCase();
@@ -11083,58 +11376,161 @@ NOTIFY pgrst, 'reload schema';`;
                 return (uEmail && uEmail !== 'n/a' && bId === uEmail) || (uName && bName === uName) || (uId && bId === uId);
               });
             }).length;
+            const pendingRequests = (activationRequests || []).filter(r => r && r.status === 'PENDING');
             const activeCount = totalCount - inactiveCount - bannedCount;
 
             return (
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                <button
-                  type="button"
-                  onClick={() => setUserDirectoryFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    userDirectoryFilter === 'all'
-                      ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>All Users ({totalCount})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserDirectoryFilter('active')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    userDirectoryFilter === 'active'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100'
-                  }`}
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Active ({Math.max(0, activeCount)})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserDirectoryFilter('inactive')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    userDirectoryFilter === 'inactive'
-                      ? 'bg-amber-500 text-white shadow-xs'
-                      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100'
-                  }`}
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Inactive (90+ Days) ({inactiveCount})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserDirectoryFilter('banned')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    userDirectoryFilter === 'banned'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 hover:bg-rose-100'
-                  }`}
-                >
-                  <Ban className="w-3.5 h-3.5" />
-                  <span>Suspended ({bannedCount})</span>
-                </button>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setUserDirectoryFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      userDirectoryFilter === 'all'
+                        ? 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>All Users ({totalCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserDirectoryFilter('active')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      userDirectoryFilter === 'active'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Active ({Math.max(0, activeCount)})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserDirectoryFilter('inactive')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      userDirectoryFilter === 'inactive'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Inactive (90+ Days) ({inactiveCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserDirectoryFilter('requests')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 relative ${
+                      userDirectoryFilter === 'requests'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 border border-amber-300 dark:border-amber-800'
+                    }`}
+                  >
+                    <KeyRound className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300" />
+                    <span>Activation Requests ({pendingRequests.length})</span>
+                    {pendingRequests.length > 0 && (
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserDirectoryFilter('banned')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      userDirectoryFilter === 'banned'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 hover:bg-rose-100'
+                    }`}
+                  >
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Suspended ({bannedCount})</span>
+                  </button>
+                </div>
+
+                {/* Prominent Pending Activation Requests Showcase Card */}
+                {pendingRequests.length > 0 && (
+                  <div className="p-4 bg-amber-50/90 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/60 rounded-3xl space-y-3 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                        <h4 className="text-xs font-black uppercase tracking-wider text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
+                          <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
+                          Pending Account Activation Requests ({pendingRequests.length})
+                        </h4>
+                      </div>
+                      <span className="text-[10px] text-amber-800 dark:text-amber-300 font-bold hidden sm:inline">
+                        Users requested code for activating
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      {pendingRequests.map(req => (
+                        <div key={req.id} className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800/60 flex items-center justify-between gap-3 text-xs shadow-xs">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-extrabold text-[#1A3827] dark:text-white truncate">{req.name}</span>
+                              <span className="font-mono text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300">
+                                {req.userCode}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-mono truncate">{req.email}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] font-mono font-black text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded border border-amber-300">
+                                CODE: {req.code}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                {new Date(req.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(req.code);
+                                if (triggerToast) triggerToast(`Copied code ${req.code}!`);
+                              }}
+                              className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                              title="Copy Code"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tallyin.vercel.app';
+                                const link = req.activationLink || `${origin}/?activate_code=${req.code}&email=${encodeURIComponent(req.email)}`;
+                                navigator.clipboard.writeText(link);
+                                if (triggerToast) triggerToast("Copied 1-click activation link!");
+                              }}
+                              className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                              title="Copy Direct Activation Link"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                            {req.email && req.email.includes('@') && req.email.toLowerCase() !== 'n/a' && (
+                              <button
+                                type="button"
+                                onClick={() => handleSendActivationCodeEmail(req)}
+                                className="p-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded-lg text-[10px] font-bold cursor-pointer"
+                                title="Send Code to User via Email"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleApproveActivationRequest(req)}
+                              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black cursor-pointer shadow-xs"
+                              title="Approve & Reactivate Immediately"
+                            >
+                              Approve
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -11145,6 +11541,8 @@ NOTIFY pgrst, 'reload schema';`;
             ) : (
               allRegisteredUsers
                 .filter(u => {
+                  const isInactive = checkIsInactive(u, inactiveUsers) || Boolean(u.isInactive);
+                  const pendingReq = getPendingActivationRequest(u);
                   const isBanned = bannedUsers.some(b => {
                     const bId = (b.identifier || b.email || b.id || '').toLowerCase();
                     const bName = (b.name || '').toLowerCase();
@@ -11154,8 +11552,9 @@ NOTIFY pgrst, 'reload schema';`;
                     return (uEmail && uEmail !== 'n/a' && bId === uEmail) || (uName && bName === uName) || (uId && bId === uId);
                   });
 
-                  if (userDirectoryFilter === 'active' && (u.isInactive || isBanned)) return false;
-                  if (userDirectoryFilter === 'inactive' && !u.isInactive) return false;
+                  if (userDirectoryFilter === 'active' && (isInactive || isBanned)) return false;
+                  if (userDirectoryFilter === 'inactive' && !isInactive) return false;
+                  if (userDirectoryFilter === 'requests' && !pendingReq) return false;
                   if (userDirectoryFilter === 'banned' && !isBanned) return false;
 
                   if (!searchQuery.trim()) return true;
@@ -11169,6 +11568,8 @@ NOTIFY pgrst, 'reload schema';`;
                   );
                 })
                 .map(u => {
+                  const isInactive = checkIsInactive(u, inactiveUsers) || Boolean(u.isInactive);
+                  const pendingReq = getPendingActivationRequest(u);
                   const userCode = (u.email?.toLowerCase() === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (u.userCode || getUserCode(u.email || u.id || u.name));
                   const userTarget = (u.email && u.email !== 'N/A') ? u.email : (u.name || u.id);
                   const isBanned = bannedUsers.some(b => {
@@ -11184,9 +11585,11 @@ NOTIFY pgrst, 'reload schema';`;
                     <div 
                       key={u.id || u.email} 
                       className={`p-4 rounded-2xl bg-white dark:bg-slate-900 border ${
-                        u.isInactive 
-                          ? 'border-amber-300 dark:border-amber-800/60 bg-amber-50/10' 
-                          : 'border-[#E3E8E3] dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500/50'
+                        pendingReq
+                          ? 'border-amber-400 dark:border-amber-600 bg-amber-50/20 shadow-sm ring-1 ring-amber-400/30'
+                          : isInactive 
+                            ? 'border-amber-300 dark:border-amber-800/60 bg-amber-50/10' 
+                            : 'border-[#E3E8E3] dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500/50'
                       } flex items-center justify-between gap-3 text-xs transition-all shadow-xs group`}
                     >
                       <div 
@@ -11198,7 +11601,7 @@ NOTIFY pgrst, 'reload schema';`;
                           <img src={u.photoURL} alt={u.name} className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700 group-hover:ring-2 group-hover:ring-blue-500/50 transition-all" />
                         ) : (
                           <div className={`w-10 h-10 rounded-full ${
-                            u.isInactive ? 'bg-amber-600 text-white' : 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950'
+                            pendingReq ? 'bg-amber-500 text-slate-950 font-black' : isInactive ? 'bg-amber-600 text-white' : 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950'
                           } flex items-center justify-center font-black text-xs shrink-0 group-hover:scale-105 transition-transform`}>
                             {u.name ? u.name.charAt(0).toUpperCase() : 'U'}
                           </div>
@@ -11213,7 +11616,12 @@ NOTIFY pgrst, 'reload schema';`;
                               <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
                                 Suspended
                               </span>
-                            ) : u.isInactive ? (
+                            ) : pendingReq ? (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 border border-amber-500 flex items-center gap-1 animate-pulse shadow-xs">
+                                <KeyRound className="w-2.5 h-2.5" />
+                                CODE: {pendingReq.code}
+                              </span>
+                            ) : isInactive ? (
                               <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-0.5">
                                 <Clock className="w-2.5 h-2.5" />
                                 Inactive ({u.daysSinceLastActive !== undefined ? u.daysSinceLastActive : 90}d)
@@ -11252,7 +11660,17 @@ NOTIFY pgrst, 'reload schema';`;
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                          {u.isInactive && (
+                          {pendingReq && (
+                            <button
+                              onClick={() => handleApproveActivationRequest(pendingReq)}
+                              className="p-2 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 rounded-xl hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors cursor-pointer border border-emerald-300 dark:border-emerald-700 flex items-center gap-1"
+                              title={`Quick Approve & Activate Account for ${u.name} (Code: ${pendingReq.code})`}
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                            </button>
+                          )}
+
+                          {isInactive && (
                             <button
                               onClick={() => handleSendComeBackEmail(u)}
                               className="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors cursor-pointer"
@@ -11265,13 +11683,13 @@ NOTIFY pgrst, 'reload schema';`;
                           <button
                             onClick={() => handleToggleUserInactive(u)}
                             className={`p-2 rounded-xl transition-colors cursor-pointer ${
-                              u.isInactive
+                              isInactive
                                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100'
                                 : 'bg-[#F6F8F6] dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
                             }`}
-                            title={u.isInactive ? "Reactivate User Account" : "Mark Account Inactive (90+ Days)"}
+                            title={isInactive ? "Reactivate User Account" : "Mark Account Inactive (90+ Days)"}
                           >
-                            {u.isInactive ? <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Moon className="w-3.5 h-3.5 text-amber-600" />}
+                            {isInactive ? <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Moon className="w-3.5 h-3.5 text-amber-600" />}
                           </button>
 
                           <button
@@ -15810,118 +16228,197 @@ NOTIFY pgrst, 'reload schema';`;
       )}
 
       {/* User Audit Dossier & Inspection Modal */}
-      {selectedUserDossier && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-sm animate-in fade-in overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl space-y-6 max-h-[92vh] flex flex-col my-auto">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-              <div className="flex items-center gap-3.5">
-                <div className="w-13 h-13 rounded-2xl bg-[#1A3827] text-white flex items-center justify-center font-black text-xl shadow-md border-2 border-emerald-500/30 overflow-hidden shrink-0">
-                  {selectedUserDossier.photoURL ? (
-                    <img src={selectedUserDossier.photoURL} alt={selectedUserDossier.name} className="w-full h-full object-cover" />
-                  ) : (
-                    selectedUserDossier.name.charAt(0).toUpperCase()
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-extrabold text-[#1A3827] dark:text-white text-lg tracking-tight">
-                      {selectedUserDossier.name}
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/50">
-                      {selectedUserDossier.userCode}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                      selectedUserDossier.isBanned 
-                        ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800' 
-                        : selectedUserDossier.isInactive
-                          ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
-                    }`}>
-                      {selectedUserDossier.isBanned ? 'Suspended' : selectedUserDossier.isInactive ? `Inactive (${selectedUserDossier.daysSinceLastActive || 90}+ Days)` : 'Active Account'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
-                    <span className="font-mono">{selectedUserDossier.email}</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1 font-mono text-[11px]">
-                      <Calendar className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                      Joined {selectedUserDossier.dateJoined}
-                    </span>
-                    {selectedUserDossier.daysSinceLastActive !== undefined && (
-                      <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">
-                        • {selectedUserDossier.daysSinceLastActive}d since active
-                      </span>
+      {selectedUserDossier && (() => {
+        const isDossierInactive = checkIsInactive(selectedUserDossier, inactiveUsers) || Boolean(selectedUserDossier.isInactive);
+        const pendingDossierReq = getPendingActivationRequest(selectedUserDossier);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl space-y-6 max-h-[92vh] flex flex-col my-auto">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-13 h-13 rounded-2xl bg-[#1A3827] text-white flex items-center justify-center font-black text-xl shadow-md border-2 border-emerald-500/30 overflow-hidden shrink-0">
+                    {selectedUserDossier.photoURL ? (
+                      <img src={selectedUserDossier.photoURL} alt={selectedUserDossier.name} className="w-full h-full object-cover" />
+                    ) : (
+                      selectedUserDossier.name.charAt(0).toUpperCase()
                     )}
                   </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-extrabold text-[#1A3827] dark:text-white text-lg tracking-tight">
+                        {selectedUserDossier.name}
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/50">
+                        {selectedUserDossier.userCode}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                        selectedUserDossier.isBanned 
+                          ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800' 
+                          : pendingDossierReq
+                            ? 'bg-amber-400 text-slate-950 border-amber-500 font-black'
+                            : isDossierInactive
+                              ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+                      }`}>
+                        {selectedUserDossier.isBanned 
+                          ? 'Suspended' 
+                          : pendingDossierReq 
+                            ? `Code Requested: ${pendingDossierReq.code}` 
+                            : isDossierInactive 
+                              ? `Inactive (${selectedUserDossier.daysSinceLastActive || 90}+ Days)` 
+                              : 'Active Account'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
+                      <span className="font-mono">{selectedUserDossier.email}</span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1 font-mono text-[11px]">
+                        <Calendar className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                        Joined {selectedUserDossier.dateJoined}
+                      </span>
+                      {selectedUserDossier.daysSinceLastActive !== undefined && (
+                        <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">
+                          • {selectedUserDossier.daysSinceLastActive}d since active
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons: Export, Come-Back Email, Inactive Toggle & Close */}
+                <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 flex-wrap">
+                  {isDossierInactive && (
+                    <button
+                      type="button"
+                      onClick={() => handleSendComeBackEmail(selectedUserDossier)}
+                      title="Send Personalized Come-Back Email to this User"
+                      className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Send Come-Back Email</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleUserInactive(selectedUserDossier)}
+                    title={isDossierInactive ? "Reactivate User Account" : "Mark Account Inactive"}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                      isDossierInactive
+                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    {isDossierInactive ? <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Moon className="w-3.5 h-3.5 text-amber-500" />}
+                    <span>{isDossierInactive ? "Reactivate" : "Mark Inactive"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportUserReportPDF}
+                    title="Print / Save as PDF"
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Print / PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportUserReportCSV}
+                    title="Export User Dossier to CSV"
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>Export CSV</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportUserReportJSON}
+                    title="Export User Dossier to JSON"
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Download className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>JSON</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUserDossier(null)}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
 
-              {/* Action Buttons: Export, Come-Back Email, Inactive Toggle & Close */}
-              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 flex-wrap">
-                {selectedUserDossier.isInactive && (
-                  <button
-                    type="button"
-                    onClick={() => handleSendComeBackEmail(selectedUserDossier)}
-                    title="Send Personalized Come-Back Email to this User"
-                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Send Come-Back Email</span>
-                  </button>
+              {/* Scrollable Body */}
+              <div className="space-y-6 overflow-y-auto pr-1">
+                {/* Active Activation Request Showcase */}
+                {pendingDossierReq && (
+                  <div className="p-4 bg-amber-50/90 dark:bg-amber-950/50 border-2 border-amber-300 dark:border-amber-700 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-amber-600 animate-pulse" />
+                        <span className="font-black text-amber-950 dark:text-amber-200">
+                          Activation Code Requested by User
+                        </span>
+                        <span className="font-mono text-sm font-black px-2.5 py-0.5 rounded-lg bg-amber-400 text-slate-950 border border-amber-500 shadow-xs">
+                          CODE: {pendingDossierReq.code}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                        User requested reactivation at {new Date(pendingDossierReq.requestedAt).toLocaleString()}. Enter this code on user's device or approve directly.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(pendingDossierReq.code);
+                          if (triggerToast) triggerToast(`Copied activation code ${pendingDossierReq.code}!`);
+                        }}
+                        className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-amber-300 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                        title="Copy 6-digit code"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Code</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tallyin.vercel.app';
+                          const link = pendingDossierReq.activationLink || `${origin}/?activate_code=${pendingDossierReq.code}&email=${encodeURIComponent(pendingDossierReq.email)}`;
+                          navigator.clipboard.writeText(link);
+                          if (triggerToast) triggerToast("Copied 1-click activation link!");
+                        }}
+                        className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-amber-300 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                        title="Copy direct activation link"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Copy Link</span>
+                      </button>
+                      {pendingDossierReq.email && pendingDossierReq.email.includes('@') && (
+                        <button
+                          type="button"
+                          onClick={() => handleSendActivationCodeEmail(pendingDossierReq)}
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                          title="Send activation email to user"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Email Code</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleApproveActivationRequest(pendingDossierReq)}
+                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                        title="Approve request and activate account immediately"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Approve &amp; Activate</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => handleToggleUserInactive(selectedUserDossier)}
-                  title={selectedUserDossier.isInactive ? "Reactivate User Account" : "Mark Account Inactive"}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
-                    selectedUserDossier.isInactive
-                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'
-                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
-                  }`}
-                >
-                  {selectedUserDossier.isInactive ? <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Moon className="w-3.5 h-3.5 text-amber-500" />}
-                  <span>{selectedUserDossier.isInactive ? "Reactivate" : "Mark Inactive"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportUserReportPDF}
-                  title="Print / Save as PDF"
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <Printer className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>Print / PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportUserReportCSV}
-                  title="Export User Dossier to CSV"
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                  <span>Export CSV</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportUserReportJSON}
-                  title="Export User Dossier to JSON"
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <Download className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>JSON</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedUserDossier(null)}
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable Body */}
-            <div className="space-y-6 overflow-y-auto pr-1">
               {/* Primary Metrics Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
@@ -16303,7 +16800,8 @@ NOTIFY pgrst, 'reload schema';`;
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Universal Full Data Record Inspector Modal */}
       {renderFullDataInspectorModal()}
