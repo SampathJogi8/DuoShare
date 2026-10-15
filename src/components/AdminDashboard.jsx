@@ -2845,6 +2845,104 @@ Tallyin Team`;
     }
   };
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFullDataRecord, setSelectedFullDataRecord] = useState(null);
+  const [isOmniSearchFocused, setIsOmniSearchFocused] = useState(false);
+  const [fullDataRawJsonOpen, setFullDataRawJsonOpen] = useState(false);
+  const searchDropdownRef = useRef(null);
+
+  // Close omni search dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchDropdownRef.current && !searchDropdownRef.current.contains(e.target)) {
+        setIsOmniSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Universal Omnisearch Computation across all Reference IDs, Tickets, Transactions, Users, Rooms, and Audits
+  const omniSearchResults = useMemo(() => {
+    if (!searchQuery || !searchQuery.trim()) return null;
+    const q = searchQuery.trim().toLowerCase();
+
+    // 1. Incidents & Disputes / Support Tickets
+    const matchedTickets = (userDisputesAndQueries || []).filter(ticket => {
+      const refNum = String(ticket.refNumber || ticket.refId || ticket.ticketId || ticket.incidentId || ticket.referenceId || ticket.reference_id || '').toLowerCase();
+      const id = String(ticket.id || '').toLowerCase();
+      const title = String(ticket.title || '').toLowerCase();
+      const desc = String(ticket.description || ticket.message || '').toLowerCase();
+      const email = String(ticket.user_email || ticket.userEmail || '').toLowerCase();
+      const name = String(ticket.user_name || ticket.userName || '').toLowerCase();
+      const uCode = String(ticket.user_code || ticket.userCode || (ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : getUserCode(ticket.user_email || ticket.user_id))).toLowerCase();
+      const rule = String(ticket.ruleViolated || '').toLowerCase();
+      const room = String(ticket.room_name || ticket.room_id || ticket.roomId || '').toLowerCase();
+      const txId = String(ticket.transaction_id || '').toLowerCase();
+
+      return refNum.includes(q) || id.includes(q) || title.includes(q) || desc.includes(q) ||
+             email.includes(q) || name.includes(q) || uCode.includes(q) || rule.includes(q) ||
+             room.includes(q) || txId.includes(q);
+    });
+
+    // 2. Transactions & Expenses
+    const matchedTx = (allGlobalTx || []).filter(tx => {
+      const id = String(tx.id || '').toLowerCase();
+      const title = String(tx.title || '').toLowerCase();
+      const cat = String(tx.category || '').toLowerCase();
+      const payer = String(tx.paid_by || tx.paidBy || '').toLowerCase();
+      const room = String(tx.room_id || '').toLowerCase();
+      const amt = String(tx.amount || '');
+      const notes = String(tx.notes || tx.description || '').toLowerCase();
+      const ref = String(tx.referenceCode || tx.receiptRefCode || tx.reference || tx.refNumber || '').toLowerCase();
+
+      return id.includes(q) || `tx-${id}`.includes(q) || title.includes(q) || cat.includes(q) ||
+             payer.includes(q) || room.includes(q) || amt.includes(q) || notes.includes(q) || ref.includes(q);
+    });
+
+    // 3. Users
+    const matchedUsers = (userDirectory || []).filter(u => {
+      const name = String(u.name || '').toLowerCase();
+      const email = String(u.email || '').toLowerCase();
+      const uCode = String(u.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (u.userCode || getUserCode(u.email || u.id || u.name))).toLowerCase();
+      const id = String(u.id || '').toLowerCase();
+      const room = String(u.roomId || '').toLowerCase();
+
+      return name.includes(q) || email.includes(q) || uCode.includes(q) || id.includes(q) || room.includes(q);
+    });
+
+    // 4. Rooms
+    const matchedRooms = (commanderRooms || []).filter(r => {
+      const id = String(r.id || '').toLowerCase();
+      const name = String(r.name || '').toLowerCase();
+      const host = String(r.hostEmail || r.created_by || '').toLowerCase();
+      const code = String(r.code || '').toLowerCase();
+
+      return id.includes(q) || name.includes(q) || host.includes(q) || code.includes(q);
+    });
+
+    // 5. Audit Logs
+    const matchedAudits = (auditLogs || []).filter(a => {
+      const id = String(a.id || '').toLowerCase();
+      const action = String(a.action || '').toLowerCase();
+      const details = String(a.details || '').toLowerCase();
+      const email = String(a.adminEmail || '').toLowerCase();
+
+      return id.includes(q) || action.includes(q) || details.includes(q) || email.includes(q);
+    });
+
+    const totalCount = matchedTickets.length + matchedTx.length + matchedUsers.length + matchedRooms.length + matchedAudits.length;
+
+    return {
+      query: q,
+      totalCount,
+      tickets: matchedTickets,
+      transactions: matchedTx,
+      users: matchedUsers,
+      rooms: matchedRooms,
+      audits: matchedAudits
+    };
+  }, [searchQuery, userDisputesAndQueries, allGlobalTx, userDirectory, commanderRooms, auditLogs]);
+
   const [securityLogs, setSecurityLogs] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -5649,6 +5747,340 @@ Tallyin Team`;
     );
   }
 
+  const renderFullDataInspectorModal = () => {
+    if (!selectedFullDataRecord) return null;
+    const r = selectedFullDataRecord;
+    const refId = r.refNumber || r.refId || r.ticketId || r.incidentId || r.id || 'N/A';
+    const recordType = (r._recordType || r.type || (r.amount !== undefined ? 'transaction' : (r.userCode ? 'user' : (r.code ? 'room' : 'record')))).toUpperCase();
+    const userCode = r.user_code || r.userCode || (r.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (r.user_email || r.user_id ? getUserCode(r.user_email || r.user_id) : 'N/A'));
+    const userName = r.user_name || r.userName || r.name || 'N/A';
+    const userEmail = r.user_email || r.userEmail || r.email || 'N/A';
+    const isViolation = r._recordType === 'incident' || r.type === 'violation' || r.category?.toLowerCase()?.includes('term') || r.category?.toLowerCase()?.includes('violation');
+    const isTx = recordType === 'TRANSACTION' || r.amount !== undefined;
+
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-sm animate-fade-in text-slate-800 dark:text-slate-100"
+        onClick={() => setSelectedFullDataRecord(null)}
+      >
+        <div 
+          className="relative w-full max-w-3xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-left"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="p-4 sm:p-6 bg-gradient-to-r from-[#1A3827]/10 via-transparent to-transparent border-b border-[#E3E8E3] dark:border-slate-800 flex items-start justify-between gap-3 shrink-0">
+            <div className="space-y-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                  isViolation 
+                    ? 'bg-rose-600 text-white animate-pulse' 
+                    : isTx 
+                      ? 'bg-emerald-600 text-white' 
+                      : 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950'
+                }`}>
+                  {isViolation ? '🚨 TERMS INCIDENT' : isTx ? '💳 PLATFORM TRANSACTION' : `📋 ${recordType}`}
+                </span>
+                {r.status && (
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border ${
+                    r.status === 'RESOLVED' 
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800' 
+                      : r.status === 'UNDER_REVIEW' 
+                        ? 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800' 
+                        : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                  }`}>
+                    {r.status}
+                  </span>
+                )}
+                {r.severity && (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                    {r.severity} Priority
+                  </span>
+                )}
+              </div>
+              <h3 className="font-extrabold text-base sm:text-lg text-[#1A3827] dark:text-white truncate">
+                {r.title || r.category || r.action || 'Full Record Inspection'}
+              </h3>
+              <div className="flex items-center gap-2 pt-0.5 flex-wrap">
+                <span className="text-[11px] font-bold text-slate-500">Tracking Reference ID:</span>
+                <span className="font-mono text-xs font-black px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] border border-slate-200 dark:border-slate-700 select-all">
+                  {refId}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(refId);
+                    if (triggerToast) triggerToast(`Copied Reference ID: ${refId}`);
+                  }}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  title="Copy Reference ID"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedFullDataRecord(null)}
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Modal Body (Scrollable) */}
+          <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+            {/* Metadata Summary Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3.5 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-[#E3E8E3] dark:border-slate-800 text-[11px]">
+              <div>
+                <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Record Type</span>
+                <span className="font-bold text-[#1A3827] dark:text-slate-200">{recordType}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Category</span>
+                <span className="font-bold text-[#1A3827] dark:text-slate-200 truncate block">{r.category || 'Platform Record'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Logged Time</span>
+                <span className="font-semibold text-slate-600 dark:text-slate-400">
+                  {r.createdAt || r.created_at || r.timestamp ? new Date(r.createdAt || r.created_at || r.timestamp).toLocaleString() : 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Room ID</span>
+                <span className="font-mono font-bold text-slate-700 dark:text-slate-300 truncate block">
+                  {r.room_id || r.roomId || 'GLOBAL'}
+                </span>
+              </div>
+            </div>
+
+            {/* Offending / Subject User Card */}
+            {(userName !== 'N/A' || userEmail !== 'N/A' || userCode !== 'N/A') && (
+              <div className="p-4 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-[#E3E8E3]/60 dark:border-slate-800 pb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#1A3827] dark:text-[#A3E635] flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5" />
+                    <span>Associated User Account Dossier</span>
+                  </span>
+                  <span className="font-mono text-[10px] font-black px-2 py-0.5 rounded bg-white dark:bg-slate-900 text-emerald-800 dark:text-[#A3E635] border border-emerald-300 dark:border-emerald-800">
+                    {userCode}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Account Holder</span>
+                    <p className="font-extrabold text-[#1A3827] dark:text-white">{userName}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Email Address</span>
+                    <p className="font-medium text-slate-700 dark:text-slate-300 truncate">{userEmail}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Internal UID</span>
+                    <p className="font-mono text-[10px] text-slate-500 truncate">{r.user_id || r.userId || r.id || 'N/A'}</p>
+                  </div>
+                </div>
+
+                {r.reporter && (
+                  <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/80 text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                    <span className="font-extrabold text-slate-500 uppercase text-[9px]">Reported By:</span>
+                    <span className="font-bold text-[#1A3827] dark:text-slate-200">{r.reporter.name}</span>
+                    <span>({r.reporter.code || r.reporter.email || 'Roommate'})</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Violation Details / Full Evidence Text */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Full Evidence / Description Content</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = r.description || r.message || r.notes || r.title || '';
+                    navigator.clipboard.writeText(text);
+                    if (triggerToast) triggerToast('Copied full evidence text to clipboard.');
+                  }}
+                  className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>Copy Text</span>
+                </button>
+              </div>
+              <div className="p-4 bg-slate-900 text-slate-100 font-mono text-xs rounded-2xl overflow-x-auto whitespace-pre-wrap leading-relaxed border border-slate-800 max-h-72 select-text shadow-inner">
+                {r.description || r.message || r.notes || r.title || 'No detailed evidence text provided.'}
+              </div>
+            </div>
+
+            {/* Referenced Financial Transaction (if any) */}
+            {(r.transaction_title || r.transaction_amount || r.amount !== undefined) && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex items-center justify-between gap-3">
+                <div className="space-y-0.5 min-w-0">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 block">
+                    Referenced Expense / Transaction
+                  </span>
+                  <p className="font-bold text-amber-950 dark:text-amber-100 text-xs truncate">
+                    {r.transaction_title || r.title || 'Platform Expense'}
+                  </p>
+                  <p className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
+                    TX ID: {r.transaction_id || r.id} {r.paid_by ? `• Paid By: ${r.paid_by}` : ''}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-base font-black text-amber-900 dark:text-amber-200">
+                    ₹{Number(r.transaction_amount || r.amount || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Admin Resolution & Action Status */}
+            {(r.adminResponse || r.actionTaken || r.resolvedBy) && (
+              <div className="p-4 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 space-y-2">
+                <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-300 tracking-wider flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Administrative Action &amp; Resolution Notes</span>
+                </span>
+                {r.actionTaken && (
+                  <p className="text-xs text-slate-700 dark:text-slate-300">
+                    <strong>Action Taken:</strong> {r.actionTaken}
+                  </p>
+                )}
+                {r.adminResponse && (
+                  <p className="text-xs text-emerald-950 dark:text-emerald-100 italic bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                    "{r.adminResponse}"
+                  </p>
+                )}
+                {r.resolvedBy && (
+                  <p className="text-[10px] font-mono text-emerald-700 dark:text-emerald-400">
+                    Handled by {r.resolvedBy} {r.resolvedAt ? `on ${new Date(r.resolvedAt).toLocaleString()}` : ''}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Collapsible Complete Raw JSON Object */}
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setFullDataRawJsonOpen(!fullDataRawJsonOpen)}
+                className="w-full flex items-center justify-between text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 py-1.5 font-bold text-xs cursor-pointer"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Terminal className="w-3.5 h-3.5" />
+                  <span>{fullDataRawJsonOpen ? 'Hide' : 'View'} Complete Raw Database Object (JSON)</span>
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${fullDataRawJsonOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {fullDataRawJsonOpen && (
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(r, null, 2));
+                        if (triggerToast) triggerToast('Copied complete JSON object to clipboard.');
+                      }}
+                      className="px-2 py-1 text-[10px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded cursor-pointer flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Copy JSON</span>
+                    </button>
+                  </div>
+                  <pre className="p-3 bg-slate-950 text-emerald-400 font-mono text-[10px] rounded-xl overflow-x-auto max-h-56 leading-relaxed border border-slate-800 select-all">
+                    {JSON.stringify(r, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Modal Footer Controls */}
+          <div className="p-4 bg-[#F8FAF9] dark:bg-slate-950/80 border-t border-[#E3E8E3] dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              {userPermissions.user_management && (userEmail !== 'N/A' || userName !== 'N/A') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = userEmail !== 'N/A' ? userEmail : userName;
+                    if (window.confirm(`Are you sure you want to BAN account "${userName}" (${target})?`)) {
+                      handleBanUser(target, `Administrative sanction from Reference ID: ${refId}`, { name: userName });
+                      setSelectedFullDataRecord(null);
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  <span>Ban User</span>
+                </button>
+              )}
+
+              {userPermissions.user_management && userEmail !== 'N/A' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWarningTargetUser({ name: userName, email: userEmail });
+                    setWarningReason(`Notice regarding Reference ID: ${refId}`);
+                    setWarningNotes(`Administrative review conducted on record ${refId}.`);
+                    setSelectedFullDataRecord(null);
+                  }}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Issue Warning</span>
+                </button>
+              )}
+
+              {userCode !== 'N/A' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery(userCode);
+                    setActiveTab('user_directory');
+                    setSelectedFullDataRecord(null);
+                  }}
+                  className="px-3 py-1.5 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Trace in Directory</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {r.id && r.status !== 'RESOLVED' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const note = window.prompt('Resolution or closure remarks for this record:', 'Reviewed and resolved by System Administration.');
+                    if (note !== null) {
+                      handleUpdateDisputeStatus(r.id, 'RESOLVED', note);
+                      setSelectedFullDataRecord({ ...r, status: 'RESOLVED', adminResponse: note });
+                    }
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Mark Resolved</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedFullDataRecord(null)}
+                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderAccessRestrictedCard = (moduleName, requiredClearance) => (
     <div className="hud-card rounded-3xl p-8 sm:p-12 text-center space-y-5 max-w-lg mx-auto my-12 border border-amber-500/30 shadow-xl bg-gradient-to-b from-amber-500/5 to-transparent animate-fade-in">
       <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center mx-auto shadow-md ring-4 ring-amber-500/10 animate-pulse">
@@ -5899,18 +6331,41 @@ Tallyin Team`;
               <Menu className="w-4 h-4" />
             </button>
 
-            <div className="relative flex-1 group">
+            <div ref={searchDropdownRef} className="relative flex-1 group">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none group-focus-within:text-[#1A3827] dark:group-focus-within:text-[#A3E635] transition-colors" />
               <input
                 type="text"
-                placeholder="Search for anything (users, rooms, tx, audit logs)..."
+                placeholder="Search Reference ID (INC-..., TICK-..., TX-...), user, room, rule..."
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={e => {
+                  setSearchQuery(e.target.value);
+                  setIsOmniSearchFocused(true);
+                }}
+                onFocus={() => setIsOmniSearchFocused(true)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && omniSearchResults && omniSearchResults.totalCount > 0) {
+                    if (omniSearchResults.tickets.length > 0) {
+                      setSelectedFullDataRecord({ ...omniSearchResults.tickets[0], _recordType: 'incident' });
+                      setIsOmniSearchFocused(false);
+                    } else if (omniSearchResults.transactions.length > 0) {
+                      setSelectedFullDataRecord({ ...omniSearchResults.transactions[0], _recordType: 'transaction' });
+                      setIsOmniSearchFocused(false);
+                    } else if (omniSearchResults.users.length > 0) {
+                      setSelectedFullDataRecord({ ...omniSearchResults.users[0], _recordType: 'user' });
+                      setIsOmniSearchFocused(false);
+                    }
+                  } else if (e.key === 'Escape') {
+                    setIsOmniSearchFocused(false);
+                  }
+                }}
                 className="w-full pl-10 pr-10 py-2.5 bg-[#F8FAF9] dark:bg-slate-800/80 border border-[#E3E8E3] dark:border-slate-700 rounded-2xl text-xs font-semibold text-[#1A3827] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#1A3827] dark:focus:border-[#A3E635] focus:ring-2 focus:ring-[#1A3827]/10 dark:focus:ring-[#A3E635]/20 shadow-2xs transition-all"
               />
               {searchQuery ? (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => {
+                    setSearchQuery('');
+                    setIsOmniSearchFocused(false);
+                  }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 flex items-center justify-center text-[9px] font-black hover:bg-slate-300 transition-all cursor-pointer"
                 >
                   ✕
@@ -5919,6 +6374,267 @@ Tallyin Team`;
                 <span className="hidden sm:inline-block absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600">
                   /
                 </span>
+              )}
+
+              {/* Floating Universal OmniSearch Dropdown */}
+              {isOmniSearchFocused && searchQuery.trim().length > 0 && omniSearchResults && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-2xl z-50 max-h-[500px] overflow-y-auto p-3 space-y-3.5 text-left animate-in fade-in slide-in-from-top-1 duration-150">
+                  {/* Dropdown Header */}
+                  <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">
+                      Search Results for "{searchQuery}"
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-emerald-400">
+                      {omniSearchResults.totalCount} found
+                    </span>
+                  </div>
+
+                  {omniSearchResults.totalCount === 0 ? (
+                    <div className="py-6 text-center text-slate-400 text-xs space-y-1">
+                      <p className="font-bold text-slate-600 dark:text-slate-300">No records found matching "{searchQuery}"</p>
+                      <p className="text-[11px] text-slate-400">
+                        Try searching by Incident Ref ID (<code>INC-...</code>), Ticket (<code>TICK-...</code>), User Code (<code>USR-...</code>), or TX ID.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* 1. Incidents & Tickets */}
+                      {omniSearchResults.tickets.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                            <ShieldAlert className="w-3 h-3" />
+                            <span>Incidents &amp; Tickets ({omniSearchResults.tickets.length})</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {omniSearchResults.tickets.slice(0, 5).map(ticket => {
+                              const refNum = ticket.refNumber || ticket.refId || ticket.ticketId || ticket.id;
+                              const isExact = refNum?.toLowerCase() === searchQuery.trim().toLowerCase();
+                              return (
+                                <div
+                                  key={ticket.id}
+                                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition-all ${
+                                    isExact 
+                                      ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-400 ring-2 ring-rose-400/20' 
+                                      : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-rose-300'
+                                  }`}
+                                >
+                                  <div className="min-w-0 space-y-0.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                        {refNum}
+                                      </span>
+                                      {isExact && (
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-rose-600 text-white">
+                                          Exact Match
+                                        </span>
+                                      )}
+                                      <span className="text-[9px] font-bold text-slate-500 uppercase">
+                                        {ticket.status || 'OPEN'}
+                                      </span>
+                                    </div>
+                                    <p className="font-bold text-[#1A3827] dark:text-slate-100 truncate text-[11px]">
+                                      {ticket.title || ticket.category}
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                      User: <strong>{ticket.user_name || ticket.userName || 'User'}</strong> ({ticket.user_email || ticket.userEmail || 'N/A'})
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedFullDataRecord({ ...ticket, _recordType: 'incident' });
+                                      setIsOmniSearchFocused(false);
+                                    }}
+                                    className="px-2.5 py-1.5 bg-[#1A3827] hover:bg-[#12281b] dark:bg-[#A3E635] dark:text-slate-950 text-white rounded-xl text-[10px] font-black shrink-0 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    <span>Full Data →</span>
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 2. Platform Transactions */}
+                      {omniSearchResults.transactions.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                            <HandCoins className="w-3 h-3" />
+                            <span>Platform Expenses &amp; Ledger ({omniSearchResults.transactions.length})</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {omniSearchResults.transactions.slice(0, 4).map(tx => {
+                              const refCode = tx.referenceCode || tx.receiptRefCode || tx.reference || tx.refNumber || tx.id;
+                              return (
+                                <div
+                                  key={tx.id}
+                                  className="p-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-300 flex items-center justify-between gap-3 text-xs transition-all"
+                                >
+                                  <div className="min-w-0 space-y-0.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-mono text-[10px] font-black text-emerald-800 dark:text-[#A3E635]">
+                                        {formatTxId(tx.id)}
+                                      </span>
+                                      {refCode && (
+                                        <span className="font-mono text-[9px] text-slate-400">
+                                          Ref: {refCode}
+                                        </span>
+                                      )}
+                                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-emerald-100 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                        ₹{Number(tx.amount || 0).toLocaleString('en-IN')}
+                                      </span>
+                                    </div>
+                                    <p className="font-bold text-[#1A3827] dark:text-slate-100 truncate text-[11px]">
+                                      {tx.title}
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 truncate">
+                                      Room: {tx.room_id} • Payer: {tx.paid_by || tx.paidBy || 'N/A'}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedFullDataRecord({ ...tx, _recordType: 'transaction' });
+                                      setIsOmniSearchFocused(false);
+                                    }}
+                                    className="px-2.5 py-1.5 bg-[#1A3827] hover:bg-[#12281b] dark:bg-[#A3E635] dark:text-slate-950 text-white rounded-xl text-[10px] font-black shrink-0 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    <span>Full Data →</span>
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. Users */}
+                      {omniSearchResults.users.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                            <Users className="w-3 h-3" />
+                            <span>Registered Users ({omniSearchResults.users.length})</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {omniSearchResults.users.slice(0, 4).map(u => {
+                              const uCode = (u.email?.toLowerCase() === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (u.userCode || getUserCode(u.email || u.id || u.name));
+                              return (
+                                <div
+                                  key={u.id || u.email}
+                                  className="p-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-300 flex items-center justify-between gap-3 text-xs transition-all"
+                                >
+                                  <div className="min-w-0 space-y-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                        {uCode}
+                                      </span>
+                                      <span className="font-bold text-[#1A3827] dark:text-slate-100 text-[11px] truncate">
+                                        {u.name || 'User'}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 truncate">
+                                      {u.email || 'No email'} {u.roomId ? `• Room: ${u.roomId}` : ''}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedFullDataRecord({ ...u, _recordType: 'user', userCode: uCode });
+                                      setIsOmniSearchFocused(false);
+                                    }}
+                                    className="px-2.5 py-1.5 bg-[#1A3827] hover:bg-[#12281b] dark:bg-[#A3E635] dark:text-slate-950 text-white rounded-xl text-[10px] font-black shrink-0 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    <span>Full Data →</span>
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 4. Rooms */}
+                      {omniSearchResults.rooms.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                            <Home className="w-3 h-3" />
+                            <span>Rooms &amp; Groups ({omniSearchResults.rooms.length})</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {omniSearchResults.rooms.slice(0, 3).map(r => (
+                              <div
+                                key={r.id}
+                                className="p-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-300 flex items-center justify-between gap-3 text-xs transition-all"
+                              >
+                                <div className="min-w-0 space-y-0.5">
+                                  <p className="font-bold text-[#1A3827] dark:text-slate-100 text-[11px] truncate">
+                                    {r.name || 'Room'}
+                                  </p>
+                                  <p className="text-[10px] font-mono text-slate-500 truncate">
+                                    ID: {r.id} {r.hostEmail ? `• Host: ${r.hostEmail}` : ''}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedFullDataRecord({ ...r, _recordType: 'room' });
+                                    setIsOmniSearchFocused(false);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-[#1A3827] hover:bg-[#12281b] dark:bg-[#A3E635] dark:text-slate-950 text-white rounded-xl text-[10px] font-black shrink-0 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span>Full Data →</span>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 5. Audit Logs */}
+                      {omniSearchResults.audits.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                            <Terminal className="w-3 h-3" />
+                            <span>Security Audit Trail ({omniSearchResults.audits.length})</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {omniSearchResults.audits.slice(0, 3).map(a => (
+                              <div
+                                key={a.id}
+                                className="p-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-purple-300 flex items-center justify-between gap-3 text-xs transition-all"
+                              >
+                                <div className="min-w-0 space-y-0.5">
+                                  <span className="font-mono text-[9px] font-bold text-purple-700 dark:text-purple-300 block">
+                                    {a.action}
+                                  </span>
+                                  <p className="text-[10px] text-slate-600 dark:text-slate-400 truncate">
+                                    {a.details}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedFullDataRecord({ ...a, _recordType: 'audit' });
+                                    setIsOmniSearchFocused(false);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-[#1A3827] hover:bg-[#12281b] dark:bg-[#A3E635] dark:text-slate-950 text-white rounded-xl text-[10px] font-black shrink-0 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span>Full Data →</span>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -10988,76 +11704,61 @@ NOTIFY pgrst, 'reload schema';`;
 
               {/* Incidents Cards List */}
               <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
-                {(userDisputesAndQueries || [])
-                  .filter(ticket => {
-                    const isV = ticket.type === 'violation' || ticket.category?.toLowerCase()?.includes('term') || ticket.category?.toLowerCase()?.includes('violation');
-                    if (!isV) return false;
-
-                    // Status filter
-                    if (termsViolationStatusFilter !== 'all') {
-                      const tStatus = ticket.status || 'OPEN';
-                      if (tStatus !== termsViolationStatusFilter) return false;
-                    }
-
-                    // Severity filter
-                    if (termsViolationSeverityFilter !== 'all') {
-                      if ((ticket.severity || 'HIGH').toUpperCase() !== termsViolationSeverityFilter) return false;
-                    }
-
-                    // Search filter
-                    if (!termsViolationSearchQuery.trim()) return true;
-                    const q = termsViolationSearchQuery.toLowerCase();
+                {(() => {
+                  const filteredIncidents = (userDisputesAndQueries || []).filter(ticket => {
+                    const q = (termsViolationSearchQuery || '').trim().toLowerCase();
                     const ticketUserCode = (ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (ticket.user_code || ticket.userCode || getUserCode(ticket.user_email || ticket.user_id))).toLowerCase();
-                    return (
-                      (ticket.refNumber && ticket.refNumber.toLowerCase().includes(q)) ||
-                      (ticket.id && ticket.id.toLowerCase().includes(q)) ||
+                    const refNum = String(ticket.refNumber || ticket.refId || ticket.ticketId || ticket.incidentId || ticket.referenceId || ticket.reference_id || '').toLowerCase();
+                    const id = String(ticket.id || '').toLowerCase();
+
+                    const matchesSearch = !q || (
+                      refNum.includes(q) ||
+                      id.includes(q) ||
                       (ticket.title && ticket.title.toLowerCase().includes(q)) ||
                       (ticket.description && ticket.description.toLowerCase().includes(q)) ||
                       (ticket.message && ticket.message.toLowerCase().includes(q)) ||
                       (ticket.user_email && ticket.user_email.toLowerCase().includes(q)) ||
                       (ticket.user_name && ticket.user_name.toLowerCase().includes(q)) ||
-                      (ticketUserCode && ticketUserCode.includes(q)) ||
+                      ticketUserCode.includes(q) ||
                       (ticket.ruleViolated && ticket.ruleViolated.toLowerCase().includes(q)) ||
-                      (ticket.room_name && ticket.room_name.toLowerCase().includes(q))
+                      (ticket.actionTaken && ticket.actionTaken.toLowerCase().includes(q)) ||
+                      (ticket.room_name && ticket.room_name.toLowerCase().includes(q)) ||
+                      (ticket.room_id && String(ticket.room_id).toLowerCase().includes(q)) ||
+                      (ticket.transaction_id && String(ticket.transaction_id).toLowerCase().includes(q))
                     );
-                  }).length === 0 ? (
-                  <div className="p-12 text-center text-slate-400 bg-white dark:bg-slate-900/60 rounded-2xl border border-dashed border-[#E3E8E3] dark:border-slate-800">
-                    <ShieldCheck className="w-10 h-10 mx-auto text-emerald-500 opacity-80 mb-2" />
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No terms violation incidents matching filters.</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">When users report violations or automated moderation blocks take place, incidents appear here in real time.</p>
-                  </div>
-                ) : (
-                  (userDisputesAndQueries || [])
-                    .filter(ticket => {
-                      const isV = ticket.type === 'violation' || ticket.category?.toLowerCase()?.includes('term') || ticket.category?.toLowerCase()?.includes('violation');
-                      if (!isV) return false;
 
-                      if (termsViolationStatusFilter !== 'all') {
-                        const tStatus = ticket.status || 'OPEN';
-                        if (tStatus !== termsViolationStatusFilter) return false;
-                      }
+                    // If an active search query is entered, show matching record immediately so filters don't hide it
+                    if (q) return matchesSearch;
 
-                      if (termsViolationSeverityFilter !== 'all') {
-                        if ((ticket.severity || 'HIGH').toUpperCase() !== termsViolationSeverityFilter) return false;
-                      }
+                    // Standard tab filtering when not searching
+                    const isV = ticket.type === 'violation' || ticket.category?.toLowerCase()?.includes('term') || ticket.category?.toLowerCase()?.includes('violation');
+                    if (!isV) return false;
 
-                      if (!termsViolationSearchQuery.trim()) return true;
-                      const q = termsViolationSearchQuery.toLowerCase();
-                      const ticketUserCode = (ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (ticket.user_code || ticket.userCode || getUserCode(ticket.user_email || ticket.user_id))).toLowerCase();
-                      return (
-                        (ticket.refNumber && ticket.refNumber.toLowerCase().includes(q)) ||
-                        (ticket.id && ticket.id.toLowerCase().includes(q)) ||
-                        (ticket.title && ticket.title.toLowerCase().includes(q)) ||
-                        (ticket.description && ticket.description.toLowerCase().includes(q)) ||
-                        (ticket.message && ticket.message.toLowerCase().includes(q)) ||
-                        (ticket.user_email && ticket.user_email.toLowerCase().includes(q)) ||
-                        (ticket.user_name && ticket.user_name.toLowerCase().includes(q)) ||
-                        (ticketUserCode && ticketUserCode.includes(q)) ||
-                        (ticket.ruleViolated && ticket.ruleViolated.toLowerCase().includes(q)) ||
-                        (ticket.room_name && ticket.room_name.toLowerCase().includes(q))
-                      );
-                    })
-                    .map(ticket => {
+                    if (termsViolationStatusFilter !== 'all') {
+                      const tStatus = ticket.status || 'OPEN';
+                      if (tStatus !== termsViolationStatusFilter) return false;
+                    }
+
+                    if (termsViolationSeverityFilter !== 'all') {
+                      if ((ticket.severity || 'HIGH').toUpperCase() !== termsViolationSeverityFilter) return false;
+                    }
+
+                    return true;
+                  });
+
+                  if (filteredIncidents.length === 0) {
+                    return (
+                      <div className="p-12 text-center text-slate-400 bg-white dark:bg-slate-900/60 rounded-2xl border border-dashed border-[#E3E8E3] dark:border-slate-800">
+                        <ShieldCheck className="w-10 h-10 mx-auto text-emerald-500 opacity-80 mb-2" />
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          {termsViolationSearchQuery.trim() ? `No terms violation incidents found matching "${termsViolationSearchQuery}".` : 'No terms violation incidents matching filters.'}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">When users report violations or automated moderation blocks take place, incidents appear here in real time.</p>
+                      </div>
+                    );
+                  }
+
+                  return filteredIncidents.map(ticket => {
                       const ticketUserCode = ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (ticket.user_code || ticket.userCode || getUserCode(ticket.user_email || ticket.user_id));
                       const severity = (ticket.severity || 'HIGH').toUpperCase();
                       const severityColors = {
@@ -11234,12 +11935,21 @@ NOTIFY pgrst, 'reload schema';`;
                                   <span>Resolve Incident</span>
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFullDataRecord({ ...ticket, _recordType: 'incident' })}
+                                className="px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                                title="Inspect Complete Incident Record & Raw Data"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Full Data</span>
+                              </button>
                             </div>
                           </div>
                         </div>
                       );
-                    })
-                )}
+                    });
+                })()}
               </div>
             </div>
           )}
@@ -13530,7 +14240,32 @@ NOTIFY pgrst, 'reload schema';`;
                   ) : (
                     userDisputesAndQueries
                       .filter(ticket => {
-                        // Category tab filter
+                        const q = (disputeSearchQuery || '').trim().toLowerCase();
+                        const tUserCode = (ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (ticket.user_code || ticket.userCode || getUserCode(ticket.user_email || ticket.user_id))).toLowerCase();
+                        const refNum = String(ticket.refNumber || ticket.refId || ticket.ticketId || ticket.incidentId || ticket.referenceId || ticket.reference_id || '').toLowerCase();
+                        const id = String(ticket.id || '').toLowerCase();
+
+                        const matchesSearch = !q || (
+                          refNum.includes(q) ||
+                          id.includes(q) ||
+                          (ticket.title && ticket.title.toLowerCase().includes(q)) ||
+                          (ticket.description && ticket.description.toLowerCase().includes(q)) ||
+                          (ticket.message && ticket.message.toLowerCase().includes(q)) ||
+                          (ticket.user_email && ticket.user_email.toLowerCase().includes(q)) ||
+                          (ticket.user_name && ticket.user_name.toLowerCase().includes(q)) ||
+                          tUserCode.includes(q) ||
+                          (ticket.category && ticket.category.toLowerCase().includes(q)) ||
+                          (ticket.ruleViolated && ticket.ruleViolated.toLowerCase().includes(q)) ||
+                          (ticket.room_name && ticket.room_name.toLowerCase().includes(q)) ||
+                          (ticket.room_id && String(ticket.room_id).toLowerCase().includes(q)) ||
+                          (ticket.transaction_title && ticket.transaction_title.toLowerCase().includes(q)) ||
+                          (ticket.transaction_id && String(ticket.transaction_id).toLowerCase().includes(q))
+                        );
+
+                        // If search query is entered, show matching record immediately so tab filters don't hide it
+                        if (q) return matchesSearch;
+
+                        // Category tab filter when not searching
                         if (disputeFilterTab === 'pending' && ticket.status !== 'OPEN') return false;
                         if (disputeFilterTab === 'review' && ticket.status !== 'UNDER_REVIEW') return false;
                         if (disputeFilterTab === 'resolved' && ticket.status !== 'RESOLVED') return false;
@@ -13538,21 +14273,7 @@ NOTIFY pgrst, 'reload schema';`;
                         if (disputeFilterTab === 'queries' && ticket.type !== 'query') return false;
                         if (disputeFilterTab === 'violations' && ticket.type !== 'violation' && !ticket.category?.toLowerCase()?.includes('term') && !ticket.category?.toLowerCase()?.includes('violation')) return false;
 
-                        // Search filter
-                        if (!disputeSearchQuery.trim()) return true;
-                        const q = disputeSearchQuery.toLowerCase();
-                        const tUserCode = (ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (ticket.user_code || getUserCode(ticket.user_email || ticket.user_id))).toLowerCase();
-                        return (
-                          (ticket.refNumber && ticket.refNumber.toLowerCase().includes(q)) ||
-                          (ticket.title && ticket.title.toLowerCase().includes(q)) ||
-                          (ticket.description && ticket.description.toLowerCase().includes(q)) ||
-                          (ticket.user_email && ticket.user_email.toLowerCase().includes(q)) ||
-                          (ticket.user_name && ticket.user_name.toLowerCase().includes(q)) ||
-                          (tUserCode && tUserCode.includes(q)) ||
-                          (ticket.category && ticket.category.toLowerCase().includes(q)) ||
-                          (ticket.room_name && ticket.room_name.toLowerCase().includes(q)) ||
-                          (ticket.transaction_title && ticket.transaction_title.toLowerCase().includes(q))
-                        );
+                        return true;
                       })
                       .map(ticket => {
                         const isDispute = ticket.type === 'dispute' || ticket.category?.toLowerCase().includes('dispute');
@@ -13743,6 +14464,15 @@ NOTIFY pgrst, 'reload schema';`;
                                   <span>Investigate</span>
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFullDataRecord({ ...ticket, _recordType: isViolation ? 'incident' : (isDispute ? 'dispute' : 'ticket') })}
+                                className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                                title="Inspect Complete Ticket Record & Raw Data"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Full Data</span>
+                              </button>
                             </div>
                           </div>
                         );
@@ -13820,11 +14550,17 @@ NOTIFY pgrst, 'reload schema';`;
                       .filter(tx => {
                         if (!globalTxSearch.trim()) return true;
                         const q = globalTxSearch.toLowerCase();
+                        const id = String(tx.id || '').toLowerCase();
+                        const refCode = String(tx.referenceCode || tx.receiptRefCode || tx.reference || tx.refNumber || '').toLowerCase();
                         return (
+                          id.includes(q) ||
+                          `tx-${id}`.includes(q) ||
+                          refCode.includes(q) ||
                           (tx.title && tx.title.toLowerCase().includes(q)) ||
                           (tx.room_id && tx.room_id.toLowerCase().includes(q)) ||
                           (tx.category && tx.category.toLowerCase().includes(q)) ||
                           (tx.paid_by && tx.paid_by.toLowerCase().includes(q)) ||
+                          (tx.notes && tx.notes.toLowerCase().includes(q)) ||
                           String(tx.amount).includes(q)
                         );
                       })
@@ -13849,17 +14585,26 @@ NOTIFY pgrst, 'reload schema';`;
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-3 shrink-0">
-                            <span className="text-sm font-black text-emerald-700 dark:text-[#A3E635]">
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-sm font-black text-emerald-700 dark:text-[#A3E635] mr-1">
                               ₹{Number(tx.amount || 0).toLocaleString('en-IN')}
                             </span>
+
+                            <button
+                              onClick={() => setSelectedFullDataRecord({ ...tx, _recordType: 'transaction' })}
+                              className="px-2.5 py-1.5 bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 flex items-center gap-1 cursor-pointer"
+                              title="Inspect Complete Transaction Record & Raw Data"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Full Data</span>
+                            </button>
 
                             <button
                               onClick={() => setSelectedTxDetails(tx)}
                               className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200"
                               title="Inspect Split Details"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <SlidersHorizontal className="w-3.5 h-3.5" />
                             </button>
 
                             <button
@@ -15347,6 +16092,9 @@ NOTIFY pgrst, 'reload schema';`;
           </div>
         </div>
       )}
+
+      {/* Universal Full Data Record Inspector Modal */}
+      {renderFullDataInspectorModal()}
           </div>
         </main>
       </div>

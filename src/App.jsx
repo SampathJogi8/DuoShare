@@ -969,6 +969,7 @@ export default function App() {
   const [disputeTitle, setDisputeTitle] = useState('');
   const [disputeDescription, setDisputeDescription] = useState('');
   const [disputeTargetTx, setDisputeTargetTx] = useState(null);
+  const [myTicketsSearchQuery, setMyTicketsSearchQuery] = useState('');
   const [myDisputesAndQueries, setMyDisputesAndQueries] = useState(() => {
     try {
       const saved = localStorage.getItem('tallyin_my_disputes_and_queries');
@@ -8245,8 +8246,11 @@ export default function App() {
       splitsNames = t.splits.map(s => String(s.nickname || s.name || s.uid || '')).join(' ').toLowerCase();
     }
 
+    // Extract reference codes and tracking numbers
+    const refCodes = `${String(t.referenceCode || '')} ${String(t.receiptRefCode || '')} ${String(t.reference || '')} ${String(t.refNumber || '')} ${String(t.refId || '')} ${String(t.ticketId || '')}`.toLowerCase();
+
     // Combine all fields into a single searchable text
-    const searchableText = `${rawId} ${formattedId} ${title} ${category} ${amountRaw} ${amountFormatted} ${paidBy} ${notes} ${splitType} ${isSharedStr} ${dateStr} ${monthNameStr} ${timeStr} ${splitsNames}`;
+    const searchableText = `${rawId} ${formattedId} ${refCodes} ${title} ${category} ${amountRaw} ${amountFormatted} ${paidBy} ${notes} ${splitType} ${isSharedStr} ${dateStr} ${monthNameStr} ${timeStr} ${splitsNames}`;
 
     // Every search term must match somewhere in the combined searchable text
     return terms.every(term => searchableText.includes(term));
@@ -23966,6 +23970,28 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           {/* TAB 2: My Tickets & History */}
           {disputeModalTab === 'history' && (
             <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+              {myDisputesAndQueries.length > 0 && (
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search by Reference ID, title, category..."
+                    value={myTicketsSearchQuery}
+                    onChange={e => setMyTicketsSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#1A3827] dark:focus:ring-[#A3E635]"
+                  />
+                  {myTicketsSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setMyTicketsSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+
               {myDisputesAndQueries.length === 0 ? (
                 <div className="p-8 text-center text-slate-400 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-dashed border-[#E3E8E3] dark:border-slate-800 space-y-2">
                   <HelpCircle className="w-8 h-8 mx-auto text-slate-300" />
@@ -23978,8 +24004,34 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     Submit a Request
                   </button>
                 </div>
+              ) : myDisputesAndQueries.filter(ticket => {
+                if (!myTicketsSearchQuery.trim()) return true;
+                const q = myTicketsSearchQuery.toLowerCase();
+                const refNum = String(ticket.refNumber || ticket.refId || ticket.ticketId || ticket.id || '').toLowerCase();
+                return (
+                  refNum.includes(q) ||
+                  (ticket.title && ticket.title.toLowerCase().includes(q)) ||
+                  (ticket.category && ticket.category.toLowerCase().includes(q)) ||
+                  (ticket.description && ticket.description.toLowerCase().includes(q))
+                );
+              }).length === 0 ? (
+                <div className="p-6 text-center text-slate-400 bg-[#F6F8F6] dark:bg-slate-950 rounded-2xl border border-dashed border-[#E3E8E3] dark:border-slate-800 text-xs">
+                  No tickets found matching "{myTicketsSearchQuery}".
+                </div>
               ) : (
-                myDisputesAndQueries.map(ticket => {
+                myDisputesAndQueries
+                  .filter(ticket => {
+                    if (!myTicketsSearchQuery.trim()) return true;
+                    const q = myTicketsSearchQuery.toLowerCase();
+                    const refNum = String(ticket.refNumber || ticket.refId || ticket.ticketId || ticket.id || '').toLowerCase();
+                    return (
+                      refNum.includes(q) ||
+                      (ticket.title && ticket.title.toLowerCase().includes(q)) ||
+                      (ticket.category && ticket.category.toLowerCase().includes(q)) ||
+                      (ticket.description && ticket.description.toLowerCase().includes(q))
+                    );
+                  })
+                  .map(ticket => {
                   const isExpanded = expandedTicketId === ticket.id;
                   const statusColors = {
                     OPEN: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800',
