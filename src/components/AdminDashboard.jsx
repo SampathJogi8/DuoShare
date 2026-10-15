@@ -1475,13 +1475,14 @@ export default function AdminDashboard({
     return [];
   });
 
-  const logAuditAction = useCallback((action, details) => {
+  const logAuditAction = useCallback((action, details, meta = {}) => {
     const newEntry = {
       id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       timestamp: new Date().toISOString(),
       adminEmail: user?.email || userNickname || 'System Admin',
       action,
-      details
+      details,
+      ...(meta && typeof meta === 'object' ? meta : {})
     };
     setAuditLogs(prev => {
       const updated = [newEntry, ...(prev || [])].slice(0, 150);
@@ -2877,16 +2878,55 @@ Tallyin Team`;
     if (!searchQuery || !searchQuery.trim()) return null;
     const q = searchQuery.trim().toLowerCase();
 
-    // 1. Incidents & Disputes / Support Tickets
-    const matchedTickets = (userDisputesAndQueries || []).filter(ticket => {
+    // Dynamically synthesize warnings from auditLogs into tickets if not already present
+    const combinedTickets = [...(userDisputesAndQueries || [])];
+    const existingTicketRefs = new Set(combinedTickets.map(t => String(t.refNumber || t.refId || t.id || '').toLowerCase()));
+
+    (auditLogs || []).forEach(a => {
+      if (a.action === 'ISSUE_USER_WARNING' || String(a.details || '').includes('WRN-')) {
+        const wrnMatch = String(a.details || '').match(/\b(WRN-[A-Z0-9-]+)\b/i);
+        const refCode = wrnMatch ? wrnMatch[1].toUpperCase() : (a.refNumber || a.refId);
+        if (refCode && !existingTicketRefs.has(refCode.toLowerCase()) && !existingTicketRefs.has(String(a.id || '').toLowerCase())) {
+          existingTicketRefs.add(refCode.toLowerCase());
+          const emailMatch = String(a.details || '').match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+          const reasonMatch = String(a.details || '').match(/\(Reason:\s*([^)]+)\)/i);
+          const notesMatch = String(a.details || '').match(/Notes:\s*([^)]+)/i);
+          const userEmail = emailMatch ? emailMatch[1] : (a.targetEmail || 'N/A');
+          const matchedU = userEmail !== 'N/A' ? (allRegisteredUsers || []).find(u => u.email?.toLowerCase() === userEmail.toLowerCase()) : null;
+          
+          combinedTickets.push({
+            id: a.id,
+            refNumber: refCode,
+            refId: refCode,
+            type: 'warning',
+            category: reasonMatch ? `Official Warning: ${reasonMatch[1]}` : 'Official Administrative Warning',
+            title: reasonMatch ? `Administrative Warning: ${reasonMatch[1]}` : `Official Warning ${refCode}`,
+            description: a.details || 'Official warning notice issued to user account.',
+            notes: notesMatch ? notesMatch[1] : (a.notes || ''),
+            reason: reasonMatch ? reasonMatch[1] : (a.reason || 'Policy Compliance'),
+            user_email: userEmail,
+            user_name: matchedU?.name || a.targetName || (userEmail !== 'N/A' ? userEmail.split('@')[0] : 'Account Holder'),
+            user_code: matchedU?.userCode || (userEmail.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (userEmail !== 'N/A' ? getUserCode(userEmail) : 'N/A')),
+            admin_email: a.adminEmail || 'System Admin',
+            status: 'ISSUED',
+            severity: 'HIGH',
+            createdAt: a.timestamp || new Date().toISOString(),
+            timestamp: a.timestamp || new Date().toISOString()
+          });
+        }
+      }
+    });
+
+    // 1. Incidents & Disputes / Support Tickets / Official Warnings
+    const matchedTickets = combinedTickets.filter(ticket => {
       const refNum = String(ticket.refNumber || ticket.refId || ticket.ticketId || ticket.incidentId || ticket.referenceId || ticket.reference_id || '').toLowerCase();
       const id = String(ticket.id || '').toLowerCase();
       const title = String(ticket.title || '').toLowerCase();
-      const desc = String(ticket.description || ticket.message || '').toLowerCase();
+      const desc = String(ticket.description || ticket.message || ticket.notes || '').toLowerCase();
       const email = String(ticket.user_email || ticket.userEmail || '').toLowerCase();
       const name = String(ticket.user_name || ticket.userName || '').toLowerCase();
       const uCode = String(ticket.user_code || ticket.userCode || (ticket.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : getUserCode(ticket.user_email || ticket.user_id))).toLowerCase();
-      const rule = String(ticket.ruleViolated || '').toLowerCase();
+      const rule = String(ticket.ruleViolated || ticket.reason || '').toLowerCase();
       const room = String(ticket.room_name || ticket.room_id || ticket.roomId || '').toLowerCase();
       const txId = String(ticket.transaction_id || '').toLowerCase();
 
@@ -2921,8 +2961,9 @@ Tallyin Team`;
       return name.includes(q) || email.includes(q) || uCode.includes(q) || id.includes(q) || room.includes(q);
     });
 
-    // 4. Rooms
+    // 4. Rooms (exclude internal system pseudo-rooms)
     const matchedRooms = (commanderRooms || []).filter(r => {
+      if (!r || !r.id || r.id.startsWith('__SYSTEM_')) return false;
       const id = String(r.id || '').toLowerCase();
       const name = String(r.name || '').toLowerCase();
       const host = String(r.hostEmail || r.created_by || '').toLowerCase();
@@ -2937,8 +2978,9 @@ Tallyin Team`;
       const action = String(a.action || '').toLowerCase();
       const details = String(a.details || '').toLowerCase();
       const email = String(a.adminEmail || '').toLowerCase();
+      const ref = String(a.refNumber || a.refId || a.warningRef || '').toLowerCase();
 
-      return id.includes(q) || action.includes(q) || details.includes(q) || email.includes(q);
+      return id.includes(q) || action.includes(q) || details.includes(q) || email.includes(q) || ref.includes(q);
     });
 
     const totalCount = matchedTickets.length + matchedTx.length + matchedUsers.length + matchedRooms.length + matchedAudits.length;
@@ -3584,7 +3626,9 @@ Tallyin Team`;
         if (t.room_id) roomTotals[t.room_id] = (roomTotals[t.room_id] || 0) + (Number(t.amount) || 0);
       });
 
-      const formatted = (roomsRes.data || []).map(r => ({
+      const formatted = (roomsRes.data || [])
+        .filter(r => r && r.id && !r.id.startsWith('__SYSTEM_'))
+        .map(r => ({
         ...r,
         memberCount: memberCounts[r.id] || 0,
         totalSpend: roomTotals[r.id] || 0,
@@ -4202,7 +4246,54 @@ Tallyin Team`;
         })
       }).catch(console.warn);
 
-      logAuditAction('ISSUE_USER_WARNING', `Issued official warning ${warningRef} to ${warningTargetUser.email} (Reason: ${warningReason})`);
+      const newWarningTicket = {
+        id: `warn-${Date.now()}-${randHex.toLowerCase()}`,
+        refNumber: warningRef,
+        refId: warningRef,
+        type: 'warning',
+        category: `Official Warning: ${warningReason}`,
+        title: `Official Administrative Warning: ${warningReason}`,
+        description: warningNotes.trim() ? `Warning Reason: ${warningReason}\n\nNotice Particulars:\n${warningNotes.trim()}` : `Official administrative warning issued to ${warningTargetUser.email} for: ${warningReason}`,
+        notes: warningNotes.trim(),
+        reason: warningReason,
+        user_name: warningTargetUser.name,
+        user_email: warningTargetUser.email,
+        user_id: warningTargetUser.id || warningTargetUser.user_id,
+        user_code: warningTargetUser.userCode || (warningTargetUser.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : getUserCode(warningTargetUser.email)),
+        admin_email: user?.email || 'Super Admin',
+        status: 'ISSUED',
+        severity: 'HIGH',
+        createdAt: new Date().toISOString(),
+        timestamp: new Date().toISOString()
+      };
+
+      setUserDisputesAndQueries(prev => {
+        const updated = [newWarningTicket, ...(prev || [])];
+        try {
+          supabase.from('rooms').upsert({
+            id: '__SYSTEM_USER_DISPUTES_QUERIES__',
+            name: JSON.stringify(updated),
+            created_by: 'system',
+            created_at: new Date().toISOString()
+          }, { onConflict: 'id' }).catch(console.warn);
+
+          supabase.from('system_settings').upsert({
+            key: 'user_disputes_and_queries',
+            value: JSON.stringify(updated),
+            created_at: new Date().toISOString()
+          }, { onConflict: 'key' }).catch(console.warn);
+        } catch(err) {}
+        return updated;
+      });
+
+      logAuditAction('ISSUE_USER_WARNING', `Issued official warning ${warningRef} to ${warningTargetUser.email} (Reason: ${warningReason}${warningNotes ? ` - Notes: ${warningNotes}` : ''})`, {
+        refNumber: warningRef,
+        refId: warningRef,
+        targetEmail: warningTargetUser.email,
+        targetName: warningTargetUser.name,
+        reason: warningReason,
+        notes: warningNotes
+      });
       if (triggerToast) triggerToast(`⚠️ Dispatched official warning to ${warningTargetUser.email}! Ref: ${warningRef}`);
       setWarningTargetUser(null);
       setWarningNotes('');
@@ -5761,13 +5852,53 @@ Tallyin Team`;
   const renderFullDataInspectorModal = () => {
     if (!selectedFullDataRecord) return null;
     const r = selectedFullDataRecord;
-    const refId = r.refNumber || r.refId || r.ticketId || r.incidentId || r.id || 'N/A';
-    const recordType = (r._recordType || r.type || (r.amount !== undefined ? 'transaction' : (r.userCode ? 'user' : (r.code ? 'room' : 'record')))).toUpperCase();
-    const userCode = r.user_code || r.userCode || (r.user_email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (r.user_email || r.user_id ? getUserCode(r.user_email || r.user_id) : 'N/A'));
-    const userName = r.user_name || r.userName || r.name || 'N/A';
-    const userEmail = r.user_email || r.userEmail || r.email || 'N/A';
-    const isViolation = r._recordType === 'incident' || r.type === 'violation' || r.category?.toLowerCase()?.includes('term') || r.category?.toLowerCase()?.includes('violation');
-    const isTx = recordType === 'TRANSACTION' || r.amount !== undefined;
+
+    // 1. Intelligent Reference ID extraction
+    let refId = r.refNumber || r.refId || r.warningRef || r.referenceCode || r.receiptRefCode || r.ticketId || r.incidentId || r.referenceId || '';
+    if (!refId || refId === 'N/A' || String(r.id || '').startsWith('audit-')) {
+      const match = String(r.details || r.description || r.title || '').match(/\b(WRN-[A-Z0-9-]+|ACK-[A-Z0-9-]+|TX-[A-Z0-9-]+|REC-[A-Z0-9-]+|DISP-[A-Z0-9-]+|INC-[A-Z0-9-]+|TKT-[A-Z0-9-]+|REF-[A-Z0-9-]+)\b/i);
+      if (match) {
+        refId = match[1].toUpperCase();
+      } else {
+        refId = r.id || 'N/A';
+      }
+    }
+
+    // 2. Identify record classification
+    const isWarning = r.type === 'warning' || r.action === 'ISSUE_USER_WARNING' || String(refId).startsWith('WRN-') || r.category?.toLowerCase()?.includes('warning');
+    const isViolation = isWarning || r._recordType === 'incident' || r.type === 'violation' || r.category?.toLowerCase()?.includes('term') || r.category?.toLowerCase()?.includes('violation');
+    const isTx = (r._recordType === 'transaction' || r.amount !== undefined) && !isWarning && !isViolation;
+    const isAudit = r._recordType === 'audit' || (!isTx && !isViolation && r.action && r.details);
+    const recordType = isWarning ? 'OFFICIAL WARNING' : (r._recordType || r.type || (isTx ? 'transaction' : (r.userCode ? 'user' : (r.code ? 'room' : (isAudit ? 'audit' : 'record'))))).toUpperCase();
+
+    // 3. User Dossier Resolution
+    let userEmail = r.user_email || r.userEmail || r.email || r.targetEmail || 'N/A';
+    let userName = r.user_name || r.userName || r.name || r.targetName || 'N/A';
+
+    if (userEmail === 'N/A' && (r.details || r.description)) {
+      const emailMatch = String(r.details || r.description).match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (emailMatch) {
+        userEmail = emailMatch[1];
+      }
+    }
+
+    const matchedUser = userEmail !== 'N/A'
+      ? (allRegisteredUsers || []).find(u => u.email?.toLowerCase() === userEmail.toLowerCase())
+      : null;
+
+    if (matchedUser) {
+      if (userName === 'N/A' || userName === 'Platform Record' || userName === userEmail) {
+        userName = matchedUser.name || userName;
+      }
+    }
+
+    const userCode = r.user_code || r.userCode || (userEmail?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (matchedUser?.userCode || (userEmail !== 'N/A' ? getUserCode(userEmail) : 'N/A')));
+
+    // 4. Warning & Evidence Details
+    const warningReason = r.reason || r.warningReason || (r.details ? (String(r.details).match(/\(Reason:\s*([^)]+)\)/i)?.[1] || '') : '');
+    const warningNotes = r.notes || r.warningNotes || (r.details ? (String(r.details).match(/Notes:\s*([^)]+)/i)?.[1] || '') : '');
+    const adminDispatcher = r.adminEmail || r.admin_email || r.issuedBy || r.resolvedBy || 'System Administrator';
+    const evidenceContent = r.description || r.message || r.notes || r.details || r.evidence || r.title || 'No detailed evidence text provided.';
 
     return (
       <div 
@@ -5783,13 +5914,17 @@ Tallyin Team`;
             <div className="space-y-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                  isViolation 
-                    ? 'bg-rose-600 text-white animate-pulse' 
-                    : isTx 
-                      ? 'bg-emerald-600 text-white' 
-                      : 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950'
+                  isWarning
+                    ? 'bg-amber-600 text-white'
+                    : isViolation 
+                      ? 'bg-rose-600 text-white animate-pulse' 
+                      : isTx 
+                        ? 'bg-emerald-600 text-white' 
+                        : isAudit
+                          ? 'bg-purple-700 text-white'
+                          : 'bg-[#1A3827] text-white dark:bg-[#A3E635] dark:text-slate-950'
                 }`}>
-                  {isViolation ? '🚨 TERMS INCIDENT' : isTx ? '💳 PLATFORM TRANSACTION' : `📋 ${recordType}`}
+                  {isWarning ? '⚠️ OFFICIAL WARNING' : isViolation ? '🚨 TERMS INCIDENT' : isTx ? '💳 PLATFORM TRANSACTION' : isAudit ? '🔒 SECURITY AUDIT' : `📋 ${recordType}`}
                 </span>
                 {r.status && (
                   <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border ${
@@ -5797,7 +5932,9 @@ Tallyin Team`;
                       ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800' 
                       : r.status === 'UNDER_REVIEW' 
                         ? 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800' 
-                        : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                        : r.status === 'ISSUED'
+                          ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-700'
+                          : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
                   }`}>
                     {r.status}
                   </span>
@@ -5809,7 +5946,7 @@ Tallyin Team`;
                 )}
               </div>
               <h3 className="font-extrabold text-base sm:text-lg text-[#1A3827] dark:text-white truncate">
-                {r.title || r.category || r.action || 'Full Record Inspection'}
+                {r.title || (isWarning ? `Official Warning: ${warningReason || 'Room Rules Compliance'}` : (r.category || r.action || 'Full Record Inspection'))}
               </h3>
               <div className="flex items-center gap-2 pt-0.5 flex-wrap">
                 <span className="text-[11px] font-bold text-slate-500">Tracking Reference ID:</span>
@@ -5848,7 +5985,9 @@ Tallyin Team`;
               </div>
               <div>
                 <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Category</span>
-                <span className="font-bold text-[#1A3827] dark:text-slate-200 truncate block">{r.category || 'Platform Record'}</span>
+                <span className="font-bold text-[#1A3827] dark:text-slate-200 truncate block">
+                  {r.category || (isWarning ? `Official Warning: ${warningReason || 'Compliance'}` : 'Platform Record')}
+                </span>
               </div>
               <div>
                 <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Logged Time</span>
@@ -5863,6 +6002,39 @@ Tallyin Team`;
                 </span>
               </div>
             </div>
+
+            {/* Warning Particulars Box (for Official Administrative Warnings) */}
+            {isWarning && (
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-amber-200/70 dark:border-amber-800 pb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>Official Warning Particulars</span>
+                  </span>
+                  <span className="font-mono text-[10px] font-black px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                    {refId}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-[9px] font-bold text-amber-700/80 dark:text-amber-400 uppercase block">Violation Reason</span>
+                    <p className="font-extrabold text-amber-950 dark:text-amber-100">{warningReason || 'Room Rules / Spending Policy Compliance'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-amber-700/80 dark:text-amber-400 uppercase block">Notice Issued By</span>
+                    <p className="font-medium text-amber-900 dark:text-amber-200">{adminDispatcher}</p>
+                  </div>
+                </div>
+                {warningNotes && (
+                  <div className="pt-2 border-t border-amber-200/60 dark:border-amber-800/60">
+                    <span className="text-[9px] font-bold text-amber-700/80 dark:text-amber-400 uppercase block mb-1">Notice Directives &amp; Context</span>
+                    <p className="p-2.5 rounded-xl bg-white/90 dark:bg-slate-900 text-amber-950 dark:text-amber-100 border border-amber-200 dark:border-amber-800 font-mono text-xs">
+                      {warningNotes}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Offending / Subject User Card */}
             {(userName !== 'N/A' || userEmail !== 'N/A' || userCode !== 'N/A') && (
@@ -5906,14 +6078,13 @@ Tallyin Team`;
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Full Evidence / Description Content</span>
+                  <span>Full Evidence / Record Log Content</span>
                 </span>
                 <button
                   type="button"
                   onClick={() => {
-                    const text = r.description || r.message || r.notes || r.title || '';
-                    navigator.clipboard.writeText(text);
-                    if (triggerToast) triggerToast('Copied full evidence text to clipboard.');
+                    navigator.clipboard.writeText(evidenceContent);
+                    if (triggerToast) triggerToast('Copied full record text to clipboard.');
                   }}
                   className="text-[10px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline flex items-center gap-1 cursor-pointer"
                 >
@@ -5922,7 +6093,7 @@ Tallyin Team`;
                 </button>
               </div>
               <div className="p-4 bg-slate-900 text-slate-100 font-mono text-xs rounded-2xl overflow-x-auto whitespace-pre-wrap leading-relaxed border border-slate-800 max-h-72 select-text shadow-inner">
-                {r.description || r.message || r.notes || r.title || 'No detailed evidence text provided.'}
+                {evidenceContent}
               </div>
             </div>
 
@@ -6614,32 +6785,55 @@ Tallyin Team`;
                             <span>Security Audit Trail ({omniSearchResults.audits.length})</span>
                           </div>
                           <div className="space-y-1.5">
-                            {omniSearchResults.audits.slice(0, 3).map(a => (
-                              <div
-                                key={a.id}
-                                className="p-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-purple-300 flex items-center justify-between gap-3 text-xs transition-all"
-                              >
-                                <div className="min-w-0 space-y-0.5">
-                                  <span className="font-mono text-[9px] font-bold text-purple-700 dark:text-purple-300 block">
-                                    {a.action}
-                                  </span>
-                                  <p className="text-[10px] text-slate-600 dark:text-slate-400 truncate">
-                                    {a.details}
-                                  </p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedFullDataRecord({ ...a, _recordType: 'audit' });
-                                    setIsOmniSearchFocused(false);
-                                  }}
-                                  className="px-2.5 py-1.5 bg-[#1A3827] hover:bg-[#12281b] dark:bg-[#A3E635] dark:text-slate-950 text-white rounded-xl text-[10px] font-black shrink-0 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                            {omniSearchResults.audits.slice(0, 4).map(a => {
+                              const refMatch = String(a.details || '').match(/\b(WRN-[A-Z0-9-]+|ACK-[A-Z0-9-]+|TX-[A-Z0-9-]+|REC-[A-Z0-9-]+|DISP-[A-Z0-9-]+|INC-[A-Z0-9-]+)\b/i);
+                              const parsedRef = a.refNumber || a.refId || (refMatch ? refMatch[1].toUpperCase() : a.id);
+                              const isExact = parsedRef?.toLowerCase() === searchQuery.trim().toLowerCase() || a.id?.toLowerCase() === searchQuery.trim().toLowerCase();
+                              const isWarn = a.action === 'ISSUE_USER_WARNING' || String(parsedRef).startsWith('WRN-');
+
+                              return (
+                                <div
+                                  key={a.id}
+                                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition-all ${
+                                    isExact
+                                      ? 'bg-purple-50/90 dark:bg-purple-950/40 border-purple-400 ring-2 ring-purple-400/20'
+                                      : 'border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-purple-300'
+                                  }`}
                                 >
-                                  <Eye className="w-3 h-3" />
-                                  <span>Full Data →</span>
-                                </button>
-                              </div>
-                            ))}
+                                  <div className="min-w-0 space-y-0.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={`font-mono text-[9px] font-bold block ${isWarn ? 'text-amber-700 dark:text-amber-300' : 'text-purple-700 dark:text-purple-300'}`}>
+                                        {isWarn ? '⚠️ WARNING NOTICE' : a.action}
+                                      </span>
+                                      {parsedRef && (
+                                        <span className="font-mono text-[9px] font-black px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950 text-purple-900 dark:text-purple-200 border border-purple-200 dark:border-purple-800">
+                                          {parsedRef}
+                                        </span>
+                                      )}
+                                      {isExact && (
+                                        <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-purple-600 text-white">
+                                          Exact Match
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[10px] text-slate-600 dark:text-slate-400 truncate">
+                                      {a.details}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedFullDataRecord({ ...a, _recordType: isWarn ? 'warning' : 'audit' });
+                                      setIsOmniSearchFocused(false);
+                                    }}
+                                    className="px-2.5 py-1.5 bg-[#1A3827] hover:bg-[#12281b] dark:bg-[#A3E635] dark:text-slate-950 text-white rounded-xl text-[10px] font-black shrink-0 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    <span>Full Data →</span>
+                                  </button>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
