@@ -2861,6 +2861,17 @@ Tallyin Team`;
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Helper to format transaction ID cleanly
+  const formatTxId = (id) => {
+    if (!id) return 'TX-NEW';
+    const str = String(id);
+    if (str.toUpperCase().startsWith('TX-')) return str.toUpperCase();
+    if (str.includes('-')) {
+      return `TX-${str.split('-')[0].toUpperCase()}`;
+    }
+    return `TX-${str.toUpperCase()}`;
+  };
+
   // Universal Omnisearch Computation across all Reference IDs, Tickets, Transactions, Users, Rooms, and Audits
   const omniSearchResults = useMemo(() => {
     if (!searchQuery || !searchQuery.trim()) return null;
@@ -2900,7 +2911,7 @@ Tallyin Team`;
     });
 
     // 3. Users
-    const matchedUsers = (userDirectory || []).filter(u => {
+    const matchedUsers = (allRegisteredUsers || []).filter(u => {
       const name = String(u.name || '').toLowerCase();
       const email = String(u.email || '').toLowerCase();
       const uCode = String(u.email?.toLowerCase() === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (u.userCode || getUserCode(u.email || u.id || u.name))).toLowerCase();
@@ -2941,7 +2952,7 @@ Tallyin Team`;
       rooms: matchedRooms,
       audits: matchedAudits
     };
-  }, [searchQuery, userDisputesAndQueries, allGlobalTx, userDirectory, commanderRooms, auditLogs]);
+  }, [searchQuery, userDisputesAndQueries, allGlobalTx, allRegisteredUsers, commanderRooms, auditLogs]);
 
   const [securityLogs, setSecurityLogs] = useState(() => {
     if (typeof window !== 'undefined') {
