@@ -13157,7 +13157,7 @@ NOTIFY pgrst, 'reload schema';`;
 
           {/* Main content body */}
           {!selectedSettleRoomId ? (
-            <div className="text-center py-16 space-y-3 bg-[#F4F7F4]/40 dark:bg-[#161D20]/40 rounded-3xl border border-dashed border-[#E3E8E3] dark:border-slate-800">
+            <div className="text-center py-16 space-y-3 bg-[#F4F7F4]/40 dark:bg-slate-800/40 rounded-3xl border border-dashed border-[#E3E8E3] dark:border-slate-800">
               <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#A3E635] flex items-center justify-center mx-auto shadow-sm">
                 <Home className="w-6 h-6" />
               </div>
@@ -13276,7 +13276,7 @@ NOTIFY pgrst, 'reload schema';`;
 
                     <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
                       {settleRoomSuggestedTransfers.length === 0 ? (
-                        <div className="p-12 bg-[#F4F7F4]/20 dark:bg-[#161D20]/20 border border-dashed border-[#E3E8E3] dark:border-slate-800 rounded-3xl text-center text-xs font-medium text-[#5C6E5C] dark:text-slate-400 space-y-2">
+                        <div className="p-12 bg-[#F4F7F4]/20 dark:bg-slate-800/20 border border-dashed border-[#E3E8E3] dark:border-slate-800 rounded-3xl text-center text-xs font-medium text-[#5C6E5C] dark:text-slate-400 space-y-2">
                           <p className="text-lg">🎉</p>
                           <p className="font-extrabold text-[#1A3827] dark:text-slate-200">Everything is Clear!</p>
                           <p className="text-[10px] text-slate-400">No roommate suggested transfers are pending in this room.</p>

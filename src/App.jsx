@@ -15725,7 +15725,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         />
 
         {/* Chat Panel */}
-        <div className="relative pointer-events-auto w-full max-w-sm mr-4 mb-24 sm:mb-6 flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-emerald-500/30 dark:border-white/10 bg-white/95 dark:bg-[#070A0D]/95 backdrop-blur-3xl animate-slide-up" style={{ maxHeight: 'min(600px, 80vh)' }}>
+        <div className="relative pointer-events-auto w-full max-w-sm mr-4 mb-24 sm:mb-6 flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-emerald-500/30 dark:border-white/10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl animate-slide-up" style={{ maxHeight: 'min(600px, 80vh)' }}>
 
           {/* Header */}
           <div className="flex items-center gap-3 px-4.5 py-4 bg-gradient-to-r from-[#0F291E] via-[#0A1A13] to-[#06120D] text-white shrink-0 border-b border-emerald-500/20">
@@ -15818,7 +15818,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // MAIN RUNNING APP
 
   return (
-    <div className={`h-screen flex overflow-hidden bg-[#F0F4F1] dark:bg-[#060809] transition-colors duration-300 ${isDarkMode ? 'dark text-slate-100' : 'text-[#1A3827]'}`}>
+    <div className={`h-screen flex overflow-hidden bg-[#F0F4F1] dark:bg-black transition-colors duration-300 ${isDarkMode ? 'dark text-slate-100' : 'text-[#1A3827]'}`}>
       
       {/* Hidden File Input for Receipt Upload */}
       <input 
@@ -15846,7 +15846,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       )}
 
       {/* Sidebar Navigation */}
-      <aside className={`w-64 border-r border-[#DCE4DC]/80 dark:border-[#1C2428] bg-white/90 dark:bg-[#0C1012]/90 backdrop-blur-2xl flex flex-col justify-between fixed top-0 bottom-0 left-0 h-full z-40 transition-transform duration-300 overflow-y-auto ${
+      <aside className={`w-64 border-r border-[#DCE4DC]/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl flex flex-col justify-between fixed top-0 bottom-0 left-0 h-full z-40 transition-transform duration-300 overflow-y-auto ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       }`}>
         <div className="p-6">
@@ -15879,7 +15879,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       : 'bg-amber-400 shadow-[0_0_8px_#f59e0b]';
 
                   return (
-                    <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center bg-white dark:bg-[#07090C] rounded-full p-0.5 ring-1 ring-black/5 dark:ring-white/10 shadow-xs">
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center bg-white dark:bg-slate-950 rounded-full p-0.5 ring-1 ring-black/5 dark:ring-white/10 shadow-xs">
                       <span className="relative flex h-2 w-2">
                         {isLive && (
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -16231,7 +16231,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       <div className="flex-1 flex flex-col pl-0 md:pl-64 h-screen min-w-0 overflow-hidden">
         
         {/* Top Navbar */}
-        <header className="h-16 border-b border-[#E2EAE3] dark:border-[#1A222C] bg-white/85 dark:bg-[#07090C]/85 backdrop-blur-2xl flex items-center justify-between px-4 sm:px-8 fixed top-0 right-0 left-0 md:left-64 z-20 transition-all duration-300 shadow-sm">
+        <header className="h-16 border-b border-[#E2EAE3] dark:border-slate-800 bg-white/85 dark:bg-black/85 backdrop-blur-2xl flex items-center justify-between px-4 sm:px-8 fixed top-0 right-0 left-0 md:left-64 z-20 transition-all duration-300 shadow-sm">
           <div className="flex items-center gap-1">
             <button 
               onClick={() => setIsMobileMenuOpen(true)}
@@ -16269,7 +16269,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       className="w-8 h-8 object-cover rounded-xl flex-shrink-0 shadow-sm border border-emerald-500/20"
                     />
                     {/* Embedded Status Dot inside / on Tallyin Logo badge (Bottom-Right Corner) */}
-                    <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center bg-white dark:bg-[#07090C] rounded-full p-0.5 ring-1 ring-black/5 dark:ring-white/10 shadow-xs">
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center bg-white dark:bg-slate-950 rounded-full p-0.5 ring-1 ring-black/5 dark:ring-white/10 shadow-xs">
                       <span className="relative flex h-2 w-2">
                         {isLive && (
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -18284,7 +18284,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 {isExportDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setIsExportDropdownOpen(false)} />
-                    <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-48 bg-white/95 dark:bg-[#0E1317]/95 backdrop-blur-2xl border border-[#E2EAE3] dark:border-[#1F2830] rounded-2xl shadow-2xl py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
+                    <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-48 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-[#E2EAE3] dark:border-slate-800 rounded-2xl shadow-2xl py-2 z-40 animate-fade-in text-xs font-bold text-slate-800 dark:text-slate-100">
                       <button 
                         onClick={() => { exportToCSV(filteredTransactions); setIsExportDropdownOpen(false); }}
                         className="w-full text-left px-4 py-2.5 hover:bg-emerald-50 dark:hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors"
@@ -18336,7 +18336,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               placeholder="Search TX ID, title, amount, payer, member, month..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-11 pr-4 py-2.5 border border-[#E2EAE3] dark:border-[#1F2830] rounded-2xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-white bg-white/70 dark:bg-[#080B0D]/70 font-medium placeholder:text-slate-400 transition-all"
+              className="w-full pl-11 pr-4 py-2.5 border border-[#E2EAE3] dark:border-slate-800 rounded-2xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-white bg-white/70 dark:bg-slate-900/70 font-medium placeholder:text-slate-400 transition-all"
             />
           </div>
 
@@ -18345,7 +18345,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <select 
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full border border-[#E2EAE3] dark:border-[#1F2830] bg-white/70 dark:bg-[#080B0D]/70 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-slate-200 font-bold cursor-pointer transition-all"
+                className="w-full border border-[#E2EAE3] dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-slate-200 font-bold cursor-pointer transition-all"
               >
                 {categories.map((c) => (
                   <option key={c} value={c}>{c === 'All' ? 'All categories' : c}</option>
@@ -18355,7 +18355,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               <select 
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="w-full border border-[#E2EAE3] dark:border-[#1F2830] bg-white/70 dark:bg-[#080B0D]/70 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-slate-200 font-bold cursor-pointer transition-all"
+                className="w-full border border-[#E2EAE3] dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#A3E635] text-[#12291C] dark:text-slate-200 font-bold cursor-pointer transition-all"
               >
                 <option value="All">All months</option>
                 {availableMonths.map((m) => {
@@ -19053,9 +19053,9 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4 animate-fade-in">
-        <div className="bg-white/95 dark:bg-[#0E1317]/95 backdrop-blur-2xl w-full max-w-lg rounded-3xl shadow-2xl border border-[#E2EAE3] dark:border-[#1F2830] relative max-h-[90vh] flex flex-col transition-all duration-300">
+        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl w-full max-w-lg rounded-3xl shadow-2xl border border-[#E2EAE3] dark:border-slate-800 relative max-h-[90vh] flex flex-col transition-all duration-300">
           
-          <div className="px-6 py-5 border-b border-[#E2EAE3]/60 dark:border-[#1F2830] flex justify-between items-center bg-[#F4F9F5]/40 dark:bg-[#161D22]/40 shrink-0">
+          <div className="px-6 py-5 border-b border-[#E2EAE3]/60 dark:border-slate-800 flex justify-between items-center bg-[#F4F9F5]/40 dark:bg-slate-800/40 shrink-0">
             <div>
               <p className="text-[10px] tracking-widest font-black uppercase text-emerald-800 dark:text-[#A3E635]">
                 {editingTransaction ? 'EDIT TRANSACTION' : (isPersonalModal ? 'NEW PERSONAL EXPENSE' : 'NEW TRANSACTION')}
@@ -19564,10 +19564,10 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in">
-        <div className="bg-white dark:bg-[#0E1315] w-full max-w-lg rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-[#1E282C] max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-[#E3E8E3] dark:border-slate-800 max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300">
           
           {/* Header */}
-          <div className="px-6 py-5 border-b border-[#E3E8E3]/60 dark:border-[#1E282C] flex justify-between items-center bg-[#F4F7F4]/40 dark:bg-[#161D20]/40 shrink-0">
+          <div className="px-6 py-5 border-b border-[#E3E8E3]/60 dark:border-slate-800 flex justify-between items-center bg-[#F4F7F4]/40 dark:bg-slate-800/40 shrink-0">
             <div>
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#A3E635] shadow-[0_0_8px_#A3E635] animate-pulse"></span>
@@ -19720,7 +19720,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
             {/* Custom Partial Amount Toggle (Host & Co-Host Only) */}
             {isHostOrCoHost && (
-              <div className="pt-2 border-t border-[#E3E8E3]/60 dark:border-[#1E282C]">
+              <div className="pt-2 border-t border-[#E3E8E3]/60 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowCustomSettle(!showCustomSettle)}
@@ -19730,7 +19730,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 </button>
 
                 {showCustomSettle && (
-                  <form onSubmit={handleRecordPayment} className="mt-3 space-y-3 p-4 rounded-2xl bg-[#F4F7F4]/60 dark:bg-[#161D20] border border-[#E3E8E3] dark:border-[#1E282C] animate-fade-in">
+                  <form onSubmit={handleRecordPayment} className="mt-3 space-y-3 p-4 rounded-2xl bg-[#F4F7F4]/60 dark:bg-slate-850 border border-[#E3E8E3] dark:border-slate-800 animate-fade-in">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 block uppercase">Payer (Who Paid)</label>
@@ -24814,7 +24814,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           
           {/* Your Profile */}
           <div className="hud-card rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 transition-all duration-300">
-            <div className="flex justify-between items-center pb-3 border-b border-[#E2EAE3]/60 dark:border-[#1F2830]">
+            <div className="flex justify-between items-center pb-3 border-b border-[#E2EAE3]/60 dark:border-slate-800">
               <h3 className="font-extrabold text-[#12291C] dark:text-slate-100 text-sm sm:text-base tracking-tight">
                 Your Profile
               </h3>
