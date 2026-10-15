@@ -6502,7 +6502,7 @@ Tallyin Team`;
       <div className="flex-1 flex flex-col min-w-0 bg-[#F4F7F5] dark:bg-slate-950/70 overflow-hidden">
 
         {/* ── Top Header Bar ── */}
-        <header className="shrink-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-[#E3E8E3] dark:border-slate-800 px-5 sm:px-8 py-3.5 flex items-center justify-between gap-4 z-10">
+        <header className="shrink-0 bg-white dark:bg-slate-900 border-b border-[#E3E8E3] dark:border-slate-800 px-5 sm:px-8 py-3.5 flex items-center justify-between gap-4 relative z-40">
           
           {/* Left: Mobile Hamburger & Global Search */}
           <div className="flex items-center gap-3 flex-1 max-w-lg">
@@ -6513,7 +6513,7 @@ Tallyin Team`;
               <Menu className="w-4 h-4" />
             </button>
 
-            <div ref={searchDropdownRef} className="relative flex-1 group">
+            <div ref={searchDropdownRef} className="relative flex-1 group z-50">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none group-focus-within:text-[#1A3827] dark:group-focus-within:text-[#A3E635] transition-colors" />
               <input
                 type="text"
@@ -6560,7 +6560,7 @@ Tallyin Team`;
 
               {/* Floating Universal OmniSearch Dropdown */}
               {isOmniSearchFocused && searchQuery.trim().length > 0 && omniSearchResults && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl shadow-2xl z-50 max-h-[500px] overflow-y-auto p-3 space-y-3.5 text-left animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="absolute top-full left-0 right-0 sm:min-w-[500px] mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.35)] z-50 max-h-[520px] overflow-y-auto p-3.5 space-y-3.5 text-left animate-in fade-in slide-in-from-top-1 duration-150">
                   {/* Dropdown Header */}
                   <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">
@@ -6591,22 +6591,29 @@ Tallyin Team`;
                             {omniSearchResults.tickets.slice(0, 5).map(ticket => {
                               const refNum = ticket.refNumber || ticket.refId || ticket.ticketId || ticket.id;
                               const isExact = refNum?.toLowerCase() === searchQuery.trim().toLowerCase();
+                              const isWarn = ticket.type === 'warning' || String(refNum).startsWith('WRN-');
                               return (
                                 <div
                                   key={ticket.id}
                                   className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition-all ${
                                     isExact 
-                                      ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-400 ring-2 ring-rose-400/20' 
+                                      ? (isWarn
+                                          ? 'bg-amber-50 dark:bg-amber-950/80 border-amber-400 ring-2 ring-amber-400/20'
+                                          : 'bg-rose-50 dark:bg-rose-950/80 border-rose-400 ring-2 ring-rose-400/20')
                                       : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-rose-300'
                                   }`}
                                 >
                                   <div className="min-w-0 space-y-0.5">
                                     <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                      <span className={`font-mono text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                                        isWarn
+                                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                          : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                      }`}>
                                         {refNum}
                                       </span>
                                       {isExact && (
-                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-rose-600 text-white">
+                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase text-white ${isWarn ? 'bg-amber-600' : 'bg-rose-600'}`}>
                                           Exact Match
                                         </span>
                                       )}
@@ -6624,7 +6631,7 @@ Tallyin Team`;
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setSelectedFullDataRecord({ ...ticket, _recordType: 'incident' });
+                                      setSelectedFullDataRecord({ ...ticket, _recordType: isWarn ? 'warning' : 'incident' });
                                       setIsOmniSearchFocused(false);
                                     }}
                                     className="px-2.5 py-1.5 bg-[#1A3827] hover:bg-[#12281b] dark:bg-[#A3E635] dark:text-slate-950 text-white rounded-xl text-[10px] font-black shrink-0 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
@@ -6796,7 +6803,7 @@ Tallyin Team`;
                                   key={a.id}
                                   className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition-all ${
                                     isExact
-                                      ? 'bg-purple-50/90 dark:bg-purple-950/40 border-purple-400 ring-2 ring-purple-400/20'
+                                      ? 'bg-purple-50 dark:bg-purple-950/80 border-purple-400 ring-2 ring-purple-400/20'
                                       : 'border-[#E3E8E3] dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-purple-300'
                                   }`}
                                 >
