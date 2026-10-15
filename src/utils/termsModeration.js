@@ -16,7 +16,7 @@ export const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfy
 export const TALLYIN_LOGO_URL = 'https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png';
 
 // 1. Prohibited Code / Script Injection Patterns (XSS / SQLi)
-const INJECTION_PATTERNS = [
+export const INJECTION_PATTERNS = [
   /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
   /javascript\s*:/gi,
   /\bon(?:error|load|click|mouseover|submit|focus)\s*=/gi,
@@ -32,7 +32,7 @@ const INJECTION_PATTERNS = [
 
 // 2. Prohibited Abusive / Harassment / Threat / Vulgar Keywords
 // Matches whole words or exact abusive stems
-const ABUSE_KEYWORDS = [
+export const ABUSE_KEYWORDS = [
   'kill you', 'die b*tch', 'gonna hurt you', 'threaten you', 'extort you',
   'blackmail', 'scam you', 'steal money', 'f*** off', 'bitch', 'asshole',
   'bastard', 'motherfucker', 'cunt', 'dickhead', 'whore', 'slut',
@@ -41,7 +41,7 @@ const ABUSE_KEYWORDS = [
 ];
 
 // 3. Prohibited Malicious File Extensions
-const PROHIBITED_FILE_EXTENSIONS = [
+export const PROHIBITED_FILE_EXTENSIONS = [
   '.exe', '.bat', '.cmd', '.sh', '.bash', '.php', '.phtml', '.js',
   '.mjs', '.vbs', '.py', '.rb', '.pl', '.jar', '.apk', '.html',
   '.htm', '.svg', '.msi', '.dll', '.scr', '.wsf', '.com'
@@ -474,6 +474,11 @@ https://tallyin.vercel.app/admin
       (async () => {
         try {
           const channel = supabase.channel('system_admin_channel');
+          await channel.send({
+            type: 'broadcast',
+            event: 'TERMS_VIOLATION_SUBMITTED',
+            payload: { dispute: incidentRecord }
+          });
           await channel.send({
             type: 'broadcast',
             event: 'DISPUTE_SUBMITTED',

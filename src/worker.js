@@ -181,7 +181,7 @@ export default {
                 }
               }
 
-              // B. Meta WhatsApp Cloud API (Official Business API)
+              // C. Meta WhatsApp Cloud API (Official Business API)
               if (!deliveredBy && gateway && (gateway.provider === 'meta' || gateway.phoneId) && gateway.phoneId && gateway.token) {
                 try {
                   const metaRes = await fetch(`https://graph.facebook.com/v18.0/${gateway.phoneId}/messages`, {
