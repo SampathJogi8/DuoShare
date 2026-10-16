@@ -2436,11 +2436,12 @@ export default function AdminDashboard({
     } catch (e) {}
 
     // 5. Immediately update UI states
+    const todayFormatted = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
     setAllRegisteredUsers(prev => prev.map(u => {
       const isTarget = (uEmail && u.email?.toLowerCase() === uEmail) ||
                        (uId && (u.id === uId || u.uid === uId)) ||
                        (uCode && u.userCode === uCode);
-      return isTarget ? { ...u, isInactive: false, daysSinceLastActive: 0 } : u;
+      return isTarget ? { ...u, isInactive: false, daysSinceLastActive: 0, latestActivityTimestamp: Date.now() } : u;
     }));
 
     setSelectedUserDossier(prev => {
@@ -2448,7 +2449,13 @@ export default function AdminDashboard({
       const isTarget = (uEmail && prev.email?.toLowerCase() === uEmail) ||
                        (uId && (prev.uid === uId || prev.id === uId)) ||
                        (uCode && prev.userCode === uCode);
-      return isTarget ? { ...prev, isInactive: false, daysSinceLastActive: 0 } : prev;
+      return isTarget ? { 
+        ...prev, 
+        isInactive: false, 
+        daysSinceLastActive: 0, 
+        lastActiveDate: todayFormatted,
+        lastActiveTimestamp: Date.now() 
+      } : prev;
     });
 
     if (triggerToast) triggerToast(`Approved! Code mailed to ${req.email || req.userCode} and account reactivated.`);
@@ -3653,13 +3660,33 @@ Tallyin Team`;
           displayName = validEmail ? validEmail.split('@')[0] : (entry.role === 'Member' ? 'Roommate' : 'User');
         }
 
+        const curUser = userPropRef.current;
+        const isCurrentActiveUser = (curUser?.email && validEmail === curUser.email.toLowerCase()) ||
+                                    (curUser?.uid && (id === curUser.uid || id === curUser.id)) ||
+                                    isSuperAdminEmail;
+
+        const rawEntryDate = entry.last_sign_in_at || entry.lastActiveAt || entry.updated_at || entry.created_at || entry.timestamp || entry.joined_at || entry.createdAt || entry.date;
+        const entryTime = rawEntryDate ? new Date(rawEntryDate).getTime() : NaN;
+        const validEntryTime = !isNaN(entryTime) ? entryTime : null;
+
         if (existing) {
           if ((!existing.email || existing.email === 'N/A') && validEmail) existing.email = validEmail;
           if ((!existing.name || existing.name === 'Roommate' || existing.name === 'User') && displayName) existing.name = displayName;
           if (!existing.photoURL && finalPhoto) existing.photoURL = finalPhoto;
           if ((!existing.userCode || existing.userCode === 'N/A') && finalUserCode) existing.userCode = finalUserCode;
-          if (!existing.createdAt && (entry.created_at || entry.timestamp || entry.joined_at || entry.createdAt)) {
-            existing.createdAt = entry.created_at || entry.timestamp || entry.joined_at || entry.createdAt;
+          if (validEntryTime) {
+            existing.latestActivityTimestamp = Math.max(existing.latestActivityTimestamp || 0, validEntryTime);
+            if (!existing.createdAt) {
+              existing.createdAt = rawEntryDate;
+            } else {
+              const prevCreatedTime = new Date(existing.createdAt).getTime();
+              if (!isNaN(prevCreatedTime) && validEntryTime < prevCreatedTime) {
+                existing.createdAt = rawEntryDate;
+              }
+            }
+          }
+          if (isCurrentActiveUser) {
+            existing.latestActivityTimestamp = Date.now();
           }
           if ((!existing.roomId || existing.roomId === 'Shared Space') && (entry.room_id || entry.roomId)) {
             existing.roomId = entry.room_id || entry.roomId;
@@ -3668,6 +3695,7 @@ Tallyin Team`;
           if (isSuperAdminEmail) {
             existing.userCode = 'USR-0000-8888';
             existing.role = 'Super Admin';
+            existing.latestActivityTimestamp = Date.now();
           }
         } else {
           seen.add(primaryKey);
@@ -3680,6 +3708,7 @@ Tallyin Team`;
             roomId: cleanVal(entry.roomId || entry.room_id) || 'Shared Space',
             photoURL: finalPhoto,
             createdAt: entry.created_at || entry.timestamp || entry.joined_at || entry.createdAt || null,
+            latestActivityTimestamp: isCurrentActiveUser ? Date.now() : validEntryTime,
             role: isSuperAdminEmail ? 'Super Admin' : (entry.role || 'Member'),
             phone: cleanVal(entry.phone) || null
           });
@@ -3847,21 +3876,43 @@ Tallyin Team`;
         const markedBy = inactiveRec?.markedBy || (isInactive ? (inactiveRec?.daysInactive >= 90 ? 'SYSTEM_DORMANCY' : 'ADMIN') : null);
         const inactiveReason = inactiveRec?.reason || (markedBy === 'ADMIN' ? 'Marked Inactive by Admin' : (isInactive ? 'Inactive (90+ Days)' : null));
 
-        // Calculate actual days since creation/joined
-        let calculatedDays = 0;
+        // Calculate account age in days
+        let accountAgeDays = 0;
+        let joinedTime = null;
         if (u.createdAt) {
-          const joinedTime = new Date(u.createdAt).getTime();
-          if (!isNaN(joinedTime)) {
-            calculatedDays = Math.max(0, Math.floor((Date.now() - joinedTime) / (1000 * 60 * 60 * 24)));
+          const jt = new Date(u.createdAt).getTime();
+          if (!isNaN(jt)) {
+            joinedTime = jt;
+            accountAgeDays = Math.max(0, Math.floor((Date.now() - jt) / (1000 * 60 * 60 * 24)));
           }
         }
+
+        // Check if currently active session user
+        const isCurrentActiveUser = (curUser?.email && uEmail === curUser.email.toLowerCase().trim()) ||
+                                    (curUser?.uid && uId === String(curUser.uid).toLowerCase().trim()) ||
+                                    uEmail === 'sampathjogipusala123@gmail.com';
+
+        const effectiveLastActiveTs = isCurrentActiveUser ? Date.now() : (u.latestActivityTimestamp || joinedTime || null);
+
+        let daysSinceActive = 0;
+        if (isCurrentActiveUser) {
+          daysSinceActive = 0;
+        } else if (effectiveLastActiveTs) {
+          daysSinceActive = Math.max(0, Math.floor((Date.now() - effectiveLastActiveTs) / (1000 * 60 * 60 * 24)));
+        }
+
+        const daysSinceLastActive = isInactive 
+          ? (inactiveRec?.daysInactive !== undefined ? inactiveRec.daysInactive : (markedBy === 'ADMIN' ? daysSinceActive : 90))
+          : daysSinceActive;
 
         return {
           ...u,
           isInactive,
           markedBy,
           inactiveReason,
-          daysSinceLastActive: isInactive ? (inactiveRec?.daysInactive !== undefined ? inactiveRec.daysInactive : (markedBy === 'ADMIN' ? calculatedDays : 90)) : calculatedDays
+          accountAgeDays,
+          latestActivityTimestamp: effectiveLastActiveTs,
+          daysSinceLastActive
         };
       });
 
@@ -3970,8 +4021,14 @@ Tallyin Team`;
         return (cleanEmail && dEmail === cleanEmail) || (dCode === userCode.toLowerCase()) || (userUid && dUid === userUid.toLowerCase());
       });
 
+      // Check if this is the currently authenticated / active session user
+      const curUser = userPropRef.current;
+      const isCurrentUser = (curUser?.email && cleanEmail === curUser.email.toLowerCase().trim()) ||
+                            (curUser?.uid && userUid === String(curUser.uid).toLowerCase().trim()) ||
+                            cleanEmail === 'sampathjogipusala123@gmail.com';
+
       // 6. Determine Date Joined (Earliest recorded platform timestamp)
-      const possibleDates = [
+      const creationDates = [
         userObj.createdAt,
         userObj.created_at,
         userObj.joinedAt,
@@ -3981,7 +4038,7 @@ Tallyin Team`;
         ...userTxList.map(t => t.created_at || t.date)
       ].filter(Boolean).map(d => new Date(d).getTime()).filter(t => !isNaN(t));
 
-      const earliestTimestamp = possibleDates.length > 0 ? Math.min(...possibleDates) : null;
+      const earliestTimestamp = creationDates.length > 0 ? Math.min(...creationDates) : null;
       const dateJoinedFormatted = earliestTimestamp 
         ? new Date(earliestTimestamp).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
         : 'Early Platform Member';
@@ -4001,20 +4058,54 @@ Tallyin Team`;
       const markedBy = inactiveRec?.markedBy || userObj.markedBy || (isInactive ? (userObj.daysSinceLastActive >= 90 ? 'SYSTEM_DORMANCY' : 'ADMIN') : null);
       const inactiveReason = inactiveRec?.reason || userObj.inactiveReason || (markedBy === 'ADMIN' ? 'Marked Inactive by Admin' : (isInactive ? 'Inactive (90+ Days)' : null));
 
-      let realDays = 0;
-      if (earliestTimestamp) {
-        realDays = Math.max(0, Math.floor((Date.now() - earliestTimestamp) / (1000 * 60 * 60 * 24)));
+      // Determine Latest Activity Timestamp across transactions, rooms, disputes, logins
+      const activityDates = [
+        ...creationDates,
+        userObj.latestActivityTimestamp,
+        userObj.lastActiveAt,
+        userObj.last_sign_in_at,
+        userObj.updated_at,
+        ...memberRooms.map(m => m.updated_at),
+        ...userDisputes.map(d => d.created_at || d.timestamp),
+        ...userViolations.map(v => v.created_at || v.timestamp),
+        isCurrentUser ? Date.now() : null
+      ].filter(Boolean).map(d => new Date(d).getTime()).filter(t => !isNaN(t));
+
+      const latestTimestamp = isCurrentUser ? Date.now() : (activityDates.length > 0 ? Math.max(...activityDates) : null);
+
+      let daysSinceLastActive = 0;
+      if (isInactive) {
+        if (inactiveRec?.daysInactive !== undefined) {
+          daysSinceLastActive = inactiveRec.daysInactive;
+        } else if (markedBy === 'SYSTEM_DORMANCY') {
+          daysSinceLastActive = userObj.daysSinceLastActive || 90;
+        } else {
+          // Marked Inactive by Admin: calculate days elapsed since last activity
+          daysSinceLastActive = latestTimestamp 
+            ? Math.max(0, Math.floor((Date.now() - latestTimestamp) / (1000 * 60 * 60 * 24)))
+            : (earliestTimestamp ? Math.max(0, Math.floor((Date.now() - earliestTimestamp) / (1000 * 60 * 60 * 24))) : 0);
+        }
+      } else {
+        // Active Account
+        if (isCurrentUser) {
+          daysSinceLastActive = 0;
+        } else if (latestTimestamp) {
+          daysSinceLastActive = Math.max(0, Math.floor((Date.now() - latestTimestamp) / (1000 * 60 * 60 * 24)));
+        } else {
+          daysSinceLastActive = 0;
+        }
       }
 
-      const finalDaysInactive = isInactive ? (inactiveRec?.daysInactive !== undefined ? inactiveRec.daysInactive : (markedBy === 'ADMIN' ? realDays : 90)) : realDays;
-      const latestTimestamp = possibleDates.length > 0 ? Math.max(...possibleDates) : null;
       let lastActiveDateTimestamp = latestTimestamp;
-      if (!lastActiveDateTimestamp && finalDaysInactive > 0) {
-        lastActiveDateTimestamp = Date.now() - (finalDaysInactive * 24 * 60 * 60 * 1000);
+      if (!lastActiveDateTimestamp && daysSinceLastActive > 0) {
+        lastActiveDateTimestamp = Date.now() - (daysSinceLastActive * 24 * 60 * 60 * 1000);
+      } else if (!lastActiveDateTimestamp) {
+        lastActiveDateTimestamp = Date.now();
       }
+
       const lastActiveDateFormatted = lastActiveDateTimestamp
         ? new Date(lastActiveDateTimestamp).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
-        : null;
+        : 'Today';
 
       const dossierData = {
         user: userObj,
@@ -4028,7 +4119,7 @@ Tallyin Team`;
         isInactive,
         markedBy,
         inactiveReason,
-        daysSinceLastActive: finalDaysInactive,
+        daysSinceLastActive: daysSinceLastActive,
         lastActiveDate: lastActiveDateFormatted,
         lastActiveTimestamp: lastActiveDateTimestamp,
         dateJoined: dateJoinedFormatted,
@@ -17008,9 +17099,11 @@ NOTIFY pgrst, 'reload schema';`;
                               className="font-mono text-[11px] text-amber-600 dark:text-amber-400"
                               title={selectedUserDossier.lastActiveDate ? `Last Active: ${selectedUserDossier.lastActiveDate}` : undefined}
                             >
-                              {selectedUserDossier.lastActiveDate 
-                                ? `Last active: ${selectedUserDossier.lastActiveDate} (${selectedUserDossier.daysSinceLastActive}d ago)` 
-                                : `${selectedUserDossier.daysSinceLastActive}d ${isDossierInactive ? 'inactive' : 'since active'}`}
+                              {selectedUserDossier.daysSinceLastActive === 0
+                                ? `Last active: ${selectedUserDossier.lastActiveDate || 'Today'} (Active today)`
+                                : (selectedUserDossier.lastActiveDate 
+                                    ? `Last active: ${selectedUserDossier.lastActiveDate} (${selectedUserDossier.daysSinceLastActive}d ago)` 
+                                    : `${selectedUserDossier.daysSinceLastActive}d ${isDossierInactive ? 'inactive' : 'since active'}`)}
                             </span>
                           </>
                         )}
@@ -17358,9 +17451,11 @@ NOTIFY pgrst, 'reload schema';`;
                       <div>
                         <span className="text-slate-400 block text-[11px]">Last Active Date</span>
                         <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
-                          {selectedUserDossier.lastActiveDate || `${selectedUserDossier.daysSinceLastActive} days ago`}
+                          {selectedUserDossier.lastActiveDate || (selectedUserDossier.daysSinceLastActive === 0 ? 'Today' : `${selectedUserDossier.daysSinceLastActive} days ago`)}
                           {selectedUserDossier.daysSinceLastActive !== undefined && (
-                            <span className="text-slate-400 text-xs font-normal ml-1.5">({selectedUserDossier.daysSinceLastActive}d ago)</span>
+                            <span className="text-slate-400 text-xs font-normal ml-1.5">
+                              ({selectedUserDossier.daysSinceLastActive === 0 ? 'Active today' : `${selectedUserDossier.daysSinceLastActive}d ago`})
+                            </span>
                           )}
                         </span>
                       </div>
