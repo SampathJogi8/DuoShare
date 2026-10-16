@@ -15,6 +15,7 @@ import {
   RefreshCw,
   HelpCircle,
   Shield,
+  ShieldAlert,
   ArrowRight
 } from 'lucide-react';
 import faviconLogo from '../assets/favicon_logo.png';
@@ -45,6 +46,7 @@ export default function InactiveUserView({
   const userUid = String(user?.uid || inactiveInfo?.id || inactiveInfo?.uid || '');
   const userCode = (cleanEmail === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (inactiveInfo?.userCode || getUserCode(cleanEmail || userUid || cleanName));
   const daysInactive = inactiveInfo?.daysInactive || inactiveInfo?.daysSinceLastActive || 90;
+  const isMarkedByAdmin = inactiveInfo?.markedBy === 'ADMIN' || (typeof inactiveInfo?.reason === 'string' && inactiveInfo.reason.toLowerCase().includes('admin'));
 
   // Fetch pending activation requests from Supabase / localStorage
   const fetchActivationRequests = useCallback(async () => {
@@ -408,14 +410,22 @@ export default function InactiveUserView({
           
           {/* Hero Icon & Title */}
           <div className="text-center space-y-2">
-            <div className="w-16 h-16 mx-auto rounded-3xl bg-amber-50 dark:bg-amber-950/50 border-2 border-amber-300 dark:border-amber-700 flex items-center justify-center text-amber-600 dark:text-amber-400 shadow-md">
-              <Clock className="w-8 h-8 animate-pulse" />
+            <div className={`w-16 h-16 mx-auto rounded-3xl ${
+              isMarkedByAdmin 
+                ? 'bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-400' 
+                : 'bg-amber-50 dark:bg-amber-950/50 border-2 border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400'
+            } flex items-center justify-center shadow-md`}>
+              {isMarkedByAdmin ? <ShieldAlert className="w-8 h-8 animate-pulse" /> : <Clock className="w-8 h-8 animate-pulse" />}
             </div>
             <h2 className="text-2xl font-black text-[#1A3827] dark:text-white tracking-tight">
-              Account Temporarily Inactive
+              {isMarkedByAdmin ? 'Account Paused by Administrator' : 'Account Temporarily Inactive'}
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
-              Your account has been placed on Inactive status due to <strong>{daysInactive}+ days of platform dormancy</strong> or an administrative safety hold.
+              {isMarkedByAdmin ? (
+                <>Your account access has been placed on an <strong>administrative hold by the Platform Admin</strong>. To restore your active session, please request activation or enter your verification code below.</>
+              ) : (
+                <>Your account has been placed on Inactive status due to <strong>{daysInactive}+ days of platform dormancy</strong>. Reactivating your account instantly restores full access.</>
+              )}
             </p>
           </div>
 
@@ -431,9 +441,13 @@ export default function InactiveUserView({
               <p className="text-[11px] text-slate-500 font-mono">{cleanEmail || 'No Email'}</p>
             </div>
             <div className="text-right">
-              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                <Clock className="w-3 h-3" />
-                Inactive
+              <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${
+                isMarkedByAdmin 
+                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800' 
+                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+              }`}>
+                {isMarkedByAdmin ? <ShieldAlert className="w-3 h-3 text-rose-600 dark:text-rose-400" /> : <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />}
+                {isMarkedByAdmin ? 'Marked Inactive by Admin' : 'Inactive (90+ Days)'}
               </span>
             </div>
           </div>

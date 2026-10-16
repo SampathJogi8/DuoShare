@@ -2286,10 +2286,6 @@ export default function App() {
   const inactiveInfo = useMemo(() => {
     if (!inactiveUsers || inactiveUsers.length === 0) return null;
 
-    // Do NOT lock out authorized system administrator
-    const currentEmail = String(user?.email || codeLoginEmail || (typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : '') || '').trim().toLowerCase();
-    if (currentEmail === 'sampathjogipusala123@gmail.com') return null;
-
     const possibleIdentifiers = [
       user?.email,
       user?.uid,
