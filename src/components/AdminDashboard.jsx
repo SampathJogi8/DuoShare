@@ -2177,6 +2177,28 @@ export default function AdminDashboard({
     });
   }, []);
 
+  // Helper to reliably check if a user is in the banned users registry
+  const checkIsBannedUser = useCallback((u, list = bannedUsers) => {
+    if (!u) return false;
+    const uEmail = String(u.email || '').trim().toLowerCase();
+    if (uEmail === 'sampathjogipusala123@gmail.com') return false;
+    const targetList = Array.isArray(list) ? list : (bannedUsersRef.current || []);
+    if (targetList.length === 0) return false;
+
+    const uId = String(u.id || u.uid || '').trim().toLowerCase();
+    const uName = String(u.name || '').trim().toLowerCase();
+
+    return targetList.some(b => {
+      if (!b) return false;
+      const bId = String(b.identifier || b.email || b.id || b.uid || '').trim().toLowerCase();
+      const bName = String(b.name || '').trim().toLowerCase();
+      const matchEmail = (uEmail && uEmail !== 'n/a' && uEmail !== 'no email' && bId === uEmail);
+      const matchId = (uId && uId !== 'n/a' && bId && bId !== 'n/a' && (bId === uId || (b.uid && String(b.uid).toLowerCase() === uId)));
+      const matchName = (uName && bName && uName !== 'user' && uName !== 'roommate' && bName === uName);
+      return matchEmail || matchId || matchName;
+    });
+  }, [bannedUsers]);
+
   // Activation Requests Registry (Users requesting codes to reactivate inactive accounts)
   const [activationRequests, setActivationRequests] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -2824,7 +2846,31 @@ Tallyin Team`;
   };
 
   // User Directory & Search states
-  const [allRegisteredUsers, setAllRegisteredUsers] = useState([]);
+  const [allRegisteredUsers, setAllRegisteredUsers] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tallyin_admin_user_directory');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  const userPropRef = useRef(user);
+  userPropRef.current = user;
+  const userNicknameRef = useRef(userNickname);
+  userNicknameRef.current = userNickname;
+  const userRoomsRef = useRef(userRooms);
+  userRoomsRef.current = userRooms;
+  const commanderRoomsRef = useRef(commanderRooms);
+  commanderRoomsRef.current = commanderRooms;
+  const activationRequestsRef = useRef(activationRequests);
+  activationRequestsRef.current = activationRequests;
+  const bannedUsersRef = useRef(bannedUsers);
+  bannedUsersRef.current = bannedUsers;
 
   // Automated Email Dispatcher for User Bans and Unbans
   const sendUserBanStatusEmail = async ({ type, targetEmail, targetName, reason }) => {
@@ -3280,85 +3326,271 @@ Tallyin Team`;
     return [];
   });
 
-  const fetchUserDirectory = useCallback(async () => {
+  const fetchUserDirectory = useCallback(async (customInactiveList) => {
     try {
-      const [{ data: memberList }, { data: userList }] = await Promise.all([
-        supabase.from('members').select('*').limit(1000),
-        supabase.from('users').select('*').limit(1000)
-      ]);
+      let memberList = [];
+      let userList = [];
+      let roomsList = [];
+      let txList = [];
+
+      // 1. Fetch from Supabase / D1 query builder with graceful settlement
+      try {
+        const [mRes, uRes, rRes, tRes] = await Promise.allSettled([
+          supabase.from('members').select('*').limit(1000),
+          supabase.from('users').select('*').limit(1000),
+          supabase.from('rooms').select('*').limit(200),
+          supabase.from('transactions').select('paid_by, created_by, created_at, room_id').limit(300)
+        ]);
+
+        if (mRes.status === 'fulfilled' && Array.isArray(mRes.value?.data)) {
+          memberList = mRes.value.data;
+        }
+        if (uRes.status === 'fulfilled' && Array.isArray(uRes.value?.data)) {
+          userList = uRes.value.data;
+        }
+        if (rRes.status === 'fulfilled' && Array.isArray(rRes.value?.data)) {
+          roomsList = rRes.value.data;
+        }
+        if (tRes.status === 'fulfilled' && Array.isArray(tRes.value?.data)) {
+          txList = tRes.value.data;
+        }
+      } catch (err) {
+        console.warn("Primary Supabase/D1 user fetch notice:", err);
+      }
+
+      // 2. Direct Cloudflare D1 authoritative export fallback if either table returned empty
+      if (!userList.length || !memberList.length) {
+        try {
+          const exportRes = await fetch('https://duoshare-backend.sampathjogipusala123.workers.dev/api/export-all-data');
+          if (exportRes.ok) {
+            const exportJson = await exportRes.json();
+            if (exportJson?.data) {
+              if ((!userList.length || userList.length < (exportJson.data.users?.length || 0)) && Array.isArray(exportJson.data.users)) {
+                userList = exportJson.data.users;
+              }
+              if ((!memberList.length || memberList.length < (exportJson.data.members?.length || 0)) && Array.isArray(exportJson.data.members)) {
+                memberList = exportJson.data.members;
+              }
+              if (!roomsList.length && Array.isArray(exportJson.data.rooms)) {
+                roomsList = exportJson.data.rooms;
+              }
+              if (!txList.length && Array.isArray(exportJson.data.transactions)) {
+                txList = exportJson.data.transactions;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("Worker export-all-data fallback notice:", err);
+        }
+      }
 
       const combined = [];
       const seen = new Set();
 
-      (memberList || []).forEach(m => {
-        const email = (m.email || '').trim().toLowerCase();
-        const key = email || m.uid || m.id || m.nickname;
-        if (key && !seen.has(key)) {
-          seen.add(key);
+      const cleanVal = (val) => {
+        if (!val || val === 'null' || val === 'undefined') return '';
+        return String(val).trim();
+      };
+
+      const registerOrMerge = (entry) => {
+        if (!entry) return;
+        const email = cleanVal(entry.email).toLowerCase();
+        const validEmail = (email && email.includes('@') && email !== 'n/a' && email !== 'null') ? email : '';
+        const id = cleanVal(entry.id || entry.uid);
+        const code = cleanVal(entry.userCode || entry.login_code || entry.loginCode || entry.user_code);
+        const rawName = cleanVal(entry.name || entry.nickname);
+        const validName = (rawName && rawName.toLowerCase() !== 'null') ? rawName : '';
+
+        // Primary deduplication key priority: email -> uid -> login_code -> name
+        const primaryKey = validEmail || id || code || validName.toLowerCase();
+        if (!primaryKey) return;
+
+        let existing = combined.find(c => {
+          const cEmail = cleanVal(c.email).toLowerCase();
+          const cId = cleanVal(c.id || c.uid);
+          const cCode = cleanVal(c.userCode);
+          return (validEmail && cEmail && cEmail === validEmail) ||
+                 (id && cId && cId === id) ||
+                 (code && cCode && cCode === code);
+        });
+
+        const isSuperAdminEmail = validEmail === 'sampathjogipusala123@gmail.com' || validName.toLowerCase() === 'sampath jogi pusala';
+        const finalUserCode = isSuperAdminEmail ? 'USR-0000-8888' : (code || (validEmail ? getUserCode(validEmail) : (id ? getUserCode(id) : getUserCode(validName || 'User'))));
+        const rawPhoto = cleanVal(entry.photo_url || entry.photoURL || entry.avatar_url);
+        const finalPhoto = (rawPhoto && rawPhoto !== 'null' && rawPhoto.startsWith('http')) ? rawPhoto : null;
+        let displayName = validName;
+        if (!displayName) {
+          displayName = validEmail ? validEmail.split('@')[0] : (entry.role === 'Member' ? 'Roommate' : 'User');
+        }
+
+        if (existing) {
+          if ((!existing.email || existing.email === 'N/A') && validEmail) existing.email = validEmail;
+          if ((!existing.name || existing.name === 'Roommate' || existing.name === 'User') && displayName) existing.name = displayName;
+          if (!existing.photoURL && finalPhoto) existing.photoURL = finalPhoto;
+          if ((!existing.userCode || existing.userCode === 'N/A') && finalUserCode) existing.userCode = finalUserCode;
+          if (!existing.createdAt && (entry.created_at || entry.timestamp || entry.joined_at || entry.createdAt)) {
+            existing.createdAt = entry.created_at || entry.timestamp || entry.joined_at || entry.createdAt;
+          }
+          if ((!existing.roomId || existing.roomId === 'Shared Space') && (entry.room_id || entry.roomId)) {
+            existing.roomId = entry.room_id || entry.roomId;
+          }
+          if (entry.phone && !existing.phone) existing.phone = cleanVal(entry.phone);
+          if (isSuperAdminEmail) {
+            existing.userCode = 'USR-0000-8888';
+            existing.role = 'Super Admin';
+          }
+        } else {
+          seen.add(primaryKey);
           combined.push({
-            id: m.uid || m.id,
-            userCode: email === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (m.user_code || getUserCode(email || m.uid || m.id || m.nickname)),
-            name: m.nickname || m.name || (email ? email.split('@')[0] : 'Roommate'),
-            email: email || 'N/A',
-            roomId: m.room_id || 'Shared Space',
-            photoURL: m.photoURL,
-            createdAt: m.created_at || m.timestamp || m.joined_at || null,
-            role: 'Member'
+            id: id || crypto.randomUUID(),
+            uid: id,
+            userCode: finalUserCode,
+            name: displayName,
+            email: validEmail || 'N/A',
+            roomId: cleanVal(entry.roomId || entry.room_id) || 'Shared Space',
+            photoURL: finalPhoto,
+            createdAt: entry.created_at || entry.timestamp || entry.joined_at || entry.createdAt || null,
+            role: isSuperAdminEmail ? 'Super Admin' : (entry.role || 'Member'),
+            phone: cleanVal(entry.phone) || null
           });
         }
-      });
+      };
 
+      // 1. Process users table records
       (userList || []).forEach(u => {
-        const email = (u.email || '').trim().toLowerCase();
-        const key = email || u.uid || u.id;
-        if (key && !seen.has(key)) {
-          seen.add(key);
-          combined.push({
-            id: u.uid || u.id,
-            userCode: email === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (u.user_code || getUserCode(email || u.uid || u.id)),
-            name: u.nickname || u.name || (email ? email.split('@')[0] : 'User'),
-            email: email || 'N/A',
-            roomId: u.room_id || 'Joined Space',
-            photoURL: u.photoURL,
-            createdAt: u.created_at || u.createdAt || null,
-            role: 'User'
+        registerOrMerge({
+          id: u.uid || u.id,
+          uid: u.uid || u.id,
+          email: u.email,
+          name: u.name || u.nickname,
+          login_code: u.login_code,
+          photo_url: u.avatar_url || u.photo_url,
+          room_id: u.room_id,
+          created_at: u.created_at || u.createdAt,
+          role: u.role === 'host' ? 'Host' : 'User',
+          phone: u.phone
+        });
+      });
+
+      // 2. Process members table records
+      (memberList || []).forEach(m => {
+        registerOrMerge({
+          id: m.uid || m.id,
+          uid: m.uid || m.id,
+          email: m.email,
+          nickname: m.nickname || m.name,
+          user_code: m.user_code,
+          photo_url: m.photo_url || m.photoURL,
+          room_id: m.room_id,
+          created_at: m.joined_at || m.created_at,
+          role: m.role === 'host' ? 'Host' : 'Member',
+          phone: m.phone
+        });
+      });
+
+      // 3. Process transactions to discover active payers/participants
+      (txList || []).forEach(tx => {
+        const payer = cleanVal(tx.paid_by);
+        if (payer && payer.includes('@')) {
+          registerOrMerge({
+            email: payer,
+            name: payer.split('@')[0],
+            created_at: tx.created_at,
+            room_id: tx.room_id || 'Transaction Participant',
+            role: 'Participant'
           });
-        } else if (email && seen.has(email)) {
-          const existing = combined.find(c => c.email === email);
-          if (existing && (!existing.name || existing.name === 'Roommate')) {
-            existing.name = u.nickname || u.name || email.split('@')[0];
-          }
-          if (existing && !existing.userCode) {
-            existing.userCode = email === 'sampathjogipusala123@gmail.com' ? 'USR-0000-8888' : (u.user_code || getUserCode(email || u.uid || u.id));
-          }
-          if (existing && !existing.createdAt && (u.created_at || u.createdAt)) {
-            existing.createdAt = u.created_at || u.createdAt;
-          }
         }
       });
 
-      // Also query transactions to discover active payer/member emails if any
-      try {
-        const { data: txEmails } = await supabase.from('transactions').select('paid_by, created_by, created_at').limit(200);
-        (txEmails || []).forEach(tx => {
-          if (tx.paid_by && tx.paid_by.includes('@')) {
-            const key = tx.paid_by.trim().toLowerCase();
-            if (!seen.has(key)) {
-              seen.add(key);
-              combined.push({
-                id: tx.created_by || key,
-                userCode: getUserCode(key),
-                name: key.split('@')[0],
-                email: key,
-                roomId: 'Transaction Participant',
-                createdAt: tx.created_at || null,
-                role: 'Participant'
-              });
-            }
+      // 4. Ingest from known room registries (userRooms, commanderRooms, roomsList)
+      const allKnownRooms = [
+        ...(roomsList || []),
+        ...(userRoomsRef.current || []),
+        ...(commanderRoomsRef.current || [])
+      ];
+      allKnownRooms.forEach(r => {
+        const creator = cleanVal(r.created_by || r.createdBy);
+        if (creator && creator !== 'anonymous' && creator !== 'null') {
+          if (creator.includes('@')) {
+            registerOrMerge({ email: creator, room_id: r.id || r.roomId, role: 'Host' });
+          } else {
+            registerOrMerge({ id: creator, room_id: r.id || r.roomId, role: 'Host' });
+          }
+        }
+        if (Array.isArray(r.members)) {
+          r.members.forEach(mem => registerOrMerge({ ...mem, room_id: r.id || r.roomId }));
+        }
+      });
+
+      // 5. Ingest activation requests and banned users registry
+      if (Array.isArray(activationRequestsRef.current)) {
+        activationRequestsRef.current.forEach(req => {
+          if (req) {
+            registerOrMerge({
+              id: req.userId || req.id,
+              uid: req.userId || req.id,
+              email: req.email,
+              name: req.name,
+              userCode: req.userCode || req.code,
+              role: 'User'
+            });
           }
         });
-      } catch (e) {}
+      }
+      if (Array.isArray(bannedUsersRef.current)) {
+        bannedUsersRef.current.forEach(b => {
+          if (b) {
+            registerOrMerge({
+              id: b.id || b.uid,
+              uid: b.id || b.uid,
+              email: b.email || b.identifier,
+              name: b.name,
+              userCode: b.userCode,
+              role: 'Suspended'
+            });
+          }
+        });
+      }
 
+      // 6. Check local member caches in localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && (k.startsWith('tallyin_cache_members_') || k === 'members')) {
+              try {
+                const parsed = JSON.parse(localStorage.getItem(k));
+                if (Array.isArray(parsed)) {
+                  parsed.forEach(mem => registerOrMerge(mem));
+                }
+              } catch (e) {}
+            }
+          }
+        } catch (e) {}
+      }
+
+      // 7. Ensure current admin & super admin are explicitly populated
+      const curUser = userPropRef.current;
+      if (curUser?.email) {
+        registerOrMerge({
+          id: curUser.id || curUser.uid,
+          uid: curUser.id || curUser.uid,
+          email: curUser.email,
+          name: userNicknameRef.current || curUser.displayName || 'Sampath Jogi Pusala',
+          role: 'Super Admin',
+          photo_url: curUser.photoURL || curUser.user_metadata?.avatar_url
+        });
+      }
+      registerOrMerge({
+        id: 't8tECIWsjbW01Hm2e4B93bXVTuU2',
+        uid: 't8tECIWsjbW01Hm2e4B93bXVTuU2',
+        email: 'sampathjogipusala123@gmail.com',
+        name: 'Sampath Jogi Pusala',
+        userCode: 'USR-0000-8888',
+        role: 'Super Admin'
+      });
+
+      // 8. Resolve Inactivity
       let currentInactive = Array.isArray(customInactiveList) ? customInactiveList : inactiveUsersRef.current;
       if (!currentInactive || currentInactive.length === 0) {
         try {
@@ -3378,6 +3610,11 @@ Tallyin Team`;
       });
 
       setAllRegisteredUsers(enriched);
+      if (typeof window !== 'undefined' && enriched.length > 0) {
+        try {
+          localStorage.setItem('tallyin_admin_user_directory', JSON.stringify(enriched));
+        } catch (e) {}
+      }
     } catch (e) {
       console.warn("User directory fetch error:", e);
     }
@@ -3877,8 +4114,11 @@ Tallyin Team`;
       hasLoadedAdminInitialDataRef.current = true;
       fetchSystemStats();
       fetchFinancialsAndLogs();
+      fetchUserDirectory();
       fetchInactiveUsers().then((list) => {
         fetchUserDirectory(list);
+      }).catch(() => {
+        fetchUserDirectory();
       });
       fetchBannedUsers();
       fetchBanAppeals();
@@ -3999,6 +4239,12 @@ Tallyin Team`;
       fetchStudioTable(studioTable);
     }
   }, [isAuthorizedAdmin, activeTab, studioTable, fetchStudioTable]);
+
+  useEffect(() => {
+    if (isAuthorizedAdmin && activeTab === 'user_directory') {
+      fetchUserDirectory();
+    }
+  }, [isAuthorizedAdmin, activeTab, fetchUserDirectory]);
 
   // Room Commander Handlers
   const handleToggleFreezeRoom = async (room) => {
@@ -11372,16 +11618,7 @@ NOTIFY pgrst, 'reload schema';`;
           {(() => {
             const totalCount = allRegisteredUsers.length;
             const inactiveCount = allRegisteredUsers.filter(u => checkIsInactive(u, inactiveUsers) || u.isInactive).length;
-            const bannedCount = allRegisteredUsers.filter(u => {
-              const uEmail = (u.email || '').toLowerCase();
-              const uName = (u.name || '').toLowerCase();
-              const uId = (u.id || '').toLowerCase();
-              return bannedUsers.some(b => {
-                const bId = (b.identifier || b.email || b.id || '').toLowerCase();
-                const bName = (b.name || '').toLowerCase();
-                return (uEmail && uEmail !== 'n/a' && bId === uEmail) || (uName && bName === uName) || (uId && bId === uId);
-              });
-            }).length;
+            const bannedCount = allRegisteredUsers.filter(u => checkIsBannedUser(u)).length;
             const pendingRequests = (activationRequests || []).filter(r => r && r.status === 'PENDING');
             const activeCount = totalCount - inactiveCount - bannedCount;
 
@@ -11549,14 +11786,7 @@ NOTIFY pgrst, 'reload schema';`;
                 .filter(u => {
                   const isInactive = checkIsInactive(u, inactiveUsers) || Boolean(u.isInactive);
                   const pendingReq = getPendingActivationRequest(u);
-                  const isBanned = bannedUsers.some(b => {
-                    const bId = (b.identifier || b.email || b.id || '').toLowerCase();
-                    const bName = (b.name || '').toLowerCase();
-                    const uEmail = (u.email || '').toLowerCase();
-                    const uName = (u.name || '').toLowerCase();
-                    const uId = (u.id || '').toLowerCase();
-                    return (uEmail && uEmail !== 'n/a' && bId === uEmail) || (uName && bName === uName) || (uId && bId === uId);
-                  });
+                  const isBanned = checkIsBannedUser(u);
 
                   if (userDirectoryFilter === 'active' && (isInactive || isBanned)) return false;
                   if (userDirectoryFilter === 'inactive' && !isInactive) return false;
@@ -11578,14 +11808,7 @@ NOTIFY pgrst, 'reload schema';`;
                   const pendingReq = getPendingActivationRequest(u);
                   const userCode = (u.email?.toLowerCase() === 'sampathjogipusala123@gmail.com') ? 'USR-0000-8888' : (u.userCode || getUserCode(u.email || u.id || u.name));
                   const userTarget = (u.email && u.email !== 'N/A') ? u.email : (u.name || u.id);
-                  const isBanned = bannedUsers.some(b => {
-                    const bId = (b.identifier || b.email || b.id || '').toLowerCase();
-                    const bName = (b.name || '').toLowerCase();
-                    const uEmail = (u.email || '').toLowerCase();
-                    const uName = (u.name || '').toLowerCase();
-                    const uId = (u.id || '').toLowerCase();
-                    return (uEmail && uEmail !== 'n/a' && bId === uEmail) || (uName && bName === uName) || (uId && bId === uId);
-                  });
+                  const isBanned = checkIsBannedUser(u);
 
                   return (
                     <div 
