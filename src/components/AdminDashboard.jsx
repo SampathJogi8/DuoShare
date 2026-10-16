@@ -2151,10 +2151,13 @@ export default function AdminDashboard({
   const [isSendingComeBackEmails, setIsSendingComeBackEmails] = useState(false);
   const [inactiveAuditMessage, setInactiveAuditMessage] = useState(null);
 
+  const inactiveUsersRef = useRef(inactiveUsers);
+  inactiveUsersRef.current = inactiveUsers;
+
   // Helper to reliably check if a user is in the inactive users registry
-  const checkIsInactive = useCallback((u, list = inactiveUsers) => {
+  const checkIsInactive = useCallback((u, list) => {
     if (!u) return false;
-    const targetList = Array.isArray(list) ? list : (inactiveUsers || []);
+    const targetList = Array.isArray(list) ? list : (inactiveUsersRef.current || []);
     if (targetList.length === 0) return false;
 
     const uEmail = String(u.email || '').trim().toLowerCase();
@@ -2171,7 +2174,7 @@ export default function AdminDashboard({
              (uCode && uCode !== 'n/a' && xId === uCode) ||
              (uName && xId === uName);
     });
-  }, [inactiveUsers]);
+  }, []);
 
   // Activation Requests Registry (Users requesting codes to reactivate inactive accounts)
   const [activationRequests, setActivationRequests] = useState(() => {
@@ -3355,7 +3358,7 @@ Tallyin Team`;
         });
       } catch (e) {}
 
-      let currentInactive = Array.isArray(customInactiveList) ? customInactiveList : inactiveUsers;
+      let currentInactive = Array.isArray(customInactiveList) ? customInactiveList : inactiveUsersRef.current;
       if (!currentInactive || currentInactive.length === 0) {
         try {
           const saved = localStorage.getItem('tallyin_inactive_users');
@@ -3377,7 +3380,7 @@ Tallyin Team`;
     } catch (e) {
       console.warn("User directory fetch error:", e);
     }
-  }, [inactiveUsers, checkIsInactive]);
+  }, [checkIsInactive]);
 
   // Comprehensive User Audit Report Builder
   const handleInspectUserReport = useCallback(async (userObj) => {
@@ -3866,9 +3869,11 @@ Tallyin Team`;
     }
   }, []);
 
+  const hasLoadedAdminInitialDataRef = useRef(false);
+
   useEffect(() => {
-    if (isAuthorizedAdmin) {
-      measurePing();
+    if (isAuthorizedAdmin && !hasLoadedAdminInitialDataRef.current) {
+      hasLoadedAdminInitialDataRef.current = true;
       fetchSystemStats();
       fetchFinancialsAndLogs();
       fetchInactiveUsers().then((list) => {
@@ -3880,7 +3885,7 @@ Tallyin Team`;
       fetchEmailConfiguration();
       fetchActivationRequests();
     }
-  }, [isAuthorizedAdmin, measurePing, fetchSystemStats, fetchFinancialsAndLogs, fetchInactiveUsers, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry, fetchEmailConfiguration, fetchActivationRequests]);
+  }, [isAuthorizedAdmin, fetchSystemStats, fetchFinancialsAndLogs, fetchInactiveUsers, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry, fetchEmailConfiguration, fetchActivationRequests]);
 
   // Live heartbeat polling loop for realtime activity feed and platform financials
   useEffect(() => {
@@ -6767,7 +6772,7 @@ Tallyin Team`;
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${isSystemMaintenanceActive ? 'bg-rose-500 animate-ping' : 'bg-emerald-500 shadow-[0_0_6px_#10B981]'}`} />
               <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 font-mono">
-                {pingMs !== null ? `${pingMs}ms` : 'Syncing'}
+                {pingMs !== null ? `${pingMs}ms` : (isPinging ? 'Pinging...' : 'Ready')}
               </span>
             </div>
             <button

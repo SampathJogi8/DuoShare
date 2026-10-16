@@ -300,18 +300,22 @@ export default function AnnouncementBanner({
   const [selectedImageModal, setSelectedImageModal] = useState(false);
   const timerRef = useRef(null);
 
-  if (!banner || !banner.active) return null;
-
-  const bannerId = banner.id || banner.createdAt || banner.text;
-  const themeKey = BANNER_THEMES[banner.theme] ? banner.theme : 'emerald';
-  const theme = BANNER_THEMES[themeKey];
-  const placement = banner.placement || 'top_inline';
-  const autoDismissSeconds = Number(banner.autoDismissSeconds) || 0;
-  const frequency = banner.frequency || 'until_dismissed';
-  const isDismissible = banner.isDismissible !== false;
+  const isValidBanner = Boolean(banner && banner.active);
+  const bannerId = banner?.id || banner?.createdAt || banner?.text || '';
+  const themeKey = (banner?.theme && BANNER_THEMES[banner?.theme]) ? banner.theme : 'emerald';
+  const theme = BANNER_THEMES[themeKey] || BANNER_THEMES.emerald;
+  const placement = banner?.placement || 'top_inline';
+  const autoDismissSeconds = Number(banner?.autoDismissSeconds) || 0;
+  const frequency = banner?.frequency || 'until_dismissed';
+  const isDismissible = banner?.isDismissible !== false;
 
   // Check frequency rules & impression tracking on client
   useEffect(() => {
+    if (!isValidBanner) {
+      setIsClientVisible(false);
+      return;
+    }
+
     if (isPreview) {
       setIsClientVisible(true);
       return;
@@ -369,7 +373,7 @@ export default function AnnouncementBanner({
     } catch (e) {}
 
     setIsClientVisible(true);
-  }, [bannerId, frequency, isDismissed, isPreview]);
+  }, [bannerId, frequency, isDismissed, isPreview, isValidBanner]);
 
   const handleDismissAction = useCallback(() => {
     setIsClientVisible(false);
@@ -380,7 +384,7 @@ export default function AnnouncementBanner({
 
   // Handle auto-dismiss timer countdown
   useEffect(() => {
-    if (isPreview || autoDismissSeconds <= 0 || !isClientVisible) return;
+    if (!isValidBanner || isPreview || autoDismissSeconds <= 0 || !isClientVisible) return;
 
     setSecondsRemaining(autoDismissSeconds);
 
@@ -400,11 +404,11 @@ export default function AnnouncementBanner({
     timerRef.current = interval;
 
     return () => clearInterval(interval);
-  }, [autoDismissSeconds, isClientVisible, isPaused, isPreview, bannerId, handleDismissAction]);
+  }, [isValidBanner, autoDismissSeconds, isClientVisible, isPaused, isPreview, bannerId, handleDismissAction]);
 
   // Keyboard shortcut listener: Press Escape to close modal dialog
   useEffect(() => {
-    if (placement !== 'modal_dialog' || isPreview || !isClientVisible) return;
+    if (!isValidBanner || placement !== 'modal_dialog' || isPreview || !isClientVisible) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         handleDismissAction();
@@ -412,13 +416,13 @@ export default function AnnouncementBanner({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [placement, isPreview, isClientVisible]);
+  }, [isValidBanner, placement, isPreview, isClientVisible, handleDismissAction]);
 
   const handleLinkClick = (e) => {
     if (onActionClick) {
-      onActionClick(banner.actionUrl);
+      onActionClick(banner?.actionUrl);
     }
-    if (banner.actionUrl) {
+    if (banner?.actionUrl) {
       if (banner.actionUrl.startsWith('http://') || banner.actionUrl.startsWith('https://')) {
         window.open(banner.actionUrl, '_blank', 'noopener,noreferrer');
       } else if (banner.actionUrl.startsWith('#')) {
@@ -427,7 +431,7 @@ export default function AnnouncementBanner({
     }
   };
 
-  if (!isClientVisible && !isPreview) return null;
+  if (!isValidBanner || (!isClientVisible && !isPreview)) return null;
 
   // Icon chooser helper
   const renderIcon = () => {
