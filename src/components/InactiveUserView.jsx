@@ -675,7 +675,7 @@ Tallyin Support & Administration`;
 
             <p className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
               {isMarkedByAdmin ? (
-                <>Your account access has been placed on an <strong>administrative hold</strong> by the Platform Admin ({daysInactive} days inactive). To restore access, request an activation code or enter your verification code below.</>
+                <>Your account access has been placed on an <strong>administrative hold</strong> by the Platform Admin{inactiveInfo?.reason && inactiveInfo.reason !== 'Marked Inactive by Admin' ? ` for "${inactiveInfo.reason}"` : ' pending account / policy review'}. To restore access, submit an activation request below for admin approval.</>
               ) : (
                 <>Your account has entered dormant status due to <strong>{daysInactive}+ days without activity</strong>. Reactivating restores full access immediately.</>
               )}
@@ -723,12 +723,12 @@ Tallyin Support & Administration`;
                 {isMarkedByAdmin ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-orange-100 text-orange-800 dark:bg-orange-950/70 dark:text-orange-300 font-bold border border-orange-200 dark:border-orange-800">
                     <ShieldAlert className="w-3 h-3 text-orange-600 dark:text-orange-400" />
-                    Marked Inactive by Admin ({daysInactive}d inactive)
+                    Admin Hold{inactiveInfo?.reason && inactiveInfo.reason !== 'Marked Inactive by Admin' ? `: ${inactiveInfo.reason}` : ' (Policy / Admin Action)'}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-800">
                     <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                    Inactive ({daysInactive}+ Days Dormant)
+                    Dormant ({daysInactive}+ Days Inactive)
                   </span>
                 )}
               </div>

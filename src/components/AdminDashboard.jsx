@@ -3009,7 +3009,8 @@ Tallyin Team`;
   };
 
   // Manually toggle active/inactive status for a single user
-  const handleToggleUserInactive = async (userObj) => {
+  // Manually toggle active/inactive status for a single user
+  const handleToggleUserInactive = async (userObj, providedReason) => {
     if (!userObj) return;
     const identifier = (userObj.email && userObj.email !== 'N/A' && userObj.email !== 'No Email') 
       ? userObj.email.trim().toLowerCase() 
@@ -3018,6 +3019,8 @@ Tallyin Team`;
     const isCurrentlyInactive = checkIsInactive(userObj, inactiveUsers);
 
     let updated;
+    let finalReason = null;
+
     if (isCurrentlyInactive) {
       updated = inactiveUsers.filter(x => {
         const xId = (typeof x === 'string' ? x : (x.identifier || x.email || x.id || x.userCode || '')).trim().toLowerCase();
@@ -3032,6 +3035,22 @@ Tallyin Team`;
       });
       if (triggerToast) triggerToast(`Reactivated account for ${userObj.name || userObj.userCode || 'User'}!`);
     } else {
+      if (providedReason) {
+        finalReason = providedReason;
+      } else if (typeof window !== 'undefined') {
+        const defaultPromptReason = (userObj.violationsCount > 0 || (Array.isArray(userObj.violations) && userObj.violations.length > 0)) 
+          ? 'Policy & Community Guidelines Violation' 
+          : 'Administrative Hold';
+        const input = window.prompt(
+          `Specify reason for placing ${userObj.name || userObj.userCode} on Administrative Hold (e.g. Terms Violation, Disciplinary Action, Suspicious Activity, Policy Review):`,
+          defaultPromptReason
+        );
+        if (input === null) return; // User cancelled prompt
+        finalReason = input.trim() || defaultPromptReason;
+      } else {
+        finalReason = 'Administrative Hold';
+      }
+
       updated = [
         ...inactiveUsers,
         {
@@ -3040,12 +3059,12 @@ Tallyin Team`;
           name: userObj.name || 'User',
           userCode: userObj.userCode,
           markedBy: 'ADMIN',
-          reason: 'Marked Inactive by Admin',
+          reason: finalReason,
           daysInactive: userObj.daysSinceLastActive || 0,
           markedAt: new Date().toISOString()
         }
       ];
-      if (triggerToast) triggerToast(`Marked account for ${userObj.name || userObj.userCode || 'User'} as Inactive (by Admin).`);
+      if (triggerToast) triggerToast(`Placed ${userObj.name || userObj.userCode || 'User'} on Administrative Hold (${finalReason}).`);
     }
 
     await saveInactiveUsers(updated);
@@ -3059,7 +3078,7 @@ Tallyin Team`;
         ...u, 
         isInactive: !isCurrentlyInactive, 
         markedBy: !isCurrentlyInactive ? 'ADMIN' : null,
-        inactiveReason: !isCurrentlyInactive ? 'Marked Inactive by Admin' : null,
+        inactiveReason: !isCurrentlyInactive ? finalReason : null,
         daysSinceLastActive: !isCurrentlyInactive ? (u.daysSinceLastActive || 0) : 0 
       } : u;
     }));
@@ -3074,7 +3093,7 @@ Tallyin Team`;
         ...prev, 
         isInactive: !isCurrentlyInactive, 
         markedBy: !isCurrentlyInactive ? 'ADMIN' : null,
-        inactiveReason: !isCurrentlyInactive ? 'Marked Inactive by Admin' : null,
+        inactiveReason: !isCurrentlyInactive ? finalReason : null,
         daysSinceLastActive: !isCurrentlyInactive ? (prev.daysSinceLastActive || 0) : 0 
       } : prev;
     });
@@ -3874,7 +3893,7 @@ Tallyin Team`;
 
         const isInactive = Boolean(inactiveRec);
         const markedBy = inactiveRec?.markedBy || (isInactive ? (inactiveRec?.daysInactive >= 90 ? 'SYSTEM_DORMANCY' : 'ADMIN') : null);
-        const inactiveReason = inactiveRec?.reason || (markedBy === 'ADMIN' ? 'Marked Inactive by Admin' : (isInactive ? 'Inactive (90+ Days)' : null));
+        const inactiveReason = inactiveRec?.reason || (markedBy === 'ADMIN' ? 'Administrative Hold & Policy Review' : (isInactive ? 'Dormant (90+ Days Inactive)' : null));
 
         // Calculate account age in days
         let accountAgeDays = 0;
@@ -4056,7 +4075,7 @@ Tallyin Team`;
       });
       const isInactive = Boolean(inactiveRec) || Boolean(userObj.isInactive);
       const markedBy = inactiveRec?.markedBy || userObj.markedBy || (isInactive ? (userObj.daysSinceLastActive >= 90 ? 'SYSTEM_DORMANCY' : 'ADMIN') : null);
-      const inactiveReason = inactiveRec?.reason || userObj.inactiveReason || (markedBy === 'ADMIN' ? 'Marked Inactive by Admin' : (isInactive ? 'Inactive (90+ Days)' : null));
+      const inactiveReason = inactiveRec?.reason || userObj.inactiveReason || (markedBy === 'ADMIN' ? 'Administrative Hold & Policy Review' : (isInactive ? 'Dormant (90+ Days Inactive)' : null));
 
       // Determine Latest Activity Timestamp across transactions, rooms, disputes, logins
       const activityDates = [
@@ -12282,14 +12301,14 @@ NOTIFY pgrst, 'reload schema';`;
                             </span>
                           ) : isInactive ? (
                             isMarkedByAdmin ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-300 border border-orange-300 dark:border-orange-800" title="Account manually set to inactive by Administrator">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-300 border border-orange-300 dark:border-orange-800" title={inRec?.reason || u.inactiveReason || "Account on Administrative Hold by Administrator"}>
                                 <ShieldAlert className="w-3 h-3 text-orange-600 dark:text-orange-400" />
-                                Marked Inactive by Admin ({u.daysSinceLastActive !== undefined ? u.daysSinceLastActive : 0}d inactive)
+                                {inRec?.reason && inRec.reason !== 'Marked Inactive by Admin' ? `Admin Hold: ${inRec.reason}` : 'Admin Hold'}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800" title="Account inactive due to 90+ days of inactivity">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800" title="Account dormant due to 90+ days of inactivity">
                                 <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                                Inactive ({u.daysSinceLastActive !== undefined ? u.daysSinceLastActive : 90}d+)
+                                Dormant ({u.daysSinceLastActive !== undefined ? u.daysSinceLastActive : 90}d+)
                               </span>
                             )
                           ) : (
@@ -12330,7 +12349,7 @@ NOTIFY pgrst, 'reload schema';`;
                             title={u.daysSinceLastActive ? `Last Active: ~${new Date(Date.now() - (u.daysSinceLastActive * 86400000)).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}` : undefined}
                           >
                             {isMarkedByAdmin 
-                              ? `Action: Admin Hold • ${u.daysSinceLastActive !== undefined ? u.daysSinceLastActive : 0}d inactive` 
+                              ? `Action: Admin Hold • ${inRec?.reason && inRec.reason !== 'Marked Inactive by Admin' ? inRec.reason : (u.inactiveReason && u.inactiveReason !== 'Marked Inactive by Admin' ? u.inactiveReason : 'Policy & Admin Review')}` 
                               : `Dormant: ${u.daysSinceLastActive || 90}+ days inactive`}
                           </span>
                         ) : (
@@ -17067,12 +17086,12 @@ NOTIFY pgrst, 'reload schema';`;
                             isMarkedByAdmin ? (
                               <>
                                 <ShieldAlert className="w-3 h-3 text-orange-600 dark:text-orange-400" />
-                                <span>Marked Inactive by Admin ({selectedUserDossier.daysSinceLastActive !== undefined ? selectedUserDossier.daysSinceLastActive : 0}d inactive)</span>
+                                <span>Admin Hold • {selectedUserDossier.inactiveReason && selectedUserDossier.inactiveReason !== 'Marked Inactive by Admin' ? selectedUserDossier.inactiveReason : 'Policy / Admin Action'}</span>
                               </>
                             ) : (
                               <>
                                 <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                                <span>Inactive ({selectedUserDossier.daysSinceLastActive || 90}+ Days Dormant)</span>
+                                <span>Dormant ({selectedUserDossier.daysSinceLastActive || 90}+ Days Inactive)</span>
                               </>
                             )
                           ) : (
