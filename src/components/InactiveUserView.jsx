@@ -241,8 +241,10 @@ export default function InactiveUserView({
     setSuccessMessage(null);
 
     try {
-      // Generate a secure 6-digit numeric activation code
-      const generatedCode = String(Math.floor(100000 + Math.random() * 900000));
+      // Generate a secure cryptographically random 6-digit numeric activation code (100000 - 999999)
+      const randomBuf = new Uint32Array(1);
+      (typeof window !== 'undefined' && window.crypto ? window.crypto : crypto).getRandomValues(randomBuf);
+      const generatedCode = String(100000 + (randomBuf[0] % 900000));
       const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tallyin.vercel.app';
       const activationLink = `${origin}/?activate_code=${generatedCode}&email=${encodeURIComponent(cleanEmail)}`;
 
@@ -728,7 +730,7 @@ Tallyin Support & Administration`;
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handlePerformActivation();
                   }}
-                  placeholder="e.g. 849201"
+                  placeholder="Enter 6-digit code"
                   className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:border-emerald-500 dark:focus:border-emerald-400 rounded-xl text-center font-mono text-base font-black tracking-widest text-slate-900 dark:text-white outline-none transition-all placeholder:text-slate-400 placeholder:tracking-normal placeholder:font-sans placeholder:text-xs"
                 />
                 <button
