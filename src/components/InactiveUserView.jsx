@@ -126,11 +126,50 @@ export default function InactiveUserView({
     } catch (e) {}
   }, [fetchActivationRequests]);
 
-  // Polling to detect if Admin activated the account or approved the request remotely
+  // Realtime subscription and fast polling to detect if Admin activated the account or approved the request remotely
   useEffect(() => {
+    // 1. Instantaneous Supabase Realtime Channel (< 100ms)
+    let channel;
+    try {
+      channel = supabase.channel('system_admin_channel')
+        .on('broadcast', { event: 'INACTIVE_USERS_UPDATED' }, (payload) => {
+          if (payload?.payload?.inactiveUsers && Array.isArray(payload.payload.inactiveUsers)) {
+            const inactiveList = payload.payload.inactiveUsers;
+            const stillInactive = inactiveList.some(item => {
+              if (!item) return false;
+              const xId = (typeof item === 'string' ? item : (item.identifier || item.email || item.id || item.userCode || '')).trim().toLowerCase();
+              return (cleanEmail && cleanEmail !== 'n/a' && xId === cleanEmail) ||
+                     (userUid && xId === userUid.toLowerCase()) ||
+                     (userCode && xId === userCode.toLowerCase());
+            });
+            if (!stillInactive) {
+              localStorage.setItem('tallyin_inactive_users', JSON.stringify(inactiveList));
+              if (onAccountActivated) onAccountActivated();
+            }
+          }
+        })
+        .on('broadcast', { event: 'USER_REACTIVATED' }, (payload) => {
+          if (payload?.payload?.inactiveUsers && Array.isArray(payload.payload.inactiveUsers)) {
+            const inactiveList = payload.payload.inactiveUsers;
+            const stillInactive = inactiveList.some(item => {
+              if (!item) return false;
+              const xId = (typeof item === 'string' ? item : (item.identifier || item.email || item.id || item.userCode || '')).trim().toLowerCase();
+              return (cleanEmail && cleanEmail !== 'n/a' && xId === cleanEmail) ||
+                     (userUid && xId === userUid.toLowerCase()) ||
+                     (userCode && xId === userCode.toLowerCase());
+            });
+            if (!stillInactive) {
+              localStorage.setItem('tallyin_inactive_users', JSON.stringify(inactiveList));
+              if (onAccountActivated) onAccountActivated();
+            }
+          }
+        })
+        .subscribe();
+    } catch (e) {}
+
+    // 2. High-frequency live periodic polling (1.5 seconds)
     const interval = setInterval(async () => {
       try {
-        // Check rooms table __SYSTEM_INACTIVE_USERS__
         const { data } = await supabase
           .from('rooms')
           .select('name')
@@ -155,9 +194,14 @@ export default function InactiveUserView({
           }
         }
       } catch (err) {}
-    }, 3500);
+    }, 1500);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (channel) {
+        try { supabase.removeChannel(channel); } catch (e) {}
+      }
+    };
   }, [cleanEmail, userUid, userCode, onAccountActivated]);
 
   // Save updated requests list across Supabase and localStorage
@@ -214,7 +258,28 @@ export default function InactiveUserView({
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('tallyin_inactive_users', JSON.stringify(cleaned));
+      window.dispatchEvent(new CustomEvent('tallyin_inactive_users_updated', { detail: cleaned }));
     }
+
+    try {
+      const chan = supabase.channel('system_admin_channel');
+      chan.send({
+        type: 'broadcast',
+        event: 'USER_REACTIVATED',
+        payload: {
+          inactiveUsers: cleaned,
+          reactivatedUser: cleanEmail || cleanName || userCode,
+          userCode,
+          email: cleanEmail
+        }
+      }).catch(e => console.warn(e));
+      chan.send({
+        type: 'broadcast',
+        event: 'INACTIVE_USERS_UPDATED',
+        payload: { inactiveUsers: cleaned }
+      }).catch(e => console.warn(e));
+    } catch (e) {}
+
     try {
       await supabase
         .from('rooms')
@@ -431,6 +496,14 @@ Tallyin Support & Administration`;
       }
 
       setPendingRequest(newReq);
+      try {
+        const chan = supabase.channel('system_admin_channel');
+        chan.send({
+          type: 'broadcast',
+          event: 'ACTIVATION_REQUEST_CREATED',
+          payload: { request: newReq }
+        }).catch(e => console.warn(e));
+      } catch (e) {}
       if (emailDispatched) {
         setSuccessMessage(`A 6-digit activation code was sent to ${cleanEmail}. Check your inbox or enter the code below to unlock access.`);
         if (triggerToast) triggerToast(`Activation code sent to ${cleanEmail}!`);

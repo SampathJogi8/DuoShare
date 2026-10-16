@@ -1539,6 +1539,8 @@ export default function AdminDashboard({
 
   const fetchFinancialsRef = useRef(fetchFinancialsAndLogs);
   fetchFinancialsRef.current = fetchFinancialsAndLogs;
+  const fetchInactiveUsersRef = useRef(null);
+  const fetchActivationRequestsRef = useRef(null);
 
   // Dedicated realtime channel for Admin Dashboard database changes
   useEffect(() => {
@@ -1634,6 +1636,40 @@ export default function AdminDashboard({
         if (payload?.payload?.outbox && Array.isArray(payload.payload.outbox)) {
           setEmailOutboxLog(payload.payload.outbox);
         }
+      })
+      .on('broadcast', { event: 'INACTIVE_USERS_UPDATED' }, (payload) => {
+        if (payload?.payload?.inactiveUsers && Array.isArray(payload.payload.inactiveUsers)) {
+          setInactiveUsers(payload.payload.inactiveUsers);
+          try {
+            localStorage.setItem('tallyin_inactive_users', JSON.stringify(payload.payload.inactiveUsers));
+          } catch (e) {}
+        }
+        if (fetchInactiveUsersRef.current) {
+          fetchInactiveUsersRef.current();
+        }
+      })
+      .on('broadcast', { event: 'USER_REACTIVATED' }, (payload) => {
+        if (payload?.payload?.inactiveUsers && Array.isArray(payload.payload.inactiveUsers)) {
+          setInactiveUsers(payload.payload.inactiveUsers);
+          try {
+            localStorage.setItem('tallyin_inactive_users', JSON.stringify(payload.payload.inactiveUsers));
+          } catch (e) {}
+        }
+        if (payload?.payload?.reactivatedUser && triggerToast) {
+          triggerToast(`⚡ User ${payload.payload.reactivatedUser} reactivated in real time!`);
+        }
+        if (fetchInactiveUsersRef.current) fetchInactiveUsersRef.current();
+        if (fetchActivationRequestsRef.current) fetchActivationRequestsRef.current();
+      })
+      .on('broadcast', { event: 'ACTIVATION_REQUEST_CREATED' }, (payload) => {
+        if (payload?.payload?.request) {
+          const req = payload.payload.request;
+          setActivationRequests(prev => [req, ...prev.filter(r => r.id !== req.id)]);
+          if (triggerToast) {
+            triggerToast(`🔔 Reactivation request received: ${req.name || req.email} (${req.code})`);
+          }
+        }
+        if (fetchActivationRequestsRef.current) fetchActivationRequestsRef.current();
       })
       .subscribe();
     adminChannelRef.current = channel;
@@ -2300,6 +2336,7 @@ export default function AdminDashboard({
     }
     return [];
   }, []);
+  fetchActivationRequestsRef.current = fetchActivationRequests;
 
   const getPendingActivationRequest = useCallback((u, list = activationRequests) => {
     if (!u) return null;
@@ -2347,6 +2384,21 @@ export default function AdminDashboard({
       return r;
     });
     await saveActivationRequests(updatedRequests);
+
+    // Broadcast USER_REACTIVATED via persistent admin channel
+    try {
+      const chan = adminChannelRef.current || supabase.channel('system_admin_channel');
+      chan.send({
+        type: 'broadcast',
+        event: 'USER_REACTIVATED',
+        payload: {
+          inactiveUsers: updatedInactive,
+          reactivatedUser: req.email || req.name || req.userCode,
+          userCode: req.userCode,
+          email: req.email
+        }
+      }).catch(e => console.warn(e));
+    } catch (e) {}
 
     // 3. Immediately update UI states
     setAllRegisteredUsers(prev => prev.map(u => {
@@ -2513,15 +2565,25 @@ Tallyin Security & Administration Team`;
       window.dispatchEvent(new CustomEvent('tallyin_inactive_users_updated', { detail: updatedList }));
     }
 
-    // 1. Broadcast instantaneously to all active users (< 100ms)
+    // 1. Broadcast instantaneously to all active users (< 100ms) across channels
     try {
-      const channel = supabase.channel('system_user_governance_inactive');
-      await channel.subscribe();
-      await channel.send({
+      const chan = adminChannelRef.current || supabase.channel('system_admin_channel');
+      await chan.send({
         type: 'broadcast',
         event: 'INACTIVE_USERS_UPDATED',
         payload: { inactiveUsers: updatedList }
       });
+    } catch (e) {
+      console.warn("Broadcast inactive error:", e);
+    }
+
+    try {
+      const govChan = supabase.channel('system_user_governance_inactive');
+      govChan.send({
+        type: 'broadcast',
+        event: 'INACTIVE_USERS_UPDATED',
+        payload: { inactiveUsers: updatedList }
+      }).catch(e => console.warn(e));
     } catch (e) {}
 
     // 2. Persist to rooms table (__SYSTEM_INACTIVE_USERS__)
@@ -2599,6 +2661,7 @@ Tallyin Security & Administration Team`;
     }
     return [];
   }, []);
+  fetchInactiveUsersRef.current = fetchInactiveUsers;
 
   // Generate personalized "We Miss You / Come Back to Tallyin" email
   const getPersonalizedComeBackEmail = (name, userCode, email, daysInactive = 90) => {
@@ -4298,16 +4361,29 @@ Tallyin Team`;
     }
   }, [isAuthorizedAdmin, fetchSystemStats, fetchFinancialsAndLogs, fetchInactiveUsers, fetchUserDirectory, fetchBannedUsers, fetchBanAppeals, fetchCoAdminAckRegistry, fetchEmailConfiguration, fetchActivationRequests]);
 
-  // Live heartbeat polling loop for realtime activity feed and platform financials
+  // Live heartbeat polling loop for realtime activity feed, platform financials, and user governance
   useEffect(() => {
     if (!isAuthorizedAdmin) return;
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         fetchFinancialsAndLogs();
+        if (fetchInactiveUsersRef.current) {
+          fetchInactiveUsersRef.current().then(list => {
+            if (list) {
+              setAllRegisteredUsers(prev => prev.map(u => ({
+                ...u,
+                isInactive: checkIsInactive(u, list)
+              })));
+            }
+          }).catch(() => {});
+        }
+        if (fetchActivationRequestsRef.current) {
+          fetchActivationRequestsRef.current();
+        }
       }
-    }, 3000);
+    }, 2500);
     return () => clearInterval(interval);
-  }, [isAuthorizedAdmin, fetchFinancialsAndLogs]);
+  }, [isAuthorizedAdmin, fetchFinancialsAndLogs, checkIsInactive]);
 
   // Fetch Rooms for Room Commander with members count
   const fetchCommanderRooms = useCallback(async () => {

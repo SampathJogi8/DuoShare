@@ -1563,9 +1563,31 @@ export default function App() {
         }
       })
       .on('broadcast', { event: 'USER_BAN_UPDATE' }, (payload) => {
-        if (payload?.payload?.bannedUsers) {
+        if (payload?.payload?.bannedUsers && Array.isArray(payload.payload.bannedUsers)) {
           setBannedUsers(payload.payload.bannedUsers);
           localStorage.setItem('tallyin_banned_users', JSON.stringify(payload.payload.bannedUsers));
+        }
+      })
+      .on('broadcast', { event: 'USER_UNBANNED' }, (payload) => {
+        if (payload?.payload?.bannedUsers && Array.isArray(payload.payload.bannedUsers)) {
+          setBannedUsers(payload.payload.bannedUsers);
+          localStorage.setItem('tallyin_banned_users', JSON.stringify(payload.payload.bannedUsers));
+        }
+      })
+      .on('broadcast', { event: 'INACTIVE_USERS_UPDATED' }, (payload) => {
+        if (payload?.payload?.inactiveUsers && Array.isArray(payload.payload.inactiveUsers)) {
+          setInactiveUsers(payload.payload.inactiveUsers);
+          try {
+            localStorage.setItem('tallyin_inactive_users', JSON.stringify(payload.payload.inactiveUsers));
+          } catch (e) {}
+        }
+      })
+      .on('broadcast', { event: 'USER_REACTIVATED' }, (payload) => {
+        if (payload?.payload?.inactiveUsers && Array.isArray(payload.payload.inactiveUsers)) {
+          setInactiveUsers(payload.payload.inactiveUsers);
+          try {
+            localStorage.setItem('tallyin_inactive_users', JSON.stringify(payload.payload.inactiveUsers));
+          } catch (e) {}
         }
       })
       .on('broadcast', { event: 'CO_ADMINS' }, (payload) => {
@@ -2194,11 +2216,9 @@ export default function App() {
 
   const isUserBanned = Boolean(banInfo);
 
-  // Live polling while banned to detect unban in real time
+  // Live continuous polling to detect ban or unban in real time across devices
   useEffect(() => {
-    if (!isUserBanned) return;
-
-    const interval = setInterval(async () => {
+    const checkBanStatus = async () => {
       try {
         const { data } = await supabase
           .from('rooms')
@@ -2210,17 +2230,18 @@ export default function App() {
           const latestBanned = JSON.parse(data.name);
           setBannedUsers(latestBanned);
           localStorage.setItem('tallyin_banned_users', JSON.stringify(latestBanned));
-        } else {
+        } else if (data?.name === '[]') {
           setBannedUsers([]);
           localStorage.setItem('tallyin_banned_users', '[]');
         }
       } catch (err) {
-        console.warn("Unban polling check notice:", err);
+        console.warn("Ban/unban polling notice:", err);
       }
-    }, 3000);
+    };
 
+    const interval = setInterval(checkBanStatus, 2500);
     return () => clearInterval(interval);
-  }, [isUserBanned]);
+  }, []);
 
   // Inactive User Accounts Management & Reactivation State
   const [inactiveUsers, setInactiveUsers] = useState(() => {
@@ -2267,21 +2288,27 @@ export default function App() {
         if (typeof window !== 'undefined') {
           localStorage.setItem('tallyin_inactive_users', JSON.stringify(found));
         }
-      } else if (found === null) {
-        // If query returned null or empty list, keep current or sync
       }
     };
 
     fetchInactiveList();
 
-    // 1. Live Periodic Polling (every 3 seconds) to detect if admin marked or unmarked account in real time
-    const interval = setInterval(fetchInactiveList, 3000);
+    // 1. High-frequency live periodic polling (1.5 seconds) for real-time sync across platforms
+    const interval = setInterval(fetchInactiveList, 1500);
 
     // 2. Realtime Broadcast Channel Listener for instantaneous sync (< 100ms)
     let channel;
     try {
       channel = supabase.channel('system_user_governance_inactive')
         .on('broadcast', { event: 'INACTIVE_USERS_UPDATED' }, (payload) => {
+          if (payload?.payload?.inactiveUsers && Array.isArray(payload.payload.inactiveUsers)) {
+            setInactiveUsers(payload.payload.inactiveUsers);
+            try {
+              localStorage.setItem('tallyin_inactive_users', JSON.stringify(payload.payload.inactiveUsers));
+            } catch (e) {}
+          }
+        })
+        .on('broadcast', { event: 'USER_REACTIVATED' }, (payload) => {
           if (payload?.payload?.inactiveUsers && Array.isArray(payload.payload.inactiveUsers)) {
             setInactiveUsers(payload.payload.inactiveUsers);
             try {
@@ -2323,12 +2350,21 @@ export default function App() {
   const inactiveInfo = useMemo(() => {
     if (!inactiveUsers || inactiveUsers.length === 0) return null;
 
+    let urlEmail = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        urlEmail = params.get('email');
+      } catch (e) {}
+    }
+
     const possibleIdentifiers = [
       user?.email,
       user?.uid,
       user?.id,
       userNickname,
       codeLoginEmail,
+      urlEmail,
       typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_email') : null,
       typeof window !== 'undefined' ? localStorage.getItem('user_email') : null,
       typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_nickname') : null,
@@ -13565,7 +13601,7 @@ Generated by Tallyin on ${new Date().toLocaleDateString()}
   }
 
   // INACTIVE USER OVERRIDE (Block Dormant / Inactive Accounts Until Reactivated via Code or Link)
-  if (user && isUserInactive && currentView !== 'admin' && !isUserBanned) {
+  if (isUserInactive && currentView !== 'admin' && !isUserBanned) {
     const isUserAdmin = isUserAdminOrCoAdmin;
     return (
       <InactiveUserView
