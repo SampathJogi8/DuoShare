@@ -2267,11 +2267,40 @@ export default function App() {
         if (typeof window !== 'undefined') {
           localStorage.setItem('tallyin_inactive_users', JSON.stringify(found));
         }
+      } else if (found === null) {
+        // If query returned null or empty list, keep current or sync
       }
     };
 
     fetchInactiveList();
 
+    // 1. Live Periodic Polling (every 3 seconds) to detect if admin marked or unmarked account in real time
+    const interval = setInterval(fetchInactiveList, 3000);
+
+    // 2. Realtime Broadcast Channel Listener for instantaneous sync (< 100ms)
+    let channel;
+    try {
+      channel = supabase.channel('system_user_governance_inactive')
+        .on('broadcast', { event: 'INACTIVE_USERS_UPDATED' }, (payload) => {
+          if (payload?.payload?.inactiveUsers && Array.isArray(payload.payload.inactiveUsers)) {
+            setInactiveUsers(payload.payload.inactiveUsers);
+            try {
+              localStorage.setItem('tallyin_inactive_users', JSON.stringify(payload.payload.inactiveUsers));
+            } catch (e) {}
+          }
+        })
+        .subscribe();
+    } catch (err) {}
+
+    // 3. Same-window custom event listener (immediate sync within same browser session)
+    const handleCustomEvent = (e) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setInactiveUsers(e.detail);
+      }
+    };
+    window.addEventListener('tallyin_inactive_users_updated', handleCustomEvent);
+
+    // 4. Cross-tab storage listener
     const handleInactiveStorage = (e) => {
       if (e.key === 'tallyin_inactive_users' && e.newValue) {
         try {
@@ -2280,7 +2309,15 @@ export default function App() {
       }
     };
     window.addEventListener('storage', handleInactiveStorage);
-    return () => window.removeEventListener('storage', handleInactiveStorage);
+
+    return () => {
+      clearInterval(interval);
+      if (channel) {
+        try { supabase.removeChannel(channel); } catch (e) {}
+      }
+      window.removeEventListener('tallyin_inactive_users_updated', handleCustomEvent);
+      window.removeEventListener('storage', handleInactiveStorage);
+    };
   }, []);
 
   const inactiveInfo = useMemo(() => {

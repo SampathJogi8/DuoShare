@@ -2439,9 +2439,21 @@ Tallyin Security & Administration Team`;
     setInactiveUsers(updatedList);
     if (typeof window !== 'undefined') {
       localStorage.setItem('tallyin_inactive_users', JSON.stringify(updatedList));
+      window.dispatchEvent(new CustomEvent('tallyin_inactive_users_updated', { detail: updatedList }));
     }
 
-    // 1. Persist to rooms table (__SYSTEM_INACTIVE_USERS__)
+    // 1. Broadcast instantaneously to all active users (< 100ms)
+    try {
+      const channel = supabase.channel('system_user_governance_inactive');
+      await channel.subscribe();
+      await channel.send({
+        type: 'broadcast',
+        event: 'INACTIVE_USERS_UPDATED',
+        payload: { inactiveUsers: updatedList }
+      });
+    } catch (e) {}
+
+    // 2. Persist to rooms table (__SYSTEM_INACTIVE_USERS__)
     try {
       await supabase
         .from('rooms')
@@ -2457,7 +2469,7 @@ Tallyin Security & Administration Team`;
       console.warn("Supabase rooms table inactive users upsert notice:", err);
     }
 
-    // 2. Persist to system_settings
+    // 3. Persist to system_settings
     try {
       await supabase
         .from('system_settings')
