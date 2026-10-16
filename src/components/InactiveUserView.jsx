@@ -273,12 +273,110 @@ export default function InactiveUserView({
       const updated = [newReq, ...filtered];
       await saveActivationRequests(updated);
 
+      // 1. Immediately send the activation code email to the user
+      const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+      let emailDispatched = false;
+
+      if (cleanEmail && cleanEmail.includes('@') && cleanEmail.toLowerCase() !== 'n/a' && cleanEmail.toLowerCase() !== 'no email') {
+        const userSubject = `Your Tallyin Account Reactivation Code: ${generatedCode} 🔑`;
+        const userPlain = `Hello ${cleanName},
+
+You initiated reactivation for your Tallyin account (${userCode}).
+
+Your 6-digit Verification Code:
+${generatedCode}
+
+Or click the 1-click reactivation link below:
+${activationLink}
+
+Enter this code on the activation screen or click the link above to unlock your account immediately. All your roommate ledgers, rooms, and balances are 100% intact.
+
+Best regards,
+Tallyin Support & Administration`;
+
+        const userHtml = `<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #F8FAFC; padding: 24px;">
+  <div style="max-width: 520px; margin: auto; background: #ffffff; border-radius: 20px; padding: 32px; border: 1px solid #E2E8F0; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h2 style="color: #0F172A; margin: 0; font-size: 22px; font-weight: 800;">Reactivate Your Tallyin Account</h2>
+      <p style="color: #64748B; font-size: 13px; margin-top: 6px;">Self-service recovery verification code</p>
+    </div>
+    
+    <p style="color: #334155; font-size: 14px; line-height: 1.6;">Hi <strong>${cleanName}</strong>,</p>
+    <p style="color: #334155; font-size: 14px; line-height: 1.6;">You requested a verification code to reactivate your Tallyin account (<code>${userCode}</code>). Enter the code below or click the button to restore your active account immediately:</p>
+    
+    <div style="background: #F0FDF4; border: 2px dashed #22C55E; border-radius: 16px; padding: 20px; text-align: center; margin: 24px 0;">
+      <span style="font-size: 11px; text-transform: uppercase; color: #15803D; font-weight: 800; letter-spacing: 1.5px;">6-Digit Reactivation Code</span>
+      <div style="font-family: monospace, Courier; font-size: 34px; font-weight: 900; color: #166534; letter-spacing: 6px; margin-top: 6px;">${generatedCode}</div>
+    </div>
+    
+    <div style="text-align: center; margin: 28px 0 20px 0;">
+      <a href="${activationLink}" style="background-color: #1A3827; color: #FFFFFF; font-weight: 800; font-size: 14px; text-decoration: none; padding: 14px 32px; border-radius: 14px; display: inline-block;">
+        Reactivate Account in 1-Click →
+      </a>
+    </div>
+
+    <p style="color: #94A3B8; font-size: 11px; text-align: center; margin-top: 24px;">
+      Your data, roommates, and group expenses remain 100% intact. No administrator approval is required.
+    </p>
+  </div>
+</body>
+</html>`;
+
+        try {
+          fetch(mailRelayUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              action: 'send_email',
+              to: cleanEmail,
+              subject: userSubject,
+              body: userPlain,
+              htmlBody: userHtml
+            })
+          });
+          emailDispatched = true;
+        } catch (e) {
+          console.warn("User email dispatch notice:", e);
+        }
+
+        // 2. Notify the Platform Admin that user requested self-service reactivation
+        const adminRecipients = ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'];
+        for (const adminEmail of adminRecipients) {
+          try {
+            fetch(mailRelayUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain' },
+              body: JSON.stringify({
+                action: 'send_email',
+                to: adminEmail,
+                subject: `[Tallyin Notice] Account Reactivation Code Dispatched: ${cleanName} (${userCode})`,
+                body: `Account Reactivation Notice:\n\nUser: ${cleanName} (${cleanEmail})\nUser Code: ${userCode}\nGenerated Code: ${generatedCode}\nDate: ${new Date().toLocaleString()}\n\nNote: Because this is an inactive account and not a ban, the code has been sent directly to the user. Once the user enters the code, their account access will be automatically unlocked without requiring manual admin approval.`,
+                htmlBody: `<div style="font-family:sans-serif;padding:16px;">
+                  <h3 style="color:#1A3827;">Account Reactivation In Progress</h3>
+                  <p>User <strong>${cleanName}</strong> (${cleanEmail}, <code>${userCode}</code>) requested reactivation code: <strong>${generatedCode}</strong>.</p>
+                  <p style="color:#64748B;font-size:12px;">The user has received this code via email and can self-activate once verified without requiring manual admin approval.</p>
+                </div>`
+              })
+            });
+          } catch (e) {}
+        }
+      }
+
       setPendingRequest(newReq);
-      setSuccessMessage("Activation code requested! The Admin has been notified in the Command Console. Contact your Admin or enter the 6-digit code below.");
-      if (triggerToast) triggerToast("Activation code requested! Admin notified.");
+      if (emailDispatched) {
+        setSuccessMessage(`A 6-digit activation code was sent to ${cleanEmail}. Check your inbox or enter the code below to unlock access.`);
+        if (triggerToast) triggerToast(`Activation code sent to ${cleanEmail}!`);
+      } else {
+        setSuccessMessage(`Activation code generated: ${generatedCode}. Enter it below to unlock access.`);
+        if (triggerToast) triggerToast(`Activation code: ${generatedCode}`);
+      }
     } catch (err) {
       console.error("Failed to request activation code:", err);
-      setErrorMessage("Could not submit activation request. Please check your internet connection.");
+      setErrorMessage("Could not generate activation code. Please check your internet connection.");
     } finally {
       setIsRequesting(false);
     }
@@ -316,7 +414,7 @@ export default function InactiveUserView({
       });
 
       if (!matchingReq) {
-        setErrorMessage("Invalid or expired activation code. Please double check with your Admin.");
+        setErrorMessage("Invalid or expired activation code. Please check the code in your email or click resend.");
         setIsVerifying(false);
         return;
       }
@@ -336,6 +434,29 @@ export default function InactiveUserView({
 
       // Remove from inactive users registry
       await removeUserFromInactiveRegistry();
+
+      // Notify admin that the account has been successfully restored
+      try {
+        const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
+        const adminRecipients = ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'];
+        for (const adminEmail of adminRecipients) {
+          fetch(mailRelayUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              action: 'send_email',
+              to: adminEmail,
+              subject: `[Tallyin Notice] Account Reactivated: ${cleanName} (${userCode})`,
+              body: `User ${cleanName} (${cleanEmail}, ${userCode}) has verified their activation code (${targetCode}) and their account is now active on ${new Date().toLocaleString()}.`,
+              htmlBody: `<div style="font-family:sans-serif;padding:16px;">
+                <h3 style="color:#166534;">✓ Account Reactivated Successfully</h3>
+                <p>User <strong>${cleanName}</strong> (${cleanEmail}, <code>${userCode}</code>) has verified their code and restored active access.</p>
+              </div>`
+            })
+          });
+        }
+      } catch (e) {}
 
       setSuccessMessage("Account successfully reactivated! Restoring access...");
       if (triggerToast) triggerToast("🎉 Account successfully reactivated!");
@@ -520,43 +641,43 @@ export default function InactiveUserView({
 
           {/* Recovery Flow: Step 1 & Step 2 */}
           <div className="space-y-4 pt-1">
-            {/* Step 1: Request Activation from Admin */}
+            {/* Step 1: Send Activation Code to Email */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                   <span className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-400 font-mono text-[10px] font-black flex items-center justify-center">1</span>
-                  Request Activation Code
+                  Send Code to Your Email
                 </span>
                 {pendingRequest && (
-                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono">
-                    ✓ Request Dispatched
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                    ✓ Code Sent to Email
                   </span>
                 )}
               </div>
 
               {pendingRequest ? (
-                <div className="p-4 bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/60 rounded-2xl space-y-2.5 text-xs">
+                <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/60 rounded-2xl space-y-2.5 text-xs">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-amber-950 dark:text-amber-200 font-bold">
-                      <CheckCircle2 className="w-4 h-4 text-amber-600" />
-                      <span>Notified Admin in Command Console</span>
+                    <div className="flex items-center gap-1.5 text-emerald-950 dark:text-emerald-200 font-bold">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Code Dispatched to {cleanEmail || 'your email'}</span>
                     </div>
                     <span className="text-[10px] text-slate-400 font-mono">
                       {new Date(pendingRequest.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <p className="text-[11px] text-amber-900/80 dark:text-amber-300/80 leading-relaxed">
-                    Ask your Admin for the <strong>6-digit activation code</strong>, or check your email for the 1-click activation link.
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Check your inbox or spam folder for your <strong>6-digit activation code</strong>. Entering the code below will unlock your account immediately without waiting for admin approval.
                   </p>
                   <div className="pt-1 flex items-center gap-3">
                     <button
                       type="button"
                       onClick={handleRequestActivationCode}
                       disabled={isRequesting}
-                      className="text-[11px] font-bold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      className="text-[11px] font-bold text-emerald-700 dark:text-[#A3E635] hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
                       <RefreshCw className={`w-3 h-3 ${isRequesting ? 'animate-spin' : ''}`} />
-                      <span>{isRequesting ? 'Requesting...' : 'Request New Code'}</span>
+                      <span>{isRequesting ? 'Sending...' : 'Resend Code via Email'}</span>
                     </button>
                     <span className="text-slate-300 dark:text-slate-700">•</span>
                     <button
@@ -572,7 +693,7 @@ export default function InactiveUserView({
                       className="text-[11px] font-bold text-slate-600 dark:text-slate-400 hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <Copy className="w-3 h-3" />
-                      <span>{copiedLink ? 'Link Copied!' : 'Copy Activation Link'}</span>
+                      <span>{copiedLink ? 'Link Copied!' : 'Copy 1-Click Link'}</span>
                     </button>
                   </div>
                 </div>
@@ -583,8 +704,8 @@ export default function InactiveUserView({
                   disabled={isRequesting}
                   className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
                 >
-                  <KeyRound className={`w-4 h-4 ${isRequesting ? 'animate-spin' : ''}`} />
-                  <span>{isRequesting ? 'Submitting Request to Admin...' : 'Request Activation Code from Admin'}</span>
+                  <Send className={`w-4 h-4 ${isRequesting ? 'animate-spin' : ''}`} />
+                  <span>{isRequesting ? 'Sending Code to Your Email...' : 'Send 6-Digit Code to My Email'}</span>
                 </button>
               )}
             </div>
@@ -594,7 +715,7 @@ export default function InactiveUserView({
               <div className="flex items-center justify-between text-xs">
                 <span className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                   <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-400 font-mono text-[10px] font-black flex items-center justify-center">2</span>
-                  Enter 6-Digit Verification Code
+                  Enter 6-Digit Code to Unlock Access
                 </span>
               </div>
 
@@ -621,7 +742,7 @@ export default function InactiveUserView({
                   ) : (
                     <ArrowRight className="w-4 h-4" />
                   )}
-                  <span>{isVerifying ? 'Verifying...' : 'Activate Account'}</span>
+                  <span>{isVerifying ? 'Verifying...' : 'Verify & Unlock'}</span>
                 </button>
               </div>
             </div>
@@ -631,7 +752,7 @@ export default function InactiveUserView({
           <div className="p-3 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-200/60 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
             <HelpCircle className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
             <p className="leading-relaxed">
-              Once approved by the Platform Administrator, your session will automatically unlock, or you can enter the 6-digit code above.
+              <strong>Instant Self-Service Reactivation:</strong> Inactivity is not a ban. You do not need to wait for administrator approval — entering your 6-digit code or clicking the email link unlocks your account immediately.
             </p>
           </div>
 
