@@ -174,6 +174,13 @@ export const EMAIL_TEMPLATE_PRESETS = [
     body: ''
   },
   {
+    id: 'account_reactivation',
+    name: '🔑 Account Reactivation & Code Approval',
+    category: 'Security & Access',
+    subject: '🔑 Your Tallyin Account Reactivation Approval: {{activationCode}}',
+    body: `Hello {{userName}},\n\nYour request to reactivate your Tallyin account ({{userCode}}) has been reviewed and APPROVED by the Platform Administration.\n\nYour 6-Digit Activation Code:\n{{activationCode}}\n\n1-Click Quick Activation Link:\n{{activationLink}}\n\nEnter this code on your activation screen or simply click the 1-click link above to restore full access to your account immediately.\n\nAll your room balances, ledgers, and expense records are 100% safe and intact.\n\nWelcome back to Tallyin!\n\nBest regards,\nTallyin Administration Team`
+  },
+  {
     id: 'emergency_maint',
     name: '🚨 Emergency Maintenance Window',
     category: 'System Operations',
@@ -2348,7 +2355,7 @@ export default function AdminDashboard({
     const uCode = String(u.userCode || '').trim().toLowerCase();
 
     return targetList.find(r => {
-      if (!r || r.status !== 'PENDING') return false;
+      if (!r || (r.status !== 'PENDING' && r.status !== 'PENDING_APPROVAL')) return false;
       const rEmail = String(r.email || '').trim().toLowerCase();
       const rId = String(r.userId || r.id || '').trim().toLowerCase();
       const rCode = String(r.userCode || '').trim().toLowerCase();
@@ -2362,7 +2369,22 @@ export default function AdminDashboard({
   const handleApproveActivationRequest = async (req) => {
     if (!req) return;
     
-    // 1. Remove from inactiveUsers
+    // 1. Ensure code and link exist
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tallyin.vercel.app';
+    const finalCode = req.code || String(100000 + Math.floor(Math.random() * 900000));
+    const finalLink = req.activationLink || `${origin}/?activate_code=${finalCode}&email=${encodeURIComponent(req.email || '')}`;
+    const reqWithCode = { ...req, code: finalCode, activationLink: finalLink };
+
+    // 2. Dispatch activation approval email with 6-digit code & 1-click link to user
+    if (req.email && req.email.includes('@') && req.email.toLowerCase() !== 'n/a') {
+      try {
+        await handleSendActivationCodeEmail(reqWithCode);
+      } catch (err) {
+        console.warn("Could not dispatch approval email:", err);
+      }
+    }
+
+    // 3. Remove from inactiveUsers
     const uEmail = String(req.email || '').trim().toLowerCase();
     const uId = String(req.userId || req.id || '').trim().toLowerCase();
     const uCode = String(req.userCode || '').trim().toLowerCase();
@@ -2376,18 +2398,31 @@ export default function AdminDashboard({
     });
     await saveInactiveUsers(updatedInactive);
 
-    // 2. Mark request as ACTIVATED
+    // 4. Mark request as ACTIVATED & APPROVED
     const updatedRequests = activationRequests.map(r => {
-      if (r.id === req.id || (r.code === req.code && r.email === req.email)) {
-        return { ...r, status: 'ACTIVATED', activatedAt: new Date().toISOString() };
+      if (r.id === req.id || (r.code === req.code && r.email === req.email) || (uEmail && r.email?.toLowerCase() === uEmail)) {
+        return { 
+          ...r, 
+          status: 'ACTIVATED', 
+          approvedAt: new Date().toISOString(), 
+          activatedAt: new Date().toISOString(),
+          code: finalCode,
+          activationLink: finalLink
+        };
       }
       return r;
     });
     await saveActivationRequests(updatedRequests);
 
-    // Broadcast USER_REACTIVATED via persistent admin channel
+    // Broadcast USER_REACTIVATED & ACTIVATION_REQUEST_APPROVED via persistent admin channel
     try {
       const chan = adminChannelRef.current || supabase.channel('system_admin_channel');
+      chan.send({
+        type: 'broadcast',
+        event: 'ACTIVATION_REQUEST_APPROVED',
+        payload: { request: { ...reqWithCode, status: 'APPROVED' } }
+      }).catch(e => console.warn(e));
+
       chan.send({
         type: 'broadcast',
         event: 'USER_REACTIVATED',
@@ -2400,7 +2435,7 @@ export default function AdminDashboard({
       }).catch(e => console.warn(e));
     } catch (e) {}
 
-    // 3. Immediately update UI states
+    // 5. Immediately update UI states
     setAllRegisteredUsers(prev => prev.map(u => {
       const isTarget = (uEmail && u.email?.toLowerCase() === uEmail) ||
                        (uId && (u.id === uId || u.uid === uId)) ||
@@ -2416,7 +2451,7 @@ export default function AdminDashboard({
       return isTarget ? { ...prev, isInactive: false, daysSinceLastActive: 0 } : prev;
     });
 
-    if (triggerToast) triggerToast(`Activated account for ${req.name || req.userCode}! User can now access Tallyin.`);
+    if (triggerToast) triggerToast(`Approved! Code mailed to ${req.email || req.userCode} and account reactivated.`);
   };
 
   const handleSendActivationCodeEmail = async (req) => {
@@ -3826,7 +3861,7 @@ Tallyin Team`;
           isInactive,
           markedBy,
           inactiveReason,
-          daysSinceLastActive: isInactive ? (inactiveRec?.daysInactive !== undefined ? inactiveRec.daysInactive : (markedBy === 'ADMIN' ? 0 : 90)) : calculatedDays
+          daysSinceLastActive: isInactive ? (inactiveRec?.daysInactive !== undefined ? inactiveRec.daysInactive : (markedBy === 'ADMIN' ? calculatedDays : 90)) : calculatedDays
         };
       });
 
@@ -3971,6 +4006,16 @@ Tallyin Team`;
         realDays = Math.max(0, Math.floor((Date.now() - earliestTimestamp) / (1000 * 60 * 60 * 24)));
       }
 
+      const finalDaysInactive = isInactive ? (inactiveRec?.daysInactive !== undefined ? inactiveRec.daysInactive : (markedBy === 'ADMIN' ? realDays : 90)) : realDays;
+      const latestTimestamp = possibleDates.length > 0 ? Math.max(...possibleDates) : null;
+      let lastActiveDateTimestamp = latestTimestamp;
+      if (!lastActiveDateTimestamp && finalDaysInactive > 0) {
+        lastActiveDateTimestamp = Date.now() - (finalDaysInactive * 24 * 60 * 60 * 1000);
+      }
+      const lastActiveDateFormatted = lastActiveDateTimestamp
+        ? new Date(lastActiveDateTimestamp).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+        : null;
+
       const dossierData = {
         user: userObj,
         name: cleanName || 'Tallyin User',
@@ -3983,7 +4028,9 @@ Tallyin Team`;
         isInactive,
         markedBy,
         inactiveReason,
-        daysSinceLastActive: isInactive ? (inactiveRec?.daysInactive !== undefined ? inactiveRec.daysInactive : (markedBy === 'ADMIN' ? 0 : 90)) : realDays,
+        daysSinceLastActive: finalDaysInactive,
+        lastActiveDate: lastActiveDateFormatted,
+        lastActiveTimestamp: lastActiveDateTimestamp,
         dateJoined: dateJoinedFormatted,
         dateJoinedTimestamp: earliestTimestamp,
         createdRoomsCount: createdRooms.length,
@@ -6420,8 +6467,15 @@ Tallyin Team`;
 
       for (const targetEmail of recipientList) {
         const userNameGuess = targetEmail.split('@')[0];
+        const userCodeGuess = getUserCode(targetEmail);
+        const randomCode = String(100000 + Math.floor(Math.random() * 900000));
+        const userActLink = `${currentAppUrl}/?activate_code=${randomCode}&email=${encodeURIComponent(targetEmail)}`;
+
         const personalizedSubject = emailSubject
           .replace(/\{\{userName\}\}/g, userNameGuess)
+          .replace(/\{\{userCode\}\}/g, userCodeGuess)
+          .replace(/\{\{activationCode\}\}/g, randomCode)
+          .replace(/\{\{activationLink\}\}/g, userActLink)
           .replace(/\{\{roomName\}\}/g, currentRoomName)
           .replace(/\{\{adminName\}\}/g, adminDisplayName)
           .replace(/\{\{appUrl\}\}/g, currentAppUrl)
@@ -6429,6 +6483,9 @@ Tallyin Team`;
 
         const personalizedBody = emailBody
           .replace(/\{\{userName\}\}/g, userNameGuess)
+          .replace(/\{\{userCode\}\}/g, userCodeGuess)
+          .replace(/\{\{activationCode\}\}/g, randomCode)
+          .replace(/\{\{activationLink\}\}/g, userActLink)
           .replace(/\{\{roomName\}\}/g, currentRoomName)
           .replace(/\{\{adminName\}\}/g, adminDisplayName)
           .replace(/\{\{appUrl\}\}/g, currentAppUrl)
@@ -11865,7 +11922,7 @@ NOTIFY pgrst, 'reload schema';`;
             const totalCount = allRegisteredUsers.length;
             const inactiveCount = allRegisteredUsers.filter(u => checkIsInactive(u, inactiveUsers) || u.isInactive).length;
             const bannedCount = allRegisteredUsers.filter(u => checkIsBannedUser(u)).length;
-            const pendingRequests = (activationRequests || []).filter(r => r && r.status === 'PENDING');
+            const pendingRequests = (activationRequests || []).filter(r => r && (r.status === 'PENDING' || r.status === 'PENDING_APPROVAL'));
             const activeCount = totalCount - inactiveCount - bannedCount;
 
             return (
@@ -11960,6 +12017,11 @@ NOTIFY pgrst, 'reload schema';`;
                               <span className="font-mono text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300">
                                 {req.userCode}
                               </span>
+                              {(req.daysInactive !== undefined || req.daysSinceLastActive !== undefined) && (
+                                <span className="font-mono text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300">
+                                  {req.daysInactive !== undefined ? req.daysInactive : req.daysSinceLastActive}d inactive
+                                </span>
+                              )}
                             </div>
                             <p className="text-[11px] text-slate-500 font-mono truncate">{req.email}</p>
                             <div className="flex items-center gap-2 mt-1">
@@ -12131,7 +12193,7 @@ NOTIFY pgrst, 'reload schema';`;
                             isMarkedByAdmin ? (
                               <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-300 border border-orange-300 dark:border-orange-800" title="Account manually set to inactive by Administrator">
                                 <ShieldAlert className="w-3 h-3 text-orange-600 dark:text-orange-400" />
-                                Marked Inactive by Admin
+                                Marked Inactive by Admin ({u.daysSinceLastActive !== undefined ? u.daysSinceLastActive : 0}d inactive)
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800" title="Account inactive due to 90+ days of inactivity">
@@ -12172,12 +12234,20 @@ NOTIFY pgrst, 'reload schema';`;
 
                         {/* Activity Note */}
                         {isInactive ? (
-                          <span className="font-mono text-amber-700 dark:text-amber-400">
-                            {isMarkedByAdmin ? 'Action: Admin Hold' : `Dormant: ${u.daysSinceLastActive || 90}+ days`}
+                          <span 
+                            className="font-mono text-amber-700 dark:text-amber-400"
+                            title={u.daysSinceLastActive ? `Last Active: ~${new Date(Date.now() - (u.daysSinceLastActive * 86400000)).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}` : undefined}
+                          >
+                            {isMarkedByAdmin 
+                              ? `Action: Admin Hold • ${u.daysSinceLastActive !== undefined ? u.daysSinceLastActive : 0}d inactive` 
+                              : `Dormant: ${u.daysSinceLastActive || 90}+ days inactive`}
                           </span>
                         ) : (
                           u.daysSinceLastActive !== undefined && (
-                            <span className="font-mono text-slate-400">
+                            <span 
+                              className="font-mono text-slate-400"
+                              title={u.daysSinceLastActive ? `Last Active: ~${new Date(Date.now() - (u.daysSinceLastActive * 86400000)).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Active today'}
+                            >
                               {u.daysSinceLastActive === 0 ? 'Active today' : `${u.daysSinceLastActive}d since active`}
                             </span>
                           )
@@ -16906,7 +16976,7 @@ NOTIFY pgrst, 'reload schema';`;
                             isMarkedByAdmin ? (
                               <>
                                 <ShieldAlert className="w-3 h-3 text-orange-600 dark:text-orange-400" />
-                                <span>Marked Inactive by Admin</span>
+                                <span>Marked Inactive by Admin ({selectedUserDossier.daysSinceLastActive !== undefined ? selectedUserDossier.daysSinceLastActive : 0}d inactive)</span>
                               </>
                             ) : (
                               <>
@@ -16934,8 +17004,13 @@ NOTIFY pgrst, 'reload schema';`;
                         {selectedUserDossier.daysSinceLastActive !== undefined && (
                           <>
                             <span>•</span>
-                            <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">
-                              {selectedUserDossier.daysSinceLastActive}d since active
+                            <span 
+                              className="font-mono text-[11px] text-amber-600 dark:text-amber-400"
+                              title={selectedUserDossier.lastActiveDate ? `Last Active: ${selectedUserDossier.lastActiveDate}` : undefined}
+                            >
+                              {selectedUserDossier.lastActiveDate 
+                                ? `Last active: ${selectedUserDossier.lastActiveDate} (${selectedUserDossier.daysSinceLastActive}d ago)` 
+                                : `${selectedUserDossier.daysSinceLastActive}d ${isDossierInactive ? 'inactive' : 'since active'}`}
                             </span>
                           </>
                         )}
@@ -17275,6 +17350,19 @@ NOTIFY pgrst, 'reload schema';`;
                       <div>
                         <span className="text-slate-400 block text-[11px]">Permanent User Code</span>
                         <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{selectedUserDossier.userCode}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Date Joined</span>
+                        <span className="font-mono text-slate-800 dark:text-slate-200">{selectedUserDossier.dateJoined}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Last Active Date</span>
+                        <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+                          {selectedUserDossier.lastActiveDate || `${selectedUserDossier.daysSinceLastActive} days ago`}
+                          {selectedUserDossier.daysSinceLastActive !== undefined && (
+                            <span className="text-slate-400 text-xs font-normal ml-1.5">({selectedUserDossier.daysSinceLastActive}d ago)</span>
+                          )}
+                        </span>
                       </div>
                       <div>
                         <span className="text-slate-400 block text-[11px]">Database UID</span>

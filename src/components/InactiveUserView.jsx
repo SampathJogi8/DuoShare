@@ -92,7 +92,7 @@ export default function InactiveUserView({
 
     // Find pending request for this user
     const found = requests.find(r => {
-      if (!r || r.status !== 'PENDING') return false;
+      if (!r || (r.status !== 'PENDING' && r.status !== 'PENDING_APPROVAL' && r.status !== 'APPROVED')) return false;
       const rEmail = (r.email || '').trim().toLowerCase();
       const rId = String(r.userId || r.id || '').trim().toLowerCase();
       const rCode = String(r.userCode || '').trim().toLowerCase();
@@ -161,6 +161,21 @@ export default function InactiveUserView({
             if (!stillInactive) {
               localStorage.setItem('tallyin_inactive_users', JSON.stringify(inactiveList));
               if (onAccountActivated) onAccountActivated();
+            }
+          }
+        })
+        .on('broadcast', { event: 'ACTIVATION_REQUEST_APPROVED' }, (payload) => {
+          if (payload?.payload?.request) {
+            const req = payload.payload.request;
+            const rEmail = (req.email || '').trim().toLowerCase();
+            const rId = String(req.userId || req.id || '').trim().toLowerCase();
+            const rCode = String(req.userCode || '').trim().toLowerCase();
+            const isSelf = (cleanEmail && cleanEmail !== 'n/a' && rEmail === cleanEmail) ||
+                           (userUid && rId === userUid.toLowerCase()) ||
+                           (userCode && rCode === userCode.toLowerCase());
+            if (isSelf) {
+              setPendingRequest(req);
+              setSuccessMessage(`Admin approved your request! Check your email (${cleanEmail || 'your inbox'}) for your 6-digit code.`);
             }
           }
         })
@@ -313,15 +328,20 @@ export default function InactiveUserView({
       const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tallyin.vercel.app';
       const activationLink = `${origin}/?activate_code=${generatedCode}&email=${encodeURIComponent(cleanEmail)}`;
 
+      const reqStatus = isMarkedByAdmin ? 'PENDING_APPROVAL' : 'PENDING';
       const newReq = {
         id: `act_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
         userId: userUid,
         email: cleanEmail || 'No Email',
         name: cleanName,
         userCode,
+        daysInactive,
+        daysSinceLastActive: daysInactive,
         code: generatedCode,
         activationLink,
-        status: 'PENDING',
+        status: reqStatus,
+        requiresAdminApproval: Boolean(isMarkedByAdmin),
+        isMarkedByAdmin: Boolean(isMarkedByAdmin),
         requestedAt: new Date().toISOString()
       };
 
@@ -340,11 +360,12 @@ export default function InactiveUserView({
       const updated = [newReq, ...filtered];
       await saveActivationRequests(updated);
 
-      // 1. Immediately send the activation code email to the user
+      // Only dispatch activation code email to user immediately if NOT marked by Admin (e.g. self-service dormancy).
+      // For Admin-marked accounts, the code is mailed ONLY once the Admin approves the request!
       const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
       let emailDispatched = false;
 
-      if (cleanEmail && cleanEmail.includes('@') && cleanEmail.toLowerCase() !== 'n/a' && cleanEmail.toLowerCase() !== 'no email') {
+      if (!isMarkedByAdmin && cleanEmail && cleanEmail.includes('@') && cleanEmail.toLowerCase() !== 'n/a' && cleanEmail.toLowerCase() !== 'no email') {
         const userSubject = `Your Tallyin Account Reactivation Code: ${generatedCode} 🔑`;
         const userPlain = `Hello ${cleanName},
 
@@ -470,29 +491,6 @@ Tallyin Support & Administration`;
         } catch (e) {
           console.warn("User email dispatch notice:", e);
         }
-
-        // 2. Notify the Platform Admin that user requested self-service reactivation
-        const adminRecipients = ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'];
-        for (const adminEmail of adminRecipients) {
-          try {
-            fetch(mailRelayUrl, {
-              method: 'POST',
-              mode: 'no-cors',
-              headers: { 'Content-Type': 'text/plain' },
-              body: JSON.stringify({
-                action: 'send_email',
-                to: adminEmail,
-                subject: `[Tallyin Notice] Account Reactivation Code Dispatched: ${cleanName} (${userCode})`,
-                body: `Account Reactivation Notice:\n\nUser: ${cleanName} (${cleanEmail})\nUser Code: ${userCode}\nGenerated Code: ${generatedCode}\nDate: ${new Date().toLocaleString()}\n\nNote: Because this is an inactive account and not a ban, the code has been sent directly to the user. Once the user enters the code, their account access will be automatically unlocked without requiring manual admin approval.`,
-                htmlBody: `<div style="font-family:sans-serif;padding:16px;">
-                  <h3 style="color:#1A3827;">Account Reactivation In Progress</h3>
-                  <p>User <strong>${cleanName}</strong> (${cleanEmail}, <code>${userCode}</code>) requested reactivation code: <strong>${generatedCode}</strong>.</p>
-                  <p style="color:#64748B;font-size:12px;">The user has received this code via email and can self-activate once verified without requiring manual admin approval.</p>
-                </div>`
-              })
-            });
-          } catch (e) {}
-        }
       }
 
       setPendingRequest(newReq);
@@ -504,7 +502,11 @@ Tallyin Support & Administration`;
           payload: { request: newReq }
         }).catch(e => console.warn(e));
       } catch (e) {}
-      if (emailDispatched) {
+
+      if (isMarkedByAdmin) {
+        setSuccessMessage(`Reactivation request submitted to Platform Admin. As soon as the Admin approves your request, your 6-digit activation code will be mailed to ${cleanEmail || 'your email'}.`);
+        if (triggerToast) triggerToast("Reactivation request submitted to Admin!");
+      } else if (emailDispatched) {
         setSuccessMessage(`A 6-digit activation code was sent to ${cleanEmail}. Check your inbox or enter the code below to unlock access.`);
         if (triggerToast) triggerToast(`Activation code sent to ${cleanEmail}!`);
       } else {
@@ -536,7 +538,7 @@ Tallyin Support & Administration`;
       
       // Match candidate request
       const matchingReq = allRequests.find(r => {
-        if (!r || r.status !== 'PENDING') return false;
+        if (!r || (r.status !== 'PENDING' && r.status !== 'PENDING_APPROVAL' && r.status !== 'APPROVED')) return false;
         const matchesCode = String(r.code || '').trim().toUpperCase() === targetCode;
         if (!matchesCode) return false;
 
@@ -556,6 +558,12 @@ Tallyin Support & Administration`;
         return;
       }
 
+      if (matchingReq.requiresAdminApproval && matchingReq.status === 'PENDING_APPROVAL') {
+        setErrorMessage("Your reactivation request has been submitted to the Admin and is awaiting review. As soon as the Admin approves it, your activation code will be dispatched to your email.");
+        setIsVerifying(false);
+        return;
+      }
+
       // Mark request as ACTIVATED
       const updatedRequests = allRequests.map(r => {
         if (r.id === matchingReq.id) {
@@ -571,29 +579,6 @@ Tallyin Support & Administration`;
 
       // Remove from inactive users registry
       await removeUserFromInactiveRegistry();
-
-      // Notify admin that the account has been successfully restored
-      try {
-        const mailRelayUrl = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
-        const adminRecipients = ['sampathjogipusala123@gmail.com', 'tallyin.alerts@gmail.com'];
-        for (const adminEmail of adminRecipients) {
-          fetch(mailRelayUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({
-              action: 'send_email',
-              to: adminEmail,
-              subject: `[Tallyin Notice] Account Reactivated: ${cleanName} (${userCode})`,
-              body: `User ${cleanName} (${cleanEmail}, ${userCode}) has verified their activation code (${targetCode}) and their account is now active on ${new Date().toLocaleString()}.`,
-              htmlBody: `<div style="font-family:sans-serif;padding:16px;">
-                <h3 style="color:#166534;">✓ Account Reactivated Successfully</h3>
-                <p>User <strong>${cleanName}</strong> (${cleanEmail}, <code>${userCode}</code>) has verified their code and restored active access.</p>
-              </div>`
-            })
-          });
-        }
-      } catch (e) {}
 
       setSuccessMessage("Account successfully reactivated! Restoring access...");
       if (triggerToast) triggerToast("🎉 Account successfully reactivated!");
@@ -690,7 +675,7 @@ Tallyin Support & Administration`;
 
             <p className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
               {isMarkedByAdmin ? (
-                <>Your account access has been placed on an <strong>administrative hold</strong> by the Platform Admin. To restore access, request an activation code or enter your verification code below.</>
+                <>Your account access has been placed on an <strong>administrative hold</strong> by the Platform Admin ({daysInactive} days inactive). To restore access, request an activation code or enter your verification code below.</>
               ) : (
                 <>Your account has entered dormant status due to <strong>{daysInactive}+ days without activity</strong>. Reactivating restores full access immediately.</>
               )}
@@ -738,7 +723,7 @@ Tallyin Support & Administration`;
                 {isMarkedByAdmin ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-orange-100 text-orange-800 dark:bg-orange-950/70 dark:text-orange-300 font-bold border border-orange-200 dark:border-orange-800">
                     <ShieldAlert className="w-3 h-3 text-orange-600 dark:text-orange-400" />
-                    Marked Inactive by Admin
+                    Marked Inactive by Admin ({daysInactive}d inactive)
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-800">
@@ -793,18 +778,44 @@ Tallyin Support & Administration`;
               </div>
 
               {pendingRequest ? (
-                <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/60 rounded-2xl space-y-2.5 text-xs">
+                <div className={`p-4 rounded-2xl space-y-2.5 text-xs border ${
+                  pendingRequest.status === 'APPROVED'
+                    ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800'
+                    : isMarkedByAdmin
+                      ? 'bg-amber-50/70 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800'
+                      : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-800/60'
+                }`}>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-emerald-950 dark:text-emerald-200 font-bold">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>Code Dispatched to {cleanEmail || 'your email'}</span>
+                    <div className="flex items-center gap-1.5 font-bold">
+                      {pendingRequest.status === 'APPROVED' ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span className="text-emerald-950 dark:text-emerald-200">Admin Approved! Code Mailed to {cleanEmail || 'your email'}</span>
+                        </>
+                      ) : isMarkedByAdmin ? (
+                        <>
+                          <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
+                          <span className="text-amber-950 dark:text-amber-200">Request Submitted (Awaiting Admin Approval)</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span className="text-emerald-950 dark:text-emerald-200">Code Dispatched to {cleanEmail || 'your email'}</span>
+                        </>
+                      )}
                     </div>
                     <span className="text-[10px] text-slate-400 font-mono">
                       {new Date(pendingRequest.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Check your inbox or spam folder for your <strong>6-digit activation code</strong>. Entering the code below will unlock your account immediately without waiting for admin approval.
+                    {pendingRequest.status === 'APPROVED' ? (
+                      <>The Administrator has approved your request! Check your inbox or spam folder for your <strong>6-digit activation code</strong> and enter it below to restore full access immediately.</>
+                    ) : isMarkedByAdmin ? (
+                      <>Your reactivation request has been submitted to the Administrator for approval. Once approved, your <strong>6-digit activation code</strong> will be dispatched to <strong>{cleanEmail}</strong>.</>
+                    ) : (
+                      <>Check your inbox or spam folder for your <strong>6-digit activation code</strong>. Entering the code below will unlock your account immediately.</>
+                    )}
                   </p>
                   <div className="pt-1 flex items-center gap-3">
                     <button
@@ -814,24 +825,28 @@ Tallyin Support & Administration`;
                       className="text-[11px] font-bold text-emerald-700 dark:text-[#A3E635] hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
                       <RefreshCw className={`w-3 h-3 ${isRequesting ? 'animate-spin' : ''}`} />
-                      <span>{isRequesting ? 'Sending...' : 'Resend Code via Email'}</span>
+                      <span>{isRequesting ? 'Submitting...' : (isMarkedByAdmin ? 'Resubmit Request to Admin' : 'Resend Code via Email')}</span>
                     </button>
-                    <span className="text-slate-300 dark:text-slate-700">•</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (pendingRequest.activationLink) {
-                          navigator.clipboard.writeText(pendingRequest.activationLink);
-                          setCopiedLink(true);
-                          setTimeout(() => setCopiedLink(false), 2000);
-                          if (triggerToast) triggerToast("Copied activation link!");
-                        }
-                      }}
-                      className="text-[11px] font-bold text-slate-600 dark:text-slate-400 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Copy className="w-3 h-3" />
-                      <span>{copiedLink ? 'Link Copied!' : 'Copy 1-Click Link'}</span>
-                    </button>
+                    {pendingRequest.status === 'APPROVED' && pendingRequest.activationLink && (
+                      <>
+                        <span className="text-slate-300 dark:text-slate-700">•</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (pendingRequest.activationLink) {
+                              navigator.clipboard.writeText(pendingRequest.activationLink);
+                              setCopiedLink(true);
+                              setTimeout(() => setCopiedLink(false), 2000);
+                              if (triggerToast) triggerToast("Copied activation link!");
+                            }
+                          }}
+                          className="text-[11px] font-bold text-slate-600 dark:text-slate-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>{copiedLink ? 'Link Copied!' : 'Copy 1-Click Link'}</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -842,7 +857,11 @@ Tallyin Support & Administration`;
                   className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
                 >
                   <Send className={`w-4 h-4 ${isRequesting ? 'animate-spin' : ''}`} />
-                  <span>{isRequesting ? 'Sending Code to Your Email...' : 'Send 6-Digit Code to My Email'}</span>
+                  <span>
+                    {isRequesting 
+                      ? 'Submitting Request...' 
+                      : (isMarkedByAdmin ? 'Request Reactivation from Admin' : 'Send 6-Digit Code to My Email')}
+                  </span>
                 </button>
               )}
             </div>
