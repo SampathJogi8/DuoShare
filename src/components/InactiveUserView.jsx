@@ -298,31 +298,93 @@ Tallyin Support & Administration`;
 
         const userHtml = `<!DOCTYPE html>
 <html>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #F8FAFC; padding: 24px;">
-  <div style="max-width: 520px; margin: auto; background: #ffffff; border-radius: 20px; padding: 32px; border: 1px solid #E2E8F0; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h2 style="color: #0F172A; margin: 0; font-size: 22px; font-weight: 800;">Reactivate Your Tallyin Account</h2>
-      <p style="color: #64748B; font-size: 13px; margin-top: 6px;">Self-service recovery verification code</p>
-    </div>
-    
-    <p style="color: #334155; font-size: 14px; line-height: 1.6;">Hi <strong>${cleanName}</strong>,</p>
-    <p style="color: #334155; font-size: 14px; line-height: 1.6;">You requested a verification code to reactivate your Tallyin account (<code>${userCode}</code>). Enter the code below or click the button to restore your active account immediately:</p>
-    
-    <div style="background: #F0FDF4; border: 2px dashed #22C55E; border-radius: 16px; padding: 20px; text-align: center; margin: 24px 0;">
-      <span style="font-size: 11px; text-transform: uppercase; color: #15803D; font-weight: 800; letter-spacing: 1.5px;">6-Digit Reactivation Code</span>
-      <div style="font-family: monospace, Courier; font-size: 34px; font-weight: 900; color: #166534; letter-spacing: 6px; margin-top: 6px;">${generatedCode}</div>
-    </div>
-    
-    <div style="text-align: center; margin: 28px 0 20px 0;">
-      <a href="${activationLink}" style="background-color: #1A3827; color: #FFFFFF; font-weight: 800; font-size: 14px; text-decoration: none; padding: 14px 32px; border-radius: 14px; display: inline-block;">
-        Reactivate Account in 1-Click →
-      </a>
-    </div>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reactivate Your Tallyin Account</title>
+</head>
+<body style="margin: 0; padding: 24px; background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 540px; margin: 0 auto; background-color: #FFFFFF; border-radius: 24px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);">
+    <!-- Brand Header with Logo -->
+    <tr>
+      <td style="padding: 24px 28px; background: linear-gradient(135deg, #1A3827 0%, #0F2418 100%); text-align: left;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+          <tr>
+            <td width="48" valign="middle">
+              <img src="https://raw.githubusercontent.com/SampathJogi8/DuoShare/main/src/assets/favicon_logo.png" alt="Tallyin Logo" width="44" height="44" style="display: block; width: 44px; height: 44px; border-radius: 12px; border: 2px solid rgba(163, 230, 53, 0.5); object-fit: contain; background-color: #1A3827;" />
+            </td>
+            <td style="padding-left: 14px;" valign="middle">
+              <span style="font-size: 22px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.5px; display: block; line-height: 1.1;">Tallyin</span>
+              <span style="display: block; font-size: 10px; font-weight: 800; color: #A3E635; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 3px;">Smart Expense &amp; Room Sync</span>
+            </td>
+            <td align="right" valign="middle">
+              <span style="background-color: rgba(163, 230, 53, 0.15); border: 1px solid rgba(163, 230, 53, 0.4); color: #A3E635; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 5px 12px; border-radius: 20px; letter-spacing: 0.5px;">
+                Account Recovery
+              </span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
 
-    <p style="color: #94A3B8; font-size: 11px; text-align: center; margin-top: 24px;">
-      Your data, roommates, and group expenses remain 100% intact. No administrator approval is required.
-    </p>
-  </div>
+    <!-- Body Content -->
+    <tr>
+      <td style="padding: 32px 28px 24px 28px;">
+        <h1 style="margin: 0 0 12px 0; font-size: 22px; font-weight: 900; color: #0F172A; letter-spacing: -0.4px;">
+          Your Account Reactivation Code
+        </h1>
+        <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+          Hi <strong>${cleanName}</strong>, you initiated a request to reactivate your inactive Tallyin account (<code>${userCode}</code>).
+        </p>
+
+        <!-- User Dossier Pill -->
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 12px 16px; margin-bottom: 20px;">
+          <tr>
+            <td style="font-size: 12px; color: #64748B;">Registered Account: <strong style="color: #0F172A;">${cleanName}</strong></td>
+            <td align="right" style="font-size: 12px; color: #64748B;">User Code: <strong style="font-family: monospace; color: #047857;">${userCode}</strong></td>
+          </tr>
+        </table>
+
+        <!-- 6-Digit Code Box -->
+        <div style="background-color: #F0FDF4; border: 2px dashed #22C55E; border-radius: 16px; padding: 22px 16px; text-align: center; margin: 20px 0;">
+          <span style="font-size: 11px; text-transform: uppercase; color: #15803D; font-weight: 800; letter-spacing: 1.5px; display: block;">6-Digit Verification Code</span>
+          <div style="font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 900; color: #166534; letter-spacing: 6px; margin-top: 8px;">
+            ${generatedCode}
+          </div>
+          <span style="font-size: 11px; color: #15803D; margin-top: 4px; display: block;">Valid for one-time self-service reactivation</span>
+        </div>
+
+        <!-- 1-Click CTA Button -->
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 24px 0 16px 0;">
+          <tr>
+            <td align="center">
+              <a href="${activationLink}" target="_blank" style="display: inline-block; background-color: #1A3827; color: #FFFFFF; font-size: 14px; font-weight: 800; text-decoration: none; padding: 14px 34px; border-radius: 12px; box-shadow: 0 4px 14px rgba(26, 56, 39, 0.25); letter-spacing: 0.3px;">
+                Reactivate Account in 1-Click &rarr;
+              </a>
+            </td>
+          </tr>
+        </table>
+
+        <div style="background-color: #F8FAFC; border-left: 3px solid #10B981; border-radius: 8px; padding: 12px 14px; margin-top: 20px;">
+          <p style="margin: 0; font-size: 12px; color: #334155; line-height: 1.5;">
+            🔒 <strong>100% Data Safety:</strong> Your rooms, group debts, roommate balances, and expense histories remain completely intact and active.
+          </p>
+        </div>
+      </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+      <td style="padding: 20px 28px; background-color: #F8FAFC; border-top: 1px solid #E2E8F0; text-align: center;">
+        <p style="margin: 0 0 6px 0; font-size: 11px; color: #64748B;">
+          Need assistance? Reach out to support at <a href="mailto:sampathjogipusala123@gmail.com" style="color: #047857; text-decoration: none; font-weight: bold;">sampathjogipusala123@gmail.com</a>
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #94A3B8; font-family: monospace;">
+          Tallyin Platform &bull; Security &amp; Dormancy Governance &bull; Confidential
+        </p>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`;
 
