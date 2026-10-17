@@ -217,6 +217,17 @@ export default function Navbar({
                     <button
                       onClick={() => {
                         setIsProfileDropdownOpen(false);
+                        setCurrentView('blog');
+                      }}
+                      className="w-full px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 hover:bg-[#F0F4F1] dark:hover:bg-slate-800 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                      <span>Blog & Guides</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsProfileDropdownOpen(false);
                         if (setShowChangePasswordModal) setShowChangePasswordModal(true);
                       }}
                       className="w-full px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 hover:bg-[#F0F4F1] dark:hover:bg-slate-800 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"

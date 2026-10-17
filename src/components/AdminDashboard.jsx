@@ -102,6 +102,8 @@ import AnnouncementBanner, {
   BANNER_AUDIENCES,
   BANNER_DEVICES
 } from './AnnouncementBanner';
+import AdminBlogManager from './AdminBlogManager';
+import { getStoredBlogPosts } from '../data/blogData';
 
 const SUPER_ADMIN_EMAIL = 'tallyin.alerts@gmail.com';
 const ADMIN_EMAILS = [
@@ -254,7 +256,8 @@ export default function AdminDashboard({
   systemBetaSettings,
   setSystemBetaSettings,
   betaApplications = [],
-  setBetaApplications
+  setBetaApplications,
+  onOpenBlogView
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'co_admins' | 'maintenance' | 'broadcast' | 'email' | 'pinning' | 'latency' | 'beta_releases'
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -774,6 +777,16 @@ export default function AdminDashboard({
       d.type === 'violation' || d.category?.toLowerCase()?.includes('term') || d.category?.toLowerCase()?.includes('violation')
     ).length;
   }, [userDisputesAndQueries]);
+
+  // Live count of blog submissions pending admin approval
+  const pendingBlogCount = useMemo(() => {
+    try {
+      const posts = getStoredBlogPosts();
+      return (posts || []).filter(p => p.status === 'pending_review').length;
+    } catch {
+      return 0;
+    }
+  }, [activeTab]);
 
   // 3. Database Studio states
   const [studioTable, setStudioTable] = useState('rooms');
@@ -7413,6 +7426,13 @@ Tallyin Team`;
             )}
             {userPermissions.broadcasts && navItem('broadcast', 'Broadcast Center', <Radio className="w-4 h-4 text-purple-500" />)}
             {userPermissions.broadcasts && navItem('email', 'Email Hub', <Mail className="w-4 h-4 text-blue-500" />)}
+            {navItem(
+              'blog_manager',
+              'Blog & Articles',
+              <BookOpen className="w-4 h-4 text-emerald-500" />,
+              pendingBlogCount > 0 ? `${pendingBlogCount} New` : null,
+              'bg-amber-500 text-white font-black animate-pulse shadow-xs'
+            )}
             {userPermissions.room_pinning && navItem('pinning', 'Room Pinning', <Pin className="w-4 h-4 text-amber-500" />)}
             {userPermissions.latency_diagnostics && navItem('latency', 'Latency Diag.', <Sliders className="w-4 h-4 text-slate-500" />)}
           </div>
@@ -16313,6 +16333,15 @@ NOTIFY pgrst, 'reload schema';`;
             </div>
           </div>
         )
+      )}
+
+      {/* Tab: Blog & Editorial Manager */}
+      {activeTab === 'blog_manager' && (
+        <AdminBlogManager
+          user={user}
+          triggerToast={triggerToast}
+          onOpenBlogView={onOpenBlogView}
+        />
       )}
 
       {/* Modal: Edit Room Commander Configuration */}

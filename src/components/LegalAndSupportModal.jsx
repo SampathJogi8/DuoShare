@@ -921,6 +921,21 @@ export default function LegalAndSupportModal({
           <span>All-in-One Roommate Expense Manager</span>
         </div>
         <div className="flex items-center gap-3 text-[10px]">
+          {onNavigate && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onClose) onClose();
+                  onNavigate('blog');
+                }}
+                className="font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline cursor-pointer"
+              >
+                Read Blog
+              </button>
+              <span>•</span>
+            </>
+          )}
           <span>© {new Date().getFullYear()} Tallyin</span>
           <span>•</span>
           <a 
