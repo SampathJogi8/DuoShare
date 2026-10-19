@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Compass,
@@ -42,7 +42,8 @@ import {
   Lock,
   ShieldCheck,
   Printer,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw
 } from 'lucide-react';
 
 const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
@@ -917,26 +918,58 @@ export default function TripExpenseManager({
     ).trim().toLowerCase();
   }, [user, codeLoginEmail]);
 
-  // Scoped unique ID for individual private storage (never shared with room members)
+  // Derive emailKey and authKey for robust multi-device matching
+  const emailKey = useMemo(() => {
+    if (currentUserEmail && currentUserEmail.includes('@') && !currentUserEmail.endsWith('@tallyin.app')) {
+      return `user_email_${currentUserEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    }
+    return null;
+  }, [currentUserEmail]);
+
+  const authKey = useMemo(() => {
+    const raw = user?.id || user?.uid;
+    return raw ? `user_id_${String(raw).replace(/[^a-zA-Z0-9]/g, '_')}` : null;
+  }, [user]);
+
+  // Primary user key for trip storage:
+  // Prefer emailKey (identical across devices when logged in with the same email),
+  // fallback to authKey, then nickname.
   const currentUid = useMemo(() => {
     return (
-      user?.id ||
-      user?.uid ||
+      emailKey ||
+      authKey ||
       (currentUserEmail ? currentUserEmail.replace(/[^a-zA-Z0-9]/g, '_') : null) ||
       (userNickname && userNickname !== 'You' ? userNickname.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : 'default_user')
     );
-  }, [user, currentUserEmail, userNickname]);
+  }, [emailKey, authKey, currentUserEmail, userNickname]);
+
+  // Track if cloud sync has completed to prevent stale localStorage on mount from overwriting newer cloud state
+  const isCloudLoadedRef = useRef(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState(null);
 
   // Master Trip State with user-scoped isolation
   const [trips, setTrips] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
-        const userKey = `tallyin_trips_data_${currentUid}`;
-        const saved = localStorage.getItem(userKey) || localStorage.getItem('tallyin_trips_data');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          const cleaned = Array.isArray(parsed) ? parsed.filter(t => t.id !== 'trip-seed-goa') : [];
-          return cleaned;
+        const candidateLocalKeys = [
+          `tallyin_trips_data_${currentUid}`,
+          emailKey ? `tallyin_trips_data_${emailKey}` : null,
+          authKey ? `tallyin_trips_data_${authKey}` : null,
+          currentUserEmail ? `tallyin_trips_data_${currentUserEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : null,
+          user?.id ? `tallyin_trips_data_${user.id}` : null,
+          'tallyin_trips_data'
+        ].filter(Boolean);
+
+        for (const lk of candidateLocalKeys) {
+          const saved = localStorage.getItem(lk);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const cleaned = parsed.filter(t => t.id !== 'trip-seed-goa');
+              return cleaned;
+            }
+          }
         }
       } catch (e) {
         console.error('Error loading trips data:', e);
@@ -946,63 +979,143 @@ export default function TripExpenseManager({
   });
 
   // Fetch and sync user trips from database (strictly private system_settings per UID)
+  const syncCloudTrips = useCallback(async (notifyOnSuccess = false) => {
+    if (!currentUid || !supabase) return;
+    setIsSyncingCloud(true);
+
+    try {
+      // Look up candidate cloud keys (primary UID, email-based key, auth UID, etc.)
+      const candidateKeys = Array.from(new Set([
+        `user_trips_${currentUid}`,
+        emailKey ? `user_trips_${emailKey}` : null,
+        currentUserEmail ? `user_trips_${currentUserEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : null,
+        authKey ? `user_trips_${authKey}` : null,
+        user?.id ? `user_trips_${user.id}` : null,
+        user?.uid ? `user_trips_${user.uid}` : null
+      ].filter(Boolean)));
+
+      let foundCloudTrips = null;
+      let matchedKey = null;
+
+      for (const key of candidateKeys) {
+        const { data } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', key)
+          .maybeSingle();
+
+        if (data?.value) {
+          const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            foundCloudTrips = parsed;
+            matchedKey = key;
+            break;
+          }
+        }
+      }
+
+      if (foundCloudTrips && Array.isArray(foundCloudTrips)) {
+        setTrips(prev => {
+          // Cloud trips are the source of truth across mobile & desktop!
+          const cloudMap = new Map(foundCloudTrips.map(ct => [ct.id, ct]));
+          // Preserve any local trips that were added offline and do not exist in cloud yet
+          const localOnly = prev.filter(t => !cloudMap.has(t.id));
+          return [...foundCloudTrips, ...localOnly];
+        });
+
+        // If matched key was an old legacy key, sync/migrate to primary key
+        if (matchedKey && matchedKey !== `user_trips_${currentUid}`) {
+          supabase.from('system_settings').upsert({
+            key: `user_trips_${currentUid}`,
+            value: JSON.stringify(foundCloudTrips),
+            created_at: new Date().toISOString()
+          }, { onConflict: 'key' }).catch(() => {});
+        }
+      }
+
+      setLastSyncedTime(new Date());
+      if (notifyOnSuccess && triggerToast) {
+        triggerToast('🔄 Trips synchronized with cloud');
+      }
+    } catch (err) {
+      console.warn('Notice: user trips cloud sync:', err);
+    } finally {
+      isCloudLoadedRef.current = true;
+      setIsSyncingCloud(false);
+    }
+  }, [currentUid, emailKey, currentUserEmail, authKey, user, supabase, triggerToast]);
+
+  // Initial cloud sync and realtime subscription
   useEffect(() => {
     if (!currentUid || !supabase) return;
 
     let isMounted = true;
-    async function syncCloudTrips() {
-      try {
-        const { data } = await supabase
-          .from('system_settings')
-          .select('value')
-          .eq('key', `user_trips_${currentUid}`)
-          .maybeSingle();
-
-        if (data?.value && isMounted) {
-          const cloudTrips = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-          if (Array.isArray(cloudTrips)) {
-            setTrips(prev => {
-              const merged = [...prev];
-              cloudTrips.forEach(ct => {
-                const idx = merged.findIndex(m => m.id === ct.id);
-                if (idx >= 0) {
-                  merged[idx] = { ...ct, ...merged[idx] };
-                } else {
-                  merged.push(ct);
-                }
-              });
-              return merged;
-            });
-          }
-        }
-      } catch (err) {
-        console.warn('Notice: user trips cloud sync:', err);
-      }
-    }
-
     syncCloudTrips();
-    return () => { isMounted = false; };
-  }, [currentUid, supabase]);
+
+    // Subscribe to realtime changes on this user's private trips channel
+    const channelName = `user_trips_rt_${currentUid}`;
+    const channel = supabase.channel(channelName)
+      .on('broadcast', { event: 'TRIPS_UPDATED' }, () => {
+        if (isMounted) syncCloudTrips();
+      })
+      .subscribe();
+
+    // Re-sync when switching back to tab or regaining focus
+    const handleFocusSync = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible' && isMounted) {
+        syncCloudTrips();
+      }
+    };
+
+    window.addEventListener('focus', handleFocusSync);
+    document.addEventListener('visibilitychange', handleFocusSync);
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+      window.removeEventListener('focus', handleFocusSync);
+      document.removeEventListener('visibilitychange', handleFocusSync);
+    };
+  }, [currentUid, syncCloudTrips, supabase]);
 
   // Persist trips to user-scoped localStorage and cloud
   useEffect(() => {
+    // Only persist if cloud has been checked at least once to avoid wiping cloud with empty/stale local state on mount
+    if (!isCloudLoadedRef.current) return;
+
     if (typeof window !== 'undefined' && currentUid) {
       try {
         const userKey = `tallyin_trips_data_${currentUid}`;
         localStorage.setItem(userKey, JSON.stringify(trips));
+        if (emailKey) localStorage.setItem(`tallyin_trips_data_${emailKey}`, JSON.stringify(trips));
         localStorage.setItem('tallyin_trips_data', JSON.stringify(trips));
       } catch (e) {
         console.error('Error saving trips:', e);
       }
     }
+
     if (currentUid && supabase && trips.length > 0) {
-      supabase.from('system_settings').upsert({
+      const payload = {
         key: `user_trips_${currentUid}`,
         value: JSON.stringify(trips),
         created_at: new Date().toISOString()
-      }, { onConflict: 'key' }).catch(() => {});
+      };
+
+      supabase.from('system_settings').upsert(payload, { onConflict: 'key' })
+        .then(() => {
+          // Broadcast to other open tabs or devices in real time
+          try {
+            const channelName = `user_trips_rt_${currentUid}`;
+            supabase.channel(channelName).send({
+              type: 'broadcast',
+              event: 'TRIPS_UPDATED',
+              payload: { updatedAt: Date.now() }
+            }).catch(() => {});
+          } catch (e) {}
+        })
+        .catch(() => {});
     }
-  }, [trips, currentUid, supabase]);
+  }, [trips, currentUid, emailKey, supabase]);
 
   // Selected Trip View
   const [selectedTripId, setSelectedTripId] = useState(null);
@@ -1756,6 +1869,16 @@ export default function TripExpenseManager({
                 </button>
               </>
             )}
+
+            <button
+              onClick={() => syncCloudTrips(true)}
+              disabled={isSyncingCloud}
+              className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-slate-800 dark:text-slate-200 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-xs font-bold flex items-center gap-1 transition-all shadow-xs shrink-0 cursor-pointer disabled:opacity-50"
+              title="Sync with cloud"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] ${isSyncingCloud ? 'animate-spin' : ''}`} />
+              <span className="hidden xl:inline text-[11px]">{isSyncingCloud ? 'Syncing' : 'Sync'}</span>
+            </button>
 
             <button
               onClick={() => handleExportPDF(activeTrip, tripStats)}
@@ -2746,16 +2869,28 @@ export default function TripExpenseManager({
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setEditingTrip(null);
-            setIsTripModalOpen(true);
-          }}
-          className="px-4 py-2.5 rounded-xl bg-[#1A3827] text-white hover:bg-[#255038] dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs shadow-md flex items-center gap-2 transition-all active:scale-95 shrink-0 whitespace-nowrap self-start sm:self-auto cursor-pointer"
-        >
-          <Plus className="w-4 h-4 stroke-[3]" />
-          <span>Plan New Trip</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          <button
+            onClick={() => syncCloudTrips(true)}
+            disabled={isSyncingCloud}
+            className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-slate-200 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 font-bold text-xs shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            title="Sync trips from cloud"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] ${isSyncingCloud ? 'animate-spin' : ''}`} />
+            <span>{isSyncingCloud ? 'Syncing...' : 'Sync Cloud'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setEditingTrip(null);
+              setIsTripModalOpen(true);
+            }}
+            className="px-4 py-2.5 rounded-xl bg-[#1A3827] text-white hover:bg-[#255038] dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs shadow-md flex items-center gap-2 transition-all active:scale-95 shrink-0 whitespace-nowrap cursor-pointer"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>Plan New Trip</span>
+          </button>
+        </div>
       </div>
 
       {/* Global Stats Overview Banner */}

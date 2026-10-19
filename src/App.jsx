@@ -492,17 +492,60 @@ const formatReceiptDate = (dateStr) => {
 
 const parseTimeAndHistory = (timeStr) => {
   if (!timeStr) return { time: '', history: [] };
-  const parts = timeStr.split('|');
-  if (parts.length > 1) {
-    try {
-      const parsed = JSON.parse(parts[1]);
-      const history = Array.isArray(parsed) ? parsed : [parsed];
-      return { time: parts[0], history };
-    } catch {
-      return { time: parts[0], history: [] };
+  const parts = String(timeStr).split('|');
+  const baseTime = parts[0] || '';
+  let history = [];
+
+  for (let i = 1; i < parts.length; i++) {
+    const seg = parts[i].trim();
+    if (seg.startsWith('[') || seg.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(seg);
+        history = Array.isArray(parsed) ? parsed : [parsed];
+        break;
+      } catch (e) {}
     }
   }
-  return { time: timeStr, history: [] };
+
+  return { time: baseTime, history };
+};
+
+const formatBadgeChange = (change) => {
+  if (!change) return '';
+  const str = String(change).trim();
+  if (str.startsWith('Total Amount: ')) return str.replace('Total Amount: ', '');
+  if (str.startsWith('Amount: ')) return str.replace('Amount: ', '');
+  if (str.startsWith('Title: ')) return str.replace('Title: ', '');
+  if (str.startsWith('Category: ')) return str.replace('Category: ', '');
+  if (str.startsWith('Payer: ')) return str.replace('Payer: ', '');
+  if (str.startsWith('Date: ')) return str.replace('Date: ', '');
+  if (str.startsWith('Split Type: ')) return str.replace('Split Type: ', '');
+  return str;
+};
+
+const getLatestEditSummary = (t) => {
+  if (!t || !t.isEdited) return null;
+  const parsed = parseTimeAndHistory(t.time);
+  const history = parsed.history || [];
+  if (history.length > 0) {
+    const latest = history[history.length - 1];
+    const rawChanges = latest.changes;
+    const changes = Array.isArray(rawChanges)
+      ? rawChanges
+      : typeof rawChanges === 'string'
+      ? (rawChanges.includes(' | ') ? rawChanges.split(' | ') : [rawChanges])
+      : [];
+    const cleanChanges = changes.filter(Boolean);
+    const top = cleanChanges[0] || '';
+    return {
+      editedBy: latest.editedBy || 'Roommate',
+      editedAt: latest.editedAt || '',
+      changes: cleanChanges,
+      badgeText: formatBadgeChange(top),
+      summaryText: cleanChanges.length > 0 ? cleanChanges.join(', ') : 'Details modified'
+    };
+  }
+  return null;
 };
 
 const detectChanges = (oldTx, newTx, payerNickname, oldImages = [], newImages = []) => {
@@ -8474,10 +8517,46 @@ export default function App() {
 
     if (log.action === 'edit' && details.includes(' edited ')) {
       const parts = details.split(' edited ');
+      const actor = parts[0];
+      const rest = parts[1] || '';
+      if (rest.includes(' → ')) {
+        const subParts = rest.split(' → ');
+        const targetTx = subParts[0];
+        const changeDiff = subParts.slice(1).join(' → ');
+        return (
+          <span className="leading-relaxed">
+            <span className="font-extrabold text-[#1A3827] dark:text-slate-100">{actor}</span>{' '}
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 font-extrabold text-[10px] border border-amber-500/20">
+              edited
+            </span>{' '}
+            <span className="font-bold text-slate-800 dark:text-slate-200">{targetTx}</span>{' '}
+            <span className="text-amber-600 dark:text-amber-400 font-mono text-[10px]">({changeDiff.replace(/ \| /g, ', ')})</span>
+          </span>
+        );
+      }
+      const legacyMatch = rest.match(/expense "(.*?)" to ₹?([0-9.,]+)/i);
+      if (legacyMatch) {
+        const txName = legacyMatch[1];
+        const legacyAmt = legacyMatch[2];
+        return (
+          <span className="leading-relaxed">
+            <span className="font-extrabold text-[#1A3827] dark:text-slate-100">{actor}</span>{' '}
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 font-extrabold text-[10px] border border-amber-500/20">
+              edited
+            </span>{' '}
+            <span className="font-bold text-slate-800 dark:text-slate-200">"{txName}"</span>{' '}
+            <span className="text-amber-600 dark:text-amber-400 font-mono text-[10px]">(New value: ₹{legacyAmt})</span>
+          </span>
+        );
+      }
       return (
-        <>
-          {parts[0]} <span className="text-amber-600 dark:text-amber-400 font-bold">edited</span> {parts[1]}
-        </>
+        <span className="leading-relaxed">
+          <span className="font-extrabold text-[#1A3827] dark:text-slate-100">{actor}</span>{' '}
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 font-extrabold text-[10px] border border-amber-500/20">
+            edited
+          </span>{' '}
+          <span className="text-slate-800 dark:text-slate-200">{rest}</span>
+        </span>
       );
     }
     if (details.includes(' added receipt file(s) to ')) {
@@ -8638,10 +8717,14 @@ export default function App() {
     let introText = `A new transaction "${txTitle}" of <strong>${formattedAmount}</strong> has been logged in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>.`;
 
     if (actionType === 'update' || actionType === 'edit') {
+      const rawChanges = transaction?.detectedChanges;
+      const changesArr = Array.isArray(rawChanges) ? rawChanges : typeof rawChanges === 'string' && rawChanges ? [rawChanges] : [];
+      const changesSnippet = changesArr.length > 0 ? ` (${changesArr.slice(0, 2).join(', ')})` : '';
+
       actionTitle = 'Expense Updated';
       actionBadge = 'Expense Updated';
-      subjectText = `Tallyin: Updated expense "${txTitle}" (${formattedAmount})`;
-      introText = `The expense "${txTitle}" (${formattedAmount}) was updated in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>.`;
+      subjectText = `Tallyin: ${txPaidBy} updated "${txTitle}"${changesSnippet}`;
+      introText = `The expense <strong>"${txTitle}"</strong> (${formattedAmount}) was updated in room <strong>${roomDisplayName}</strong> by <strong>${txPaidBy}</strong>.${changesArr.length > 0 ? `<br/><br/><strong>What was modified:</strong><br/>${changesArr.map(c => `• ${c}`).join('<br/>')}` : ''}`;
     } else if (actionType === 'settle') {
       actionTitle = 'Payment Settled';
       actionBadge = 'Payment Settled';
@@ -9689,6 +9772,18 @@ export default function App() {
         `📅 *Date & Time:* ${txDateTime}`
       ];
 
+      if (actionType === 'update' || actionType === 'edit') {
+        const rawChanges = transaction?.detectedChanges;
+        const changesArr = Array.isArray(rawChanges) ? rawChanges : typeof rawChanges === 'string' && rawChanges ? [rawChanges] : [];
+        if (changesArr.length > 0) {
+          messageLines.push('');
+          messageLines.push('✏️ *What was modified:*');
+          changesArr.forEach(c => {
+            messageLines.push(`• ${c}`);
+          });
+        }
+      }
+
       // Roommate share breakdown if available
       const splitsArr = Array.isArray(transaction?.splits) ? transaction.splits : [];
       if (splitsArr.length > 0) {
@@ -10386,7 +10481,8 @@ export default function App() {
         category: formCategory,
         date: formDate,
         paidByUid: formPaidBy,
-        splitType
+        splitType,
+        splits: splitsArray
       }, payerMember.nickname, oldImages, formReceiptImages);
 
       const newHistoryItem = {
@@ -10491,14 +10587,27 @@ export default function App() {
       // 3. Close the modal immediately (zero-latency transition)
       closeAddExpenseModal();
 
-      // Fire update email notification immediately & independently with transaction ID
+      // Fire update email notification immediately & independently with transaction ID and detected changes
       if (notificationMethod !== 'none') {
-        sendEmailNotification({ ...newPayload, id: editingTransaction.id, receiptImages: activeReceiptImages }, 'update').catch(err => {
+        sendEmailNotification({
+          ...newPayload,
+          id: editingTransaction.id,
+          receiptImages: activeReceiptImages,
+          detectedChanges: detectedChangesList,
+          oldTitle: editingTransaction.title,
+          oldAmount: editingTransaction.amount
+        }, 'update').catch(err => {
           console.warn('Update email notification failed silently:', err);
         });
       }
       if (whatsappNotificationMethod !== 'none') {
-        sendWhatsAppNotification({ ...newPayload, id: editingTransaction.id }, 'update').catch(err => {
+        sendWhatsAppNotification({
+          ...newPayload,
+          id: editingTransaction.id,
+          detectedChanges: detectedChangesList,
+          oldTitle: editingTransaction.title,
+          oldAmount: editingTransaction.amount
+        }, 'update').catch(err => {
           console.warn('Update WhatsApp notification failed silently:', err);
         });
       }
@@ -10579,16 +10688,24 @@ export default function App() {
             if (deleteError) throw deleteError;
           }
 
-          let logMsg = `${userNickname} edited expense "${newPayload.title}" to ₹${newPayload.amount}`;
-          if (detectedChangesList && detectedChangesList.includes('Added receipt files') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
-            logMsg = `${userNickname} added receipt file(s) to "${newPayload.title}"`;
-          } else if (detectedChangesList && detectedChangesList.includes('Removed all receipt files') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
-            logMsg = `${userNickname} removed receipt file(s) from "${newPayload.title}"`;
-          } else if (detectedChangesList && detectedChangesList.includes('Updated receipt files') && !detectedChangesList.includes('Total Amount') && !detectedChangesList.includes('Title')) {
-            logMsg = `${userNickname} updated receipt file(s) for "${newPayload.title}"`;
+          const changesArr = Array.isArray(detectedChangesList)
+            ? detectedChangesList
+            : typeof detectedChangesList === 'string' && detectedChangesList.trim()
+            ? [detectedChangesList]
+            : [];
+
+          let logMsg = `${userNickname} edited expense "${editingTransaction.title}"`;
+          if (changesArr.length > 0) {
+            logMsg = `${userNickname} edited expense "${editingTransaction.title}" → ${changesArr.join(' | ')}`;
+          } else {
+            logMsg = `${userNickname} edited expense "${newPayload.title}" (₹${newPayload.amount})`;
           }
           await logActivity('edit', logMsg);
-          triggerToast("Expense updated successfully!");
+
+          const summaryMsg = changesArr.length > 0
+            ? changesArr.slice(0, 2).join(', ')
+            : 'Changes saved';
+          triggerToast(`Updated "${newPayload.title}": ${summaryMsg}`);
         } catch (error) {
           console.error("Error updating transaction:", error);
           triggerToast(`Failed to update: ${error.message}`);
@@ -18212,8 +18329,30 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-800 flex items-center justify-center shrink-0">{getCategoryIcon(t.category)}</div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs sm:text-sm font-bold text-[#1A3827] dark:text-slate-100 truncate">
-                            {t.title}
-                            {Boolean(t.isEdited) && <span onClick={e => { e.stopPropagation(); setActiveEditHistoryTx(t); }} className="ml-1.5 text-[9px] text-rose-500 italic font-bold cursor-pointer">(Edited)</span>}
+                            <span>{t.title}</span>
+                            {Boolean(t.isEdited) && (() => {
+                              const editInfo = getLatestEditSummary(t);
+                              const badgeSnippet = editInfo?.badgeText || '';
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveEditHistoryTx(t);
+                                  }}
+                                  className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-bold tracking-tight transition-all cursor-pointer shadow-2xs active:scale-95 align-middle"
+                                  title={editInfo ? `Edited by ${editInfo.editedBy}: ${editInfo.summaryText}. Click to view complete audit history.` : "Click to view what was edited"}
+                                >
+                                  <Pencil className="w-2.5 h-2.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                                  <span>Edited</span>
+                                  {badgeSnippet && (
+                                    <span className="hidden sm:inline font-mono text-[9px] font-bold opacity-95 truncate max-w-[180px]">
+                                      • {badgeSnippet}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })()}
                           </p>
                           <div className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 flex items-center gap-1.5 min-w-0">
                             <span className="truncate">{getTransactionSubtitle(t)}</span>
@@ -18644,19 +18783,30 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">
-                          {t.title}
-                          {Boolean(t.isEdited) && (
-                            <span 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveEditHistoryTx(t);
-                              }}
-                              className="ml-1.5 text-[9px] text-rose-500 dark:text-rose-400 italic font-bold tracking-wide cursor-pointer hover:underline"
-                              title="Click to view edit history"
-                            >
-                              (Edited)
-                            </span>
-                          )}
+                          <span>{t.title}</span>
+                          {Boolean(t.isEdited) && (() => {
+                            const editInfo = getLatestEditSummary(t);
+                            const badgeSnippet = editInfo?.badgeText || '';
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveEditHistoryTx(t);
+                                }}
+                                className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-bold tracking-tight transition-all cursor-pointer shadow-2xs active:scale-95 align-middle"
+                                title={editInfo ? `Edited by ${editInfo.editedBy}: ${editInfo.summaryText}. Click to view complete audit history.` : "Click to view what was edited"}
+                              >
+                                <Pencil className="w-2.5 h-2.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                                <span>Edited</span>
+                                {badgeSnippet && (
+                                  <span className="hidden sm:inline font-mono text-[9px] font-bold opacity-95 truncate max-w-[180px]">
+                                    • {badgeSnippet}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })()}
                         </h4>
                         <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
                           <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Transaction ID">
@@ -19122,19 +19272,30 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">
-                          {t.title}
-                          {Boolean(t.isEdited) && (
-                            <span 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveEditHistoryTx(t);
-                              }}
-                              className="ml-1.5 text-[9px] text-rose-500 dark:text-rose-400 italic font-bold tracking-wide cursor-pointer hover:underline"
-                              title="Click to view edit history"
-                            >
-                              (Edited)
-                            </span>
-                          )}
+                          <span>{t.title}</span>
+                          {Boolean(t.isEdited) && (() => {
+                            const editInfo = getLatestEditSummary(t);
+                            const badgeSnippet = editInfo?.badgeText || '';
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveEditHistoryTx(t);
+                                }}
+                                className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-bold tracking-tight transition-all cursor-pointer shadow-2xs active:scale-95 align-middle"
+                                title={editInfo ? `Edited by ${editInfo.editedBy}: ${editInfo.summaryText}. Click to view complete audit history.` : "Click to view what was edited"}
+                              >
+                                <Pencil className="w-2.5 h-2.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                                <span>Edited</span>
+                                {badgeSnippet && (
+                                  <span className="hidden sm:inline font-mono text-[9px] font-bold opacity-95 truncate max-w-[180px]">
+                                    • {badgeSnippet}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })()}
                         </h4>
                         <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
                           <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Transaction ID">
@@ -23603,26 +23764,38 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     let historyList = parsed.history || [];
 
     if (historyList.length === 0) {
+      const txTitleLower = (activeEditHistoryTx.title || '').toLowerCase();
+      const txIdStr = String(activeEditHistoryTx.id || '').toLowerCase();
       const matchingLogs = activityLogs.filter(log => 
         log.action === 'edit' && 
         log.details && 
-        log.details.toLowerCase().includes(activeEditHistoryTx.title.toLowerCase())
+        ((txTitleLower && log.details.toLowerCase().includes(txTitleLower)) || 
+         (txIdStr && log.details.toLowerCase().includes(txIdStr)))
       );
       
       historyList = matchingLogs.map(log => {
+        let diffContent = log.details;
+        if (log.details.includes(' → ')) {
+          diffContent = log.details.split(' → ').slice(1).join(' → ');
+        } else {
+          const matchTo = log.details.match(/edited expense "(.*?)" to ₹?([0-9.,]+)/i);
+          if (matchTo) {
+            diffContent = `Amount updated to ₹${matchTo[2]}`;
+          }
+        }
         return {
-          editedBy: log.user_name || 'System',
-          editedAt: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) + ' ' + new Date(log.created_at).toLocaleDateString(),
-          changes: log.details
+          editedBy: log.user_name || 'Roommate',
+          editedAt: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) + ' ' + new Date(log.created_at).toLocaleDateString('en-IN'),
+          changes: diffContent
         };
       });
     }
 
-    // Deduplicate consecutive identical entries (same editedBy + changes)
+    // Deduplicate consecutive identical entries
     historyList = historyList.filter((item, idx, arr) => {
       if (idx === 0) return true;
       const prev = arr[idx - 1];
-      return !(prev.editedBy === item.editedBy && prev.changes === item.changes && prev.editedAt === item.editedAt);
+      return !(prev.editedBy === item.editedBy && JSON.stringify(prev.changes) === JSON.stringify(item.changes) && prev.editedAt === item.editedAt);
     });
 
     return (
@@ -23631,72 +23804,156 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         onClick={() => setActiveEditHistoryTx(null)}
       >
         <div 
-          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-md rounded-3xl p-5 shadow-2xl relative flex flex-col gap-4 text-slate-800 dark:text-slate-200 transition-colors duration-300 max-h-[85vh] overflow-y-auto"
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-lg rounded-3xl p-5 sm:p-6 shadow-2xl relative flex flex-col gap-4 text-slate-800 dark:text-slate-200 transition-colors duration-300 max-h-[85vh] overflow-y-auto"
           onClick={e => e.stopPropagation()}
         >
-          <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
-            <div>
-              <h3 className="font-black text-sm sm:text-base text-rose-500 dark:text-rose-450 uppercase tracking-tight">Edit History</h3>
-              <p className="text-[10px] sm:text-xs text-[#5C6E5C] dark:text-slate-400 font-semibold mt-0.5">
-                {activeEditHistoryTx.title} (₹{activeEditHistoryTx.amount})
+          {/* Header */}
+          <div className="flex justify-between items-start pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Pencil className="w-4 h-4" />
+                </span>
+                <h3 className="font-black text-sm sm:text-base text-[#1A3827] dark:text-slate-100 tracking-tight">
+                  Transaction Edit History
+                </h3>
+              </div>
+              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+                Detailed audit trail showing exactly which fields were changed and who modified them.
               </p>
             </div>
             <button 
               onClick={() => setActiveEditHistoryTx(null)}
-              className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400"
+              className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-[#5C6E5C] dark:text-slate-400 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="space-y-4 py-2">
+          {/* Active Transaction Context Card */}
+          <div className="p-3.5 rounded-2xl bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 space-y-2">
+            <div className="flex items-center justify-between text-xs gap-2">
+              <span className="font-extrabold text-[#1A3827] dark:text-slate-100 flex items-center gap-2 min-w-0 truncate">
+                <span className="truncate">{activeEditHistoryTx.title}</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 shrink-0">
+                  {formatTxId(activeEditHistoryTx.id)}
+                </span>
+              </span>
+              <span className="font-black text-sm text-[#1A3827] dark:text-[#A3E635] shrink-0">
+                {formatINR(activeEditHistoryTx.amount)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2.5 text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium flex-wrap">
+              <span>🏷️ {activeEditHistoryTx.category || 'General'}</span>
+              <span>•</span>
+              <span>👤 Paid by {activeEditHistoryTx.paidBy || 'Roommate'}</span>
+              <span>•</span>
+              <span>📅 {activeEditHistoryTx.date}</span>
+            </div>
+          </div>
+
+          {/* Edit History Entries */}
+          <div className="space-y-3 py-1">
             {historyList.length === 0 ? (
-              <div className="text-center py-6 text-slate-450 dark:text-slate-500">
+              <div className="text-center py-8 text-slate-400 dark:text-slate-500">
                 <AlertCircle className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-                <p className="text-xs font-semibold">No edit logs found</p>
-                <p className="text-[9px] mt-1 max-w-[240px] mx-auto opacity-80">This transaction was marked as edited, but has no stored log details.</p>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No edit logs found</p>
+                <p className="text-[10px] mt-1 max-w-[260px] mx-auto opacity-80">This transaction was marked as edited, but has no previous change logs recorded.</p>
               </div>
             ) : (
-              <div className="space-y-3.5 max-h-[50vh] overflow-y-auto pr-1">
-                {historyList.slice().reverse().map((item, idx) => (
-                  <div key={idx} className="p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-850 rounded-2xl space-y-2 relative shadow-sm">
-                    <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                      <span className="text-[#1A3827] dark:text-[#A3E635]">By: {item.editedBy || 'Unknown User'}</span>
-                      <span>{item.editedAt}</span>
-                    </div>
-                    {item.reason && item.reason !== 'No reason provided' && (
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-semibold text-[#5C6E5C] dark:text-slate-455">Reason:</p>
-                        <p className="text-xs font-bold text-[#1A3827] dark:text-white bg-white dark:bg-slate-900/60 p-2 rounded-xl border border-slate-200/40 dark:border-slate-800/40 shadow-sm leading-relaxed">
-                          {item.reason}
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                {historyList.slice().reverse().map((item, idx) => {
+                  const rawChanges = item.changes;
+                  const changesList = Array.isArray(rawChanges)
+                    ? rawChanges
+                    : typeof rawChanges === 'string'
+                    ? (rawChanges.includes(' | ') ? rawChanges.split(' | ') : [rawChanges])
+                    : [];
+
+                  return (
+                    <div key={idx} className="p-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-3 shadow-xs">
+                      <div className="flex justify-between items-center text-[11px] font-bold">
+                        <span className="text-emerald-700 dark:text-[#A3E635] flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5" />
+                          <span>Edited by {item.editedBy || 'Roommate'}</span>
+                        </span>
+                        <span className="text-slate-400 font-normal text-[10px] flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>{item.editedAt}</span>
+                        </span>
+                      </div>
+
+                      {item.reason && item.reason !== 'No reason provided' && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-semibold text-[#5C6E5C] dark:text-slate-400">Reason:</p>
+                          <p className="text-xs font-bold text-[#1A3827] dark:text-white bg-slate-50 dark:bg-slate-900/60 p-2 rounded-xl border border-slate-200/40 dark:border-slate-800/40">
+                            {item.reason}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="space-y-1.5 pt-1.5 border-t border-dashed border-slate-100 dark:border-slate-800">
+                        <p className="text-[10px] font-extrabold text-[#5C6E5C] dark:text-slate-400 uppercase tracking-wider">
+                          What Was Modified:
                         </p>
-                      </div>
-                    )}
-                    <div className="space-y-1.5 pt-1.5 border-t border-dashed border-slate-100 dark:border-slate-850">
-                      <p className="text-[9px] font-semibold text-[#5C6E5C] dark:text-slate-455">Changes Detected:</p>
-                      <div className="space-y-1 text-[10px] font-mono text-rose-600 dark:text-rose-400 bg-rose-50/10 dark:bg-rose-950/10 px-3 py-2 rounded-xl border border-rose-100/20 dark:border-rose-900/20 leading-relaxed">
-                        {item.changes ? (
-                          item.changes.split(' | ').map((change, cIdx) => (
-                            <div key={cIdx} className="flex items-start gap-1">
-                              <span className="text-rose-500 font-bold shrink-0">•</span>
-                              <span>{change}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <div>No changes detected</div>
-                        )}
+                        <div className="space-y-1.5">
+                          {changesList.length > 0 ? (
+                            changesList.map((change, cIdx) => {
+                              const changeStr = String(change);
+                              if (changeStr.includes(' → ')) {
+                                const arrowParts = changeStr.split(' → ');
+                                const left = arrowParts[0];
+                                const right = arrowParts[1];
+                                let fieldLabel = 'Field';
+                                let oldVal = left;
+                                if (left.includes(':')) {
+                                  const colonIdx = left.indexOf(':');
+                                  fieldLabel = left.slice(0, colonIdx).trim();
+                                  oldVal = left.slice(colonIdx + 1).trim();
+                                }
+
+                                return (
+                                  <div key={cIdx} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/60 dark:border-slate-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs">
+                                    <span className="font-extrabold text-slate-700 dark:text-slate-300">
+                                      {fieldLabel}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 font-mono text-[11px] flex-wrap">
+                                      <span className="px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 line-through">
+                                        {oldVal}
+                                      </span>
+                                      <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
+                                      <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-[#A3E635] font-bold">
+                                        {right}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div key={cIdx} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/60 dark:border-slate-800/60 text-xs flex items-start gap-1.5 text-slate-700 dark:text-slate-300">
+                                  <span className="text-amber-500 font-bold shrink-0">•</span>
+                                  <span className="font-medium">{changeStr}</span>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="text-xs text-slate-400 italic">No specific field changes recorded</div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
-          <div className="flex justify-end pt-2 border-t border-slate-150 dark:border-slate-800">
+          {/* Footer */}
+          <div className="flex justify-end pt-3 border-t border-slate-100 dark:border-slate-800">
             <button
               onClick={() => setActiveEditHistoryTx(null)}
-              className="px-5 py-2 bg-[#1A3827] dark:bg-slate-800 text-white hover:opacity-90 font-bold rounded-xl text-xs transition-all shadow-sm"
+              className="px-5 py-2.5 bg-[#1A3827] dark:bg-slate-800 text-white hover:opacity-90 font-black rounded-xl text-xs transition-all shadow-sm cursor-pointer"
             >
               Close
             </button>
