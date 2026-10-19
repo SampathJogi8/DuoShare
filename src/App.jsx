@@ -510,43 +510,7 @@ const parseTimeAndHistory = (timeStr) => {
   return { time: baseTime, history };
 };
 
-const formatBadgeChange = (change) => {
-  if (!change) return '';
-  const str = String(change).trim();
-  if (str.startsWith('Total Amount: ')) return str.replace('Total Amount: ', '');
-  if (str.startsWith('Amount: ')) return str.replace('Amount: ', '');
-  if (str.startsWith('Title: ')) return str.replace('Title: ', '');
-  if (str.startsWith('Category: ')) return str.replace('Category: ', '');
-  if (str.startsWith('Payer: ')) return str.replace('Payer: ', '');
-  if (str.startsWith('Date: ')) return str.replace('Date: ', '');
-  if (str.startsWith('Split Type: ')) return str.replace('Split Type: ', '');
-  return str;
-};
 
-const getLatestEditSummary = (t) => {
-  if (!t || !t.isEdited) return null;
-  const parsed = parseTimeAndHistory(t.time);
-  const history = parsed.history || [];
-  if (history.length > 0) {
-    const latest = history[history.length - 1];
-    const rawChanges = latest.changes;
-    const changes = Array.isArray(rawChanges)
-      ? rawChanges
-      : typeof rawChanges === 'string'
-      ? (rawChanges.includes(' | ') ? rawChanges.split(' | ') : [rawChanges])
-      : [];
-    const cleanChanges = changes.filter(Boolean);
-    const top = cleanChanges[0] || '';
-    return {
-      editedBy: latest.editedBy || 'Roommate',
-      editedAt: latest.editedAt || '',
-      changes: cleanChanges,
-      badgeText: formatBadgeChange(top),
-      summaryText: cleanChanges.length > 0 ? cleanChanges.join(', ') : 'Details modified'
-    };
-  }
-  return null;
-};
 
 const detectChanges = (oldTx, newTx, payerNickname, oldImages = [], newImages = []) => {
   const changes = [];
@@ -18329,30 +18293,19 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F6F8F6] dark:bg-slate-800 flex items-center justify-center shrink-0">{getCategoryIcon(t.category)}</div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs sm:text-sm font-bold text-[#1A3827] dark:text-slate-100 truncate">
-                            <span>{t.title}</span>
-                            {Boolean(t.isEdited) && (() => {
-                              const editInfo = getLatestEditSummary(t);
-                              const badgeSnippet = editInfo?.badgeText || '';
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveEditHistoryTx(t);
-                                  }}
-                                  className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-bold tracking-tight transition-all cursor-pointer shadow-2xs active:scale-95 align-middle"
-                                  title={editInfo ? `Edited by ${editInfo.editedBy}: ${editInfo.summaryText}. Click to view complete audit history.` : "Click to view what was edited"}
-                                >
-                                  <Pencil className="w-2.5 h-2.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                                  <span>Edited</span>
-                                  {badgeSnippet && (
-                                    <span className="hidden sm:inline font-mono text-[9px] font-bold opacity-95 truncate max-w-[180px]">
-                                      • {badgeSnippet}
-                                    </span>
-                                  )}
-                                </button>
-                              );
-                            })()}
+                            {t.title}
+                            {Boolean(t.isEdited) && (
+                              <span 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveEditHistoryTx(t);
+                                }}
+                                className="ml-1.5 text-[9px] text-rose-500 dark:text-rose-400 italic font-bold tracking-wide cursor-pointer hover:underline"
+                                title="Click to view edit history"
+                              >
+                                (Edited)
+                              </span>
+                            )}
                           </p>
                           <div className="text-[10px] sm:text-[11px] text-[#5C6E5C] dark:text-slate-400 mt-0.5 flex items-center gap-1.5 min-w-0">
                             <span className="truncate">{getTransactionSubtitle(t)}</span>
@@ -18783,30 +18736,19 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">
-                          <span>{t.title}</span>
-                          {Boolean(t.isEdited) && (() => {
-                            const editInfo = getLatestEditSummary(t);
-                            const badgeSnippet = editInfo?.badgeText || '';
-                            return (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveEditHistoryTx(t);
-                                }}
-                                className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-bold tracking-tight transition-all cursor-pointer shadow-2xs active:scale-95 align-middle"
-                                title={editInfo ? `Edited by ${editInfo.editedBy}: ${editInfo.summaryText}. Click to view complete audit history.` : "Click to view what was edited"}
-                              >
-                                <Pencil className="w-2.5 h-2.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                                <span>Edited</span>
-                                {badgeSnippet && (
-                                  <span className="hidden sm:inline font-mono text-[9px] font-bold opacity-95 truncate max-w-[180px]">
-                                    • {badgeSnippet}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })()}
+                          {t.title}
+                          {Boolean(t.isEdited) && (
+                            <span 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveEditHistoryTx(t);
+                              }}
+                              className="ml-1.5 text-[9px] text-rose-500 dark:text-rose-400 italic font-bold tracking-wide cursor-pointer hover:underline"
+                              title="Click to view edit history"
+                            >
+                              (Edited)
+                            </span>
+                          )}
                         </h4>
                         <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
                           <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Transaction ID">
@@ -19272,30 +19214,19 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-bold text-xs sm:text-sm text-[#1A3827] dark:text-slate-100 truncate">
-                          <span>{t.title}</span>
-                          {Boolean(t.isEdited) && (() => {
-                            const editInfo = getLatestEditSummary(t);
-                            const badgeSnippet = editInfo?.badgeText || '';
-                            return (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveEditHistoryTx(t);
-                                }}
-                                className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-bold tracking-tight transition-all cursor-pointer shadow-2xs active:scale-95 align-middle"
-                                title={editInfo ? `Edited by ${editInfo.editedBy}: ${editInfo.summaryText}. Click to view complete audit history.` : "Click to view what was edited"}
-                              >
-                                <Pencil className="w-2.5 h-2.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                                <span>Edited</span>
-                                {badgeSnippet && (
-                                  <span className="hidden sm:inline font-mono text-[9px] font-bold opacity-95 truncate max-w-[180px]">
-                                    • {badgeSnippet}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })()}
+                          {t.title}
+                          {Boolean(t.isEdited) && (
+                            <span 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveEditHistoryTx(t);
+                              }}
+                              className="ml-1.5 text-[9px] text-rose-500 dark:text-rose-400 italic font-bold tracking-wide cursor-pointer hover:underline"
+                              title="Click to view edit history"
+                            >
+                              (Edited)
+                            </span>
+                          )}
                         </h4>
                         <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
                           <span className="text-[8px] sm:text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635] shrink-0 border border-[#E3E8E3]/60 dark:border-slate-800" title="Transaction ID">
