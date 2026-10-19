@@ -38,7 +38,11 @@ import {
   Sliders,
   Mail,
   Send,
-  Loader2
+  Loader2,
+  Lock,
+  ShieldCheck,
+  Printer,
+  FileSpreadsheet
 } from 'lucide-react';
 
 const CENTRAL_EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzR-z7qOZ31UJ7roEmBUqXkuWeNVkaUQJ-ZkitryJxlC_rvxt5MEZiD4JvzCDpyhatkMQ/exec';
@@ -326,6 +330,570 @@ export function generateTripCompletionEmailHtml({ trip, tripStats, userNickname,
   `;
 }
 
+// Helper: safe base64 encoding for email attachments
+export const toBase64 = (str) => {
+  try {
+    return btoa(unescape(encodeURIComponent(str)));
+  } catch (e) {
+    return '';
+  }
+};
+
+// Generate CSV string for Trip Expenses
+export function generateTripCsvContent(trip) {
+  if (!trip) return '';
+  const compMap = {};
+  (trip.companions || []).forEach(c => { compMap[c.id] = c.name; });
+
+  const headers = ['Date', 'Title/Description', 'Category', 'Amount (INR)', 'Paid By', 'Split Mode', 'Notes'];
+  const rows = (trip.expenses || []).map(e => {
+    const payer = compMap[e.paidBy] || e.payerName || e.paidBy || '';
+    const cat = TRIP_CATEGORIES.find(c => c.id === e.category)?.label || e.category || 'Misc';
+    return [
+      e.date || '',
+      e.title || '',
+      cat,
+      Number(e.amount) || 0,
+      payer,
+      e.splitType || 'equal',
+      e.notes || ''
+    ];
+  });
+
+  return [
+    headers.join(','),
+    ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+  ].join('\n');
+}
+
+// Generate Excel-compatible (.xls) HTML table for Trip
+export function generateTripExcelHtml({ trip, tripStats, userNickname = 'You' }) {
+  if (!trip) return '';
+  const totalSpent = tripStats.totalSpent || 0;
+  const companions = trip.companions || [];
+  const expenses = trip.expenses || [];
+  const compMap = {};
+  companions.forEach(c => { compMap[c.id] = c.name; });
+  const transfers = tripStats.transfers || [];
+  const perPersonAvg = companions.length > 0 ? Math.round(totalSpent / companions.length) : 0;
+
+  const categoryTotals = {};
+  TRIP_CATEGORIES.forEach(cat => { categoryTotals[cat.id] = 0; });
+  expenses.forEach(e => {
+    const cat = e.category || 'misc';
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + (Number(e.amount) || 0);
+  });
+
+  return `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: Calibri, Arial, sans-serif; padding: 20px; }
+        .header-title { font-size: 18px; color: #1A3827; font-weight: bold; }
+        .section-title { font-size: 13px; color: #1A3827; font-weight: bold; margin-top: 18px; margin-bottom: 6px; text-transform: uppercase; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 18px; font-size: 11px; }
+        th { background-color: #1A3827; color: #ffffff; font-weight: bold; padding: 8px 10px; border: 1px solid #1A3827; text-align: left; }
+        td { border: 1px solid #D1D5DB; padding: 7px 10px; color: #1E293B; }
+        tr:nth-child(even) td { background-color: #F8FAFC; }
+        .pos { color: #047857; font-weight: bold; }
+        .neg { color: #B91C1C; font-weight: bold; }
+        .neutral { color: #64748B; }
+      </style>
+    </head>
+    <body>
+      <div style="margin-bottom: 16px;">
+        <span class="header-title">🌴 Tallyin Trip Financial Ledger — ${trip.title}</span><br/>
+        <b>Destination:</b> ${trip.destination || 'Vacation Spot'}<br/>
+        <b>Dates:</b> ${trip.startDate || 'N/A'} ${trip.endDate ? 'to ' + trip.endDate : ''}<br/>
+        <b>Status:</b> ${trip.status || 'Ongoing'}<br/>
+        <b>Total Spend:</b> ₹${totalSpent.toLocaleString('en-IN')}<br/>
+        <b>Budget Target:</b> ${trip.budget ? '₹' + Number(trip.budget).toLocaleString('en-IN') : 'N/A'}<br/>
+        <b>Per Person Share:</b> ₹${perPersonAvg.toLocaleString('en-IN')}<br/>
+        <b>Companions Count:</b> ${companions.length}<br/>
+        <b>Generated Date:</b> ${new Date().toLocaleDateString('en-IN')}<br/>
+        <b>Privacy:</b> 🔒 Private Individual Module (Not shared with flatmates)
+      </div>
+
+      <div class="section-title">1. Simplified Debt Transfers (Who Owes Whom)</div>
+      <table>
+        <thead>
+          <tr>
+            <th>From (Debtor)</th>
+            <th>To (Creditor)</th>
+            <th>Settlement Amount (INR)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${transfers.length > 0 ? transfers.map(tr => `
+            <tr>
+              <td><b>${compMap[tr.from] || tr.from}</b></td>
+              <td><b>${compMap[tr.to] || tr.to}</b></td>
+              <td><b>₹${Number(tr.amount).toLocaleString('en-IN')}</b></td>
+            </tr>
+          `).join('') : `
+            <tr>
+              <td colspan="3" style="text-align: center; color: #047857; font-weight: bold;">✓ All accounts are balanced! No pending settlements.</td>
+            </tr>
+          `}
+        </tbody>
+      </table>
+
+      <div class="section-title">2. Companion Standings & Net Balance</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Companion Name</th>
+            <th>Role</th>
+            <th>Paid Out of Pocket (INR)</th>
+            <th>Net Balance (INR)</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${companions.map(c => {
+            const bal = Math.round(tripStats.balances?.[c.id] || 0);
+            const paid = expenses.filter(e => e.paidBy === c.id).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+            const statusClass = bal > 0 ? 'pos' : bal < 0 ? 'neg' : 'neutral';
+            const statusText = bal > 0 ? `Gets back ₹${bal.toLocaleString('en-IN')}` : bal < 0 ? `Owes ₹${Math.abs(bal).toLocaleString('en-IN')}` : 'Settled (₹0)';
+            return `
+              <tr>
+                <td><b>${c.name}</b></td>
+                <td>${c.isHost ? 'Host / Organizer' : 'Companion'}</td>
+                <td>₹${paid.toLocaleString('en-IN')}</td>
+                <td class="${statusClass}">₹${bal.toLocaleString('en-IN')}</td>
+                <td class="${statusClass}">${statusText}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div class="section-title">3. Category Spend Breakdown</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Total Spend (INR)</th>
+            <th>% of Total Spend</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${TRIP_CATEGORIES.map(cat => {
+            const amt = categoryTotals[cat.id] || 0;
+            const pct = totalSpent > 0 ? Math.round((amt / totalSpent) * 100) : 0;
+            return `
+              <tr>
+                <td>${cat.label}</td>
+                <td>₹${amt.toLocaleString('en-IN')}</td>
+                <td>${pct}%</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div class="section-title">4. Complete Itemized Expenses Ledger (${expenses.length})</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description / Merchant</th>
+            <th>Category</th>
+            <th>Amount (INR)</th>
+            <th>Paid By</th>
+            <th>Split Mode</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${expenses.map(e => {
+            const cat = TRIP_CATEGORIES.find(c => c.id === e.category)?.label || e.category || 'Misc';
+            const payer = compMap[e.paidBy] || e.payerName || e.paidBy;
+            return `
+              <tr>
+                <td>${e.date || '-'}</td>
+                <td><b>${e.title}</b></td>
+                <td>${cat}</td>
+                <td><b>₹${Number(e.amount).toLocaleString('en-IN')}</b></td>
+                <td>${payer}</td>
+                <td>${e.splitType || 'Equal'}</td>
+                <td>${e.notes || ''}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </body>
+    </html>
+  `;
+}
+
+// Generate Printable PDF HTML Statement for Trip
+export function generateTripPdfHtml({ trip, tripStats, userNickname = 'You' }) {
+  if (!trip) return '';
+  const totalSpent = tripStats.totalSpent || 0;
+  const companions = trip.companions || [];
+  const expenses = trip.expenses || [];
+  const compMap = {};
+  companions.forEach(c => { compMap[c.id] = c.name; });
+  const transfers = tripStats.transfers || [];
+  const perPersonAvg = companions.length > 0 ? Math.round(totalSpent / companions.length) : 0;
+
+  const categoryTotals = {};
+  TRIP_CATEGORIES.forEach(cat => { categoryTotals[cat.id] = 0; });
+  expenses.forEach(e => {
+    const cat = e.category || 'misc';
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + (Number(e.amount) || 0);
+  });
+
+  const auditRefCode = `TRIP-${(trip.id || 'TRIP').toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Tallyin — Trip Statement (${trip.title})</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #0F172A;
+      padding: 36px;
+      background-color: #FFFFFF;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 20px;
+      border-bottom: 2.5px solid #1A3827;
+      margin-bottom: 24px;
+    }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      border: 1.5px solid #1A3827;
+    }
+    .brand-name {
+      font-size: 24px;
+      font-weight: 900;
+      color: #1A3827;
+      letter-spacing: -0.5px;
+      line-height: 1;
+    }
+    .statement-tag {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #059669;
+      margin-top: 4px;
+    }
+    .meta-box {
+      text-align: right;
+      font-size: 11px;
+      color: #475569;
+    }
+    .meta-row {
+      margin-bottom: 2px;
+    }
+    .meta-ref {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #64748B;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .trip-banner {
+      background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
+      border: 1.5px solid #A7F3D0;
+      border-radius: 14px;
+      padding: 18px 22px;
+      margin-bottom: 24px;
+    }
+    .trip-title {
+      font-size: 20px;
+      font-weight: 900;
+      color: #064E3B;
+      margin-bottom: 4px;
+    }
+    .trip-dest {
+      font-size: 12px;
+      font-weight: 700;
+      color: #047857;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      border: 1px solid #E2E8F0;
+      background-color: #F8FAFC;
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .kpi-label {
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #64748B;
+      margin-bottom: 4px;
+    }
+    .kpi-val {
+      font-size: 18px;
+      font-weight: 900;
+      color: #0F172A;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #1A3827;
+      margin: 20px 0 8px 0;
+    }
+    .settlement-card {
+      background-color: #F8FAFC;
+      border: 1.5px solid #CBD5E1;
+      border-left: 5px solid #1A3827;
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin-bottom: 20px;
+    }
+    th {
+      background-color: #F1F5F9;
+      color: #1E293B;
+      font-weight: 800;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 2px solid #CBD5E1;
+    }
+    th.text-right, td.text-right { text-align: right; }
+    td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #E2E8F0;
+      color: #334155;
+    }
+    tr:nth-child(even) td { background-color: #FAFAFA; }
+    .badge-pos {
+      color: #047857;
+      font-weight: 800;
+      background-color: #ECFDF5;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid #A7F3D0;
+    }
+    .badge-neg {
+      color: #B91C1C;
+      font-weight: 800;
+      background-color: #FEF2F2;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid #FECACA;
+    }
+    .badge-zero {
+      color: #64748B;
+      font-weight: 700;
+      background-color: #F1F5F9;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .footer {
+      border-top: 1px solid #E2E8F0;
+      padding-top: 16px;
+      margin-top: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: #64748B;
+    }
+    @media print {
+      body { padding: 16px; }
+      tr { page-break-inside: avoid; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand-row">
+      <img src="${LOGO_URL}" class="brand-logo" alt="Tallyin Logo" />
+      <div>
+        <div class="brand-name">Tallyin</div>
+        <div class="statement-tag">Trip Splitter • Official Statement of Account</div>
+      </div>
+    </div>
+    <div class="meta-box">
+      <div class="meta-row"><strong>Exported by:</strong> ${userNickname || 'You'}</div>
+      <div class="meta-row"><strong>Generated:</strong> ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+      <div class="meta-row"><strong>Status:</strong> ${trip.status || 'Ongoing'}</div>
+      <div class="meta-ref">REF #${auditRefCode}</div>
+    </div>
+  </div>
+
+  <div class="trip-banner">
+    <div class="trip-title">🌴 ${trip.title}</div>
+    <div class="trip-dest">📍 ${trip.destination || 'Vacation'} ${trip.startDate ? '• ' + trip.startDate + (trip.endDate ? ' to ' + trip.endDate : '') : ''}</div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Total Spend</div>
+      <div class="kpi-val" style="color: #047857;">₹${totalSpent.toLocaleString('en-IN')}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Per Person Average</div>
+      <div class="kpi-val">₹${perPersonAvg.toLocaleString('en-IN')}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Companions</div>
+      <div class="kpi-val">${companions.length}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Expenses Logged</div>
+      <div class="kpi-val">${expenses.length}</div>
+    </div>
+  </div>
+
+  <div class="section-title">⚖️ Final Debt Settlements (Who Owes Whom)</div>
+  <div class="settlement-card">
+    ${transfers.length > 0 ? `
+      <div style="font-size: 11px; font-weight: 800; color: #047857; text-transform: uppercase; margin-bottom: 8px;">Recommended Direct Transfers:</div>
+      ${transfers.map(tr => `
+        <div style="font-size: 13px; font-weight: 700; color: #0F172A; margin-bottom: 5px;">
+          👉 <strong>${compMap[tr.from] || tr.from}</strong> pays <strong>${compMap[tr.to] || tr.to}</strong>: <span style="color: #047857;">₹${Number(tr.amount).toLocaleString('en-IN')}</span>
+        </div>
+      `).join('')}
+    ` : `
+      <div style="font-size: 12px; font-weight: 800; color: #047857;">
+        ✓ All accounts are balanced! No pending transfers.
+      </div>
+    `}
+  </div>
+
+  <div class="section-title">👥 Companion Net Standings</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Companion</th>
+        <th>Role</th>
+        <th class="text-right">Paid Out of Pocket</th>
+        <th class="text-right">Net Standing</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${companions.map(c => {
+        const bal = Math.round(tripStats.balances?.[c.id] || 0);
+        const paid = expenses.filter(e => e.paidBy === c.id).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        const badgeClass = bal > 0 ? 'badge-pos' : bal < 0 ? 'badge-neg' : 'badge-zero';
+        const balText = bal > 0 ? `+₹${bal.toLocaleString('en-IN')} (Gets back)` : bal < 0 ? `-₹${Math.abs(bal).toLocaleString('en-IN')} (Owes)` : `Settled (₹0)`;
+        return `
+          <tr>
+            <td><strong>${c.name}</strong></td>
+            <td>${c.isHost ? 'Host / Organizer' : 'Companion'}</td>
+            <td class="text-right font-medium">₹${paid.toLocaleString('en-IN')}</td>
+            <td class="text-right"><span class="${badgeClass}">${balText}</span></td>
+          </tr>
+        `;
+      }).join('')}
+    </tbody>
+  </table>
+
+  <div class="section-title">📊 Category Spending Breakdown</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Category</th>
+        <th class="text-right">Total Amount</th>
+        <th class="text-right">% of Spend</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${TRIP_CATEGORIES.filter(cat => (categoryTotals[cat.id] || 0) > 0).map(cat => {
+        const amt = categoryTotals[cat.id] || 0;
+        const pct = totalSpent > 0 ? Math.round((amt / totalSpent) * 100) : 0;
+        return `
+          <tr>
+            <td>${cat.label}</td>
+            <td class="text-right"><strong>₹${amt.toLocaleString('en-IN')}</strong></td>
+            <td class="text-right">${pct}%</td>
+          </tr>
+        `;
+      }).join('')}
+    </tbody>
+  </table>
+
+  <div class="section-title">📑 Complete Itemized Ledger (${expenses.length} Records)</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Title / Merchant</th>
+        <th>Category</th>
+        <th>Paid By</th>
+        <th>Split Mode</th>
+        <th class="text-right">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${expenses.map(e => {
+        const cat = TRIP_CATEGORIES.find(c => c.id === e.category)?.label || e.category || 'Misc';
+        const payer = compMap[e.paidBy] || e.payerName || e.paidBy;
+        return `
+          <tr>
+            <td>${e.date || '-'}</td>
+            <td><strong>${e.title}</strong></td>
+            <td>${cat}</td>
+            <td>${payer}</td>
+            <td>${e.splitType || 'Equal'}</td>
+            <td class="text-right"><strong>₹${Number(e.amount).toLocaleString('en-IN')}</strong></td>
+          </tr>
+        `;
+      }).join('')}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <div>🔒 Tallyin Space Governance • Private Individual Trip Ledger</div>
+    <div>REF: ${auditRefCode}</div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 500);
+    };
+  </script>
+</body>
+</html>
+  `;
+}
+
 export default function TripExpenseManager({
   members = [],
   userNickname = 'You',
@@ -334,16 +902,39 @@ export default function TripExpenseManager({
   supabase = null,
   triggerToast = () => {},
   isDarkMode = false,
-  onNavigate
+  onNavigate,
+  codeLoginEmail = '',
+  roomName = ''
 }) {
-  // Master Trip State
+  // Resolve current logged-in user email across all auth methods
+  const currentUserEmail = useMemo(() => {
+    return (
+      user?.email ||
+      user?.user_metadata?.email ||
+      codeLoginEmail ||
+      (typeof window !== 'undefined' ? (localStorage.getItem('codeLoginEmail') || localStorage.getItem('tallyin_user_email')) : '') ||
+      ''
+    ).trim().toLowerCase();
+  }, [user, codeLoginEmail]);
+
+  // Scoped unique ID for individual private storage (never shared with room members)
+  const currentUid = useMemo(() => {
+    return (
+      user?.id ||
+      user?.uid ||
+      (currentUserEmail ? currentUserEmail.replace(/[^a-zA-Z0-9]/g, '_') : null) ||
+      (userNickname && userNickname !== 'You' ? userNickname.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : 'default_user')
+    );
+  }, [user, currentUserEmail, userNickname]);
+
+  // Master Trip State with user-scoped isolation
   const [trips, setTrips] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('tallyin_trips_data');
+        const userKey = `tallyin_trips_data_${currentUid}`;
+        const saved = localStorage.getItem(userKey) || localStorage.getItem('tallyin_trips_data');
         if (saved) {
           const parsed = JSON.parse(saved);
-          // Purge demo seed if present
           const cleaned = Array.isArray(parsed) ? parsed.filter(t => t.id !== 'trip-seed-goa') : [];
           return cleaned;
         }
@@ -354,9 +945,8 @@ export default function TripExpenseManager({
     return [];
   });
 
-  // Fetch and sync user trips from database (system_settings)
+  // Fetch and sync user trips from database (strictly private system_settings per UID)
   useEffect(() => {
-    const currentUid = user?.id || user?.uid;
     if (!currentUid || !supabase) return;
 
     let isMounted = true;
@@ -370,7 +960,7 @@ export default function TripExpenseManager({
 
         if (data?.value && isMounted) {
           const cloudTrips = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-          if (Array.isArray(cloudTrips) && cloudTrips.length > 0) {
+          if (Array.isArray(cloudTrips)) {
             setTrips(prev => {
               const merged = [...prev];
               cloudTrips.forEach(ct => {
@@ -392,18 +982,19 @@ export default function TripExpenseManager({
 
     syncCloudTrips();
     return () => { isMounted = false; };
-  }, [user?.id, user?.uid, supabase]);
+  }, [currentUid, supabase]);
 
-  // Persist trips to localStorage and cloud
+  // Persist trips to user-scoped localStorage and cloud
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && currentUid) {
       try {
+        const userKey = `tallyin_trips_data_${currentUid}`;
+        localStorage.setItem(userKey, JSON.stringify(trips));
         localStorage.setItem('tallyin_trips_data', JSON.stringify(trips));
       } catch (e) {
         console.error('Error saving trips:', e);
       }
     }
-    const currentUid = user?.id || user?.uid;
     if (currentUid && supabase && trips.length > 0) {
       supabase.from('system_settings').upsert({
         key: `user_trips_${currentUid}`,
@@ -411,7 +1002,7 @@ export default function TripExpenseManager({
         created_at: new Date().toISOString()
       }, { onConflict: 'key' }).catch(() => {});
     }
-  }, [trips, user?.id, user?.uid, supabase]);
+  }, [trips, currentUid, supabase]);
 
   // Selected Trip View
   const [selectedTripId, setSelectedTripId] = useState(null);
@@ -437,6 +1028,9 @@ export default function TripExpenseManager({
   const [settleNote, setSettleNote] = useState('');
 
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [tripToExport, setTripToExport] = useState(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isSendingOnDemandEmail, setIsSendingOnDemandEmail] = useState(false);
   const [isCompleteTripModalOpen, setIsCompleteTripModalOpen] = useState(false);
   const [tripToComplete, setTripToComplete] = useState(null);
   const [isSendingTripEmails, setIsSendingTripEmails] = useState(false);
@@ -486,6 +1080,26 @@ export default function TripExpenseManager({
       transfers
     };
   }, [activeTrip]);
+
+  // Trip Calculations for the Export Target Trip (activeTrip or selected card in hub)
+  const exportTargetTrip = tripToExport || activeTrip;
+  const exportTripStats = useMemo(() => {
+    if (!exportTargetTrip) return { totalSpent: 0, perPersonAvg: 0, categoryTotals: {}, balances: {}, transfers: [] };
+    if (activeTrip && exportTargetTrip.id === activeTrip.id) return tripStats;
+    const exp = exportTargetTrip.expenses || [];
+    const comp = exportTargetTrip.companions || [];
+    const setl = exportTargetTrip.settlements || [];
+    const totalSpent = exp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const perPersonAvg = comp.length > 0 ? totalSpent / comp.length : 0;
+    const categoryTotals = {};
+    TRIP_CATEGORIES.forEach(cat => { categoryTotals[cat.id] = 0; });
+    exp.forEach(e => {
+      const cat = e.category || 'misc';
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + (Number(e.amount) || 0);
+    });
+    const { balances, transfers } = calculateTripSettlements(comp, exp, setl);
+    return { totalSpent, perPersonAvg, categoryTotals, balances, transfers };
+  }, [exportTargetTrip, activeTrip, tripStats]);
 
   // Overall Global Trips Summary
   const globalSummary = useMemo(() => {
@@ -562,23 +1176,52 @@ export default function TripExpenseManager({
           updatedTrip.settlements || []
         );
         const totalSpent = (updatedTrip.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        const enrichedStats = { ...stats, totalSpent };
 
         const emailHtml = generateTripCompletionEmailHtml({
           trip: updatedTrip,
-          tripStats: { ...stats, totalSpent },
+          tripStats: enrichedStats,
           userNickname,
-          userEmail: user?.email
+          userEmail: currentUserEmail
         });
+
+        const csvContent = generateTripCsvContent(updatedTrip);
+        const excelContent = generateTripExcelHtml({ trip: updatedTrip, tripStats: enrichedStats, userNickname });
+        const pdfHtmlContent = generateTripPdfHtml({ trip: updatedTrip, tripStats: enrichedStats, userNickname });
+
+        const cleanTitle = updatedTrip.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const attachments = [
+          {
+            name: `tallyin_trip_${cleanTitle}_statement.csv`,
+            mimeType: 'text/csv',
+            base64: toBase64(csvContent)
+          },
+          {
+            name: `tallyin_trip_${cleanTitle}_statement.xls`,
+            mimeType: 'application/vnd.ms-excel',
+            base64: toBase64(excelContent)
+          },
+          {
+            name: `tallyin_trip_${cleanTitle}_statement.html`,
+            mimeType: 'text/html',
+            base64: toBase64(pdfHtmlContent),
+            convertToPdf: true
+          }
+        ];
 
         // Collect recipient emails
         const recipients = [];
         for (const c of updatedTrip.companions) {
-          const email = companionEmails[c.id] || c.email || (
-            members.find(m => (m.nickname && m.nickname.toLowerCase() === c.name.toLowerCase()) || (m.name && m.name.toLowerCase() === c.name.toLowerCase()))?.email
-          ) || (c.isHost ? user?.email : '');
+          const isCurrentUser = c.isHost || (c.name && c.name.toLowerCase() === (userNickname || 'You').toLowerCase());
+          const email = (
+            companionEmails[c.id] ||
+            c.email ||
+            (isCurrentUser ? currentUserEmail : '') ||
+            (members.find(m => (m.nickname && m.nickname.toLowerCase() === c.name.toLowerCase()) || (m.name && m.name.toLowerCase() === c.name.toLowerCase()))?.email)
+          );
 
-          if (email && email.includes('@') && !recipients.some(r => r.email === email)) {
-            recipients.push({ email, name: c.name });
+          if (email && email.includes('@') && !recipients.some(r => r.email.toLowerCase() === email.trim().toLowerCase())) {
+            recipients.push({ email: email.trim(), name: c.name });
           }
         }
 
@@ -587,14 +1230,16 @@ export default function TripExpenseManager({
           try {
             await fetch(CENTRAL_EMAIL_SCRIPT_URL, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain' },
               body: JSON.stringify({
                 action: 'send_email',
                 to: r.email,
-                subject: `[Tallyin Trip Statement] ${updatedTrip.title} Completed • Final Settlement & Ledger`,
-                body: `Trip "${updatedTrip.title}" has been marked as Completed! Total spend: ₹${totalSpent}. View complete ledger at https://tallyin.vercel.app`,
-                textBody: `Trip "${updatedTrip.title}" has been marked as Completed! Total spend: ₹${totalSpent}. View complete ledger at https://tallyin.vercel.app`,
+                subject: `🌴 [Tallyin Trip Statement] ${updatedTrip.title} Completed • Final Settlement & Ledger`,
+                body: `Trip "${updatedTrip.title}" has been marked as Completed! Total spend: ₹${totalSpent}. Statements attached (PDF, Excel, CSV). View complete ledger at https://tallyin.vercel.app`,
+                textBody: `Trip "${updatedTrip.title}" has been marked as Completed! Total spend: ₹${totalSpent}. Statements attached (PDF, Excel, CSV). View complete ledger at https://tallyin.vercel.app`,
                 htmlBody: emailHtml,
+                attachments: attachments,
                 name: 'Tallyin Trip Splitter',
                 senderName: 'Tallyin Trip Splitter'
               })
@@ -605,7 +1250,13 @@ export default function TripExpenseManager({
           }
         }
 
-        triggerToast(`🎉 Trip "${updatedTrip.title}" marked Completed! Statements emailed to ${sentCount} recipient(s).`);
+        if (recipients.length === 0) {
+          triggerToast(`🎉 Trip "${updatedTrip.title}" completed! (No emails sent: no recipient email addresses were entered).`);
+        } else if (sentCount > 0) {
+          triggerToast(`🎉 Trip "${updatedTrip.title}" completed! Statements & files emailed to ${sentCount} recipient(s).`);
+        } else {
+          triggerToast(`⚠️ Trip completed, but could not dispatch statement emails. Please check your network connection.`);
+        }
       } else {
         triggerToast(`🎉 Trip "${updatedTrip.title}" marked as Completed!`);
       }
@@ -786,23 +1437,25 @@ export default function TripExpenseManager({
   };
 
   // Helper: Export text formatted summary
-  const generateTripShareText = () => {
-    if (!activeTrip) return '';
-    const companions = activeTrip.companions || [];
+  const generateTripShareText = (targetTrip = activeTrip, targetStats = tripStats) => {
+    const tripToUse = targetTrip || activeTrip;
+    if (!tripToUse) return '';
+    const statsToUse = targetStats || tripStats;
+    const companions = tripToUse.companions || [];
     const compMap = {};
     companions.forEach(c => { compMap[c.id] = c.name; });
 
-    let msg = `🌴 *${activeTrip.title.toUpperCase()}*\n`;
-    msg += `📍 Destination: ${activeTrip.destination || 'Vacation'}\n`;
-    if (activeTrip.startDate) msg += `🗓️ Dates: ${activeTrip.startDate} to ${activeTrip.endDate || 'TBD'}\n`;
-    msg += `💰 Total Spend: ${formatINR(tripStats.totalSpent)}\n`;
-    msg += `👥 Per Person Average: ${formatINR(tripStats.perPersonAvg)}\n\n`;
+    let msg = `🌴 *${tripToUse.title.toUpperCase()}*\n`;
+    msg += `📍 Destination: ${tripToUse.destination || 'Vacation'}\n`;
+    if (tripToUse.startDate) msg += `🗓️ Dates: ${tripToUse.startDate} to ${tripToUse.endDate || 'TBD'}\n`;
+    msg += `💰 Total Spend: ${formatINR(statsToUse.totalSpent)}\n`;
+    msg += `👥 Per Person Average: ${formatINR(statsToUse.perPersonAvg)}\n\n`;
 
     msg += `⚖️ *WHO OWES WHOM (SIMPLIFIED SETTLEMENTS)*:\n`;
-    if (tripStats.transfers.length === 0) {
+    if (!statsToUse.transfers || statsToUse.transfers.length === 0) {
       msg += `🎉 Everyone is all settled up! No pending payments.\n\n`;
     } else {
-      tripStats.transfers.forEach(tf => {
+      statsToUse.transfers.forEach(tf => {
         msg += `• *${compMap[tf.from] || tf.from}* owes *${compMap[tf.to] || tf.to}*: ${formatINR(tf.amount)}\n`;
       });
       msg += `\n`;
@@ -810,7 +1463,7 @@ export default function TripExpenseManager({
 
     msg += `📊 *INDIVIDUAL NET STANDINGS*:\n`;
     companions.forEach(c => {
-      const bal = tripStats.balances[c.id] || 0;
+      const bal = statsToUse.balances?.[c.id] || 0;
       const status = bal > 0 ? `Gets back ${formatINR(bal)}` : bal < 0 ? `Owes ${formatINR(Math.abs(bal))}` : `Settled (₹0)`;
       msg += `• ${c.name}: ${status}\n`;
     });
@@ -819,38 +1472,181 @@ export default function TripExpenseManager({
     return msg;
   };
 
-  const copyTripSummary = () => {
-    const text = generateTripShareText();
+  const copyTripSummary = (targetTrip = activeTrip, targetStats = tripStats) => {
+    const text = generateTripShareText(targetTrip, targetStats);
     navigator.clipboard.writeText(text);
     triggerToast('Trip settlement summary copied to clipboard!');
   };
 
-  const shareViaWhatsApp = () => {
-    const text = encodeURIComponent(generateTripShareText());
+  const shareViaWhatsApp = (targetTrip = activeTrip, targetStats = tripStats) => {
+    const text = encodeURIComponent(generateTripShareText(targetTrip, targetStats));
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
-  const downloadCSV = () => {
-    if (!activeTrip) return;
-    const compMap = {};
-    activeTrip.companions.forEach(c => { compMap[c.id] = c.name; });
+  // Full Export to PDF Handler
+  const handleExportPDF = (targetTrip = activeTrip, targetStats = tripStats) => {
+    const tripToUse = targetTrip || exportTargetTrip;
+    const statsToUse = targetStats || exportTripStats;
+    if (!tripToUse) return;
 
-    let csvContent = 'Date,Title,Category,Amount,Paid By,Split Mode,Notes\n';
-    (activeTrip.expenses || []).forEach(e => {
-      const payer = compMap[e.paidBy] || e.paidBy;
-      const cat = TRIP_CATEGORIES.find(c => c.id === e.category)?.label || e.category;
-      csvContent += `"${e.date || ''}","${(e.title || '').replace(/"/g, '""')}","${cat}",${e.amount},"${payer}","${e.splitType || 'equal'}","${(e.notes || '').replace(/"/g, '""')}"\n`;
-    });
+    try {
+      const htmlContent = generateTripPdfHtml({ trip: tripToUse, tripStats: statsToUse, userNickname });
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+      } else {
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+        iframe.contentDocument.write(htmlContent);
+        iframe.contentDocument.close();
+        setTimeout(() => {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+          }, 1000);
+        }, 500);
+      }
+      triggerToast('Generating PDF statement / print preview...');
+    } catch (err) {
+      console.error('PDF export error:', err);
+      // Fallback: download HTML statement file
+      const blob = new Blob([generateTripPdfHtml({ trip: tripToUse, tripStats: statsToUse, userNickname })], { type: 'text/html;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tallyin_${tripToUse.title.replace(/\s+/g, '_')}_statement.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      triggerToast('Print blocked. Downloaded printable statement as HTML file.');
+    }
+  };
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `${activeTrip.title.replace(/\s+/g, '_')}_expenses.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    triggerToast('CSV downloaded!');
+  // Full Export to Excel (.xls) Handler
+  const handleExportExcel = (targetTrip = activeTrip, targetStats = tripStats) => {
+    const tripToUse = targetTrip || exportTargetTrip;
+    const statsToUse = targetStats || exportTripStats;
+    if (!tripToUse) return;
+
+    try {
+      const excelContent = generateTripExcelHtml({ trip: tripToUse, tripStats: statsToUse, userNickname });
+      const blob = new Blob([excelContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tallyin_trip_${tripToUse.title.replace(/\s+/g, '_')}_statement.xls`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      triggerToast('Excel spreadsheet (.xls) downloaded successfully!');
+    } catch (err) {
+      console.error('Excel export error:', err);
+      triggerToast('Failed to export Excel spreadsheet.');
+    }
+  };
+
+  // Full Export to CSV Handler
+  const handleExportCSV = (targetTrip = activeTrip) => {
+    const tripToUse = targetTrip || exportTargetTrip;
+    if (!tripToUse) return;
+
+    try {
+      const csvContent = generateTripCsvContent(tripToUse);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tallyin_trip_${tripToUse.title.replace(/\s+/g, '_')}_expenses.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      triggerToast('CSV ledger downloaded successfully!');
+    } catch (err) {
+      console.error('CSV export error:', err);
+      triggerToast('Failed to export CSV file.');
+    }
+  };
+
+  // On-Demand Direct Email Dispatch Handler
+  const handleSendOnDemandEmail = async (targetEmail, targetTrip = activeTrip, targetStats = tripStats) => {
+    const tripToUse = targetTrip || exportTargetTrip;
+    const statsToUse = targetStats || exportTripStats;
+    if (!tripToUse) return;
+
+    if (!targetEmail || !targetEmail.includes('@')) {
+      triggerToast('Please enter a valid email address.');
+      return;
+    }
+
+    setIsSendingOnDemandEmail(true);
+    triggerToast(`📧 Preparing statement and emailing to ${targetEmail.trim()}...`);
+    try {
+      const emailHtml = generateTripCompletionEmailHtml({
+        trip: tripToUse,
+        tripStats: statsToUse,
+        userNickname,
+        userEmail: currentUserEmail
+      });
+
+      const csvContent = generateTripCsvContent(tripToUse);
+      const excelContent = generateTripExcelHtml({ trip: tripToUse, tripStats: statsToUse, userNickname });
+      const pdfHtmlContent = generateTripPdfHtml({ trip: tripToUse, tripStats: statsToUse, userNickname });
+
+      const cleanTitle = tripToUse.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const attachments = [
+        {
+          name: `tallyin_trip_${cleanTitle}_statement.csv`,
+          mimeType: 'text/csv',
+          base64: toBase64(csvContent)
+        },
+        {
+          name: `tallyin_trip_${cleanTitle}_statement.xls`,
+          mimeType: 'application/vnd.ms-excel',
+          base64: toBase64(excelContent)
+        },
+        {
+          name: `tallyin_trip_${cleanTitle}_statement.html`,
+          mimeType: 'text/html',
+          base64: toBase64(pdfHtmlContent),
+          convertToPdf: true
+        }
+      ];
+
+      await fetch(CENTRAL_EMAIL_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: targetEmail.trim(),
+          subject: `🌴 [Tallyin Trip Statement] ${tripToUse.title} • Financial Settlement & Ledger`,
+          body: `Hi,\n\nAttached is your financial statement for trip "${tripToUse.title}" (${tripToUse.destination || 'Vacation'}). Total spend: ₹${statsToUse.totalSpent}. Attachments include PDF, Excel (.xls), and CSV statements.\n\nView online at https://tallyin.vercel.app`,
+          textBody: `Hi,\n\nAttached is your financial statement for trip "${tripToUse.title}" (${tripToUse.destination || 'Vacation'}). Total spend: ₹${statsToUse.totalSpent}. Attachments include PDF, Excel (.xls), and CSV statements.\n\nView online at https://tallyin.vercel.app`,
+          htmlBody: emailHtml,
+          attachments: attachments,
+          name: 'Tallyin Trip Splitter',
+          senderName: 'Tallyin Trip Splitter'
+        })
+      });
+
+      triggerToast(`🎉 Statement and attachments successfully emailed to ${targetEmail.trim()}!`);
+    } catch (err) {
+      console.error('Error emailing trip statement:', err);
+      triggerToast('Failed to email statement. Please check your network connection.');
+    } finally {
+      setIsSendingOnDemandEmail(false);
+    }
   };
 
   // ==========================================
@@ -962,12 +1758,33 @@ export default function TripExpenseManager({
             )}
 
             <button
-              onClick={() => setIsShareModalOpen(true)}
-              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-[#1A3827] dark:text-slate-200 hover:bg-[#F6F8F6] text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer"
-              title="Share Settlement Summary"
+              onClick={() => handleExportPDF(activeTrip, tripStats)}
+              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-slate-800 dark:text-slate-200 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs shrink-0 whitespace-nowrap cursor-pointer"
+              title="Print or Save as PDF Statement"
             >
-              <Share2 className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
-              <span className="hidden sm:inline">Share Summary</span>
+              <Printer className="w-4 h-4 text-rose-500" />
+              <span className="hidden md:inline">PDF</span>
+            </button>
+
+            <button
+              onClick={() => handleExportExcel(activeTrip, tripStats)}
+              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 text-slate-800 dark:text-slate-200 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs shrink-0 whitespace-nowrap cursor-pointer"
+              title="Download Excel Spreadsheet (.xls)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+              <span className="hidden md:inline">Excel</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setTripToExport(activeTrip);
+                setIsExportModalOpen(true);
+              }}
+              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-[#1A3827] text-white hover:bg-[#255038] dark:bg-[#A3E635] dark:text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer"
+              title="Export & Share Trip Ledger"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export & Share</span>
             </button>
             <button
               onClick={() => {
@@ -1820,67 +2637,25 @@ export default function TripExpenseManager({
         )}
 
         {/* ======================================================== */}
-        {/* MODAL: SHARE / EXPORT SUMMARY */}
+        {/* MODAL: EXPORT & SHARE HUB */}
         {/* ======================================================== */}
-        {isShareModalOpen && typeof document !== 'undefined' && createPortal(
-          <div 
-            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
-            onClick={(e) => { if (e.target === e.currentTarget) setIsShareModalOpen(false); }}
-          >
-            <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-[#E2EAE3] dark:border-slate-800 shadow-2xl rounded-3xl p-6 space-y-5">
-              <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <Share2 className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
-                  <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100">
-                    Share Trip Settlement Summary
-                  </h3>
-                </div>
-                <button
-                  onClick={() => setIsShareModalOpen(false)}
-                  className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-medium">
-                  Copy formatted summary or dispatch directly to your trip's WhatsApp group:
-                </p>
-                <div className="p-4 rounded-2xl bg-white dark:bg-slate-950/80 border border-[#E3E8E3] dark:border-slate-800 font-mono text-xs max-h-56 overflow-y-auto whitespace-pre-wrap select-all">
-                  {generateTripShareText()}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E3E8E3] dark:border-slate-800 flex-wrap">
-                <button
-                  onClick={downloadCSV}
-                  className="px-3 py-2 rounded-xl bg-[#EAF0EC] dark:bg-slate-800 font-bold text-xs flex items-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download CSV</span>
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={copyTripSummary}
-                    className="px-4 py-2 rounded-xl bg-[#EAF0EC] dark:bg-slate-800 hover:bg-[#dfe7e2] font-black text-xs flex items-center gap-1.5"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Text</span>
-                  </button>
-                  <button
-                    onClick={shareViaWhatsApp}
-                    className="px-4 py-2 rounded-xl bg-[#25D366] text-white font-black text-xs shadow-md flex items-center gap-1.5"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                    <span>WhatsApp</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>,
-          document.body
+        {isExportModalOpen && (
+          <ExportAndShareModal
+            isOpen={isExportModalOpen}
+            onClose={() => {
+              setIsExportModalOpen(false);
+              setTripToExport(null);
+            }}
+            trip={exportTargetTrip}
+            tripStats={exportTripStats}
+            userNickname={userNickname}
+            currentUserEmail={currentUserEmail}
+            onExportPDF={handleExportPDF}
+            onExportExcel={handleExportExcel}
+            onExportCSV={handleExportCSV}
+            onSendEmail={handleSendOnDemandEmail}
+            isSendingEmail={isSendingOnDemandEmail}
+          />
         )}
 
         {/* ======================================================== */}
@@ -1925,6 +2700,8 @@ export default function TripExpenseManager({
             }
             roomMembers={members}
             user={user}
+            currentUserEmail={currentUserEmail}
+            userNickname={userNickname}
             onConfirm={handleCompleteTrip}
             isSending={isSendingTripEmails}
           />
@@ -1954,12 +2731,18 @@ export default function TripExpenseManager({
       {/* Top Header & Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight flex items-center gap-2">
-            <Compass className="w-6 h-6 text-emerald-600 dark:text-[#A3E635] shrink-0" />
-            <span className="truncate">Trips & Vacation Expense Splitter</span>
-          </h2>
-          <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-medium">
-            Plan group budgets, track on-the-go travel expenses, split costs with companions & settle balances.
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-2xl font-black text-[#1A3827] dark:text-slate-100 tracking-tight flex items-center gap-2">
+              <Compass className="w-6 h-6 text-emerald-600 dark:text-[#A3E635] shrink-0" />
+              <span className="truncate">Trips & Vacation Expense Splitter</span>
+            </h2>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-[#A3E635] text-[10px] font-bold">
+              <Lock className="w-3 h-3" />
+              <span>100% Private to You</span>
+            </div>
+          </div>
+          <p className="text-xs text-[#5C6E5C] dark:text-slate-400 font-medium mt-1">
+            Plan group budgets, track on-the-go travel expenses, split costs with companions & settle balances. 🔒 Private to your account — roommates cannot view your trips.
           </p>
         </div>
 
@@ -2129,6 +2912,17 @@ export default function TripExpenseManager({
                         </button>
                       )}
                       <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTripToExport(trip);
+                          setIsExportModalOpen(true);
+                        }}
+                        className="p-1 text-slate-400 hover:text-emerald-600 dark:hover:text-[#A3E635] rounded-lg transition-colors cursor-pointer"
+                        title="Export PDF / Excel / CSV or Share"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                      <button
                         onClick={() => {
                           setEditingTrip(trip);
                           setIsTripModalOpen(true);
@@ -2263,8 +3057,32 @@ export default function TripExpenseManager({
           }
           roomMembers={members}
           user={user}
+          currentUserEmail={currentUserEmail}
+          userNickname={userNickname}
           onConfirm={handleCompleteTrip}
           isSending={isSendingTripEmails}
+        />
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: EXPORT & SHARE HUB */}
+      {/* ======================================================== */}
+      {isExportModalOpen && (
+        <ExportAndShareModal
+          isOpen={isExportModalOpen}
+          onClose={() => {
+            setIsExportModalOpen(false);
+            setTripToExport(null);
+          }}
+          trip={exportTargetTrip}
+          tripStats={exportTripStats}
+          userNickname={userNickname}
+          currentUserEmail={currentUserEmail}
+          onExportPDF={handleExportPDF}
+          onExportExcel={handleExportExcel}
+          onExportCSV={handleExportCSV}
+          onSendEmail={handleSendOnDemandEmail}
+          isSendingEmail={isSendingOnDemandEmail}
         />
       )}
 
@@ -2295,17 +3113,10 @@ function TripModal({
     if (initialData?.companions && initialData.companions.length > 0) {
       return initialData.companions;
     }
-    // Default seed from current user + room members
-    const list = [
+    // Default: only the organizer/host (private to individual user)
+    return [
       { id: 'c-host', name: defaultHostName || 'You', isHost: true }
     ];
-    roomMembers.forEach((m, idx) => {
-      const name = m.nickname || m.name;
-      if (name && name.toLowerCase() !== (defaultHostName || 'You').toLowerCase()) {
-        list.push({ id: `c-rm-${idx}`, name, isHost: false });
-      }
-    });
-    return list;
   });
 
   const [newCompanionInput, setNewCompanionInput] = useState('');
@@ -2360,6 +3171,17 @@ function TripModal({
           >
             <X className="w-4 h-4" />
           </button>
+        </div>
+
+        {/* Privacy Guarantee Notice */}
+        <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300">
+          <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600 dark:text-[#A3E635]" />
+          <div className="text-xs leading-relaxed">
+            <span className="font-black text-[11px] uppercase tracking-wider text-emerald-700 dark:text-[#A3E635] block">
+              🔒 100% Private to Your Account
+            </span>
+            This trip and its expenses are strictly private to you. Roommates cannot view your trips, and trip balances never mix with your shared room ledger.
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -2465,7 +3287,7 @@ function TripModal({
                     <button
                       type="button"
                       onClick={() => handleRemoveChip(c.id)}
-                      className="hover:text-rose-500"
+                      className="hover:text-rose-500 cursor-pointer"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -2491,11 +3313,41 @@ function TripModal({
               <button
                 type="button"
                 onClick={handleAddCompanionChip}
-                className="px-3.5 py-2 rounded-xl bg-[#EAF0EC] dark:bg-slate-800 hover:bg-[#dfe7e2] font-black text-xs shrink-0"
+                className="px-3.5 py-2 rounded-xl bg-[#EAF0EC] dark:bg-slate-800 hover:bg-[#dfe7e2] font-black text-xs shrink-0 cursor-pointer"
               >
                 + Add
               </button>
             </div>
+
+            {/* Quick add flatmates if present */}
+            {roomMembers.filter(m => {
+              const name = m.nickname || m.name;
+              return name && !companions.some(c => c.name.toLowerCase() === name.toLowerCase());
+            }).length > 0 && (
+              <div className="pt-2 space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  Quick add flatmates (optional):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {roomMembers.filter(m => {
+                    const name = m.nickname || m.name;
+                    return name && !companions.some(c => c.name.toLowerCase() === name.toLowerCase());
+                  }).map((m, idx) => {
+                    const name = m.nickname || m.name;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setCompanions(prev => [...prev, { id: `c-rm-${Date.now()}-${idx}`, name, isHost: false }])}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+                      >
+                        + {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-4 border-t border-[#E3E8E3] dark:border-slate-800">
@@ -2838,11 +3690,14 @@ function CompleteTripModal({
   tripStats,
   roomMembers = [],
   user = null,
+  currentUserEmail = '',
+  userNickname = 'You',
   onConfirm,
   isSending = false
 }) {
   const [companionEmails, setCompanionEmails] = useState({});
   const [sendEmails, setSendEmails] = useState(true);
+  const [emailError, setEmailError] = useState('');
 
   useEffect(() => {
     if (!trip) return;
@@ -2852,19 +3707,30 @@ function CompleteTripModal({
         (m.nickname && m.nickname.toLowerCase() === c.name.toLowerCase()) || 
         (m.name && m.name.toLowerCase() === c.name.toLowerCase())
       );
-      initialEmails[c.id] = c.email || matchMember?.email || (c.isHost ? user?.email : '') || '';
+      const isCurrentUser = c.isHost || (c.name && c.name.toLowerCase() === (userNickname || 'You').toLowerCase());
+      initialEmails[c.id] = c.email || (isCurrentUser ? currentUserEmail : '') || matchMember?.email || '';
     });
     setCompanionEmails(initialEmails);
-  }, [trip, roomMembers, user]);
+    setEmailError('');
+  }, [trip, roomMembers, user, currentUserEmail, userNickname]);
 
   if (!isOpen || !trip) return null;
 
   const handleEmailChange = (cid, val) => {
     setCompanionEmails(prev => ({ ...prev, [cid]: val }));
+    setEmailError('');
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (sendEmails) {
+      const validEmails = Object.values(companionEmails).filter(em => em && em.includes('@'));
+      if (validEmails.length === 0) {
+        setEmailError('Please enter at least one recipient email address (or uncheck the email option) to proceed.');
+        return;
+      }
+    }
+    setEmailError('');
     onConfirm({ tripId: trip.id, companionEmails, sendEmails });
   };
 
@@ -2933,16 +3799,40 @@ function CompleteTripModal({
               </span>
             </label>
             <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 pl-6">
-              Sends an official branded statement with total expenses, category totals, individual splits, and debt settlements.
+              Sends an official branded statement with PDF, Excel (.xls), and CSV attachments directly.
             </p>
           </div>
 
           {/* Companions Email Inputs */}
           {sendEmails && (
             <div className="space-y-2.5 pt-1">
-              <label className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Companion Email Recipients
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Companion Email Recipients
+                </label>
+                {currentUserEmail && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const hostComp = (trip.companions || []).find(c => c.isHost) || trip.companions?.[0];
+                      if (hostComp) {
+                        setCompanionEmails(prev => ({ ...prev, [hostComp.id]: currentUserEmail }));
+                        setEmailError('');
+                      }
+                    }}
+                    className="text-[10px] font-bold text-emerald-600 dark:text-[#A3E635] hover:underline cursor-pointer"
+                  >
+                    Use my email ({currentUserEmail})
+                  </button>
+                )}
+              </div>
+
+              {emailError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                  ⚠️ {emailError}
+                </div>
+              )}
+
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {(trip.companions || []).map(c => {
                   const bal = Math.round(tripStats.balances?.[c.id] || 0);
@@ -2951,7 +3841,7 @@ function CompleteTripModal({
                     <div key={c.id} className="flex items-center gap-2">
                       <div className="w-28 shrink-0">
                         <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
-                          {c.name}
+                          {c.name} {c.isHost ? '(Host)' : ''}
                         </span>
                         <span className={`text-[10px] font-black ${bal > 0 ? 'text-emerald-600' : bal < 0 ? 'text-red-500' : 'text-slate-400'}`}>
                           {balLabel}
@@ -2999,6 +3889,205 @@ function CompleteTripModal({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
+}
+
+// =========================================================================
+// SUB-MODAL COMPONENT: EXPORT & SHARE HUB
+// =========================================================================
+function ExportAndShareModal({
+  isOpen,
+  onClose,
+  trip,
+  tripStats,
+  userNickname = 'You',
+  currentUserEmail = '',
+  onExportPDF,
+  onExportExcel,
+  onExportCSV,
+  onSendEmail,
+  isSendingEmail = false
+}) {
+  const [recipientEmail, setRecipientEmail] = useState(currentUserEmail || '');
+  const [isCopied, setIsCopied] = useState(false);
+
+  useEffect(() => {
+    if (currentUserEmail && !recipientEmail) {
+      setRecipientEmail(currentUserEmail);
+    }
+  }, [currentUserEmail]);
+
+  if (!isOpen || !trip) return null;
+
+  const totalSpent = tripStats.totalSpent || 0;
+  const companions = trip.companions || [];
+  const compMap = {};
+  companions.forEach(c => { compMap[c.id] = c.name; });
+
+  const shareText = `🌴 *${trip.title.toUpperCase()}*\n📍 Destination: ${trip.destination || 'Vacation'}\n💰 Total Spend: ₹${Number(totalSpent).toLocaleString('en-IN')}\n\n⚖️ *WHO OWES WHOM*:\n${(tripStats.transfers || []).length > 0 ? (tripStats.transfers || []).map(tr => `• *${compMap[tr.from] || tr.from}* owes *${compMap[tr.to] || tr.to}*: ₹${Number(tr.amount).toLocaleString('en-IN')}`).join('\n') : '✓ All accounts are balanced!'}\n\n_Generated via Tallyin Trip Splitter_ 🚀`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(shareText);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const handleWhatsApp = () => {
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
+  };
+
+  const handleEmailSubmit = (e) => {
+    e.preventDefault();
+    if (!recipientEmail || !recipientEmail.includes('@')) return;
+    onSendEmail(recipientEmail, trip, tripStats);
+  };
+
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in text-left"
+      onClick={(e) => { if (e.target === e.currentTarget && !isSendingEmail) onClose(); }}
+    >
+      <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-[#E2EAE3] dark:border-slate-800 shadow-2xl rounded-3xl p-6 sm:p-7 space-y-5 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-[#E3E8E3] dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <Download className="w-5 h-5 text-emerald-600 dark:text-[#A3E635]" />
+            <div>
+              <h3 className="text-base font-black text-[#1A3827] dark:text-slate-100">
+                Export & Share Trip Ledger
+              </h3>
+              <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+                {trip.title} • ₹{Number(totalSpent).toLocaleString('en-IN')} Total Spend
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={isSendingEmail}
+            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Section 1: File Exports (PDF, Excel, CSV) */}
+        <div className="space-y-2">
+          <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+            Download Financial Statement Documents
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* PDF Option */}
+            <button
+              type="button"
+              onClick={() => onExportPDF(trip, tripStats)}
+              className="p-3.5 rounded-2xl border border-rose-200 dark:border-rose-950/60 bg-rose-50/50 hover:bg-rose-50 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 text-left transition-all group cursor-pointer shadow-xs"
+            >
+              <div className="w-8 h-8 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div className="text-xs font-black text-slate-900 dark:text-slate-100">PDF Statement</div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Print / Save as PDF</div>
+            </button>
+
+            {/* Excel Option */}
+            <button
+              type="button"
+              onClick={() => onExportExcel(trip, tripStats)}
+              className="p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-950/60 bg-emerald-50/50 hover:bg-emerald-50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 text-left transition-all group cursor-pointer shadow-xs"
+            >
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                <FileSpreadsheet className="w-4 h-4" />
+              </div>
+              <div className="text-xs font-black text-slate-900 dark:text-slate-100">Excel Sheet (.xls)</div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Styled Multi-Table</div>
+            </button>
+
+            {/* CSV Option */}
+            <button
+              type="button"
+              onClick={() => onExportCSV(trip)}
+              className="p-3.5 rounded-2xl border border-blue-200 dark:border-blue-950/60 bg-blue-50/50 hover:bg-blue-50 dark:bg-blue-950/20 dark:hover:bg-blue-950/40 text-left transition-all group cursor-pointer shadow-xs"
+            >
+              <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                <Download className="w-4 h-4" />
+              </div>
+              <div className="text-xs font-black text-slate-900 dark:text-slate-100">Raw CSV File</div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Sheets / Audits</div>
+            </button>
+          </div>
+        </div>
+
+        {/* Section 2: On-Demand Email Statement */}
+        <div className="space-y-2.5 pt-2 border-t border-[#E3E8E3] dark:border-slate-800">
+          <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <Mail className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+            <span>Email Statement to Yourself or Companions</span>
+          </label>
+          <form onSubmit={handleEmailSubmit} className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="email"
+              placeholder="Enter email address (e.g. your@email.com)..."
+              value={recipientEmail}
+              onChange={(e) => setRecipientEmail(e.target.value)}
+              className="flex-1 px-3.5 py-2.5 rounded-xl border border-[#E3E8E3] dark:border-slate-800 bg-[#F8FAF9] dark:bg-slate-950 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600"
+              disabled={isSendingEmail}
+            />
+            <button
+              type="submit"
+              disabled={isSendingEmail || !recipientEmail || !recipientEmail.includes('@')}
+              className="px-4 py-2.5 rounded-xl bg-[#1A3827] hover:bg-[#255038] text-white dark:bg-[#A3E635] dark:text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-50 cursor-pointer shrink-0"
+            >
+              {isSendingEmail ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Sending...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send Email</span>
+                </>
+              )}
+            </button>
+          </form>
+          <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400">
+            Sends an official statement with printable PDF statement, Excel (.xls), and CSV files attached directly.
+          </p>
+        </div>
+
+        {/* Section 3: WhatsApp & Quick Text */}
+        <div className="space-y-2 pt-2 border-t border-[#E3E8E3] dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Instant Chat Sharing
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="px-3 py-1.5 rounded-lg bg-[#EAF0EC] dark:bg-slate-800 hover:bg-[#dfe7e2] font-black text-[11px] flex items-center gap-1 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+              >
+                {isCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                <span>{isCopied ? 'Copied!' : 'Copy Text'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleWhatsApp}
+                className="px-3 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-white font-black text-[11px] flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+              >
+                <Share2 className="w-3 h-3" />
+                <span>WhatsApp</span>
+              </button>
+            </div>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-[#F8FAF9] dark:bg-slate-950/80 border border-[#E3E8E3] dark:border-slate-800 font-mono text-xs max-h-36 overflow-y-auto whitespace-pre-wrap select-all text-slate-700 dark:text-slate-300">
+            {shareText}
+          </div>
+        </div>
+
       </div>
     </div>
   );

@@ -35,7 +35,7 @@ export default function Navbar({
   setIsMobileMenuOpen,
   setShowChangePasswordModal
 }) {
-  const activeRoom = userRooms?.find(r => r.room_id === userRoomId);
+  const activeRoom = userRooms?.find(r => (r.roomId || r.room_id) === userRoomId);
 
   return (
     <header className="sticky top-0 z-40 w-full hud-card border-b border-[#E3E8E3] dark:border-slate-800 backdrop-blur-xl transition-all duration-300">
@@ -73,7 +73,7 @@ export default function Navbar({
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
                   <span className="max-w-[100px] sm:max-w-[140px] truncate font-extrabold">
-                    {activeRoom?.room_name || userRoomId}
+                    {activeRoom?.roomName || activeRoom?.room_name || userRoomId}
                   </span>
                   <QrCode className="w-3.5 h-3.5 text-[#5C6E5C] dark:text-slate-400 shrink-0" />
                 </button>

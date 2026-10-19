@@ -3353,18 +3353,18 @@ export default function App() {
         }
       } else if (formatted.length > 0) {
         const currentStoredRoomId = localStorage.getItem('userRoomId');
-        const activeRoom = (currentStoredRoomId !== 'DUO-KLIZ-2508' || isGenesisAuthorized)
-          ? (formatted.find(r => r.roomId === currentStoredRoomId) || formatted[0])
-          : (formatted.find(r => r.roomId !== 'DUO-KLIZ-2508') || formatted[0]);
-        if (activeRoom && activeRoom.roomId) {
-          setUserRoomId(activeRoom.roomId);
-          setHasConfirmedRoom(true);
-          if (activeRoom.roomName && !isUserActivelyEditingRoomName()) setRoomName(activeRoom.roomName);
-          localStorage.setItem('userRoomId', activeRoom.roomId);
+        if (currentStoredRoomId) {
+          const activeRoom = (currentStoredRoomId !== 'DUO-KLIZ-2508' || isGenesisAuthorized)
+            ? (formatted.find(r => r.roomId === currentStoredRoomId) || formatted[0])
+            : (formatted.find(r => r.roomId !== 'DUO-KLIZ-2508') || formatted[0]);
+          if (activeRoom && activeRoom.roomId) {
+            if (activeRoom.roomName && !isUserActivelyEditingRoomName()) setRoomName(activeRoom.roomName);
+          }
         }
       } else {
         setUserRoomId(null);
         setHasConfirmedRoom(false);
+        localStorage.removeItem('userRoomId');
       }
 
       // Purge pending requests for rooms that have been deleted or where user is already a member
@@ -16106,21 +16106,37 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                 <div className="flex gap-1.5 pt-1">
                   <button
                     onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setCurrentView('home');
+                      setHasConfirmedRoom(false);
+                      setOnboardingStep('selection');
+                    }}
+                    className="flex-1 py-1.5 rounded-lg border border-[#E3E8E3] dark:border-slate-800 text-[9px] font-bold text-[#5C6E5C] dark:text-slate-300 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all text-center cursor-pointer"
+                    title="View all rooms and join requests"
+                  >
+                    All Spaces
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setCurrentView('home');
                       setHasConfirmedRoom(false);
                       setOnboardingStep('room-name');
                     }}
                     className="flex-1 py-1.5 rounded-lg border border-dashed border-[#1A3827]/30 dark:border-slate-700 text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all text-center cursor-pointer"
                   >
-                    + New Room
+                    + New
                   </button>
                   <button
                     onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setCurrentView('home');
                       setHasConfirmedRoom(false);
                       setOnboardingStep('join-room');
                     }}
                     className="flex-1 py-1.5 rounded-lg border border-dashed border-[#1A3827]/30 dark:border-slate-700 text-[9px] font-bold text-[#1A3827] dark:text-[#A3E635] hover:bg-[#EAF0EC] dark:hover:bg-slate-800 transition-all text-center cursor-pointer"
                   >
-                    Join Room
+                    Join
                   </button>
                 </div>
               </div>
@@ -21421,6 +21437,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         triggerToast={triggerToast}
         isDarkMode={isDarkMode}
         onNavigate={navigateTo}
+        codeLoginEmail={codeLoginEmail}
+        roomName={roomName}
       />
     );
   }
