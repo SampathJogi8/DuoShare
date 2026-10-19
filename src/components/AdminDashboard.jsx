@@ -4909,13 +4909,115 @@ Tallyin Team`;
   };
 
   // Transaction Dispute Handlers
+  const getDisputedTxId = (ticket) => {
+    if (!ticket) return null;
+    if (ticket.transaction_id) return ticket.transaction_id;
+    if (ticket.transactionId) return ticket.transactionId;
+    if (ticket.txId) return ticket.txId;
+    if (ticket.extraDetails?.itemType === 'expense' && ticket.extraDetails?.itemId) return ticket.extraDetails.itemId;
+    if (ticket.description) {
+      const match = ticket.description.match(/Transaction ID:\s*([^\s\n\r]+)/i);
+      if (match && match[1]) return match[1].trim();
+    }
+    return null;
+  };
+
+  const handleOpenEditFromDispute = async (ticket) => {
+    if (!ticket) return;
+    const txId = getDisputedTxId(ticket);
+    const room = ticket.room_id || ticket.roomId;
+    const title = ticket.transaction_title;
+
+    // 1. Try finding in loaded allGlobalTx
+    let found = allGlobalTx.find(t => 
+      (txId && (t.id === txId || String(t.id).toLowerCase() === String(txId).toLowerCase())) || 
+      (room && title && t.room_id === room && t.title?.toLowerCase() === title.toLowerCase())
+    );
+
+    // 2. If not found in memory but txId exists, fetch directly from Supabase
+    if (!found && txId) {
+      try {
+        const { data } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('id', txId)
+          .maybeSingle();
+        if (data) found = data;
+      } catch (err) {
+        console.warn('Direct tx fetch error:', err);
+      }
+    }
+
+    // 3. Fallback: try searching by room and title if not found by id
+    if (!found && room && title) {
+      try {
+        const { data } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('room_id', room)
+          .ilike('title', `%${title}%`)
+          .limit(1)
+          .maybeSingle();
+        if (data) found = data;
+      } catch (err) {}
+    }
+
+    const targetTx = found || {
+      id: txId || ticket.transaction_id || `tx-${Date.now()}`,
+      title: ticket.transaction_title || ticket.title || 'Expense',
+      amount: ticket.transaction_amount || 0,
+      category: 'General',
+      room_id: room
+    };
+
+    setEditingTx(targetTx);
+    setEditTxTitle(targetTx.title || '');
+    setEditTxAmount(String(targetTx.amount || ''));
+    setEditTxCategory(targetTx.category || 'General');
+  };
+
+  const handleVoidFromDispute = async (ticket) => {
+    if (!ticket) return;
+    const txId = getDisputedTxId(ticket);
+    const room = ticket.room_id || ticket.roomId;
+    const title = ticket.transaction_title;
+
+    let found = allGlobalTx.find(t => 
+      (txId && (t.id === txId || String(t.id).toLowerCase() === String(txId).toLowerCase())) || 
+      (room && title && t.room_id === room && t.title?.toLowerCase() === title.toLowerCase())
+    );
+
+    if (!found && txId) {
+      try {
+        const { data } = await supabase.from('transactions').select('*').eq('id', txId).maybeSingle();
+        if (data) found = data;
+      } catch (e) {}
+    }
+
+    const targetTx = found || {
+      id: txId || ticket.transaction_id,
+      title: ticket.transaction_title || 'Expense',
+      amount: ticket.transaction_amount || 0,
+      room_id: room
+    };
+
+    if (targetTx.id) {
+      await handleVoidTransaction(targetTx);
+      setSelectedDisputeTicket(prev => prev ? { ...prev, transaction_title: `${prev.transaction_title || 'Expense'} (VOIDED)` } : null);
+      setAdminResponseText(prev => prev.trim() ? prev : `Disputed transaction "${targetTx.title}" (₹${targetTx.amount}) has been officially voided and removed from room balances by Administration.`);
+    } else {
+      if (triggerToast) triggerToast('Could not locate transaction ID to void.');
+    }
+  };
+
   const handleSaveEditedTransaction = async (txId) => {
     setIsSavingTx(true);
     try {
       const updates = {
         title: editTxTitle.trim(),
         amount: Number(editTxAmount) || 0,
-        category: editTxCategory || 'General'
+        category: editTxCategory || 'General',
+        is_edited: true
       };
 
       const { error } = await supabase
@@ -4926,6 +5028,24 @@ Tallyin Team`;
       if (error) throw error;
 
       setAllGlobalTx(prev => prev.map(t => t.id === txId ? { ...t, ...updates } : t));
+
+      // Update selectedDisputeTicket in real-time if currently open
+      setSelectedDisputeTicket(prev => {
+        if (!prev) return prev;
+        const matches = prev.transaction_id === txId || prev.transaction_title === editingTx?.title;
+        if (matches) {
+          return {
+            ...prev,
+            transaction_title: updates.title,
+            transaction_amount: updates.amount
+          };
+        }
+        return prev;
+      });
+
+      // Suggest administrative resolution remark if empty
+      setAdminResponseText(prev => prev.trim() ? prev : `Disputed transaction details updated to "${updates.title}" (₹${updates.amount}, ${updates.category}) by System Administration.`);
+
       logAuditAction('TRANSACTION_EDIT', `Edited transaction ${txId} (${updates.title}, ₹${updates.amount}) by ${user?.email || 'Admin'}`);
       if (triggerToast) triggerToast('Transaction updated successfully!');
       setEditingTx(null);
@@ -15813,6 +15933,17 @@ NOTIFY pgrst, 'reload schema';`;
                                   <span>Ban Violator</span>
                                 </button>
                               )}
+                              {(ticket.transaction_id || ticket.transaction_title || getDisputedTxId(ticket)) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditFromDispute(ticket)}
+                                  className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                                  title="1-Click: Edit disputed transaction directly"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <span>Edit Expense</span>
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
                                   setSelectedDisputeTicket(ticket);
@@ -16416,7 +16547,7 @@ NOTIFY pgrst, 'reload schema';`;
 
       {/* Modal: Edit Transaction Dispute */}
       {editingTx && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3 dark:border-slate-800">
               <h3 className="font-black text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
@@ -16491,7 +16622,7 @@ NOTIFY pgrst, 'reload schema';`;
 
       {/* Modal: Transaction Details & Split Inspection */}
       {selectedTxDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b pb-3 dark:border-slate-800">
               <h3 className="font-black text-sm text-[#1A3827] dark:text-white flex items-center gap-2">
@@ -16913,13 +17044,65 @@ NOTIFY pgrst, 'reload schema';`;
               <span className="font-extrabold text-[#1A3827] dark:text-white block text-sm">{selectedDisputeTicket.title}</span>
               <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedDisputeTicket.description}</p>
               
-              {/* Optional Room & Expense metadata */}
-              {(selectedDisputeTicket.room_id || selectedDisputeTicket.transaction_title) && (
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-500">
-                  {selectedDisputeTicket.room_id && <div>Room: <strong>{selectedDisputeTicket.room_name || selectedDisputeTicket.room_id}</strong></div>}
-                  {selectedDisputeTicket.transaction_title && <div>Expense: <strong>{selectedDisputeTicket.transaction_title} (₹{selectedDisputeTicket.transaction_amount})</strong></div>}
+              {/* Linked Disputed Transaction Quick Actions Card */}
+              {(selectedDisputeTicket.transaction_id || selectedDisputeTicket.transaction_title || getDisputedTxId(selectedDisputeTicket)) ? (
+                <div className="p-3.5 bg-amber-500/10 dark:bg-amber-950/25 border border-amber-500/30 rounded-2xl space-y-2.5 text-xs text-left">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-amber-800 dark:text-amber-300 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+                      <Scale className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                      Linked Disputed Transaction
+                    </span>
+                    {(selectedDisputeTicket.room_name || selectedDisputeTicket.room_id) && (
+                      <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                        Room: <strong>{selectedDisputeTicket.room_name || selectedDisputeTicket.room_id}</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-amber-500/20">
+                    <div className="min-w-0">
+                      <p className="font-black text-[#1A3827] dark:text-slate-100 text-sm truncate">
+                        {selectedDisputeTicket.transaction_title || 'Disputed Expense'}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 text-[11px] font-mono">
+                        <span className="text-emerald-700 dark:text-[#A3E635] font-black">
+                          ₹{Number(selectedDisputeTicket.transaction_amount || 0).toLocaleString('en-IN')}
+                        </span>
+                        {(selectedDisputeTicket.transaction_id || getDisputedTxId(selectedDisputeTicket)) && (
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[200px]" title={selectedDisputeTicket.transaction_id || getDisputedTxId(selectedDisputeTicket)}>
+                            • ID: {selectedDisputeTicket.transaction_id || getDisputedTxId(selectedDisputeTicket)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditFromDispute(selectedDisputeTicket)}
+                        className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                        title="1-Click: Edit transaction title, amount, or category directly"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit Disputed Transaction</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleVoidFromDispute(selectedDisputeTicket)}
+                        className="p-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="Void / Delete this disputed transaction from database"
+                      >
+                        <Trash className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              )}
+              ) : selectedDisputeTicket.room_id ? (
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-[11px] font-mono text-slate-500">
+                  Room: <strong>{selectedDisputeTicket.room_name || selectedDisputeTicket.room_id}</strong>
+                </div>
+              ) : null}
             </div>
 
             {/* Admin Response Textarea */}
