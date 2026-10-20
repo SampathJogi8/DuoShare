@@ -31,6 +31,31 @@ export const setActiveDatabaseEngine = (engine) => {
   }
 };
 
+// Helper to sanitize payload for Cloudflare D1
+const cleanPayloadForD1 = (table, data) => {
+  if (!data) return data;
+  const isArr = Array.isArray(data);
+  const rows = isArr ? data : [data];
+  const cleaned = rows.map(r => {
+    if (!r || typeof r !== 'object') return r;
+    const copy = { ...r };
+    if (table === 'system_settings') {
+      delete copy.updated_at;
+    }
+    if (table === 'members') {
+      delete copy.rooms;
+    }
+    if (table === 'users') {
+      if (!copy.id) copy.id = copy.uid || crypto.randomUUID();
+      if (!copy.uid) copy.uid = copy.id;
+    } else if (['transactions', 'receipts', 'members', 'rooms', 'activity_logs'].includes(table) && !copy.id) {
+      copy.id = crypto.randomUUID();
+    }
+    return copy;
+  });
+  return isArr ? cleaned : cleaned[0];
+};
+
 // D1 QueryBuilder Adapter for Cloudflare Worker with Seamless Supabase Fallback
 class D1QueryBuilder {
   constructor(table) {
@@ -46,6 +71,7 @@ class D1QueryBuilder {
 
   select(columns = '*') {
     if (this.action === 'select') this.action = 'select';
+    this.selectedColumns = columns;
     return this;
   }
 
@@ -60,40 +86,13 @@ class D1QueryBuilder {
         }
       }
     }
-    if (['transactions', 'receipts', 'members', 'rooms', 'users'].includes(this.table)) {
-      const rows = Array.isArray(data) ? data : [data];
-      rows.forEach(row => {
-        if (this.table === 'users') {
-          if (!row.id) row.id = row.uid || crypto.randomUUID();
-          if (!row.uid) row.uid = row.id;
-        } else if (!row.id) {
-          row.id = crypto.randomUUID();
-        }
-      });
-    }
-    if (this.table === 'system_settings' && data) {
-      const cleanRow = (row) => {
-        if (!row || typeof row !== 'object') return row;
-        const { updated_at, ...rest } = row;
-        return rest;
-      };
-      data = Array.isArray(data) ? data.map(cleanRow) : cleanRow(data);
-    }
-    this.payload = data;
+    this.payload = cleanPayloadForD1(this.table, data);
     return this;
   }
 
   update(data) {
     this.action = 'update';
-    if (this.table === 'system_settings' && data) {
-      const cleanRow = (row) => {
-        if (!row || typeof row !== 'object') return row;
-        const { updated_at, ...rest } = row;
-        return rest;
-      };
-      data = Array.isArray(data) ? data.map(cleanRow) : cleanRow(data);
-    }
-    this.payload = data;
+    this.payload = cleanPayloadForD1(this.table, data);
     return this;
   }
 
@@ -114,31 +113,12 @@ class D1QueryBuilder {
         }
       }
     }
-    if (['transactions', 'receipts', 'members', 'rooms', 'users'].includes(this.table)) {
-      const rows = Array.isArray(data) ? data : [data];
-      rows.forEach(row => {
-        if (this.table === 'users') {
-          if (!row.id) row.id = row.uid || crypto.randomUUID();
-          if (!row.uid) row.uid = row.id;
-        } else if (!row.id) {
-          row.id = crypto.randomUUID();
-        }
-      });
-    }
-    if (this.table === 'system_settings' && data) {
-      const cleanRow = (row) => {
-        if (!row || typeof row !== 'object') return row;
-        const { updated_at, ...rest } = row;
-        return rest;
-      };
-      data = Array.isArray(data) ? data.map(cleanRow) : cleanRow(data);
-    }
     const safeOptions = { ...options };
     if (this.table === 'users' && safeOptions.onConflict === 'uid') {
       safeOptions.onConflict = 'id';
     }
     this.options = safeOptions;
-    this.payload = data;
+    this.payload = cleanPayloadForD1(this.table, data);
     return this;
   }
 
@@ -247,22 +227,91 @@ class D1QueryBuilder {
     let payload = this.payload;
 
     if (this.table === 'transactions' && payload) {
+      const allowedTxCols = [
+        'id', 'room_id', 'payer_id', 'amount', 'title', 'category',
+        'date', 'time', 'paid_by', 'paid_by_uid', 'is_shared', 'is_edited',
+        'split_type', 'split', 'splits', 'created_by', 'image_url', 'created_at'
+      ];
       const items = Array.isArray(payload) ? payload : [payload];
-      const cleaned = items.map(t => ({
-        ...t,
-        is_shared: t.is_shared === 1 || t.is_shared === true || t.is_shared === '1' || t.is_shared === 'true',
-        is_edited: t.is_edited === 1 || t.is_edited === true || t.is_edited === '1' || t.is_edited === 'true'
-      }));
+      const cleaned = items.map(t => {
+        if (!t || typeof t !== 'object') return t;
+        const res = {};
+        for (const col of allowedTxCols) {
+          if (col in t && t[col] !== undefined) res[col] = t[col];
+        }
+        if ('is_shared' in res) {
+          res.is_shared = res.is_shared === 1 || res.is_shared === true || res.is_shared === '1' || res.is_shared === 'true';
+        }
+        if ('is_edited' in res) {
+          res.is_edited = res.is_edited === 1 || res.is_edited === true || res.is_edited === '1' || res.is_edited === 'true';
+        }
+        return res;
+      });
       payload = Array.isArray(this.payload) ? cleaned : cleaned[0];
+    }
+
+    if (this.table === 'rooms' && payload) {
+      const allowedRoomCols = ['id', 'name', 'pin', 'created_by', 'monthly_budget', 'created_at', 'max_members', 'room_mode', 'co_host_uid'];
+      const cleanRoom = (r) => {
+        if (!r || typeof r !== 'object') return r;
+        const res = {};
+        for (const col of allowedRoomCols) {
+          if (col in r && r[col] !== undefined) res[col] = r[col];
+        }
+        return res;
+      };
+      payload = Array.isArray(payload) ? payload.map(cleanRoom) : cleanRoom(payload);
+    }
+
+    if (this.table === 'members' && payload) {
+      const allowedCols = ['id', 'room_id', 'uid', 'nickname', 'photo_url', 'email', 'role', 'joined_at', 'individual_budget'];
+      const cleanMember = (m) => {
+        if (!m || typeof m !== 'object') return m;
+        const res = {};
+        for (const col of allowedCols) {
+          if (col in m && m[col] !== undefined) res[col] = m[col];
+        }
+        return res;
+      };
+      payload = Array.isArray(payload) ? payload.map(cleanMember) : cleanMember(payload);
+    }
+
+    if (this.table === 'receipts' && payload) {
+      const allowedReceiptCols = ['id', 'transaction_id', 'file_url', 'bg_class', 'rotation', 'image_url', 'title', 'amount', 'category', 'date', 'created_at', 'room_id'];
+      const cleanReceipt = (r) => {
+        if (!r || typeof r !== 'object') return r;
+        let rot = 0;
+        if (typeof r.rotation === 'number' && !isNaN(r.rotation)) {
+          rot = r.rotation;
+        } else if (typeof r.rotation === 'string') {
+          const match = r.rotation.match(/-?\d+/);
+          rot = match ? parseInt(match[0], 10) : 0;
+        }
+        const res = {};
+        for (const col of allowedReceiptCols) {
+          if (col in r && r[col] !== undefined) res[col] = r[col];
+        }
+        res.rotation = rot;
+        return res;
+      };
+      payload = Array.isArray(payload) ? payload.map(cleanReceipt) : cleanReceipt(payload);
     }
 
     if (this.table === 'users' && payload) {
       const items = Array.isArray(payload) ? payload : [payload];
-      items.forEach(r => {
-        if (!r.id) r.id = r.uid || crypto.randomUUID();
-        if (!r.uid) r.uid = r.id;
+      const cleaned = items.map(r => {
+        const item = { ...r };
+        if (!item.id) item.id = item.uid || crypto.randomUUID();
+        if (!item.uid) item.uid = item.id;
+        delete item.phone;
+        return item;
       });
-      payload = Array.isArray(this.payload) ? items : items[0];
+      payload = Array.isArray(this.payload) ? cleaned : cleaned[0];
+    }
+
+    // If update payload has no valid fields for Supabase (e.g. only D1-specific fields like phone were updated)
+    if (this.action === 'update' && payload && typeof payload === 'object' && !Array.isArray(payload) && Object.keys(payload).length === 0) {
+      return { data: null, error: null };
     }
 
     if (this.action === 'select') {
@@ -331,7 +380,9 @@ class D1QueryBuilder {
         try {
           const parsedErr = JSON.parse(errText);
           if (parsedErr.error) errMsg = parsedErr.error;
-        } catch(e) {}
+        } catch {
+          // ignore JSON parse failure
+        }
         throw new Error(errMsg);
       }
 
@@ -362,6 +413,9 @@ class D1QueryBuilder {
         return typeof onfulfilled === 'function' ? onfulfilled(sbResult) : sbResult;
       } catch (sbErr) {
         const result = { data: null, error: { message: sbErr.message || err.message, code: 'DB_ERROR' } };
+        if (typeof onrejected === 'function') {
+          return onrejected(result.error);
+        }
         return typeof onfulfilled === 'function' ? onfulfilled(result) : result;
       }
     }
@@ -414,11 +468,15 @@ export const supabase = new Proxy(realSupabase, {
               }
             }
           }
-          if (table === 'users' && data) {
+          if (['transactions', 'receipts', 'members', 'rooms', 'users', 'activity_logs'].includes(table) && data) {
             const rows = Array.isArray(data) ? data : [data];
             rows.forEach(row => {
-              if (!row.id) row.id = row.uid || crypto.randomUUID();
-              if (!row.uid) row.uid = row.id;
+              if (table === 'users') {
+                if (!row.id) row.id = row.uid || crypto.randomUUID();
+                if (!row.uid) row.uid = row.id;
+              } else if (!row.id) {
+                row.id = crypto.randomUUID();
+              }
             });
             data = Array.isArray(args[0]) ? rows : rows[0];
             args[0] = data;
@@ -439,15 +497,19 @@ export const supabase = new Proxy(realSupabase, {
               }
             }
           }
-          if (table === 'users' && data) {
+          if (['transactions', 'receipts', 'members', 'rooms', 'users', 'activity_logs'].includes(table) && data) {
             const rows = Array.isArray(data) ? data : [data];
             rows.forEach(row => {
-              if (!row.id) row.id = row.uid || crypto.randomUUID();
-              if (!row.uid) row.uid = row.id;
+              if (table === 'users') {
+                if (!row.id) row.id = row.uid || crypto.randomUUID();
+                if (!row.uid) row.uid = row.id;
+              } else if (!row.id) {
+                row.id = crypto.randomUUID();
+              }
             });
             data = Array.isArray(args[0]) ? rows : rows[0];
             args[0] = data;
-            if (options.onConflict === 'uid') {
+            if (table === 'users' && options.onConflict === 'uid') {
               options = { ...options, onConflict: 'id' };
               args[1] = options;
             }
