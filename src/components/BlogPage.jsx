@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Search, 
   Clock, 
@@ -36,6 +36,8 @@ import {
 export default function BlogPage({
   user = null,
   userNickname = '',
+  userAvatar = '',
+  members = [],
   isAdmin = false,
   isDarkMode = false,
   setIsDarkMode = () => {},
@@ -47,6 +49,82 @@ export default function BlogPage({
   // Articles and dynamic view counters
   const [posts, setPosts] = useState(() => getStoredBlogPosts());
   const [viewsMap, setViewsMap] = useState(() => getStoredViewsMap());
+
+  // Resolve current logged-in user profile avatar directly from account settings / local cache
+  const effectiveUserAvatar = useMemo(() => {
+    if (userAvatar && typeof userAvatar === 'string' && userAvatar.trim() && userAvatar !== 'null' && userAvatar !== 'undefined') {
+      return userAvatar;
+    }
+    if (typeof window !== 'undefined') {
+      const local = localStorage.getItem('tallyin_user_avatar');
+      if (local && local.trim() && local !== 'null' && local !== 'undefined') return local;
+    }
+    const candidates = [
+      user?.photoURL,
+      user?.photo_url,
+      user?.avatar_url,
+      user?.user_metadata?.avatar_url,
+      user?.user_metadata?.picture
+    ];
+    return candidates.find(p => p && typeof p === 'string' && p.trim() !== '' && p !== 'null' && p !== 'undefined') || '';
+  }, [userAvatar, user]);
+
+  // Synchronize author avatars with actual user account profiles
+  const resolveAuthorAvatar = useCallback((author) => {
+    if (!author) return effectiveUserAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+
+    const authorEmail = (author.email || '').toLowerCase().trim();
+    const authorName = (author.name || '').toLowerCase().trim();
+    const currentEmail = (user?.email || '').toLowerCase().trim();
+    const currentNick = (userNickname || '').toLowerCase().trim();
+    const currentDisplayName = (user?.displayName || user?.name || '').toLowerCase().trim();
+
+    // 1. Is this the current logged-in user?
+    const isCurrentUser = Boolean(
+      (currentEmail && authorEmail && currentEmail === authorEmail) ||
+      (currentNick && authorName && currentNick === authorName) ||
+      (currentDisplayName && authorName && currentDisplayName === authorName) ||
+      (author.uid && (user?.id === author.uid || user?.uid === author.uid)) ||
+      (authorName && (authorName.includes('sampath') || authorName.includes('admin tallyin')) && (isAdmin || currentNick.includes('sampath') || currentEmail.includes('sampath')))
+    );
+
+    if (isCurrentUser && effectiveUserAvatar) {
+      return effectiveUserAvatar;
+    }
+
+    // 2. Check room members / cached members for matching photo
+    const memberList = Array.isArray(members) && members.length > 0 
+      ? members 
+      : (() => {
+          try {
+            return JSON.parse(localStorage.getItem('tallyin_cache_members_latest') || '[]');
+          } catch {
+            return [];
+          }
+        })();
+
+    if (Array.isArray(memberList)) {
+      const matched = memberList.find(m => {
+        const mEmail = (m.email || '').toLowerCase().trim();
+        const mNick = (m.nickname || m.name || '').toLowerCase().trim();
+        return (mEmail && authorEmail && mEmail === authorEmail) ||
+               (mNick && authorName && mNick === authorName);
+      });
+      if (matched) {
+        const mPhoto = matched.photo_url || matched.avatar_url || matched.photoURL;
+        if (mPhoto && typeof mPhoto === 'string' && mPhoto.trim() && mPhoto !== 'null' && mPhoto !== 'undefined') {
+          return mPhoto;
+        }
+      }
+    }
+
+    // 3. Fallback to author's avatar if valid, or initials SVG
+    if (author.avatar && typeof author.avatar === 'string' && author.avatar.trim()) {
+      return author.avatar;
+    }
+
+    return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author.name || 'Author')}`;
+  }, [user, userNickname, isAdmin, effectiveUserAvatar, members]);
 
   // Navigation & Filtering
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -393,6 +471,10 @@ export default function BlogPage({
                   <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] rounded-md border border-emerald-500/20">
                     Blog
                   </span>
+                  <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-400 rounded-md border border-amber-500/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Early Beta
+                  </span>
                 </div>
                 <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 font-extrabold uppercase tracking-wider hidden sm:block">
                   Shared Living &amp; Money Guides
@@ -468,11 +550,26 @@ export default function BlogPage({
               {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-emerald-800" />}
             </button>
 
-            {/* Back to App */}
+            {/* Back to App / Dashboard with Account Avatar */}
             <button
               onClick={onBack}
-              className="bg-[#1A3827] text-white hover:bg-[#255038] dark:bg-[#A3E635] dark:text-slate-950 dark:hover:bg-[#b7f34c] px-3.5 py-2 rounded-xl font-black text-xs shadow-md transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+              className="bg-[#1A3827] text-white hover:bg-[#255038] dark:bg-[#A3E635] dark:text-slate-950 dark:hover:bg-[#b7f34c] px-3.5 py-2 rounded-xl font-black text-xs shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+              title={user ? `Logged in as ${userNickname || 'User'}` : 'Return to App'}
             >
+              {user && (
+                effectiveUserAvatar ? (
+                  <img
+                    src={effectiveUserAvatar}
+                    alt={userNickname || 'User'}
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    className="w-5 h-5 rounded-full object-cover border border-white/30 dark:border-slate-900/30 shrink-0"
+                  />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-[9px] shrink-0">
+                    {(userNickname || 'U').charAt(0).toUpperCase()}
+                  </div>
+                )
+              )}
               <span className="hidden sm:inline">{user ? 'Dashboard' : 'Sign In'}</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
@@ -486,6 +583,7 @@ export default function BlogPage({
           isOpen={isWriteModalOpen}
           user={user}
           userNickname={userNickname}
+          userAvatar={effectiveUserAvatar}
           isAdmin={isAdmin}
           onClose={() => setIsWriteModalOpen(false)}
           onSave={(newArticle) => {
@@ -550,8 +648,12 @@ export default function BlogPage({
               <div className="flex items-center justify-between flex-wrap gap-4 pt-3 pb-4">
                 <div className="flex items-center gap-3">
                   <img
-                    src={activeArticle.author?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                    src={resolveAuthorAvatar(activeArticle.author)}
                     alt={activeArticle.author?.name || 'Author'}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(activeArticle.author?.name || 'Author')}`;
+                    }}
                     className="w-11 h-11 rounded-full object-cover ring-2 ring-emerald-500/20 shadow-sm"
                   />
                   <div>
@@ -973,9 +1075,15 @@ export default function BlogPage({
               <div className="hud-card rounded-3xl p-6 sm:p-10 border border-[#E3E8E3] dark:border-slate-800 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
                 <div className="max-w-2xl space-y-3">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/20">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>The Tallyin Journal</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635] border border-emerald-500/20">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>The Tallyin Journal</span>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      In Development • Early Beta
+                    </span>
                   </div>
                   <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#1A3827] dark:text-slate-50 tracking-tight leading-tight">
                     Master the Art of Shared Living &amp; Smart Expenses
@@ -983,6 +1091,12 @@ export default function BlogPage({
                   <p className="text-xs sm:text-base text-[#5C6E5C] dark:text-slate-400 leading-relaxed font-medium">
                     Expert advice, actionable survival guides, and stories from real flatmates and travelers. Want to share your tips? Sign in to write and submit an article!
                   </p>
+                  <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-xs text-amber-900 dark:text-amber-200">
+                    <span className="font-extrabold flex items-center gap-1 text-amber-700 dark:text-amber-400">
+                      🚧 Active Beta:
+                    </span>
+                    <span>The blog &amp; editorial platform is currently in early development. New guides, community author tools, and features are actively rolling out.</span>
+                  </div>
 
                   <div className="flex items-center gap-3 pt-2 flex-wrap">
                     <button
@@ -1044,8 +1158,12 @@ export default function BlogPage({
 
                       <div className="flex items-center gap-3 pt-2">
                         <img
-                          src={featuredPost.author?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                          src={resolveAuthorAvatar(featuredPost.author)}
                           alt={featuredPost.author?.name || 'Author'}
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(featuredPost.author?.name || 'Author')}`;
+                          }}
                           className="w-9 h-9 rounded-full object-cover ring-2 ring-emerald-500/20"
                         />
                         <div>
@@ -1215,8 +1333,12 @@ export default function BlogPage({
                         <div className="pt-3 border-t border-[#E3E8E3] dark:border-slate-800/80 flex items-center justify-between text-xs">
                           <div className="flex items-center gap-2">
                             <img
-                              src={article.author?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                              src={resolveAuthorAvatar(article.author)}
                               alt={article.author?.name || 'Author'}
+                              onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                e.currentTarget.src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(article.author?.name || 'Author')}`;
+                              }}
                               className="w-6 h-6 rounded-full object-cover"
                             />
                             <span className="text-[11px] font-bold text-[#1A3827] dark:text-slate-300 truncate max-w-[90px]">
@@ -1290,6 +1412,9 @@ export default function BlogPage({
           <div className="flex items-center gap-2.5">
             <img src={faviconLogo} alt="Tallyin" className="w-6 h-6 rounded-lg" />
             <span className="font-black text-[#1A3827] dark:text-slate-100">Tallyin Blog &amp; Knowledge Base</span>
+            <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-400 rounded border border-amber-500/30">
+              Early Beta
+            </span>
           </div>
 
           <div className="flex items-center gap-4 sm:gap-6 flex-wrap font-bold text-xs">

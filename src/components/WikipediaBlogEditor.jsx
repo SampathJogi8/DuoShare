@@ -23,6 +23,7 @@ export default function WikipediaBlogEditor({
   onSave,
   user,
   userNickname,
+  userAvatar = '',
   isAdmin = false,
   initialArticle = null
 }) {
@@ -351,6 +352,15 @@ export default function WikipediaBlogEditor({
     const finalAuthorName = postAsAdmin && isAdmin ? defaultAdminAuthorName : authorName;
     const finalAuthorRole = postAsAdmin && isAdmin ? defaultAdminAuthorRole : authorRole;
 
+    const resolvedAvatar = (postAsAdmin && isAdmin && !userAvatar)
+      ? 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80'
+      : (userAvatar || 
+         user?.photoURL || 
+         user?.photo_url || 
+         user?.avatar_url || 
+         (typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_avatar') : null) || 
+         `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(finalAuthorName)}`);
+
     const newArticle = {
       id: initialArticle?.id || `custom-${Date.now()}`,
       slug,
@@ -371,9 +381,7 @@ export default function WikipediaBlogEditor({
         name: finalAuthorName.trim(),
         role: finalAuthorRole.trim(),
         email: postAsAdmin && isAdmin ? 'tallyin.alerts@gmail.com' : (user?.email || ''),
-        avatar: postAsAdmin && isAdmin 
-          ? 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80'
-          : (user?.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(finalAuthorName)}`),
+        avatar: resolvedAvatar,
         isAdmin: Boolean(postAsAdmin && isAdmin)
       },
       infobox: hasInfobox ? {

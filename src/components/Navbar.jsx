@@ -219,10 +219,15 @@ export default function Navbar({
                         setIsProfileDropdownOpen(false);
                         setCurrentView('blog');
                       }}
-                      className="w-full px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 hover:bg-[#F0F4F1] dark:hover:bg-slate-800 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
+                      className="w-full px-3 py-2 text-xs font-bold text-[#1A3827] dark:text-slate-200 hover:bg-[#F0F4F1] dark:hover:bg-slate-800 rounded-xl flex items-center justify-between transition-colors cursor-pointer"
                     >
-                      <BookOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
-                      <span>Blog & Guides</span>
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635]" />
+                        <span>Blog & Guides</span>
+                      </div>
+                      <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-400 rounded border border-amber-500/30">
+                        Beta
+                      </span>
                     </button>
 
                     <button

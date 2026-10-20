@@ -929,9 +929,10 @@ export default function LegalAndSupportModal({
                   if (onClose) onClose();
                   onNavigate('blog');
                 }}
-                className="font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline cursor-pointer"
+                className="font-bold text-[#1A3827] dark:text-[#A3E635] hover:underline cursor-pointer inline-flex items-center gap-1"
               >
-                Read Blog
+                <span>Read Blog</span>
+                <span className="text-[8px] font-black uppercase px-1 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">Beta</span>
               </button>
               <span>•</span>
             </>

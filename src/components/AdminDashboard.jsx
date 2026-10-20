@@ -16470,6 +16470,8 @@ NOTIFY pgrst, 'reload schema';`;
       {activeTab === 'blog_manager' && (
         <AdminBlogManager
           user={user}
+          userNickname={userNicknameRef?.current || userNickname || 'Admin'}
+          userAvatar={user?.photoURL || (typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_avatar') : '') || ''}
           triggerToast={triggerToast}
           onOpenBlogView={onOpenBlogView}
         />

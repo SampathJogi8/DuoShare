@@ -27,6 +27,8 @@ import {
 
 export default function AdminBlogManager({
   user,
+  userNickname = 'Admin',
+  userAvatar = '',
   triggerToast = () => {},
   onOpenBlogView = () => {}
 }) {
@@ -161,7 +163,7 @@ export default function AdminBlogManager({
         name: authorName.trim() || 'Tallyin Team',
         role: authorRole.trim() || 'Admin Editorial',
         email: user?.email || 'tallyin.alerts@gmail.com',
-        avatar: user?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+        avatar: userAvatar || user?.photoURL || (typeof window !== 'undefined' ? localStorage.getItem('tallyin_user_avatar') : null) || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80'
       },
       takeaways: takeawaysArr.length ? takeawaysArr : null,
       content: validBlocks,
@@ -783,6 +785,8 @@ export default function AdminBlogManager({
         <WikipediaBlogEditor
           isOpen={isWikipediaEditorOpen}
           user={user}
+          userNickname={userNickname}
+          userAvatar={userAvatar}
           isAdmin={true}
           initialArticle={editingArticle}
           onClose={() => {
