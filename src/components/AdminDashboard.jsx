@@ -451,6 +451,7 @@ export default function AdminDashboard({
     return systemBetaSettings || {
       globalBetaMode: false,
       tripSplitterMode: 'scheduled',
+      blogMode: 'beta_only',
       aiOcrMode: 'enabled',
       quotaMode: 'enabled',
       inviteCampaignActive: true,
@@ -502,7 +503,7 @@ export default function AdminDashboard({
       }).catch(() => {});
 
       if (triggerToast) triggerToast('✓ Beta & Feature Flags updated live!');
-      logAuditAction('BETA_UPDATE', `Updated feature flags: TripSplitter=${updatedSettings.tripSplitterMode}, Campaign=${updatedSettings.inviteCampaignActive !== false}, Testers=${updatedSettings.betaUsers?.length}`);
+      logAuditAction('BETA_UPDATE', `Updated feature flags: TripSplitter=${updatedSettings.tripSplitterMode}, Blog=${updatedSettings.blogMode || 'beta_only'}, Campaign=${updatedSettings.inviteCampaignActive !== false}, Testers=${updatedSettings.betaUsers?.length}`);
     } catch (err) {
       console.error('Failed to save beta settings:', err);
       if (triggerToast) triggerToast(`⚠️ Notice: Saved locally. Sync notice: ${err.message}`);
@@ -14665,6 +14666,95 @@ NOTIFY pgrst, 'reload schema';`;
                 </div>
                 <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
                   Emergency override kill-switch. Hides the Trip Splitter module completely across the entire app.
+                </p>
+                <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-rose-500/15 text-rose-800 dark:text-rose-300">
+                  Kill Switch
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Blog & Guides Rollout */}
+          <div className="space-y-4 pt-4 border-t border-[#E3E8E3] dark:border-slate-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-black text-[#1A3827] dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />
+                  <span>Blog & Guides Engineering Dispatches Rollout</span>
+                </h4>
+                <p className="text-xs text-[#5C6E5C] dark:text-slate-400 mt-0.5">
+                  Controlled Release Gate. Current Mode: <strong className="text-emerald-700 dark:text-[#A3E635] uppercase">{betaSettings.blogMode || 'beta_only'}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              {/* Option 1: Beta Testers & Admins Only */}
+              <div 
+                onClick={() => {
+                  const next = { ...betaSettings, blogMode: 'beta_only' };
+                  handleSaveBetaSettings(next);
+                }}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 relative ${
+                  (betaSettings.blogMode || 'beta_only') === 'beta_only'
+                    ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-500 ring-2 ring-amber-500/20 shadow-md'
+                    : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-[#1A3827] dark:text-slate-100">🧪 Beta Only (Admin Permitted)</span>
+                  {(betaSettings.blogMode || 'beta_only') === 'beta_only' && <Check className="w-4 h-4 text-amber-600 dark:text-amber-400" />}
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  Only enrolled beta testers and authorized admins see Blog & Guides. Hidden from public users.
+                </p>
+                <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300">
+                  Private Beta Gate
+                </span>
+              </div>
+
+              {/* Option 2: Unlocked for All */}
+              <div 
+                onClick={() => {
+                  const next = { ...betaSettings, blogMode: 'enabled' };
+                  handleSaveBetaSettings(next);
+                }}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 relative ${
+                  betaSettings.blogMode === 'enabled'
+                    ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+                    : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-[#1A3827] dark:text-slate-100">🌐 Unlocked for ALL</span>
+                  {betaSettings.blogMode === 'enabled' && <Check className="w-4 h-4 text-emerald-600 dark:text-[#A3E635]" />}
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  Public release! Visible across navigation, sidebars, and footers for all roommates and guests.
+                </p>
+                <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-emerald-500/15 text-emerald-800 dark:text-[#A3E635]">
+                  Public Release
+                </span>
+              </div>
+
+              {/* Option 3: Force Disabled */}
+              <div 
+                onClick={() => {
+                  const next = { ...betaSettings, blogMode: 'disabled' };
+                  handleSaveBetaSettings(next);
+                }}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 relative ${
+                  betaSettings.blogMode === 'disabled'
+                    ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-500 ring-2 ring-rose-500/20 shadow-md'
+                    : 'bg-white dark:bg-slate-900 border-[#E3E8E3] dark:border-slate-800 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-[#1A3827] dark:text-slate-100">⛔ Disabled Globally</span>
+                  {betaSettings.blogMode === 'disabled' && <Check className="w-4 h-4 text-rose-600 dark:text-rose-400" />}
+                </div>
+                <p className="text-[11px] text-[#5C6E5C] dark:text-slate-400 leading-normal">
+                  Emergency kill-switch. Hides the Blog & Guides module completely across the entire app.
                 </p>
                 <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-rose-500/15 text-rose-800 dark:text-rose-300">
                   Kill Switch
