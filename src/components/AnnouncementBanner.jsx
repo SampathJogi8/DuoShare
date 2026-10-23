@@ -294,12 +294,6 @@ export default function AnnouncementBanner({
   isPreview = false,
   onActionClick = null
 }) {
-  const [isClientVisible, setIsClientVisible] = useState(true);
-  const [secondsRemaining, setSecondsRemaining] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [selectedImageModal, setSelectedImageModal] = useState(false);
-  const timerRef = useRef(null);
-
   const isValidBanner = Boolean(banner && banner.active);
   const bannerId = banner?.id || banner?.createdAt || banner?.text || '';
   const themeKey = (banner?.theme && BANNER_THEMES[banner?.theme]) ? banner.theme : 'emerald';
@@ -308,6 +302,24 @@ export default function AnnouncementBanner({
   const autoDismissSeconds = Number(banner?.autoDismissSeconds) || 0;
   const frequency = banner?.frequency || 'until_dismissed';
   const isDismissible = banner?.isDismissible !== false;
+
+  const [isClientVisible, setIsClientVisible] = useState(() => {
+    if (!isValidBanner || isDismissed) return false;
+    if (isPreview) return true;
+    if (typeof window !== 'undefined') {
+      const sessionKey = `tallyin_banner_seen_${bannerId}`;
+      const viewsKey = `tallyin_banner_views_${bannerId}`;
+      if (frequency === 'once_per_session' && sessionStorage.getItem(sessionKey)) return false;
+      if (frequency === 'once_total' && Number(localStorage.getItem(viewsKey) || 0) >= 1) return false;
+      if (frequency === 'twice_total' && Number(localStorage.getItem(viewsKey) || 0) >= 2) return false;
+      if (frequency === 'three_times' && Number(localStorage.getItem(viewsKey) || 0) >= 3) return false;
+    }
+    return true;
+  });
+  const [secondsRemaining, setSecondsRemaining] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [selectedImageModal, setSelectedImageModal] = useState(false);
+  const timerRef = useRef(null);
 
   // Check frequency rules & impression tracking on client
   useEffect(() => {

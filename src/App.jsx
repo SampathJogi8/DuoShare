@@ -1459,26 +1459,14 @@ export default function App() {
   }, [user]);
 
   const [globalBroadcast, setGlobalBroadcast] = useState(() => {
-    const defaultBroadcast = {
-      id: `release_${APP_VERSION || 'v4.6.1'}_trip_splitter`,
-      text: `🌴 Official Release (${APP_VERSION || 'v4.6.1'}): All-in-One Trip Splitter & Vacation Expense Manager now live! Track travel costs, split with flatmates or guests, and settle debts instantly.`,
-      type: 'feature',
-      theme: 'emerald',
-      placement: 'top_inline',
-      frequency: 'until_dismissed',
-      targetAudience: 'ALL',
-      targetDevice: 'ALL',
-      active: true,
-      createdAt: '2026-10-10T00:00:00.000Z',
-      expiresAt: '2026-10-25T23:59:59.000Z',
-      validDays: 15
-    };
-
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('tallyin_global_broadcast');
+        const dismissed = localStorage.getItem('tallyin_dismissed_broadcast');
         if (saved) {
           const parsed = JSON.parse(saved);
+          const activeKey = parsed?.id || parsed?.createdAt || parsed?.text;
+          if (dismissed && dismissed === activeKey) return null;
           if (parsed && parsed.active && parsed.createdAt) {
             const isExp = parsed.expiresAt 
               ? new Date().getTime() > new Date(parsed.expiresAt).getTime()
@@ -1488,7 +1476,7 @@ export default function App() {
         }
       } catch (e) { console.error(e); }
     }
-    return defaultBroadcast;
+    return null;
   });
 
   const [pinnedMessages, setPinnedMessages] = useState(() => {
@@ -1815,9 +1803,6 @@ export default function App() {
         if (parsedBanner && parsedBanner.active && !isBroadcastExpired(parsedBanner)) {
           setGlobalBroadcast(parsedBanner);
           localStorage.setItem('tallyin_global_broadcast', JSON.stringify(parsedBanner));
-        } else if (!isBroadcastExpired(FEATURE_RELEASE_BROADCAST)) {
-          setGlobalBroadcast(FEATURE_RELEASE_BROADCAST);
-          localStorage.setItem('tallyin_global_broadcast', JSON.stringify(FEATURE_RELEASE_BROADCAST));
         } else {
           setGlobalBroadcast(null);
           localStorage.removeItem('tallyin_global_broadcast');
