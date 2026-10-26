@@ -213,10 +213,39 @@ body.dark {
   @apply transition-all duration-200 hover:scale-[1.015] active:scale-[0.985];
 }
 
-/* Prevent mobile browser auto-zooming on input focus */
-@media (max-width: 767px) {
+/* Prevent mobile & tablet browser auto-zooming on input focus */
+@media (max-width: 1024px) {
   input, select, textarea {
     font-size: 16px !important;
+  }
+}
+
+/* Tablet & Touch Ergonomics Optimization */
+html {
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+}
+
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
+}
+
+/* Smooth momentum scrolling for iOS/iPadOS */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch Device Sticky Hover Guard */
+@media (hover: none) and (pointer: coarse) {
+  .hud-card-interactive:hover {
+    transform: none;
+    box-shadow: inherit;
+  }
+  .hud-card-interactive:active {
+    transform: scale(0.985);
   }
 }
 

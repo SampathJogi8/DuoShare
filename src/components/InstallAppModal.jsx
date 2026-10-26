@@ -19,9 +19,9 @@ export default function InstallAppModal({ triggerToast }) {
     const isDismissed = localStorage.getItem('tallyin_install_dismissed');
     if (isDismissed) return;
 
-    // 3. Detect iOS Safari
+    // 3. Detect iOS Safari (including modern iPadOS with desktop user-agent)
     const ua = window.navigator.userAgent;
-    const isIosDevice = /iphone|ipad|ipod/i.test(ua);
+    const isIosDevice = /iphone|ipad|ipod/i.test(ua) || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
     setIsIos(isIosDevice);
 
     if (isIosDevice) {

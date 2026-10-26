@@ -81,8 +81,8 @@ export default function Navbar({
             )}
           </div>
 
-          {/* Center Navigation Tabs (Desktop) */}
-          <nav className="hidden md:flex items-center gap-1 bg-[#EAF0EC]/70 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-[#1A3827]/5 dark:border-slate-800 shadow-inner">
+          {/* Center Navigation Tabs (Desktop & Wide Tablet) */}
+          <nav className="hidden lg:flex items-center gap-1 bg-[#EAF0EC]/70 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-[#1A3827]/5 dark:border-slate-800 shadow-inner">
             <button
               onClick={() => setCurrentView('home')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
@@ -256,10 +256,10 @@ export default function Navbar({
               )}
             </div>
 
-            {/* Mobile Drawer Toggle */}
+            {/* Mobile & Tablet Drawer Toggle */}
             <button
               onClick={() => setIsMobileMenuOpen(prev => !prev)}
-              className="md:hidden p-2 text-[#1A3827] dark:text-slate-200 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 rounded-xl transition-all"
+              className="lg:hidden p-2 text-[#1A3827] dark:text-slate-200 hover:bg-[#EAF0EC] dark:hover:bg-slate-800 rounded-xl transition-all"
             >
               <Menu className="w-5 h-5" />
             </button>

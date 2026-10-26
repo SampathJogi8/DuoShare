@@ -834,8 +834,19 @@ export default function App() {
   const [inviteTab, setInviteTab] = useState('code'); // 'code' | 'qr' | 'link'
   const qrScannerRef = useRef(null);
 
-  // Responsive drawer menu
+  // Responsive drawer menu & tablet sidebar collapse
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('tallyin_sidebar_collapsed') === 'true' : false));
+
+  const toggleSidebarCollapse = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tallyin_sidebar_collapsed', String(next));
+      }
+      return next;
+    });
+  };
 
   // Dropdown & Modal toggles
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -16144,14 +16155,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       {/* Sidebar Backdrop */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 md:hidden"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar Navigation */}
       <aside className={`w-64 border-r border-[#DCE4DC]/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl flex flex-col justify-between fixed top-0 bottom-0 left-0 h-full z-40 transition-transform duration-300 overflow-y-auto ${
-        isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        isMobileMenuOpen 
+          ? 'translate-x-0 shadow-2xl' 
+          : (isSidebarCollapsed ? '-translate-x-full' : '-translate-x-full lg:translate-x-0')
       }`}>
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
@@ -16206,12 +16219,24 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             </div>
             
-            <button 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="p-1.5 rounded-lg text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 md:hidden"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button 
+                type="button"
+                onClick={toggleSidebarCollapse}
+                className="hidden lg:flex p-1.5 rounded-lg text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-colors"
+                title="Collapse sidebar to full-width"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button 
+                type="button"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-1.5 rounded-lg text-[#5C6E5C] dark:text-slate-400 hover:bg-[#F6F8F6] dark:hover:bg-slate-800 lg:hidden transition-colors"
+                title="Close drawer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Room Switcher Dropdown */}
@@ -16571,14 +16596,23 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
       </aside>
 
       {/* Main Content Page Container */}
-      <div className="flex-1 flex flex-col pl-0 md:pl-64 h-screen min-w-0 overflow-hidden">
+      <div className={`flex-1 flex flex-col ${isSidebarCollapsed ? 'pl-0' : 'pl-0 lg:pl-64'} h-screen min-w-0 overflow-hidden transition-all duration-300`}>
         
         {/* Top Navbar */}
-        <header className="h-16 border-b border-[#E2EAE3] dark:border-slate-800 bg-white/85 dark:bg-black/85 backdrop-blur-2xl flex items-center justify-between px-4 sm:px-8 fixed top-0 right-0 left-0 md:left-64 z-20 transition-all duration-300 shadow-sm">
-          <div className="flex items-center gap-1">
+        <header className={`h-16 border-b border-[#E2EAE3] dark:border-slate-800 bg-white/85 dark:bg-black/85 backdrop-blur-2xl flex items-center justify-between px-4 sm:px-6 lg:px-8 fixed top-0 right-0 ${isSidebarCollapsed ? 'left-0' : 'left-0 lg:left-64'} z-20 transition-all duration-300 shadow-sm`}>
+          <div className="flex items-center gap-1 sm:gap-2">
             <button 
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="p-2 text-[#5C6E5C] dark:text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-xl mr-1.5 md:hidden"
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.innerWidth >= 1024 && isSidebarCollapsed) {
+                  toggleSidebarCollapse();
+                } else {
+                  setIsMobileMenuOpen(true);
+                }
+              }}
+              className={`p-2 text-[#5C6E5C] dark:text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-xl mr-1 sm:mr-1.5 transition-colors cursor-pointer inline-flex items-center justify-center ${
+                isSidebarCollapsed ? '' : 'lg:hidden'
+              }`}
+              title="Open Navigation Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -16632,7 +16666,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
               <div className="flex flex-col justify-center text-left min-w-0">
                 <div className="flex items-center gap-1.5 flex-nowrap min-w-0">
-                  <h2 className="font-black text-xs sm:text-sm text-[#0F172A] dark:text-slate-100 leading-tight tracking-tight truncate max-w-[130px] xs:max-w-[180px] sm:max-w-[260px] md:max-w-[320px]" title={roomName}>
+                  <h2 className="font-black text-xs sm:text-sm text-[#0F172A] dark:text-slate-100 leading-tight tracking-tight truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[280px] md:max-w-[360px] lg:max-w-[440px]" title={roomName}>
                     {roomName}
                   </h2>
                   {isTripRoomMode && (
@@ -18064,12 +18098,12 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         {/* ═══════════════════════════════════════════════════════
             RESPONSIVE GRID
             Mobile / Tablet  → single column stack
-            Desktop (lg+)   → 12-col: 8 left main + 4 right sidebar
+            Desktop (xl+)   → 12-col: 8 left main + 4 right sidebar
         ════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6">
 
-          {/* ── LEFT MAIN COLUMN (lg: 8 cols) ── */}
-          <div className="lg:col-span-8 space-y-4">
+          {/* ── LEFT MAIN COLUMN (xl: 8 cols) ── */}
+          <div className="xl:col-span-8 space-y-4">
 
             {/* ── Hero Balance Card ── */}
             <div className={`${
@@ -18088,7 +18122,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                   <div className="absolute left-1/3 bottom-0 w-48 h-48 bg-teal-500/8 blur-3xl rounded-full -mb-16 pointer-events-none" />
                 </>
               )}
-              <div className="relative z-10 flex flex-col sm:flex-row sm:gap-8">
+              <div className="relative z-10 flex flex-col md:flex-row md:items-center md:gap-8">
                 {/* Balance */}
                 <div className="flex-1">
                   {isGenesisRoom && (
@@ -18115,16 +18149,16 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                     <HandCoins className="w-4 h-4" /><span>Settle Up</span><ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                {/* Roommate balances — side panel on sm+, stacked below on mobile */}
+                {/* Roommate balances — side panel on md+, stacked below on mobile */}
                 {members.length > 1 && (
-                  <div className="border-t border-white/10 sm:border-t-0 sm:border-l sm:border-white/10 pt-4 sm:pt-0 sm:pl-8 mt-4 sm:mt-0 space-y-1.5 flex flex-col justify-center sm:w-52 lg:w-60 shrink-0">
+                  <div className="border-t border-white/10 md:border-t-0 md:border-l md:border-white/10 pt-4 md:pt-0 md:pl-8 mt-4 md:mt-0 space-y-1.5 flex flex-col justify-center sm:w-full md:w-72 lg:w-80 shrink-0">
                     <p className="text-[9px] font-bold uppercase tracking-widest text-white/40 mb-2">Roommate Balances</p>
                     {members.map(m => {
                       if (m.uid === currentUid) return null;
                       const bal = computedStats.balances[m.uid] || 0;
                       return (
                         <div key={m.uid} className="flex justify-between items-center text-xs py-1.5 px-3 rounded-xl bg-white/5 border border-white/10">
-                          <span className="text-white/80 font-semibold truncate max-w-[110px]">{m.nickname}</span>
+                          <span className="text-white/80 font-semibold truncate max-w-[130px] sm:max-w-[160px]">{m.nickname}</span>
                           <span className={`shrink-0 text-[11px] font-black ${bal > 0 ? 'text-[#A3E635]' : bal < 0 ? 'text-rose-400' : 'text-white/30'}`}>
                             {bal > 0 ? `is owed ${formatINR(bal)}` : bal < 0 ? `owes ${formatINR(Math.abs(bal))}` : 'settled'}
                           </span>
@@ -18153,7 +18187,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             {/* ── Quick Actions (Placed directly below Settlement Engine) ── */}
             <div>
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#5C6E5C] dark:text-slate-400 mb-2.5">QUICK ACTIONS</p>
-              <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
                 {[
                   { label: 'Add Bill', icon: <Plus className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => openAddExpenseModal() },
                   { label: 'Scan Receipt', icon: <Upload className="w-5 h-5 sm:w-6 sm:h-6" />, action: () => handleTriggerUpload() },
@@ -18453,85 +18487,88 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
           </div>{/* end left column */}
 
-          {/* ── RIGHT SIDEBAR (lg: 4 cols) ── */}
-          <div className="lg:col-span-4 space-y-4">
+          {/* ── RIGHT SIDEBAR (xl: 4 cols) ── */}
+          <div className="xl:col-span-4 space-y-4">
 
-            {/* Monthly Budget Card */}
-            <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">{monthName} Room Budget</p>
-                  <div className="flex items-baseline gap-1 mt-0.5">
-                    <span className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyRoomSpend)}</span>
-                    <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(monthlyBudget)}</span>
-                  </div>
-                </div>
-                <div className="text-right shrink-0 ml-2">
-                  <span className={`text-[9px] font-black px-2 py-1 rounded-full ${isOver ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>{budgetPct}% used</span>
-                  <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-1">{daysLeft}d left</p>
-                </div>
-              </div>
-              <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2.5 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-500 ${isOver ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${budgetPct}%` }} />
-              </div>
-              <div className="flex justify-between text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
-                <span>{isOver ? `⚠️ Over by ${formatINR(monthlyRoomSpend - monthlyBudget)}` : `${formatINR(remaining)} remaining`}</span>
-                {!isOver && daysLeft > 0 && <span>~{formatINR(dailyLimit)}/day</span>}
-              </div>
-              {activeMonth === currentMonthStr && today.getDate() > 0 && monthlyRoomSpend > 0 && (() => {
-                const projected = Math.round((monthlyRoomSpend / today.getDate()) * daysInMonth);
-                return (
-                  <div className={`rounded-xl p-3 flex items-start gap-2 ${isOver ? 'bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/30' : 'bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/10 dark:border-slate-800'}`}>
-                    <Sparkles className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${isOver ? 'text-rose-600' : 'text-[#1A3827] dark:text-[#A3E635]'}`} />
-                    <div>
-                      <p className={`text-[10px] font-bold ${isOver ? 'text-rose-700 dark:text-rose-400' : 'text-[#1A3827] dark:text-slate-200'}`}>{isOver ? 'Over budget!' : "You're on track"}</p>
-                      <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">📈 Projected: <span className="font-black">{formatINR(projected)}</span></p>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Personal Spending Card (Hidden in Quota Mode) */}
-            {!isQuotaMode && (
+            {/* Responsive Budget & Personal Spending: 2-column grid on tablet, 1-column on desktop/mobile */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4">
+              {/* Monthly Budget Card */}
               <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Personal Spending</p>
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">{monthName} Room Budget</p>
                     <div className="flex items-baseline gap-1 mt-0.5">
-                      <span className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyPersonalTotal)}</span>
-                      <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(personalCap)}</span>
+                      <span className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyRoomSpend)}</span>
+                      <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(monthlyBudget)}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                    <span className={`text-[9px] font-black px-2 py-1 rounded-full ${personalPercentage >= 90 ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>{personalPercentage.toFixed(0)}%</span>
-                    <button onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }} className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all cursor-pointer" title="Edit limit">
-                      <Pencil className="w-3 h-3 text-[#5C6E5C] dark:text-slate-400" />
-                    </button>
+                  <div className="text-right shrink-0 ml-2">
+                    <span className={`text-[9px] font-black px-2 py-1 rounded-full ${isOver ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>{budgetPct}% used</span>
+                    <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-1">{daysLeft}d left</p>
                   </div>
                 </div>
-                {isEditingPersonalCap && (
-                  <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
-                    <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">₹</span>
-                    <input type="number" min="0" value={personalCapInput}
-                      onChange={e => setPersonalCapInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }
-                        if (e.key === 'Escape') setIsEditingPersonalCap(false);
-                      }}
-                      className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0" autoFocus />
-                    <button onClick={() => { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#1A3827] text-white px-2.5 py-1 rounded-lg cursor-pointer">Save</button>
-                    <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] text-[#5C6E5C] px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 cursor-pointer">✕</button>
-                  </div>
-                )}
-                <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all duration-500 ${personalPercentage >= 90 ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${Math.min(100, personalPercentage)}%` }} />
+                <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2.5 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-500 ${isOver ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${budgetPct}%` }} />
                 </div>
-                <p className="text-[10px] font-medium text-[#5C6E5C] dark:text-slate-400">
-                  {personalPercentage >= 100 ? `⚠️ Exceeded by ${formatINR(monthlyPersonalTotal - personalCap)}` : `${formatINR(personalCap - monthlyPersonalTotal)} remaining`}
-                </p>
+                <div className="flex justify-between text-[10px] text-[#5C6E5C] dark:text-slate-400 font-medium">
+                  <span>{isOver ? `⚠️ Over by ${formatINR(monthlyRoomSpend - monthlyBudget)}` : `${formatINR(remaining)} remaining`}</span>
+                  {!isOver && daysLeft > 0 && <span>~{formatINR(dailyLimit)}/day</span>}
+                </div>
+                {activeMonth === currentMonthStr && today.getDate() > 0 && monthlyRoomSpend > 0 && (() => {
+                  const projected = Math.round((monthlyRoomSpend / today.getDate()) * daysInMonth);
+                  return (
+                    <div className={`rounded-xl p-3 flex items-start gap-2 ${isOver ? 'bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/30' : 'bg-[#EAF0EC] dark:bg-slate-950 border border-[#1A3827]/10 dark:border-slate-800'}`}>
+                      <Sparkles className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${isOver ? 'text-rose-600' : 'text-[#1A3827] dark:text-[#A3E635]'}`} />
+                      <div>
+                        <p className={`text-[10px] font-bold ${isOver ? 'text-rose-700 dark:text-rose-400' : 'text-[#1A3827] dark:text-slate-200'}`}>{isOver ? 'Over budget!' : "You're on track"}</p>
+                        <p className="text-[10px] text-[#5C6E5C] dark:text-slate-400 mt-0.5">📈 Projected: <span className="font-black">{formatINR(projected)}</span></p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-            )}
+
+              {/* Personal Spending Card (Hidden in Quota Mode) */}
+              {!isQuotaMode && (
+                <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#5C6E5C] dark:text-slate-400">Personal Spending</p>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-xl sm:text-2xl font-black text-[#1A3827] dark:text-slate-100">{formatINR(monthlyPersonalTotal)}</span>
+                        <span className="text-xs text-[#5C6E5C] dark:text-slate-400">/ {formatINR(personalCap)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <span className={`text-[9px] font-black px-2 py-1 rounded-full ${personalPercentage >= 90 ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400' : 'bg-[#EAF0EC] dark:bg-slate-800 text-[#1A3827] dark:text-[#A3E635]'}`}>{personalPercentage.toFixed(0)}%</span>
+                      <button onClick={() => { setPersonalCapInput(String(personalCap)); setIsEditingPersonalCap(true); }} className="p-1.5 rounded-lg hover:bg-[#F6F8F6] dark:hover:bg-slate-800 transition-all cursor-pointer" title="Edit limit">
+                        <Pencil className="w-3 h-3 text-[#5C6E5C] dark:text-slate-400" />
+                      </button>
+                    </div>
+                  </div>
+                  {isEditingPersonalCap && (
+                    <div className="flex items-center gap-2 bg-[#F6F8F6] dark:bg-slate-950 border border-[#E3E8E3] dark:border-slate-800 rounded-xl px-3 py-2">
+                      <span className="text-xs font-bold text-[#5C6E5C] dark:text-slate-400">₹</span>
+                      <input type="number" min="0" value={personalCapInput}
+                        onChange={e => setPersonalCapInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }
+                          if (e.key === 'Escape') setIsEditingPersonalCap(false);
+                        }}
+                        className="flex-1 bg-transparent text-sm font-bold text-[#1A3827] dark:text-slate-100 outline-none min-w-0" autoFocus />
+                      <button onClick={() => { const val = Number(personalCapInput); if (val > 0) { setPersonalCap(val); localStorage.setItem('personalCap', val); } setIsEditingPersonalCap(false); }} className="text-[10px] font-black bg-[#1A3827] text-white px-2.5 py-1 rounded-lg cursor-pointer">Save</button>
+                      <button onClick={() => setIsEditingPersonalCap(false)} className="text-[10px] text-[#5C6E5C] px-2 py-1 rounded-lg hover:bg-[#E3E8E3] dark:hover:bg-slate-800 cursor-pointer">✕</button>
+                    </div>
+                  )}
+                  <div className="w-full bg-[#F6F8F6] dark:bg-slate-950 h-2 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-500 ${personalPercentage >= 90 ? 'bg-rose-500' : 'bg-[#1A3827] dark:bg-[#A3E635]'}`} style={{ width: `${Math.min(100, personalPercentage)}%` }} />
+                  </div>
+                  <p className="text-[10px] font-medium text-[#5C6E5C] dark:text-slate-400">
+                    {personalPercentage >= 100 ? `⚠️ Exceeded by ${formatINR(monthlyPersonalTotal - personalCap)}` : `${formatINR(personalCap - monthlyPersonalTotal)} remaining`}
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* Room Activity Feed (Hidden in Quota Mode) */}
             {!isQuotaMode && activityLogs.length > 0 && (
@@ -18759,26 +18796,26 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         </div>
 
         {/* Summary Row */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">{activeMonthLabel} SPEND</p>
-            <p className="text-base sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{formatINR(totalFilteredSpend)}</p>
+            <p className="text-base sm:text-xl lg:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{formatINR(totalFilteredSpend)}</p>
           </div>
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">SHARED</p>
-            <p className="text-base sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{formatINR(totalFilteredShared)}</p>
+            <p className="text-base sm:text-xl lg:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{formatINR(totalFilteredShared)}</p>
           </div>
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">PERSONAL</p>
-            <p className="text-base sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{formatINR(totalFilteredPersonal)}</p>
+            <p className="text-base sm:text-xl lg:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{formatINR(totalFilteredPersonal)}</p>
           </div>
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">TRANSACTIONS</p>
-            <p className="text-base sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{filteredTransactions.length}</p>
+            <p className="text-base sm:text-xl lg:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{filteredTransactions.length}</p>
           </div>
           <div 
             onClick={() => navigateTo('settlement-records')}
-            className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm hover:border-emerald-400 dark:hover:border-emerald-600 transition-all duration-200 cursor-pointer group col-span-2 md:col-span-1"
+            className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm hover:border-emerald-400 dark:hover:border-emerald-600 transition-all duration-200 cursor-pointer group col-span-2 sm:col-span-1"
             title="Click to view Settlement Records"
           >
             <div className="flex items-center justify-between">
@@ -18788,7 +18825,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </p>
               <ArrowRight className="w-3.5 h-3.5 text-emerald-600 dark:text-[#A3E635] opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
             </div>
-            <p className="text-base sm:text-2xl font-black text-emerald-700 dark:text-[#A3E635] mt-1 truncate">{formatINR(computedStats.totalSettledAmount || 0)}</p>
+            <p className="text-base sm:text-xl lg:text-2xl font-black text-emerald-700 dark:text-[#A3E635] mt-1 truncate">{formatINR(computedStats.totalSettledAmount || 0)}</p>
             <p className="text-[9px] text-slate-500 dark:text-slate-400 mt-0.5 font-semibold">{computedStats.settlementCount || 0} records →</p>
           </div>
         </div>
@@ -22444,7 +22481,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         </div>
 
         {/* Top Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm transition-colors duration-300">
             <p className="text-[9px] sm:text-[10px] font-bold text-[#5C6E5C] dark:text-slate-400 tracking-wider uppercase">TOTAL SPEND</p>
             <p className="text-base sm:text-2xl font-black text-[#1A3827] dark:text-slate-100 mt-1 truncate">{formatINR(rawTotal)}</p>
@@ -23114,7 +23151,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
         </div>
 
         {/* Minimalist Dashboard Overview Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white dark:bg-slate-900 border border-[#E3E8E3] dark:border-slate-800 p-4 sm:p-4.5 rounded-2xl shadow-xs">
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1.5">
               <span className="text-[9px] font-bold uppercase tracking-wider">TOTAL SETTLED</span>
@@ -23474,7 +23511,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
             <p className="text-[10px] text-[#5C6E5C] dark:text-slate-500 mt-1">Upload roommate bill receipt files to archive them in this visual polaroid grid.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
             {activeReceipts.map((r) => (
               <div 
                 key={r.id}
@@ -24734,7 +24771,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             </div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {pendingItems.map(item => (
                 <div 
                   key={item.id}
@@ -25025,7 +25062,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {billsList.map(bill => {
                 const assigneeMember = members.find(m => m.uid === bill.splitType);
                 const isPaid = bill.split === 'paid' || bill.split?.endsWith('|paid');
