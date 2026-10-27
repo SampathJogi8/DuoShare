@@ -17052,7 +17052,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
           </div>
         </header>
 
-        <main className="flex-grow pt-16 sm:pt-20 px-3 sm:px-8 pb-24 overflow-y-auto overflow-x-hidden min-w-0">
+        <main className="flex-grow pt-16 sm:pt-20 px-3 sm:px-8 pb-4 sm:pb-6 overflow-y-auto overflow-x-hidden min-w-0">
           {/* Admin Pending Dispute & Ticket Realtime Alert Banner */}
           {isUserAdminOrCoAdmin && adminPendingDisputesCount > 0 && (
             <div className="w-full mb-4 p-4 rounded-3xl bg-gradient-to-r from-amber-950/90 via-rose-950 to-red-950 border-2 border-rose-500/60 text-white shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 animate-fade-in ring-1 ring-rose-400/30">
@@ -17620,7 +17620,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
 
           {/* Global Platform Footer */}
           {currentView !== 'admin' && (
-            <footer className="mt-12 py-6 border-t border-slate-200/80 dark:border-slate-800/80 text-center text-xs text-slate-500 dark:text-slate-400 space-y-2">
+            <footer className="mt-4 sm:mt-6 pt-3 pb-1 border-t border-slate-200/80 dark:border-slate-800/80 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
               <div className="flex items-center justify-center gap-4 sm:gap-6 flex-wrap text-xs font-bold">
                 <button
                   type="button"
@@ -17967,7 +17967,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     const isHost = roomCreatedBy && user && roomCreatedBy === user.id;
 
     return (
-      <div className="max-w-7xl mx-auto animate-fade-in pb-24 lg:pb-8">
+      <div className="max-w-7xl mx-auto animate-fade-in">
 
         {/* Whitelisted Account Maintenance Mode Testing Banner */}
         {isSystemMaintenanceActive && isUserWhitelistedForMaintenance && (
@@ -24742,7 +24742,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     const pendingItems = shoppingItems.filter(item => item.splitType === 'pending');
     
     return (
-      <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto animate-fade-in pb-12">
+      <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto animate-fade-in">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div className="min-w-0">
@@ -25001,7 +25001,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
     }).length;
 
     return (
-      <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto animate-fade-in pb-12">
+      <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto animate-fade-in">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div className="min-w-0">
@@ -25310,7 +25310,7 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
   // ==========================================
   function renderSettings() {
     return (
-      <div className="space-y-6 sm:space-y-8 max-w-3xl mx-auto animate-fade-in pb-12">
+      <div className="space-y-6 sm:space-y-8 max-w-3xl mx-auto animate-fade-in">
         
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#12291C] dark:text-slate-100 tracking-tight">Settings</h1>
