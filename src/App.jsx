@@ -7548,9 +7548,10 @@ export default function App() {
   };
 
   const handleEditTransaction = (tx) => {
-    const canEdit = !tx.createdBy || tx.createdBy === 'anonymous' || tx.createdBy === user?.id;
+    const isCreator = !tx.createdBy || tx.createdBy === 'anonymous' || tx.createdBy === user?.id || tx.createdBy === auth.currentUser?.uid;
+    const canEdit = isCreator || isHostOrCoHost;
     if (!canEdit) {
-      triggerToast('You are not authorized to edit this expense. Only the creator can edit it.');
+      triggerToast('You are not authorized to edit this expense. Only the creator, Room Host, or Co-Host can edit it.');
       return;
     }
     openAddExpenseModal(tx);
@@ -18880,7 +18881,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             ) : (
               filteredTransactions.map((t) => {
-                const isCreator = !t.createdBy || t.createdBy === 'anonymous' || t.createdBy === auth.currentUser?.uid;
+                const isCreator = !t.createdBy || t.createdBy === 'anonymous' || t.createdBy === auth.currentUser?.uid || (user && t.createdBy === user.id);
+                const canEditTx = isCreator || isHostOrCoHost;
                 return (
                   <div key={t.id} className="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100 gap-2 sm:gap-4">
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
@@ -18990,23 +18992,23 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         >
                           <ShieldAlert className="w-3.5 h-3.5" />
                         </button>
+                        {canEditTx && (
+                          <button 
+                            onClick={() => handleEditTransaction(t)}
+                            className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                            title="Edit transaction"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {isCreator && (
-                          <>
-                            <button 
-                              onClick={() => handleEditTransaction(t)}
-                              className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-                              title="Edit transaction"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteTransaction(t)}
-                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
-                              title="Delete transaction"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
+                          <button 
+                            onClick={() => handleDeleteTransaction(t)}
+                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
+                            title="Delete transaction"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                     </div>
@@ -19364,7 +19366,8 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
               </div>
             ) : (
               filteredPersonalExpenses.map((t) => {
-                const isCreator = !t.createdBy || t.createdBy === 'anonymous' || t.createdBy === auth.currentUser?.uid;
+                const isCreator = !t.createdBy || t.createdBy === 'anonymous' || t.createdBy === auth.currentUser?.uid || (user && t.createdBy === user.id);
+                const canEditTx = isCreator || isHostOrCoHost;
                 return (
                   <div key={t.id} className="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-[#F6F8F6]/30 dark:hover:bg-slate-800/10 transition-all duration-100 gap-2 sm:gap-4">
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
@@ -19437,23 +19440,23 @@ Keep responses under 4 sentences unless asked for detail. Use bullet points for 
                         >
                           <ShieldAlert className="w-3.5 h-3.5" />
                         </button>
+                        {canEditTx && (
+                          <button 
+                            onClick={() => handleEditTransaction(t)}
+                            className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+                            title="Edit transaction"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {isCreator && (
-                          <>
-                            <button 
-                              onClick={() => handleEditTransaction(t)}
-                              className="p-1 text-slate-500 hover:text-[#1A3827] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-                              title="Edit transaction"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteTransaction(t)}
-                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
-                              title="Delete transaction"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
+                          <button 
+                            onClick={() => handleDeleteTransaction(t)}
+                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
+                            title="Delete transaction"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                     </div>
