@@ -619,6 +619,11 @@ export default {
             }
           }
 
+          // Safety guard: Never mutate the primary key `id` during an UPDATE operation
+          if (data && typeof data === "object") {
+            delete data.id;
+          }
+
           const keys = Object.keys(data).filter(isValidCol);
           const setClause = keys.map(k => `${k} = ?`).join(", ");
           const values = keys.map(k => (data[k] !== null && typeof data[k] === "object") ? JSON.stringify(data[k]) : (data[k] === undefined ? null : data[k]));

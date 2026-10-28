@@ -32,7 +32,7 @@ export const setActiveDatabaseEngine = (engine) => {
 };
 
 // Helper to sanitize payload for Cloudflare D1
-const cleanPayloadForD1 = (table, data) => {
+const cleanPayloadForD1 = (table, data, action = 'insert') => {
   if (!data) return data;
   const isArr = Array.isArray(data);
   const rows = isArr ? data : [data];
@@ -45,11 +45,16 @@ const cleanPayloadForD1 = (table, data) => {
     if (table === 'members') {
       delete copy.rooms;
     }
-    if (table === 'users') {
-      if (!copy.id) copy.id = copy.uid || crypto.randomUUID();
-      if (!copy.uid) copy.uid = copy.id;
-    } else if (['transactions', 'receipts', 'members', 'rooms', 'activity_logs'].includes(table) && !copy.id) {
-      copy.id = crypto.randomUUID();
+    // Only generate auto-IDs on insert or upsert; NEVER generate or mutate id on update
+    if (action === 'update') {
+      delete copy.id;
+    } else {
+      if (table === 'users') {
+        if (!copy.id) copy.id = copy.uid || crypto.randomUUID();
+        if (!copy.uid) copy.uid = copy.id;
+      } else if (['transactions', 'receipts', 'members', 'rooms', 'activity_logs'].includes(table) && !copy.id) {
+        copy.id = crypto.randomUUID();
+      }
     }
     return copy;
   });
@@ -92,7 +97,7 @@ class D1QueryBuilder {
 
   update(data) {
     this.action = 'update';
-    this.payload = cleanPayloadForD1(this.table, data);
+    this.payload = cleanPayloadForD1(this.table, data, 'update');
     return this;
   }
 
